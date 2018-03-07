@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.BeforeClass;
@@ -21,6 +22,7 @@ import jdk.incubator.http.HttpResponse.BodyHandler;
 
 public class IRCTResourceIT extends BaseIT {
 
+	private static ObjectMapper mapper = new ObjectMapper();
 	private static UUID nhanesResourceId = null;
 	
 	@BeforeClass
@@ -51,7 +53,7 @@ public class IRCTResourceIT extends BaseIT {
 		System.out.println(endpointUrl + "info/" + nhanesResourceId);
 		HttpResponse<String> response = client.send(
 				HttpRequest.newBuilder()
-				.GET()
+				.POST(HttpRequest.BodyProcessor.fromString(mapper.writeValueAsString(Map.of("IRCT_BEARER_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU"))))
 				.uri(URI.create(endpointUrl + "info/" + nhanesResourceId))
 				.header("Authorization", "Bearer "+ jwt)
 				.header("Content-type", "application/json")

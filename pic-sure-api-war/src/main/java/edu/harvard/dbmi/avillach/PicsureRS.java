@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.inject.Inject;
+import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -16,7 +18,8 @@ import edu.harvard.dbmi.avillach.service.*;
 
 @Path("/")
 @Produces("application/json")
-public class PicsureRS implements IResourceRS {
+@Consumes("application/json")
+public class PicsureRS {
 	
 	@Inject
 	PicsureInfoService infoService;
@@ -33,11 +36,11 @@ public class PicsureRS implements IResourceRS {
 		return infoService.info();
 	}
 	
-	@GET
+	@POST
 	@Path("/info/{resourceId}")
-	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId) {	
+	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId, Map<String, String> resourceCredentials) {	
 		System.out.println("Resource info requested for : " + resourceId);
-		return infoService.info(UUID.fromString(resourceId));
+		return infoService.info(UUID.fromString(resourceId), resourceCredentials);
 	}
 	
 	@GET

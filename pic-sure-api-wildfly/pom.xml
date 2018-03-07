@@ -26,6 +26,12 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-irct-resource</artifactId>
+			<classifier>classes</classifier>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
@@ -220,6 +226,7 @@
 						</goals>
 						<configuration>
 							<env>
+								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 							</env>
@@ -248,6 +255,7 @@
 						<configuration>
 							<environmentVariables>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
+								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 							</environmentVariables>
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE/</service.url>

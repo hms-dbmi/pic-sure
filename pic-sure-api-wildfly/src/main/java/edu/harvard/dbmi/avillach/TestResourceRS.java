@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
+import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.GET;
@@ -18,7 +19,7 @@ public class TestResourceRS implements IResourceRS {
 	@GET
 	@Path("/info")
 	@Override
-	public ResourceInfo info() {
+	public ResourceInfo info(Map<String, String> resourceCredentials) {
 		return new ResourceInfo();
 	}
 

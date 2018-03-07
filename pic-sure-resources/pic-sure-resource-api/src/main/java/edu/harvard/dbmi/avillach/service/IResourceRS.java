@@ -1,7 +1,9 @@
 package edu.harvard.dbmi.avillach.service;
 
+import java.util.Map;
 import java.util.UUID;
 
+import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -14,12 +16,13 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 
 @Path("/pic-sure")
 @Produces("application/json")
+@Consumes("application/json")
 public interface IResourceRS 
 {
     
 	@GET
 	@Path("/info")
-	public ResourceInfo info();
+	public ResourceInfo info(Map<String, String> resourceCredentials);
 	
 	@POST
 	@Path("/search")
