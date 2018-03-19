@@ -30,15 +30,9 @@ public class PicsureRS {
 	@Inject
 	PicsureQueryService queryService;
 	
-	@GET
-	@Path("/info")
-	public ResourceInfo info() {		
-		return infoService.info();
-	}
-	
 	@POST
 	@Path("/info/{resourceId}")
-	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId, Map<String, String> resourceCredentials) {	
+	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId, String resourceCredentials) {	
 		System.out.println("Resource info requested for : " + resourceId);
 		return infoService.info(UUID.fromString(resourceId), resourceCredentials);
 	}
@@ -50,27 +44,27 @@ public class PicsureRS {
 	}
 	
 	@POST
-	@Path("/search")
-	public SearchResults search(String searchJson) {
-		return searchService.search(searchJson);
+	@Path("/search/{resourceId}")
+	public SearchResults search(@PathParam("resourceId") UUID resourceId, Query searchQuery) {
+		return searchService.search(resourceId, searchQuery.getResourceCredentials(), searchQuery.getQuery());
 	}
 	
 	@POST
-	@Path("/query")
-	public QueryResults query(String queryJson) {
-		return queryService.query(queryJson);
+	@Path("/query/{resourceId}")
+	public QueryResults query(@PathParam("resourceId") UUID resourceId, Query dataQuery) {
+		return queryService.query(resourceId, dataQuery.getResourceCredentials(), dataQuery.getQuery());
 	}
 	
 	@GET
-	@Path("/query/{resourceQueryId}/status)")
-	public QueryStatus queryStatus(UUID queryId) {
-		return queryService.queryStatus(queryId);
+	@Path("/query/{queryId}/status)")
+	public QueryStatus queryStatus(@PathParam("queryId") UUID queryId, String resourceCredentials) {
+		return queryService.queryStatus(queryId, resourceCredentials);
 	}
 	
 	@GET
-	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(UUID queryId) {
-		return queryService.queryResult(queryId);
+	@Path("/query/{queryId}/result")
+	public QueryResults queryResult(@PathParam("queryId") UUID queryId, String resourceCredentials) {
+		return queryService.queryResult(queryId, resourceCredentials);
 	}
 	
 }

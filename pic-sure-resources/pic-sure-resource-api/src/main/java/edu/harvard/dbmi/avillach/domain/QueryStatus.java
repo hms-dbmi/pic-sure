@@ -1,7 +1,11 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import java.util.UUID;
+
 public class QueryStatus {
 	private PicSureStatus status;
+	
+	private UUID resourceID;
 	
 	private String resourceStatus;
 	

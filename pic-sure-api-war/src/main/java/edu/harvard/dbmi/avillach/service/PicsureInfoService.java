@@ -14,18 +14,26 @@ public class PicsureInfoService {
 
 	@Inject
 	ResourceRepository resourceRepo;
+
 	
-	public ResourceInfo info() {
-		// TODO Auto-generated method stub
+	/**
+	 * Retrieve resource info for a specific resource.
+	 * 
+	 * @param resourceId - Resource UUID
+	 * @param resourceCredentials - Resource specific credentials map
+	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
+	 */
+	public ResourceInfo info(UUID resourceId, String resourceCredentials) {
+		Resource resource = resourceRepo.getById(resourceId);
+		//return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
 		return null;
 	}
 
-	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
-		Resource resource = resourceRepo.getById(resourceId);	
-		// TODO call the resource through some kind of web client to get /resources
-		return null;
-	}
-
+	/**
+	 * Retrieve a list of all available resources.
+	 * 
+	 * @return List containing limited metadata about all available resources and ids.
+	 */
 	public List<Resource> resources() {
 		return resourceRepo.list();
 	}

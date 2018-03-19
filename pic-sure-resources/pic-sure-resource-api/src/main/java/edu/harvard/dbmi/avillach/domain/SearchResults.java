@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.domain;
 
 public class SearchResults {
-	String[] results;
+	Object results;
 	
-	String searchJson;
+	String searchQuery;
 }

@@ -3,6 +3,10 @@ package edu.harvard.dbmi.avillach.domain;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Information about interacting with a specific resource.
+ * 
+ */
 public class ResourceInfo {
 	private UUID id;
 	private String name;

@@ -22,7 +22,7 @@ public interface IResourceRS
     
 	@GET
 	@Path("/info")
-	public ResourceInfo info(Map<String, String> resourceCredentials);
+	public ResourceInfo info(String resourceCredentials);
 	
 	@POST
 	@Path("/search")

@@ -15,13 +15,6 @@ import edu.harvard.dbmi.avillach.service.IResourceRS;
 
 @Path("pic-sure")
 public class TestResourceRS implements IResourceRS {
-	
-	@GET
-	@Path("/info")
-	@Override
-	public ResourceInfo info(Map<String, String> resourceCredentials) {
-		return new ResourceInfo();
-	}
 
 	@POST
 	@Path("/search")
@@ -51,6 +44,12 @@ public class TestResourceRS implements IResourceRS {
 	@Path("/query/{resourceQueryId}/result")
 	@Override
 	public QueryResults queryResult(UUID queryId) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public ResourceInfo info(String resourceCredentials) {
 		// TODO Auto-generated method stub
 		return null;
 	}
