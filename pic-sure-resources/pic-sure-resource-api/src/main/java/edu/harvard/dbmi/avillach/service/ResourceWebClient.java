@@ -61,6 +61,14 @@ public class ResourceWebClient {
     public SearchResults search(String baseURL, QueryRequest searchQueryRequest){
         logger.debug("Calling ResourceWebClient search()");
         try {
+            if (baseURL == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing resource URL");
+            }
+            if (searchQueryRequest == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing query request info");
+            }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
@@ -79,6 +87,14 @@ public class ResourceWebClient {
     public QueryResults query(String baseURL, QueryRequest dataQueryRequest){
         logger.debug("Calling ResourceWebClient query()");
         try {
+            if (baseURL == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing resource URL");
+            }
+            if (dataQueryRequest == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing query request info");
+            }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
@@ -96,6 +112,18 @@ public class ResourceWebClient {
     public QueryStatus queryStatus(String baseURL, UUID queryId, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient query()");
         try {
+            if (baseURL == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing resource URL");
+            }
+            if (resourceCredentials == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing credentials");
+            }
+            if (queryId == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing query id");
+            }
             String pathName = "/query/" + queryId.toString() + "/status";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
@@ -113,6 +141,18 @@ public class ResourceWebClient {
     public QueryResults queryResult(String baseURL, UUID queryId, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient query()");
         try {
+            if (baseURL == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing resource URL");
+            }
+            if (resourceCredentials == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing credentials");
+            }
+            if (queryId == null){
+                //TODO: Write custom exception
+                throw new RuntimeException("Missing query id");
+            }
             String pathName = "/query/" + queryId.toString() + "/result";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
