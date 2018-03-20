@@ -14,5 +14,10 @@ public class Query extends BaseEntity {
 	private Date readyTime;
 	
 	private PicSureStatus status;
-	
+
+	private Resource resource;
+
+	public Resource getResource() {
+		return resource;
+	}
 }

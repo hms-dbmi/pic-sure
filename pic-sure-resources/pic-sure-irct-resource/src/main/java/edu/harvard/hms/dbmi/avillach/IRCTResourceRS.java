@@ -3,23 +3,17 @@ package edu.harvard.hms.dbmi.avillach;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 
+import edu.harvard.dbmi.avillach.domain.*;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 
-import edu.harvard.dbmi.avillach.domain.QueryFormat;
-import edu.harvard.dbmi.avillach.domain.QueryResults;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
+import org.apache.http.message.BasicHeader;
 
-import static edu.harvard.hms.dbmi.avillach.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 
 
 @Path("/v1.4")
@@ -29,6 +23,8 @@ public class IRCTResourceRS implements IResourceRS
 {
 	private static final String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
 	private static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
+	private static final String AUTHORIZATION = "AUTHORIZATION";
+	private static final String BEARER_STRING = "Bearer ";
 	public IRCTResourceRS() {
 		if(TARGET_IRCT_URL == null)
 			throw new RuntimeException("TARGET_IRCT_URL environment variable must be set.");
@@ -43,10 +39,13 @@ public class IRCTResourceRS implements IResourceRS
 	@POST
 	@Path("/info")
 	@Override
-	public ResourceInfo info(Map<String, String> resourceCredentials) {
-		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
+	public ResourceInfo info(Map<String,String> resourceCredentials) {
 		String pathName = "resourceService/resources";
-		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, token);
+		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
+		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
+		Header[] headers = new Header[1];
+		headers[0] = authorizationHeader;
+		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		return new ResourceInfo().setName("IRCT Resource : " + TARGET_IRCT_URL)
 				.setQueryFormats(
 						readListFromResponse(resourcesResponse, QueryFormat.class));
@@ -55,7 +54,7 @@ public class IRCTResourceRS implements IResourceRS
 	@POST
 	@Path("/search")
 	@Override
-	public SearchResults search(String searchJson) {
+	public SearchResults search(QueryRequest searchJson) {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -68,18 +67,18 @@ public class IRCTResourceRS implements IResourceRS
 		return null;
 	}
 
-	@GET
+	@POST
 	@Path("/query/{resourceQueryId}/status)")
 	@Override
-	public QueryStatus queryStatus(UUID queryId) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, Map<String, String> resourceCredentials) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
-	@GET
+	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(UUID queryId) {
+	public QueryResults queryResult(@PathParam("resourceQueryId") UUID queryId, Map<String, String> resourceCredentials) {
 		// TODO Auto-generated method stub
 		return null;
 	}

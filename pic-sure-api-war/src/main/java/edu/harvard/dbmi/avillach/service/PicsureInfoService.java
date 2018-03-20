@@ -15,6 +15,8 @@ public class PicsureInfoService {
 	@Inject
 	ResourceRepository resourceRepo;
 
+	@Inject
+	ResourceWebClient resourceWebClient;
 	
 	/**
 	 * Retrieve resource info for a specific resource.
@@ -23,10 +25,13 @@ public class PicsureInfoService {
 	 * @param resourceCredentials - Resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, String resourceCredentials) {
+	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
 		Resource resource = resourceRepo.getById(resourceId);
-		//return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
-		return null;
+		if (resource == null){
+			//TODO Create custom exception
+			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
+		}
+		return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
 	}
 
 	/**
@@ -35,6 +40,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public List<Resource> resources() {
+		//TODO Need to limit the metadata returned
 		return resourceRepo.list();
 	}
 

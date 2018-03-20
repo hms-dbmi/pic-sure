@@ -9,10 +9,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 
-import edu.harvard.dbmi.avillach.domain.QueryResults;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.*;
 
 @Path("/pic-sure")
 @Produces("application/json")
@@ -22,22 +19,22 @@ public interface IResourceRS
     
 	@GET
 	@Path("/info")
-	public ResourceInfo info(String resourceCredentials);
+	public ResourceInfo info(Map<String, String> resourceCredentials);
 	
 	@POST
 	@Path("/search")
-	public SearchResults search(String searchJson);
+	public SearchResults search(QueryRequest searchJson);
 	
 	@POST
 	@Path("/query")
 	public QueryResults query(String queryJson);
 	
-	@GET
+	@POST
 	@Path("/query/{resourceQueryId}/status)")
-	public QueryStatus queryStatus(UUID queryId);
+	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials);
 	
-	@GET
+	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(UUID queryId);
+	public QueryResults queryResult(UUID queryId, Map<String, String> resourceCredentials);
 	
 }
