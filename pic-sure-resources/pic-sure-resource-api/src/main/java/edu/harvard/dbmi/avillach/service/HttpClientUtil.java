@@ -27,14 +27,11 @@ public class HttpClientUtil {
     public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
             logger.debug("HttpClientUtil retrieveGetResponse()");
-            //TODO Should we always build a new client or just have one for the class
-           // HttpClient client = HttpClientBuilder.create().build();
 			HttpGet get = new HttpGet(uri);
 			get.setHeaders(headers);
-			//TODO: Add this in the calling method if necessary
-//			get.addHeader("AUTHORIZATION", "Bearer " + token);
 			return client.execute(get);
 		} catch (IOException e) {
+			//TODO: Write custom exception
 			throw new ResourceCommunicationException(uri, e);
 		}
 	}
@@ -42,28 +39,26 @@ public class HttpClientUtil {
 	public static HttpResponse retrievePostResponse(String uri, Header[] headers, String body) {
 		try {
 		    logger.debug("HttpClientUtil retrievePostResponse()");
-			//HttpClient client = HttpClientBuilder.create().build();
 			HttpPost post = new HttpPost(uri);
             post.setEntity(new StringEntity(body));
             post.setHeaders(headers);
 			post.addHeader("Content-type","application/json");
-            //TODO: Add this in the calling method if necessary
-            //post.addHeader("AUTHORIZATION", "Bearer " + token);
 			return client.execute(post);
 		} catch (IOException e) {
+			//TODO: Write custom exception
 			throw new ResourceCommunicationException(uri, e);
 		}
 	}
 
 	public static <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readListFromResponse()");
+
         try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			return json.readValue(responseBody, new TypeReference<List<T>>() {});
 		} catch (IOException e) {
-			e.printStackTrace();
-			//TODO deal with the error actually
-			return new ArrayList<T>();
+        	//TODO: Write custom exception
+			throw new RuntimeException("Incorrect object type returned");
 		}
 	}
 
@@ -73,9 +68,9 @@ public class HttpClientUtil {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
-            e.printStackTrace();
-            //TODO deal with the error actually
-            return null;
-        }
+			//TODO: Write custom exception
+			throw new RuntimeException("Incorrect object type returned");
+
+		}
     }
 }
