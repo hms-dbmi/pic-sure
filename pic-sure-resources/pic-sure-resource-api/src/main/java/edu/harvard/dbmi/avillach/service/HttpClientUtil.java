@@ -21,12 +21,13 @@ import java.util.Map;
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
     private static Logger logger = Logger.getLogger(HttpClientUtil.class);
-    private final static HttpClient client = HttpClientBuilder.create().build();
+//    private final static HttpClient client = HttpClientBuilder.create().build();
 
 
     public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
             logger.debug("HttpClientUtil retrieveGetResponse()");
+			HttpClient client = HttpClientBuilder.create().build();
 			HttpGet get = new HttpGet(uri);
 			get.setHeaders(headers);
 			return client.execute(get);
@@ -39,6 +40,7 @@ public class HttpClientUtil {
 	public static HttpResponse retrievePostResponse(String uri, Header[] headers, String body) {
 		try {
 		    logger.debug("HttpClientUtil retrievePostResponse()");
+			HttpClient client = HttpClientBuilder.create().build();
 			HttpPost post = new HttpPost(uri);
             post.setEntity(new StringEntity(body));
             post.setHeaders(headers);
@@ -63,9 +65,10 @@ public class HttpClientUtil {
 	}
 
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
-        logger.debug("HttpClientUtil readObjectFromResponse()");
+        logger.error("HttpClientUtil readObjectFromResponse()");
         try {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+            logger.error(responseBody);
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
 			//TODO: Write custom exception
