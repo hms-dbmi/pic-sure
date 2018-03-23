@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,7 +25,7 @@ public class TestResourceRS implements IResourceRS {
 	@POST
 	@Path("/query")
 	@Override
-	public QueryResults query(String queryJson) {
+	public QueryResults query(QueryRequest queryJson) {
 		// TODO Auto-generated method stub
 		return null;
 	}
