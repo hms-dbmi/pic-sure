@@ -70,9 +70,7 @@ public class IRCTResourceRS implements IResourceRS
 		if (resourcesResponse.getStatusLine().getStatusCode() != 200){
 			throw new RuntimeException("Resource did not return a 200");
 		}
-		//TODO: How do we get the ID in real life?
 		return new ResourceInfo().setName("IRCT Resource : " + TARGET_IRCT_URL)
-			//	.setId(TARGET_UUID)
 				.setQueryFormats(
 						readListFromResponse(resourcesResponse, QueryFormat.class));
 	}
@@ -134,6 +132,7 @@ public class IRCTResourceRS implements IResourceRS
 		if (queryString == null) {
 			throw new RuntimeException(("Missing query request data"));
 		}
+		//TODO Will we need to do any parsing of the query string?
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
@@ -182,9 +181,8 @@ public class IRCTResourceRS implements IResourceRS
 		QueryStatus status = new QueryStatus();
 		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
 		try {
-			String responseBody = IOUtils.toString(resourcesResponse.getEntity().getContent(), "UTF-8");
 			//TODO Is this the best way to do this?
-			JsonNode responseNode = json.readTree(responseBody);
+			JsonNode responseNode = json.readTree(resourcesResponse.getEntity().getContent());
 			//Is this an object as expected or an error message?
 			if (responseNode.get("message") != null){
 				//TODO Custom exception
@@ -226,8 +224,21 @@ public class IRCTResourceRS implements IResourceRS
 		QueryResults result = new QueryResults();
 		//Returns a String basically in the format requested
 		try {
+			byte[] resultBytes = EntityUtils.toByteArray(resourcesResponse.getEntity());
+
+			//TODO Check if this is data or if there's an error message
+			try {
+				JsonNode responseNode = json.readTree(resultBytes);
+				//Is this an object as expected or an error message?
+				if (responseNode.get("message") != null){
+					//TODO Custom exception
+					throw new RuntimeException(responseNode.get("message").asText());
+				}
+			} catch (IOException e){
+				//This is good, it means that we don't have a node with an error message
+			}
 			//TODO Is this how we want to do this?
-			result.setResults(EntityUtils.toByteArray(resourcesResponse.getEntity()));
+			result.setResults(resultBytes);
 			result.setResourceResultId(queryId);
 			//TODO What else do we want to fill in?
 		} catch (IOException e){
