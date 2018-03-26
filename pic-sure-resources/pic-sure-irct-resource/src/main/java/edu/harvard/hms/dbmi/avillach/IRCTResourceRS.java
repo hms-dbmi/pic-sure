@@ -18,6 +18,8 @@ import org.apache.http.HttpResponse;
 
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
+import org.apache.log4j.Logger;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 
@@ -33,6 +35,8 @@ public class IRCTResourceRS implements IResourceRS
 	private static final String AUTHORIZATION = "AUTHORIZATION";
 	private static final String BEARER_STRING = "Bearer ";
 	private final static ObjectMapper json = new ObjectMapper();
+	private Logger logger = Logger.getLogger(this.getClass());
+
 
 	public IRCTResourceRS() {
 		if(TARGET_IRCT_URL == null)
@@ -138,16 +142,16 @@ public class IRCTResourceRS implements IResourceRS
 		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
 			throw new RuntimeException("Resource did not return a 200");
 		}
-		//TODO How does this get a UUID
 		QueryResults results = new QueryResults();
 		//Returns an object like so: {"resultId":230464}
-		//TODO: Persist query?
+		//TODO later Needs to persist things like starttime and duration and expiration
 		try {
 			String responseBody = IOUtils.toString(resourcesResponse.getEntity().getContent(), "UTF-8");
-			//TODO Obviously a completely different way to do this
 			JsonNode responseNode = json.readTree(responseBody);
 			String resultId = responseNode.get("resultId").asText();
 			results.setResourceResultId(resultId);
+			//TODO what else do we need to set on this QueryResults object?
+			//TODO What is the status?
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
@@ -156,9 +160,10 @@ public class IRCTResourceRS implements IResourceRS
 	}
 
 	@POST
-	@Path("/query/{resourceQueryId}/status)")
+	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+		logger.debug("calling IRCT Resource queryStatus() for query " + queryId);
 		if (resourceCredentials == null) {
 			throw new RuntimeException("Missing credentials");
 		}
@@ -169,20 +174,26 @@ public class IRCTResourceRS implements IResourceRS
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
-		String pathName = "/resultService/resultStatus/"+queryId.toString();
+		String pathName = "/resultService/resultStatus/"+queryId;
 		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
 			throw new RuntimeException("Resource did not return a 200");
 		}
 		QueryStatus status = new QueryStatus();
-		//Returns an object like so: {"resultId":230464}
-		//TODO: How does this fit into a QueryResults?
+		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
 		try {
 			String responseBody = IOUtils.toString(resourcesResponse.getEntity().getContent(), "UTF-8");
-			//TODO Obviously a completely different way to do this
+			//TODO Is this the best way to do this?
 			JsonNode responseNode = json.readTree(responseBody);
-			String resultId = responseNode.get("resultId").asText();
-//			results.setResourceResultId(resultId);
+			//Is this an object as expected or an error message?
+			if (responseNode.get("message") != null){
+				//TODO Custom exception
+				throw new RuntimeException(responseNode.get("message").asText());
+			}
+			String resourceStatus = responseNode.get("status").asText();
+			status.setResourceStatus(resourceStatus);
+			//TODO make a proper mapping here
+			status.setStatus(mapStatus(resourceStatus));
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
@@ -193,10 +204,52 @@ public class IRCTResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(@PathParam("resourceQueryId") UUID queryId, Map<String, String> resourceCredentials) {
-		// TODO Auto-generated method stub
-		return null;
+	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+		logger.debug("calling IRCT Resource queryResult() for query " + queryId);
+		if (resourceCredentials == null) {
+			throw new RuntimeException("Missing credentials");
+		}
+		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
+		if (token == null) {
+			throw new RuntimeException("Missing credentials");
+		}
+		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
+		Header[] headers = new Header[1];
+		headers[0] = authorizationHeader;
+		//TODO How to select the format?
+		String pathName = "/resultService/result/"+queryId+"/CSV";
+		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+			logger.error(resourcesResponse.getStatusLine().getStatusCode() + " " + resourcesResponse.getStatusLine().getReasonPhrase());
+			throw new RuntimeException("Resource did not return a 200");
+		}
+		QueryResults result = new QueryResults();
+		//Returns a String basically in the format requested
+		try {
+			//TODO Is this how we want to do this?
+			result.setResults(EntityUtils.toByteArray(resourcesResponse.getEntity()));
+			result.setResourceResultId(queryId);
+			//TODO What else do we want to fill in?
+		} catch (IOException e){
+			//TODO: Deal with this
+			throw new RuntimeException(e);
+		}
+		return result;
 	}
 
+	private PicSureStatus mapStatus(String resourceStatus){
+		//TODO what are actually all the options?
+		switch (resourceStatus) {
+			case "RUNNING":
+				return PicSureStatus.PENDING;
+			case "AVAILABLE":
+				return PicSureStatus.AVAILABLE;
+			case "ERROR":
+				return PicSureStatus.ERROR;
+			default:
+				return null;
+		}
+
+	}
 
 }

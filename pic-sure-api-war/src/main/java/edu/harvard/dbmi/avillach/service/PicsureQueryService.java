@@ -12,6 +12,9 @@ import edu.harvard.dbmi.avillach.domain.QueryResults;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 
 import javax.inject.Inject;
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
+import javax.transaction.Transactional;
 
 /**
  * Service handling business logic for queries to resources
@@ -26,6 +29,10 @@ public class PicsureQueryService {
 
 	@Inject
 	ResourceWebClient resourceWebClient;
+
+	@PersistenceContext
+	private EntityManager em;
+
 	/**
 	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
 	 * database for the query.
@@ -35,13 +42,21 @@ public class PicsureQueryService {
 	 *                       and resource specific query (could be a string or a json o
 	 * @return {@link QueryResults} object
 	 */
+	@Transactional
 	public QueryResults query(UUID resourceId, QueryRequest dataQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			//TODO Create custom exception
 			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
 		}
-		return resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
+		QueryResults results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
+		//TODO Deal with possible errors
+		Query queryEntity = new Query();
+		queryEntity.setResourceResultId(results.getResourceResultId());
+		queryEntity.setResource(resource);
+		em.persist(queryEntity);
+		results.setPicsureResultId(queryEntity.getUuid());
+		return results;
 	}
 
 	/**
@@ -60,7 +75,7 @@ public class PicsureQueryService {
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		return resourceWebClient.queryStatus(resource.getBaseUrl(), queryId, resourceCredentials);
+		return resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 	}
 
 	/**
@@ -79,7 +94,7 @@ public class PicsureQueryService {
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		return resourceWebClient.queryResult(resource.getBaseUrl(), queryId, resourceCredentials);
+		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 
 	}
 

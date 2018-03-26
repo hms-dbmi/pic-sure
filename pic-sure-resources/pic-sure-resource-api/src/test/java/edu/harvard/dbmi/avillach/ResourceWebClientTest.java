@@ -210,7 +210,7 @@ public class ResourceWebClientTest {
     @Test
     public void testQueryResult() throws JsonProcessingException{
         String queryResults = json.writeValueAsString(new QueryResults());
-        UUID testUUID = new UUID(1, 1);
+        String testId = "230048";
 
         wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
                 .willReturn(aResponse()
@@ -219,7 +219,7 @@ public class ResourceWebClientTest {
 
         //Should fail if missing any parameters
         try {
-            cut.queryResult(testURL, testUUID, null);
+            cut.queryResult(testURL, testId, null);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -235,7 +235,7 @@ public class ResourceWebClientTest {
             assertEquals("Missing query id", e.getMessage());
         }
         try {
-            cut.queryResult(null, testUUID, credentials);
+            cut.queryResult(null, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -243,7 +243,7 @@ public class ResourceWebClientTest {
         }
 
         //Everything should work here
-        QueryResults result = cut.queryResult(testURL,testUUID, credentials);
+        QueryResults result = cut.queryResult(testURL,testId, credentials);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -252,7 +252,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryResult(testURL, testUUID, credentials);
+            cut.queryResult(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -267,7 +267,7 @@ public class ResourceWebClientTest {
                         .withBody(incorrectResponse)));
 
         try {
-            cut.queryResult(testURL, testUUID, credentials);
+            cut.queryResult(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -277,8 +277,11 @@ public class ResourceWebClientTest {
 
     @Test
     public void testQueryStatus() throws JsonProcessingException{
-        String queryStatus = json.writeValueAsString(new QueryStatus());
-        UUID testUUID = new UUID(1, 1);
+        String testId = "230048";
+        QueryStatus testResult = new QueryStatus();
+        testResult.setStatus(PicSureStatus.PENDING);
+        testResult.setResourceStatus("RUNNING");
+        String queryStatus = json.writeValueAsString(testResult);
 
         wireMockRule.stubFor(any(urlMatching("/query/.*/status"))
                 .willReturn(aResponse()
@@ -287,7 +290,7 @@ public class ResourceWebClientTest {
 
         //Fails with any missing parameters
         try {
-            cut.queryStatus(testURL, testUUID, null);
+            cut.queryStatus(testURL, testId, null);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -303,7 +306,7 @@ public class ResourceWebClientTest {
             assertEquals("Missing query id", e.getMessage());
         }
         try {
-            cut.queryStatus(null, testUUID, credentials);
+            cut.queryStatus(null, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -311,8 +314,13 @@ public class ResourceWebClientTest {
         }
 
         //Everything should work here
-        QueryStatus result = cut.queryStatus(testURL,testUUID, credentials);
+        QueryStatus result = cut.queryStatus(testURL,testId, credentials);
         assertNotNull("Result should not be null", result);
+        //Make sure all necessary fields are present
+        assertNotNull("Duration should not be null",result.getDuration());
+        assertNotNull("Expiration should not be null",result.getExpiration());
+        assertNotNull("ResourceStatus should not be null",result.getResourceStatus());
+        assertNotNull("Status should not be null",result.getStatus());
 
         //What if the resource has a problem?
         wireMockRule.stubFor(any(urlMatching("/query/.*/status"))
@@ -320,7 +328,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryStatus(testURL, testUUID, credentials);
+            cut.queryStatus(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
@@ -335,7 +343,7 @@ public class ResourceWebClientTest {
                         .withBody(incorrectResponse)));
 
         try {
-            cut.queryStatus(testURL, testUUID, credentials);
+            cut.queryStatus(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
             //TODO Will change what this error actually says/does

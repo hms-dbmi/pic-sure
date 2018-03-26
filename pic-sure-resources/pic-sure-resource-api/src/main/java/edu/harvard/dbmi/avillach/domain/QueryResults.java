@@ -3,9 +3,8 @@ package edu.harvard.dbmi.avillach.domain;
 import java.util.UUID;
 
 public class QueryResults {
-	private UUID resultId;
+	private UUID picsureResultId;
 
-	//TODO This needs to be different somehow
 	private String resourceResultId;
 	
 	private QueryStatus status;
@@ -14,12 +13,12 @@ public class QueryResults {
 	
 	private byte[] resultMetadata;
 
-	public UUID getResultId() {
-		return resultId;
+	public UUID getPicsureResultId() {
+		return picsureResultId;
 	}
 
-	public void setResultId(UUID resultId) {
-		this.resultId = resultId;
+	public void setPicsureResultId(UUID picsureResultId) {
+		this.picsureResultId = picsureResultId;
 	}
 
 	public QueryStatus getStatus() {

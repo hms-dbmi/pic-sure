@@ -31,11 +31,11 @@ public interface IResourceRS
 	public QueryResults query(QueryRequest queryJson);
 	
 	@POST
-	@Path("/query/{resourceQueryId}/status)")
-	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials);
+	@Path("/query/{resourceQueryId}/status")
+	public QueryStatus queryStatus(String queryId, Map<String, String> resourceCredentials);
 	
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(UUID queryId, Map<String, String> resourceCredentials);
+	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials);
 	
 }

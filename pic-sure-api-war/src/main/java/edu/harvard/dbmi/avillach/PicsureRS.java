@@ -55,13 +55,13 @@ public class PicsureRS {
 		return queryService.query(resourceId, dataQueryRequest);
 	}
 	
-	@GET
-	@Path("/query/{queryId}/status)")
+	@POST
+	@Path("/query/{queryId}/status")
 	public QueryStatus queryStatus(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryStatus(queryId, resourceCredentials);
 	}
 	
-	@GET
+	@POST
 	@Path("/query/{queryId}/result")
 	public QueryResults queryResult(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryResult(queryId, resourceCredentials);

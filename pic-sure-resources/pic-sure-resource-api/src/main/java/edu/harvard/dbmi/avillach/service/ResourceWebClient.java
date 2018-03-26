@@ -109,7 +109,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryStatus queryStatus(String baseURL, UUID queryId, Map<String, String> resourceCredentials){
+    public QueryStatus queryStatus(String baseURL, String queryId, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -124,7 +124,7 @@ public class ResourceWebClient {
                 //TODO: Write custom exception
                 throw new RuntimeException("Missing query id");
             }
-            String pathName = "/query/" + queryId.toString() + "/status";
+            String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
@@ -138,7 +138,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryResults queryResult(String baseURL, UUID queryId, Map<String, String> resourceCredentials){
+    public QueryResults queryResult(String baseURL, String queryId, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -153,7 +153,7 @@ public class ResourceWebClient {
                 //TODO: Write custom exception
                 throw new RuntimeException("Missing query id");
             }
-            String pathName = "/query/" + queryId.toString() + "/result";
+            String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
