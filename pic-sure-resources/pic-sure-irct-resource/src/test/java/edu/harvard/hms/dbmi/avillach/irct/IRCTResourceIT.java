@@ -49,6 +49,8 @@ public class IRCTResourceIT extends BaseIT {
     //This is a previously created query id, uncertain if this is the best way to go
 	private String testQueryResultId = "231066";
 
+	//TODO: May change the way all errors are dealt with
+
 	@Test
 	public void testStatus() throws UnsupportedOperationException, IOException {
 		HttpResponse response = retrieveGetResponse(endpointUrl+"/v1.4/status", null);
@@ -113,9 +115,19 @@ public class IRCTResourceIT extends BaseIT {
         JsonNode responseNode = json.readTree(response.getEntity().getContent());
         assertNotNull("Result should not be null", responseNode);
         assertNotNull("Search results should not be null", responseNode.get("results"));
+		assertFalse("Search results should not be empty", responseNode.get("results").size() == 0);
         assertEquals("Searchquery should match input query", "%antibody%", responseNode.get("searchQuery").asText());
 
-        //TODO A search that returns empty results?
+        //Valid request with no results should return an empty result
+		queryRequest.setQuery("thisShouldFindNothing");
+		body = json.writeValueAsString(queryRequest);
+		response = retrievePostResponse(endpointUrl+"/v1.4/search", null, body);
+		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
+		responseNode = json.readTree(response.getEntity().getContent());
+		assertNotNull("Result should not be null", responseNode);
+		assertNotNull("Search results should not be null", responseNode.get("results"));
+		assertTrue("Search results should be empty", responseNode.get("results").size() == 0);
+		assertEquals("Searchquery should match input query", "thisShouldFindNothing", responseNode.get("searchQuery").asText());
     }
 
 	@Test
@@ -144,7 +156,11 @@ public class IRCTResourceIT extends BaseIT {
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
 		assertEquals("Missing query string should return a 500",500, response.getStatusLine().getStatusCode());
 
-		//TODO Checks on parsing the query string?
+		//Try a poorly worded queryString
+		queryRequest.setQuery("poorlyWordedQueryString");
+		body = json.writeValueAsString(queryRequest);
+		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
+		assertEquals("Incorrectly formatted string should return 500",500, response.getStatusLine().getStatusCode());
 
 		//This should work
 		queryRequest.setQuery(queryString);
@@ -154,7 +170,7 @@ public class IRCTResourceIT extends BaseIT {
 		QueryResults result = readObjectFromResponse(response, QueryResults.class);
 		assertNotNull("Result should not be null", result);
 		//Make sure all necessary fields are present
-//		assertNotNull("Status should not be null",result.getStatus());
+		assertNotNull("Status should not be null",result.getStatus());
 		assertNotNull("ResourceResultId should not be null",result.getResourceResultId());
 	}
 
@@ -187,7 +203,7 @@ public class IRCTResourceIT extends BaseIT {
 		//Make sure all necessary fields are present
 //		assertNotNull("ResultMetadata should not be null",result.getResultMetadata());
 		assertNotNull("Results should not be null",result.getResults());
-//		assertNotNull("Status should not be null",result.getStatus());
+		assertNotNull("Status should not be null",result.getStatus());
 		assertEquals("Resource id should match that requested",result.getResourceResultId(), testQueryResultId);
 	}
 
@@ -213,11 +229,18 @@ public class IRCTResourceIT extends BaseIT {
 		QueryStatus queryStatus = readObjectFromResponse(response, QueryStatus.class);
 		assertNotNull("Result should not be null", queryStatus);
 		//Make sure all necessary fields are present
-        //TODO These are all set to 0.  When you put real values in check to make sure they're not 0
+        //TODO The numerical values are set in PicSureRS layer, may not apply here
 		assertNotNull("Duration should not be null",queryStatus.getDuration());
 		assertNotNull("Expiration should not be null",queryStatus.getExpiration());
 		assertNotNull("ResourceStatus should not be null",queryStatus.getResourceStatus());
 		assertNotNull("Status should not be null",queryStatus.getStatus());
-		//TODO Do we need to check for different statuses?
+		assertNotNull("Starttime should not be null",queryStatus.getStartTime());
+
+		//Try a queryId that doesn't exist
+		response = retrievePostResponse(endpointUrl+"/v1.4/query/1/status", null, body);
+		assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());
+
+
+		//TODO Do we need to check for different statuses?  If so, how?
 	}
 }

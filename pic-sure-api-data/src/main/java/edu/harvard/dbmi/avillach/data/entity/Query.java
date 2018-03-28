@@ -40,4 +40,28 @@ public class Query extends BaseEntity {
 	public void setResourceResultId(String resourceResultId) {
 		this.resourceResultId = resourceResultId;
 	}
+
+	public void setStartTime(Date startTime) {
+		this.startTime = startTime;
+	}
+
+	public Date getStartTime() {
+		return startTime;
+	}
+
+	public Date getReadyTime() {
+		return readyTime;
+	}
+
+	public PicSureStatus getStatus() {
+		return status;
+	}
+
+	public void setReadyTime(Date readyTime) {
+		this.readyTime = readyTime;
+	}
+
+	public void setStatus(PicSureStatus status) {
+		this.status = status;
+	}
 }

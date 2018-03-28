@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 
@@ -12,6 +13,7 @@ import javax.ws.rs.core.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -30,7 +32,6 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 public class IRCTResourceRS implements IResourceRS
 {
 	private static final String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
-//	private static final UUID TARGET_UUID = UUID.fromString(System.getProperty("TEST_UUID"));
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
 	private static final String AUTHORIZATION = "AUTHORIZATION";
 	private static final String BEARER_STRING = "Bearer ";
@@ -41,8 +42,6 @@ public class IRCTResourceRS implements IResourceRS
 	public IRCTResourceRS() {
 		if(TARGET_IRCT_URL == null)
 			throw new RuntimeException("TARGET_IRCT_URL environment variable must be set.");
-		/*if(TARGET_UUID == null)
-			throw new RuntimeException("TEST_UUID must be set");*/
 	}
 	
 	@GET
@@ -55,6 +54,7 @@ public class IRCTResourceRS implements IResourceRS
 	@Path("/info")
 	@Override
 	public ResourceInfo info(Map<String,String> resourceCredentials) {
+		logger.debug("Calling IRCT Resource info()");
 		if (resourceCredentials == null){
 			throw new RuntimeException("Missing credentials");
 		}
@@ -66,19 +66,22 @@ public class IRCTResourceRS implements IResourceRS
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
-		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
-		if (resourcesResponse.getStatusLine().getStatusCode() != 200){
-			throw new RuntimeException("Resource did not return a 200");
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		if (response.getStatusLine().getStatusCode() != 200){
+			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
+		//TODO This doesn't work
 		return new ResourceInfo().setName("IRCT Resource : " + TARGET_IRCT_URL)
 				.setQueryFormats(
-						readListFromResponse(resourcesResponse, QueryFormat.class));
+						readListFromResponse(response, QueryFormat.class));
 	}
 
 	@POST
 	@Path("/search")
 	@Override
 	public SearchResults search(QueryRequest searchJson) {
+		logger.debug("Calling IRCT Resource search()");
 		try {
 			if (searchJson == null) {
 				throw new RuntimeException("Missing query request data");
@@ -99,13 +102,14 @@ public class IRCTResourceRS implements IResourceRS
 			Header[] headers = new Header[1];
 			headers[0] = authorizationHeader;
 			String pathName = "/resourceService/find?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
-			if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-				throw new RuntimeException("Resource did not return a 200");
+			HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+				throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
 			SearchResults results = new SearchResults();
 			results.setSearchQuery(searchTerm);
-			results.setResults(readObjectFromResponse(resourcesResponse, Object.class));
+			results.setResults(readObjectFromResponse(response, Object.class));
 			return results;
 		} catch (UnsupportedEncodingException e){
 			//TODO what to do about this
@@ -117,6 +121,7 @@ public class IRCTResourceRS implements IResourceRS
 	@Path("/query")
 	@Override
 	public QueryResults query(QueryRequest queryJson) {
+		logger.debug("Calling IRCT Resource query()");
 		if (queryJson == null) {
 			throw new RuntimeException("Missing query request data");
 		}
@@ -133,24 +138,35 @@ public class IRCTResourceRS implements IResourceRS
 			throw new RuntimeException(("Missing query request data"));
 		}
 		//TODO Will we need to do any parsing of the query string?
+		//TODO We expect the queryString to also contain directions on what format the results should be in... how will that work???
+		//I guess that data goes in resultMetadata... which would then need to be passed to queryResults...
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
 		String pathName = "/queryService/runQuery";
-		HttpResponse resourcesResponse = retrievePostResponse(TARGET_IRCT_URL + pathName, headers, queryString);
-		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-			throw new RuntimeException("Resource did not return a 200");
+		long starttime = new Date().getTime();
+		HttpResponse response = retrievePostResponse(TARGET_IRCT_URL + pathName, headers, queryString);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
-		QueryResults results = new QueryResults();
 		//Returns an object like so: {"resultId":230464}
-		//TODO later Needs to persist things like starttime and duration and expiration
+		QueryResults results = new QueryResults();
+		//TODO later Add things like duration and expiration
 		try {
-			String responseBody = IOUtils.toString(resourcesResponse.getEntity().getContent(), "UTF-8");
+			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			JsonNode responseNode = json.readTree(responseBody);
 			String resultId = responseNode.get("resultId").asText();
 			results.setResourceResultId(resultId);
-			//TODO what else do we need to set on this QueryResults object?
-			//TODO What is the status?
+			//Check to see if it's ready yet, if not just send back running with no results
+			QueryStatus status = queryStatus(resultId, resourceCredentials);
+			status.setStartTime(starttime);
+			results.setStatus(status);
+			//If it's already ready go ahead and get the results
+			if(status.getStatus() == PicSureStatus.AVAILABLE){
+				results = queryResult(resultId, resourceCredentials);
+				results.getStatus().setStartTime(starttime);
+			}
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
@@ -174,15 +190,16 @@ public class IRCTResourceRS implements IResourceRS
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
 		String pathName = "/resultService/resultStatus/"+queryId;
-		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
-		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-			throw new RuntimeException("Resource did not return a 200");
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
-		QueryStatus status = new QueryStatus();
 		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
+		QueryStatus status = new QueryStatus();
 		try {
 			//TODO Is this the best way to do this?
-			JsonNode responseNode = json.readTree(resourcesResponse.getEntity().getContent());
+			JsonNode responseNode = json.readTree(response.getEntity().getContent());
 			//Is this an object as expected or an error message?
 			if (responseNode.get("message") != null){
 				//TODO Custom exception
@@ -190,7 +207,6 @@ public class IRCTResourceRS implements IResourceRS
 			}
 			String resourceStatus = responseNode.get("status").asText();
 			status.setResourceStatus(resourceStatus);
-			//TODO make a proper mapping here
 			status.setStatus(mapStatus(resourceStatus));
 		} catch (IOException e){
 			//TODO: Deal with this
@@ -216,18 +232,19 @@ public class IRCTResourceRS implements IResourceRS
 		headers[0] = authorizationHeader;
 		//TODO How to select the format?
 		String pathName = "/resultService/result/"+queryId+"/CSV";
-		HttpResponse resourcesResponse = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
-		if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-			logger.error(resourcesResponse.getStatusLine().getStatusCode() + " " + resourcesResponse.getStatusLine().getReasonPhrase());
-			throw new RuntimeException("Resource did not return a 200");
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
+		//Returns a String in the format requested
 		QueryResults result = new QueryResults();
-		//Returns a String basically in the format requested
 		try {
-			byte[] resultBytes = EntityUtils.toByteArray(resourcesResponse.getEntity());
+			byte[] resultBytes = EntityUtils.toByteArray(response.getEntity());
 
-			//TODO Check if this is data or if there's an error message
+			//Check if this is data or if there's an error message
 			try {
+				//TODO Is this a good way to check?
 				JsonNode responseNode = json.readTree(resultBytes);
 				//Is this an object as expected or an error message?
 				if (responseNode.get("message") != null){
@@ -237,10 +254,14 @@ public class IRCTResourceRS implements IResourceRS
 			} catch (IOException e){
 				//This is good, it means that we don't have a node with an error message
 			}
-			//TODO Is this how we want to do this?
+			//TODO Does this need to be made user-readable?
 			result.setResults(resultBytes);
 			result.setResourceResultId(queryId);
-			//TODO What else do we want to fill in?
+			//Update the status
+			QueryStatus status = queryStatus(queryId, resourceCredentials);
+			status.setSizeInBytes(resultBytes.length);
+			//TODO Should we calculate duration?
+			result.setStatus(status);
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
@@ -249,7 +270,7 @@ public class IRCTResourceRS implements IResourceRS
 	}
 
 	private PicSureStatus mapStatus(String resourceStatus){
-		//TODO what are actually all the options?
+		//TODO what are actually all the options?  What should the default be? What if it's something that doesn't match?
 		switch (resourceStatus) {
 			case "RUNNING":
 				return PicSureStatus.PENDING;

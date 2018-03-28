@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import java.sql.Date;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,11 +52,15 @@ public class PicsureQueryService {
 		}
 		QueryResults results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
 		//TODO Deal with possible errors
+        //Save query entity
 		Query queryEntity = new Query();
 		queryEntity.setResourceResultId(results.getResourceResultId());
 		queryEntity.setResource(resource);
+		queryEntity.setStatus(results.getStatus().getStatus());
+		queryEntity.setStartTime(new Date(results.getStatus().getStartTime()));
 		em.persist(queryEntity);
 		results.setPicsureResultId(queryEntity.getUuid());
+		results.getStatus().setResourceID(resourceId);
 		return results;
 	}
 
@@ -68,6 +73,7 @@ public class PicsureQueryService {
 	 * @param resourceCredentials - resource specific credentials object
 	 * @return {@link QueryStatus}
 	 */
+	@Transactional
 	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
@@ -75,7 +81,13 @@ public class PicsureQueryService {
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		return resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		//Update status on query object
+		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		query.setStatus(status.getStatus());
+		em.persist(query);
+		status.setStartTime(query.getStartTime().getTime());
+		status.setResourceID(resource.getUuid());
+		return status;
 	}
 
 	/**
@@ -87,6 +99,7 @@ public class PicsureQueryService {
 	 * @param resourceCredentials - resource specific credentials object
 	 * @return {@link QueryResults}
 	 */
+	@Transactional
 	public QueryResults queryResult(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
@@ -94,8 +107,13 @@ public class PicsureQueryService {
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
-
+		//Update query object
+		QueryResults results = resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		results.setPicsureResultId(queryId);
+		results.getStatus().setResourceID(resource.getUuid());
+		query.setStatus(results.getStatus().getStatus());
+		em.persist(query);
+		return results;
 	}
 
 }
