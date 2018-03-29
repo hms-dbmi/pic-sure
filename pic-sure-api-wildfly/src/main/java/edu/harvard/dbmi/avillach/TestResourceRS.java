@@ -41,7 +41,7 @@ public class TestResourceRS implements IResourceRS {
 	@GET
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials) {
+	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials, String accept) {
 		// TODO Auto-generated method stub
 		return null;
 	}

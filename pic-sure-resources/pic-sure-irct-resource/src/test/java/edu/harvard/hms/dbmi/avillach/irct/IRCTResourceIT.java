@@ -2,11 +2,14 @@ package edu.harvard.hms.dbmi.avillach.irct;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryResults;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
 import org.junit.Test;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
@@ -20,31 +23,30 @@ public class IRCTResourceIT extends BaseIT {
 
 	private final static String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU";
 	private final static ObjectMapper json = new ObjectMapper();
-	private final static String queryString = "\n" +
-			"{\n" +
-			"    \"select\": [\n" +
-			"        {\n" +
-			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}\n" +
-			"        },\n" +
-			"        {\n" +
-			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}\n" +
-			"        },\n" +
-			"        {\n" +
-			"            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}\n" +
-			"        }\n" +
-			"    ],\n" +
+	private final static String queryString = "{" +
+			"    \"select\": [" +
+			"        {" +
+			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}" +
+			"        }," +
+			"        {" +
+			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}" +
+			"        }," +
+			"        {" +
+			"            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
+			"        }" +
+			"    ]," +
 			"    \"where\": [\n" +
-			"        {\n" +
-			"            \"predicate\": \"CONTAINS\",\n" +
-			"            \"field\": {\n" +
-			"                \"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male/\",\n" +
-			"                \"dataType\": \"STRING\"\n" +
-			"            },\n" +
-			"            \"fields\": {\n" +
-			"                \"ENOUNTER\": \"YES\"\n" +
-			"            }\n" +
-			"        }\n" +
-			"    ]\n" +
+			"        {" +
+			"            \"predicate\": \"CONTAINS\"," +
+			"            \"field\": {" +
+			"                \"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male/\"," +
+			"                \"dataType\": \"STRING\"" +
+			"            }," +
+			"            \"fields\": {" +
+			"                \"ENOUNTER\": \"YES\"" +
+			"            }" +
+			"        }" +
+			"    ]" +
 			"}";
     //This is a previously created query id, uncertain if this is the best way to go
 	private String testQueryResultId = "231066";
@@ -162,8 +164,12 @@ public class IRCTResourceIT extends BaseIT {
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
 		assertEquals("Incorrectly formatted string should return 500",500, response.getStatusLine().getStatusCode());
 
-		//This should work
-		queryRequest.setQuery(queryString);
+		//Request can be an object that also requests the format
+		ObjectNode queryNode = json.createObjectNode();
+		queryNode.put("queryString", queryString);
+		queryNode.put("format", "CSV");
+		queryRequest.setQuery(queryNode);
+
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
 		assertEquals(200, response.getStatusLine().getStatusCode());
@@ -172,7 +178,18 @@ public class IRCTResourceIT extends BaseIT {
 		//Make sure all necessary fields are present
 		assertNotNull("Status should not be null",result.getStatus());
 		assertNotNull("ResourceResultId should not be null",result.getResourceResultId());
-	}
+
+        //Or else just a query
+        queryRequest.setQuery(queryString);
+        body = json.writeValueAsString(queryRequest);
+        response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
+        assertEquals(200, response.getStatusLine().getStatusCode());
+        result = readObjectFromResponse(response, QueryResults.class);
+        assertNotNull("Result should not be null", result);
+        //Make sure all necessary fields are present
+        assertNotNull("Status should not be null",result.getStatus());
+        assertNotNull("ResourceResultId should not be null",result.getResourceResultId());
+    }
 
 	@Test
 	public void testQueryResult() throws UnsupportedOperationException, IOException {
@@ -205,6 +222,19 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("Results should not be null",result.getResults());
 		assertNotNull("Status should not be null",result.getStatus());
 		assertEquals("Resource id should match that requested",result.getResourceResultId(), testQueryResultId);
+
+        //Ask for a different response format
+        Header[] headers = new Header[1];
+        headers[0] = new BasicHeader("Accept", "application/json");
+        response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/result", headers, body);
+        assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
+        result = readObjectFromResponse(response, QueryResults.class);
+        assertNotNull("Result should not be null", result);
+        //Make sure all necessary fields are present
+//		assertNotNull("ResultMetadata should not be null",result.getResultMetadata());
+        assertNotNull("Results should not be null",result.getResults());
+        assertNotNull("Status should not be null",result.getStatus());
+        assertEquals("Resource id should match that requested",result.getResourceResultId(), testQueryResultId);
 	}
 
 	@Test

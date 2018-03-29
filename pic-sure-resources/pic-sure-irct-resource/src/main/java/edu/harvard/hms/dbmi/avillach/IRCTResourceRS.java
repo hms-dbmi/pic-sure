@@ -94,10 +94,11 @@ public class IRCTResourceRS implements IResourceRS
 			if (token == null) {
 				throw new RuntimeException("Missing credentials");
 			}
-			String searchTerm = searchJson.getQuery();
-			if (searchTerm == null) {
+			Object search = searchJson.getQuery();
+			if (search == null) {
 				throw new RuntimeException(("Missing query request data"));
 			}
+			String searchTerm = search.toString();
 			Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 			Header[] headers = new Header[1];
 			headers[0] = authorizationHeader;
@@ -133,13 +134,24 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null) {
 			throw new RuntimeException("Missing credentials");
 		}
-		String queryString = queryJson.getQuery();
-		if (queryString == null) {
+
+		Object queryObject = queryJson.getQuery();
+		if (queryObject == null) {
 			throw new RuntimeException(("Missing query request data"));
 		}
-		//TODO Will we need to do any parsing of the query string?
-		//TODO We expect the queryString to also contain directions on what format the results should be in... how will that work???
-		//I guess that data goes in resultMetadata... which would then need to be passed to queryResults...
+
+		JsonNode queryNode = json.valueToTree(queryObject);
+		String queryString = null;
+
+		JsonNode query = queryNode.get("queryString");
+		if (query == null){
+			//Assume this means there is no format and the entire string is the query
+			queryString = queryNode.asText();
+		} else {
+			queryString = query.asText();
+		}
+		JsonNode formatNode = queryNode.get("format");
+
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
@@ -164,7 +176,7 @@ public class IRCTResourceRS implements IResourceRS
 			results.setStatus(status);
 			//If it's already ready go ahead and get the results
 			if(status.getStatus() == PicSureStatus.AVAILABLE){
-				results = queryResult(resultId, resourceCredentials);
+				results = queryResult(resultId, resourceCredentials, formatNode == null? null : formatNode.asText());
 				results.getStatus().setStartTime(starttime);
 			}
 		} catch (IOException e){
@@ -215,10 +227,11 @@ public class IRCTResourceRS implements IResourceRS
 		return status;
 	}
 
+	//TODO Do I really want this stupid header param or what
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials,@HeaderParam("Accept") String accept) {
 		logger.debug("calling IRCT Resource queryResult() for query " + queryId);
 		if (resourceCredentials == null) {
 			throw new RuntimeException("Missing credentials");
@@ -230,8 +243,15 @@ public class IRCTResourceRS implements IResourceRS
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
-		//TODO How to select the format?
-		String pathName = "/resultService/result/"+queryId+"/CSV";
+		//Format options: "JSON","XML","XLSX","CSV"
+		//Use CSV as default
+		String format = "CSV";
+		//TODO Verify?
+		if (accept != null){
+			//TODO Parse this
+			format = accept.substring(accept.indexOf("/")+1).toUpperCase();
+		}
+		String pathName = "/resultService/result/"+queryId+"/"+format;
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());

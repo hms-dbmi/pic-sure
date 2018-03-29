@@ -4,11 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 
 import edu.harvard.dbmi.avillach.domain.*;
 
@@ -36,6 +32,6 @@ public interface IResourceRS
 	
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials);
+	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials, String accept);
 	
 }
