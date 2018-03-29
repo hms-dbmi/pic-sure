@@ -58,6 +58,7 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus().getStatus());
 		queryEntity.setStartTime(new Date(results.getStatus().getStartTime()));
+		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
 		em.persist(queryEntity);
 		results.setPicsureResultId(queryEntity.getUuid());
 		results.getStatus().setResourceID(resourceId);
@@ -107,8 +108,9 @@ public class PicsureQueryService {
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		//Update query object
+		//TODO Need to pass info from original query somehow?
 		QueryResults results = resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		//Update query object
 		results.setPicsureResultId(queryId);
 		results.getStatus().setResourceID(resource.getUuid());
 		query.setStatus(results.getStatus().getStatus());

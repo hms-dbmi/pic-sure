@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.data.entity;
 
 import java.sql.Date;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
@@ -20,6 +21,10 @@ public class Query extends BaseEntity {
 	private PicSureStatus status;
 
 	private String resourceResultId;
+
+	//Original query request
+	@Column(length = 8192)
+	private String query;
 
 	@ManyToOne
 	@JoinColumn(name = "resourceId")
@@ -63,5 +68,13 @@ public class Query extends BaseEntity {
 
 	public void setStatus(PicSureStatus status) {
 		this.status = status;
+	}
+
+	public String getQuery() {
+		return query;
+	}
+
+	public void setQuery(String query) {
+		this.query = query;
 	}
 }
