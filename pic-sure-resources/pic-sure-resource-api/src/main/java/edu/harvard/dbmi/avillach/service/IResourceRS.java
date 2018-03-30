@@ -32,6 +32,6 @@ public interface IResourceRS
 	
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials, String accept);
+	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials);
 	
 }

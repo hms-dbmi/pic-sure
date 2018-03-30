@@ -149,6 +149,7 @@
 						<configuration>
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</env>
 						</configuration>
 					</execution>

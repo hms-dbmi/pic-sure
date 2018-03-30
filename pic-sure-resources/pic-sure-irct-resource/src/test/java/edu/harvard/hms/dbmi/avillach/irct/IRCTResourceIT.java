@@ -222,19 +222,6 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("Results should not be null",result.getResults());
 		assertNotNull("Status should not be null",result.getStatus());
 		assertEquals("Resource id should match that requested",result.getResourceResultId(), testQueryResultId);
-
-        //Ask for a different response format
-        Header[] headers = new Header[1];
-        headers[0] = new BasicHeader("Accept", "application/json");
-        response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/result", headers, body);
-        assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
-        result = readObjectFromResponse(response, QueryResults.class);
-        assertNotNull("Result should not be null", result);
-        //Make sure all necessary fields are present
-//		assertNotNull("ResultMetadata should not be null",result.getResultMetadata());
-        assertNotNull("Results should not be null",result.getResults());
-        assertNotNull("Status should not be null",result.getStatus());
-        assertEquals("Resource id should match that requested",result.getResourceResultId(), testQueryResultId);
 	}
 
 	@Test

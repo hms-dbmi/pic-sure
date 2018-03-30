@@ -32,6 +32,7 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 public class IRCTResourceRS implements IResourceRS
 {
 	private static final String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
+	private static final String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
 	private static final String AUTHORIZATION = "AUTHORIZATION";
 	private static final String BEARER_STRING = "Bearer ";
@@ -42,6 +43,8 @@ public class IRCTResourceRS implements IResourceRS
 	public IRCTResourceRS() {
 		if(TARGET_IRCT_URL == null)
 			throw new RuntimeException("TARGET_IRCT_URL environment variable must be set.");
+		if(RESULT_FORMAT == null)
+			throw new RuntimeException("RESULT_FORMAT environment variable must be set.");
 	}
 	
 	@GET
@@ -135,6 +138,7 @@ public class IRCTResourceRS implements IResourceRS
 			throw new RuntimeException("Missing credentials");
 		}
 
+		//TODO Do we want/need to do it this way, should we revert query field back to string?
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
 			throw new RuntimeException(("Missing query request data"));
@@ -150,7 +154,6 @@ public class IRCTResourceRS implements IResourceRS
 		} else {
 			queryString = query.asText();
 		}
-		JsonNode formatNode = queryNode.get("format");
 
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
@@ -176,7 +179,7 @@ public class IRCTResourceRS implements IResourceRS
 			results.setStatus(status);
 			//If it's already ready go ahead and get the results
 			if(status.getStatus() == PicSureStatus.AVAILABLE){
-				results = queryResult(resultId, resourceCredentials, formatNode == null? null : formatNode.asText());
+				results = queryResult(resultId, resourceCredentials);
 				results.getStatus().setStartTime(starttime);
 			}
 		} catch (IOException e){
@@ -227,11 +230,10 @@ public class IRCTResourceRS implements IResourceRS
 		return status;
 	}
 
-	//TODO Do I really want this stupid header param or what
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials,@HeaderParam("Accept") String accept) {
+	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
 		logger.debug("calling IRCT Resource queryResult() for query " + queryId);
 		if (resourceCredentials == null) {
 			throw new RuntimeException("Missing credentials");
@@ -243,15 +245,7 @@ public class IRCTResourceRS implements IResourceRS
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
-		//Format options: "JSON","XML","XLSX","CSV"
-		//Use CSV as default
-		String format = "CSV";
-		//TODO Verify?
-		if (accept != null){
-			//TODO Parse this
-			format = accept.substring(accept.indexOf("/")+1).toUpperCase();
-		}
-		String pathName = "/resultService/result/"+queryId+"/"+format;
+		String pathName = "/resultService/result/"+queryId+"/"+RESULT_FORMAT;
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
@@ -264,7 +258,7 @@ public class IRCTResourceRS implements IResourceRS
 
 			//Check if this is data or if there's an error message
 			try {
-				//TODO Is this a good way to check?
+				//TODO Is this a reasonable way to check for error?
 				JsonNode responseNode = json.readTree(resultBytes);
 				//Is this an object as expected or an error message?
 				if (responseNode.get("message") != null){
@@ -274,12 +268,11 @@ public class IRCTResourceRS implements IResourceRS
 			} catch (IOException e){
 				//This is good, it means that we don't have a node with an error message
 			}
-			//TODO Does this need to be made user-readable?
 			result.setResults(resultBytes);
 			result.setResourceResultId(queryId);
 			//Update the status
 			QueryStatus status = queryStatus(queryId, resourceCredentials);
-			status.setSizeInBytes(resultBytes.length);
+			status.setSizeInBytes(response.getEntity().getContentLength());
 			//TODO Should we calculate duration?
 			result.setStatus(status);
 		} catch (IOException e){

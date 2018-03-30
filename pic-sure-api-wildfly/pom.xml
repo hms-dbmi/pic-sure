@@ -227,6 +227,7 @@
 						<configuration>
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 							</env>
@@ -256,6 +257,7 @@
 							<environmentVariables>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</environmentVariables>
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE/</service.url>
