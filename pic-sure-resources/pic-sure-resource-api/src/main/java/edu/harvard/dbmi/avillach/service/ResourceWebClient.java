@@ -4,10 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
 import org.apache.log4j.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.ws.rs.core.Response;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.UUID;
 
@@ -84,7 +89,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryResults query(String baseURL, QueryRequest dataQueryRequest){
+    public QueryStatus query(String baseURL, QueryRequest dataQueryRequest){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -102,7 +107,7 @@ public class ResourceWebClient {
                 //TODO Write custom exception
                 throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
-            return readObjectFromResponse(resourcesResponse, QueryResults.class);
+            return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to encode data query");
             throw new RuntimeException("Unable to encode data query", e);
@@ -138,7 +143,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryResults queryResult(String baseURL, String queryId, Map<String, String> resourceCredentials){
+    public Response queryResult(String baseURL, String queryId, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -160,10 +165,13 @@ public class ResourceWebClient {
                 //TODO Write custom exception
                 throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
-            return readObjectFromResponse(resourcesResponse, QueryResults.class);
+            return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
             logger.error("Unable to encode resource credentials");
             throw new RuntimeException("Unable to encode resource credentials", e);
+        } catch (IOException e){
+            //TODO What to do with this exception?
+            throw new RuntimeException("Error getting results", e);
         }
     }
 

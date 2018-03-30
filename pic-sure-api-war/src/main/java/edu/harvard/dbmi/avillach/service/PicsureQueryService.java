@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import java.io.InputStream;
 import java.sql.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +17,7 @@ import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
+import javax.ws.rs.core.Response;
 
 /**
  * Service handling business logic for queries to resources
@@ -44,24 +46,24 @@ public class PicsureQueryService {
 	 * @return {@link QueryResults} object
 	 */
 	@Transactional
-	public QueryResults query(UUID resourceId, QueryRequest dataQueryRequest) {
+	public QueryStatus query(UUID resourceId, QueryRequest dataQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			//TODO Create custom exception
 			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
 		}
-		QueryResults results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
+		QueryStatus results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
 		Query queryEntity = new Query();
 		queryEntity.setResourceResultId(results.getResourceResultId());
 		queryEntity.setResource(resource);
-		queryEntity.setStatus(results.getStatus().getStatus());
-		queryEntity.setStartTime(new Date(results.getStatus().getStartTime()));
+		queryEntity.setStatus(results.getStatus());
+		queryEntity.setStartTime(new Date(results.getStartTime()));
 		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
 		em.persist(queryEntity);
 		results.setPicsureResultId(queryEntity.getUuid());
-		results.getStatus().setResourceID(resourceId);
+		results.setResourceID(resourceId);
 		return results;
 	}
 
@@ -101,21 +103,15 @@ public class PicsureQueryService {
 	 * @return {@link QueryResults}
 	 */
 	@Transactional
-	public QueryResults queryResult(UUID queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
 			//TODO Create custom exception
 			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
-		//TODO Need to pass info from original query somehow?
-		QueryResults results = resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
-		//Update query object
-		results.setPicsureResultId(queryId);
-		results.getStatus().setResourceID(resource.getUuid());
-		query.setStatus(results.getStatus().getStatus());
-		em.persist(query);
-		return results;
+		//TODO Do we need to update any information in the query object?
+		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 	}
 
 }

@@ -1,12 +1,11 @@
 package edu.harvard.dbmi.avillach;
 
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
@@ -25,7 +24,7 @@ public class TestResourceRS implements IResourceRS {
 	@POST
 	@Path("/query")
 	@Override
-	public QueryResults query(QueryRequest queryJson) {
+	public QueryStatus query(QueryRequest queryJson) {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -41,7 +40,7 @@ public class TestResourceRS implements IResourceRS {
 	@GET
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(String queryId, Map<String, String> resourceCredentials) {
 		// TODO Auto-generated method stub
 		return null;
 	}

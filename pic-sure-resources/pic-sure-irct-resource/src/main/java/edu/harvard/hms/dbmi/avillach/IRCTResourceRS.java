@@ -5,7 +5,6 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.Date;
 import java.util.Map;
-import java.util.UUID;
 
 import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
@@ -20,7 +19,6 @@ import org.apache.http.HttpResponse;
 
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import org.apache.http.message.BasicHeader;
-import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
@@ -124,7 +122,7 @@ public class IRCTResourceRS implements IResourceRS
 	@POST
 	@Path("/query")
 	@Override
-	public QueryResults query(QueryRequest queryJson) {
+	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Calling IRCT Resource query()");
 		if (queryJson == null) {
 			throw new RuntimeException("Missing query request data");
@@ -166,27 +164,27 @@ public class IRCTResourceRS implements IResourceRS
 			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		//Returns an object like so: {"resultId":230464}
-		QueryResults results = new QueryResults();
+//		QueryStatus results = new QueryStatus();
 		//TODO later Add things like duration and expiration
 		try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			JsonNode responseNode = json.readTree(responseBody);
 			String resultId = responseNode.get("resultId").asText();
-			results.setResourceResultId(resultId);
 			//Check to see if it's ready yet, if not just send back running with no results
 			QueryStatus status = queryStatus(resultId, resourceCredentials);
+			status.setResourceResultId(resultId);
 			status.setStartTime(starttime);
-			results.setStatus(status);
+/*			results.setStatus(status);
 			//If it's already ready go ahead and get the results
 			if(status.getStatus() == PicSureStatus.AVAILABLE){
 				results = queryResult(resultId, resourceCredentials);
 				results.getStatus().setStartTime(starttime);
-			}
+			}*/
+			return status;
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
 		}
-		return results;
 	}
 
 	@POST
@@ -233,7 +231,7 @@ public class IRCTResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public QueryResults queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
 		logger.debug("calling IRCT Resource queryResult() for query " + queryId);
 		if (resourceCredentials == null) {
 			throw new RuntimeException("Missing credentials");
@@ -246,16 +244,16 @@ public class IRCTResourceRS implements IResourceRS
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
 		String pathName = "/resultService/result/"+queryId+"/"+RESULT_FORMAT;
+		//Returns a String in the format requested
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
-		//Returns a String in the format requested
-		QueryResults result = new QueryResults();
 		try {
-			byte[] resultBytes = EntityUtils.toByteArray(response.getEntity());
-
+			return Response.ok(response.getEntity().getContent()).build();
+			//Do we want to check for an error or just return whatever we get?
+/*			byte[] resultBytes = EntityUtils.toByteArray(response.getEntity());
 			//Check if this is data or if there's an error message
 			try {
 				//TODO Is this a reasonable way to check for error?
@@ -267,19 +265,11 @@ public class IRCTResourceRS implements IResourceRS
 				}
 			} catch (IOException e){
 				//This is good, it means that we don't have a node with an error message
-			}
-			result.setResults(resultBytes);
-			result.setResourceResultId(queryId);
-			//Update the status
-			QueryStatus status = queryStatus(queryId, resourceCredentials);
-			status.setSizeInBytes(response.getEntity().getContentLength());
-			//TODO Should we calculate duration?
-			result.setStatus(status);
+			}*/
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
 		}
-		return result;
 	}
 
 	private PicSureStatus mapStatus(String resourceStatus){

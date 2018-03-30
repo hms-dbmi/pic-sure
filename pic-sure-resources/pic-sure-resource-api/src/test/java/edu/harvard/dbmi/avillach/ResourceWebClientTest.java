@@ -8,6 +8,8 @@ import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import org.junit.Rule;
 import org.junit.Test;
 
+import javax.ws.rs.core.Response;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -150,7 +152,7 @@ public class ResourceWebClientTest {
 
     @Test
     public void testQuery() throws JsonProcessingException{
-        String queryResults = json.writeValueAsString(new QueryResults());
+        String queryResults = json.writeValueAsString(new QueryStatus());
 
         wireMockRule.stubFor(any(urlEqualTo("/query"))
                 .willReturn(aResponse()
@@ -175,7 +177,7 @@ public class ResourceWebClientTest {
         }
 
         //Everything goes correctly
-        QueryResults result = cut.query(testURL, request);
+        QueryStatus result = cut.query(testURL, request);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -215,7 +217,8 @@ public class ResourceWebClientTest {
         wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
                 .willReturn(aResponse()
                         .withStatus(200)
-                        .withBody(queryResults)));
+                        .withBody("Any old response will work")));
+//                        .withBody(queryResults)));
 
         //Should fail if missing any parameters
         try {
@@ -243,7 +246,7 @@ public class ResourceWebClientTest {
         }
 
         //Everything should work here
-        QueryResults result = cut.queryResult(testURL,testId, credentials);
+        Response result = cut.queryResult(testURL,testId, credentials);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -257,21 +260,6 @@ public class ResourceWebClientTest {
         } catch (Exception e) {
             //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Resource returned 500"));
-        }
-
-        //What if resource returns the wrong type of object for some reason?
-        String incorrectResponse = json.writeValueAsString(new ResourceInfo());
-        wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withBody(incorrectResponse)));
-
-        try {
-            cut.queryResult(testURL, testId, credentials);
-            fail();
-        } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertTrue( e.getMessage().contains("Incorrect object type returned"));
         }
     }
 

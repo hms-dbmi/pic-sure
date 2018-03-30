@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.domain.*;
@@ -51,7 +53,7 @@ public class PicsureRS {
 	
 	@POST
 	@Path("/query/{resourceId}")
-	public QueryResults query(@PathParam("resourceId") UUID resourceId, QueryRequest dataQueryRequest) {
+	public QueryStatus query(@PathParam("resourceId") UUID resourceId, QueryRequest dataQueryRequest) {
 		return queryService.query(resourceId, dataQueryRequest);
 	}
 	
@@ -63,7 +65,7 @@ public class PicsureRS {
 	
 	@POST
 	@Path("/query/{queryId}/result")
-	public QueryResults queryResult(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryResult(queryId, resourceCredentials);
 	}
 	

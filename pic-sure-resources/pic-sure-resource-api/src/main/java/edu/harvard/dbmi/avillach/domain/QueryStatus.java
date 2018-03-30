@@ -8,7 +8,13 @@ public class QueryStatus {
 	private UUID resourceID;
 	
 	private String resourceStatus;
-	
+
+	private UUID picsureResultId;
+
+	private String resourceResultId;
+
+	private byte[] resultMetadata;
+
 	private long sizeInBytes;
 	
 	private long startTime;
@@ -71,5 +77,29 @@ public class QueryStatus {
 
 	public void setExpiration(long expiration) {
 		this.expiration = expiration;
+	}
+
+	public UUID getPicsureResultId() {
+		return picsureResultId;
+	}
+
+	public void setPicsureResultId(UUID picsureResultId) {
+		this.picsureResultId = picsureResultId;
+	}
+
+	public String getResourceResultId() {
+		return resourceResultId;
+	}
+
+	public void setResourceResultId(String resourceResultId) {
+		this.resourceResultId = resourceResultId;
+	}
+
+	public byte[] getResultMetadata() {
+		return resultMetadata;
+	}
+
+	public void setResultMetadata(byte[] resultMetadata) {
+		this.resultMetadata = resultMetadata;
 	}
 }

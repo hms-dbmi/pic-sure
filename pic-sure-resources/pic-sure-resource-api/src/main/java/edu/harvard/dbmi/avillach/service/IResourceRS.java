@@ -1,10 +1,9 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import javax.ws.rs.*;
+import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.*;
 
@@ -24,7 +23,7 @@ public interface IResourceRS
 	
 	@POST
 	@Path("/query")
-	public QueryResults query(QueryRequest queryJson);
+	public QueryStatus query(QueryRequest queryJson);
 	
 	@POST
 	@Path("/query/{resourceQueryId}/status")
@@ -32,6 +31,6 @@ public interface IResourceRS
 	
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public QueryResults queryResult(String queryId, Map<String, String> resourceCredentials);
+	public Response queryResult(String queryId, Map<String, String> resourceCredentials);
 	
 }
