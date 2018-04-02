@@ -6,24 +6,20 @@ import edu.harvard.dbmi.avillach.domain.QueryFormat;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 
 public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
 
-/*    private String name;
-    private String description;
-    private Serializable specification;
-    private Serializable[] examples;*/
-
+    //All extra fields are just shoved into examples
+    //TODO Not sure this is the format we want this in actually but for now it's readable at least
     @Override
     public QueryFormat deserialize(JsonParser jp, DeserializationContext context) throws IOException{
         JsonNode node = jp.getCodec().readTree(jp);
         QueryFormat qf = new QueryFormat();
 
         Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        Serializable[] examples = new Serializable[node.size()];
-        int count = 0;
+        HashMap<String, JsonNode> extraFields = new HashMap<>();
+        Serializable[] examples = new Serializable[1];
         while (fields.hasNext()){
             Map.Entry<String, JsonNode> field = fields.next();
             if (field.getKey().equalsIgnoreCase("name")){
@@ -33,10 +29,10 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
             } else if (field.getKey().equalsIgnoreCase("specification")){
                 qf.setSpecification(node.get(field.getKey()).asText());
             } else {
-                //TODO How to keep this a JsonNode but also serializable???
-                examples[count++] = field.toString();
+                extraFields.put(field.getKey(), field.getValue());
             }
         }
+        examples[0] = extraFields;
         qf.setExamples(examples);
         return qf;
     }
