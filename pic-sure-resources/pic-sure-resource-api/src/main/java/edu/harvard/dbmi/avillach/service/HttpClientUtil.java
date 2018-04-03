@@ -14,14 +14,11 @@ import org.apache.http.client.HttpClient;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
     private static Logger logger = Logger.getLogger(HttpClientUtil.class);
-//    private final static HttpClient client = HttpClientBuilder.create().build();
 
 
     public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
@@ -65,10 +62,9 @@ public class HttpClientUtil {
 	}
 
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
-        logger.error("HttpClientUtil readObjectFromResponse()");
+        logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
-            logger.error(responseBody);
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
 			//TODO: Write custom exception

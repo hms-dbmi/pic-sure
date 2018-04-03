@@ -9,10 +9,8 @@ import org.junit.Rule;
 import org.junit.Test;
 
 import javax.ws.rs.core.Response;
-import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
@@ -21,8 +19,6 @@ import static org.junit.Assert.*;
 public class ResourceWebClientTest {
 
     private final static ObjectMapper json = new ObjectMapper();
-    //TODO what to do about this token
-//    private final static String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU";
     private final static String token = "testToken";
     private final static int port = 8079;
     private final static String testURL = "http://localhost:"+port;
@@ -211,14 +207,12 @@ public class ResourceWebClientTest {
 
     @Test
     public void testQueryResult() throws JsonProcessingException{
-        String queryResults = json.writeValueAsString(new QueryResults());
         String testId = "230048";
 
         wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withBody("Any old response will work")));
-//                        .withBody(queryResults)));
 
         //Should fail if missing any parameters
         try {

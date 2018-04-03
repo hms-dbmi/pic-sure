@@ -206,10 +206,12 @@ public class IRCTResourceIT extends BaseIT {
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         body = json.writeValueAsString(credentials);
 
-        //TODO Should it return a 500 or will it be returning a 200 with an error message?
-		//False query id should fail
-/*        response = retrievePostResponse(endpointUrl+"/v1.4/query/1/result", null, body);
-        assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());*/
+        //TODO This is just returning what IRCT returns - do we need to test it?
+		//False query id should return a failure message
+        response = retrievePostResponse(endpointUrl+"/v1.4/query/1/result", null, body);
+		assertEquals("Should return a 200",200, response.getStatusLine().getStatusCode());
+		JsonNode responseNode = json.readTree(response.getEntity().getContent());
+		assertNotNull("Nonexistent queryId should return an error message", responseNode.get("message"));
 
         //This should work
 		response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/result", null, body);

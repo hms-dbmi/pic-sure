@@ -72,7 +72,6 @@ public class IRCTResourceRS implements IResourceRS
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
-		//TODO This doesn't work
 		return new ResourceInfo().setName("IRCT Resource : " + TARGET_IRCT_URL)
 				.setQueryFormats(
 						readListFromResponse(response, QueryFormat.class));
@@ -147,7 +146,7 @@ public class IRCTResourceRS implements IResourceRS
 
 		JsonNode query = queryNode.get("queryString");
 		if (query == null){
-			//Assume this means there is no format and the entire string is the query
+			//Assume this means the entire string is the query
 			queryString = queryNode.asText();
 		} else {
 			queryString = query.asText();
@@ -164,7 +163,6 @@ public class IRCTResourceRS implements IResourceRS
 			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		//Returns an object like so: {"resultId":230464}
-//		QueryStatus results = new QueryStatus();
 		//TODO later Add things like duration and expiration
 		try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
@@ -174,7 +172,8 @@ public class IRCTResourceRS implements IResourceRS
 			QueryStatus status = queryStatus(resultId, resourceCredentials);
 			status.setResourceResultId(resultId);
 			status.setStartTime(starttime);
-/*			results.setStatus(status);
+			//Changing response to QueryStatus from QueryResponse makes it impossible to send back results right away
+			/*			results.setStatus(status);
 			//If it's already ready go ahead and get the results
 			if(status.getStatus() == PicSureStatus.AVAILABLE){
 				results = queryResult(resultId, resourceCredentials);
@@ -221,6 +220,7 @@ public class IRCTResourceRS implements IResourceRS
 			String resourceStatus = responseNode.get("status").asText();
 			status.setResourceStatus(resourceStatus);
 			status.setStatus(mapStatus(resourceStatus));
+			status.setResourceResultId(responseNode.get("resultId").asText());
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
@@ -252,20 +252,6 @@ public class IRCTResourceRS implements IResourceRS
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
-			//Do we want to check for an error or just return whatever we get?
-/*			byte[] resultBytes = EntityUtils.toByteArray(response.getEntity());
-			//Check if this is data or if there's an error message
-			try {
-				//TODO Is this a reasonable way to check for error?
-				JsonNode responseNode = json.readTree(resultBytes);
-				//Is this an object as expected or an error message?
-				if (responseNode.get("message") != null){
-					//TODO Custom exception
-					throw new RuntimeException(responseNode.get("message").asText());
-				}
-			} catch (IOException e){
-				//This is good, it means that we don't have a node with an error message
-			}*/
 		} catch (IOException e){
 			//TODO: Deal with this
 			throw new RuntimeException(e);
