@@ -13,6 +13,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -61,7 +62,7 @@ public class PicsureSearchServiceIT {
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         response = client.execute(post);
         assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
-
+        EntityUtils.consume(response.getEntity());
 
         QueryRequest searchQueryRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -70,12 +71,10 @@ public class PicsureSearchServiceIT {
         post.setEntity(new StringEntity(json.writeValueAsString(searchQueryRequest)));
         response = client.execute(post);
         assertEquals("Missing query search info should return 500", 500, response.getStatusLine().getStatusCode());
-
+        EntityUtils.consume(response.getEntity());
 
         searchQueryRequest.setQuery("blood");
         post.setEntity(new StringEntity(json.writeValueAsString(searchQueryRequest)));
-        //Client was getting stuck between calls.  TODO: Figure out why and do a real fix
-        client = HttpClientBuilder.create().build();
         response = client.execute(post);
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
 
