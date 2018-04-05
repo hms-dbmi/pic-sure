@@ -10,7 +10,8 @@ import java.util.*;
 
 public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
 
-    //All extra fields are just shoved into examples
+    private final static ObjectMapper mapper = new ObjectMapper();
+    //All extra fields are just shoved into specification
     //TODO Not sure this is the format we want this in actually but for now it's readable at least
     @Override
     public QueryFormat deserialize(JsonParser jp, DeserializationContext context) throws IOException{
@@ -19,21 +20,22 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
 
         Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
         HashMap<String, JsonNode> extraFields = new HashMap<>();
-        Serializable[] examples = new Serializable[1];
+        List<HashMap<String, String>> examples = new ArrayList<>();
         while (fields.hasNext()){
             Map.Entry<String, JsonNode> field = fields.next();
             if (field.getKey().equalsIgnoreCase("name")){
-                qf.setName(node.get(field.getKey()).asText());
+                qf.setName(field.getValue().asText());
             } else if (field.getKey().equalsIgnoreCase("description")){
-                qf.setDescription(node.get(field.getKey()).asText());
-            } else if (field.getKey().equalsIgnoreCase("specification")){
-                qf.setSpecification(node.get(field.getKey()).asText());
+                qf.setDescription(field.getValue().asText());
+            } else if (field.getKey().equalsIgnoreCase("examples")){
+                HashMap<String, String> test = mapper.convertValue(field.getValue(), HashMap.class);
+                examples.add(test);
             } else {
                 extraFields.put(field.getKey(), field.getValue());
             }
         }
-        examples[0] = extraFields;
-        qf.setExamples(examples);
+        qf.setSpecification(extraFields);
+        qf.setExamples(examples.toArray(new Serializable[examples.size()]));
         return qf;
     }
 
