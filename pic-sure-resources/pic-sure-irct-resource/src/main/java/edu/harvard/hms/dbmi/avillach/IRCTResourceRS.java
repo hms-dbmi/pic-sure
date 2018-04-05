@@ -147,9 +147,9 @@ public class IRCTResourceRS implements IResourceRS
 		JsonNode query = queryNode.get("queryString");
 		if (query == null){
 			//Assume this means the entire string is the query
-			queryString = queryNode.asText();
+			queryString = queryNode.toString();
 		} else {
-			queryString = query.asText();
+			queryString = query.toString();
 		}
 
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
