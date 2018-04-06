@@ -9,7 +9,6 @@ import java.util.Map;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
@@ -18,7 +17,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
+import edu.harvard.dbmi.avillach.util.exception.ResourceCommunicationException;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
