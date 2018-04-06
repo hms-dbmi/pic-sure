@@ -50,7 +50,7 @@ public class IRCTResourceRS implements IResourceRS
 	public Response status() {
 		return Response.ok().build();
 	}
-	
+
 	@POST
 	@Path("/info")
 	@Override

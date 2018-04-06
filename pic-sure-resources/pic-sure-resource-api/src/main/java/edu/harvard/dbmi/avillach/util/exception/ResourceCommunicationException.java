@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.exception;
+package edu.harvard.dbmi.avillach.util.exception;
 
 public class ResourceCommunicationException extends RuntimeException {
 
