@@ -49,7 +49,7 @@ public class TestResourceRS implements IResourceRS {
 	}
 
 	@Override
-	public ResourceInfo info(String resourceCredentials) {
+	public ResourceInfo info(Map<String,String> resourceCredentials) {
 		// TODO Auto-generated method stub
 		return null;
 	}

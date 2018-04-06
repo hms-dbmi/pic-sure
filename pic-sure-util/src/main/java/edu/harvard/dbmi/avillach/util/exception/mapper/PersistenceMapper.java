@@ -1,6 +1,6 @@
-package edu.harvard.dbmi.avillach.exception.mapper;
+package edu.harvard.dbmi.avillach.util.exception.mapper;
 
-import edu.harvard.dbmi.avillach.response.PICSUREResponse;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 
 import javax.persistence.PersistenceException;
 import javax.ws.rs.core.Response;

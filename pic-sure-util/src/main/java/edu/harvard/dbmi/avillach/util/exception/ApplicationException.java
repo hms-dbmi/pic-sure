@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.exception;
+package edu.harvard.dbmi.avillach.util.exception;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
@@ -6,7 +6,7 @@ import javax.ws.rs.core.Response;
 /**
  * Will end up to return an application error
  *
- * @see edu.harvard.hms.dbmi.bd2k.irct.util.IRCTResponse
+ * @see edu.harvard.dbmi.avillach.util.response.PICSUREResponse
  */
 public class ApplicationException extends WebApplicationException{
 

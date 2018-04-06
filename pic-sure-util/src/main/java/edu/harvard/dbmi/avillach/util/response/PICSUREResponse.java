@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.response;
+package edu.harvard.dbmi.avillach.util.response;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;

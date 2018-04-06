@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.response;
+package edu.harvard.dbmi.avillach.util.response;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 

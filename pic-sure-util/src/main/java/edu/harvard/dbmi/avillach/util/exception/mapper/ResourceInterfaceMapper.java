@@ -1,7 +1,7 @@
-package edu.harvard.dbmi.avillach.exception.mapper;
+package edu.harvard.dbmi.avillach.util.exception.mapper;
 
-import edu.harvard.dbmi.avillach.exception.ResourceInterfaceException;
-import edu.harvard.dbmi.avillach.response.PICSUREResponse;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.ExceptionMapper;

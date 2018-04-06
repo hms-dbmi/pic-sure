@@ -1,11 +1,11 @@
-package edu.harvard.dbmi.avillach.exception;
+package edu.harvard.dbmi.avillach.util.exception;
 
 import javax.ws.rs.WebApplicationException;
 
 /**
  * Will end up to return a RI error
  *
- * @see edu.harvard.hms.dbmi.bd2k.irct.util.IRCTResponse
+ * @see edu.harvard.dbmi.avillach.util.response.PICSUREResponse
  */
 public class ResourceInterfaceException extends WebApplicationException {
 	private static final long serialVersionUID = -4688536480746747740L;
