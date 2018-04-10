@@ -12,6 +12,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryResults;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
@@ -80,8 +81,7 @@ public class PicsureQueryService {
 	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			//TODO Create custom exception
-			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
+			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
 		//Update status on query object
@@ -106,8 +106,7 @@ public class PicsureQueryService {
 	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			//TODO Create custom exception
-			throw new RuntimeException("No query with id " + queryId.toString() + " exists");
+			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
 		//TODO Do we need to update any information in the query object?

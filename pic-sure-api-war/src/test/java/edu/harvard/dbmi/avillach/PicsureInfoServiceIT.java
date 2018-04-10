@@ -20,6 +20,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import javax.ws.rs.core.HttpHeaders;
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -74,7 +75,12 @@ public class PicsureInfoServiceIT {
         assertNotNull("Resource response should have queryFormats", responseInfo.getQueryFormats());
         assertNotNull("Resource response should have a name", responseInfo.getName());
 
-    }
+        //Try with a non-existent id
+        uri = endpointUrl + "/info/3b2437fe-df56-4360-8156-27bcf0b1a467";
+        post.setURI(new URI(uri));
+        response = client.execute(post);
+        assertEquals("Incorrect resource Id should return 500", 500, response.getStatusLine().getStatusCode());
+        }
 
     public String generateJwtUser1() {
         return Jwts.builder()

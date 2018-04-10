@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
 
@@ -28,8 +29,7 @@ public class PicsureSearchService {
 	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			//TODO Create custom exception
-			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
 		return resourceWebClient.search(resource.getBaseUrl(), searchQueryRequest);
 	}

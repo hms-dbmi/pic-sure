@@ -106,7 +106,9 @@ public class PicsureQueryServiceIT {
         EntityUtils.consume(response.getEntity());
 
         //Test correct request
-        dataQueryRequest.setQuery(queryString);
+        JsonNode jsonNode = json.readTree(queryString);
+
+        dataQueryRequest.setQuery(jsonNode);
         post.setEntity(new StringEntity(json.writeValueAsString(dataQueryRequest)));
         response = client.execute(post);
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
@@ -131,7 +133,9 @@ public class PicsureQueryServiceIT {
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
-        dataQueryRequest.setQuery(queryString);
+        JsonNode jsonNode = json.readTree(queryString);
+
+        dataQueryRequest.setQuery(jsonNode);
         post.setEntity(new StringEntity(json.writeValueAsString(dataQueryRequest)));
         HttpResponse response = client.execute(post);
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
@@ -188,7 +192,9 @@ public class PicsureQueryServiceIT {
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
-        dataQueryRequest.setQuery(queryString);
+        JsonNode jsonNode = json.readTree(queryString);
+
+        dataQueryRequest.setQuery(jsonNode);
         post.setEntity(new StringEntity(json.writeValueAsString(dataQueryRequest)));
         HttpResponse response = client.execute(post);
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());

@@ -9,6 +9,7 @@ import javax.inject.Inject;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 public class PicsureInfoService {
 
@@ -28,8 +29,7 @@ public class PicsureInfoService {
 	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			//TODO Create custom exception
-			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
 		return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
 	}
