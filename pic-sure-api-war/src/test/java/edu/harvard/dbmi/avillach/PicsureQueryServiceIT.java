@@ -148,12 +148,7 @@ public class PicsureQueryServiceIT {
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         response = client.execute(post);
-        assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
-        EntityUtils.consume(response.getEntity());
-
-        post.setEntity(null);
-        response = client.execute(post);
-        assertEquals("Missing credentials should return 500", 500, response.getStatusLine().getStatusCode());
+        assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
         post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));
@@ -207,12 +202,7 @@ public class PicsureQueryServiceIT {
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         response = client.execute(post);
-        assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
-        EntityUtils.consume(response.getEntity());
-
-        post.setEntity(null);
-        response = client.execute(post);
-        assertEquals("Missing credentials should return 500", 500, response.getStatusLine().getStatusCode());
+        assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
         post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));

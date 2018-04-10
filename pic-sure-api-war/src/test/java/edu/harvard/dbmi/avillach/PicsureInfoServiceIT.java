@@ -63,7 +63,7 @@ public class PicsureInfoServiceIT {
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         response = client.execute(post);
-        assertEquals("Missing credentials should return 500", 500, response.getStatusLine().getStatusCode());
+        assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
 
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
