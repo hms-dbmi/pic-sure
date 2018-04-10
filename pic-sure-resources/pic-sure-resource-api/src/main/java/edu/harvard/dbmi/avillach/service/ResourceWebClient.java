@@ -3,13 +3,16 @@ package edu.harvard.dbmi.avillach.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;
 import org.apache.log4j.Logger;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,27 +42,23 @@ public class ResourceWebClient {
     public ResourceInfo info(String baseURL, Map<String, String> resourceCredentials){
         logger.debug("Calling ResourceWebClient info()");
         try {
-            //TODO Write custom exception
             if (resourceCredentials == null){
-                throw new RuntimeException("Missing credentials");
+                throw new NotAuthorizedException("Missing credentials");
             }
             if (baseURL == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing resource URL");
+                throw new ApplicationException("Missing resource URL");
             }
             logger.debug("Calling /info at ResourceURL: " + baseURL);
             String pathName = "/info";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                //TODO Write custom exception
                 logger.error("Resource did not return a 200");
-                throw new ResourceCommunicationException(baseURL, "Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throw new ResourceInterfaceException(baseURL +  " returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
             return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
-            //TODO Write custom exception
-            throw new RuntimeException("Unable to encode resourcecredentials", e);
+            throw new NotAuthorizedException("Unable to encode resourcecredentials", e);
         }
     }
 
@@ -67,25 +66,22 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient search()");
         try {
             if (baseURL == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing resource URL");
+                throw new NotAuthorizedException("Missing resource URL");
             }
             if (searchQueryRequest == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing query request info");
+                throw new ProtocolException("Missing query request info");
             }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                //TODO Write custom exception
-                throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode() + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode() + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
             return readObjectFromResponse(resourcesResponse, SearchResults.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to serialize search query");
             //TODO Write custom exception
-            throw new RuntimeException("Unable to serialize search query", e);
+            throw new ProtocolException("Unable to serialize search query", e);
         }
     }
 
@@ -93,24 +89,21 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing resource URL");
+                throw new ApplicationException("Missing resource URL");
             }
             if (dataQueryRequest == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing query request info");
+                throw new ProtocolException("Missing query request info");
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                //TODO Write custom exception
-                throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to encode data query");
-            throw new RuntimeException("Unable to encode data query", e);
+            throw new ProtocolException("Unable to encode data query", e);
         }
     }
 
@@ -118,28 +111,24 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing resource URL");
+                throw new ApplicationException("Missing resource URL");
             }
             if (resourceCredentials == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing credentials");
+                throw new NotAuthorizedException("Missing credentials");
             }
             if (queryId == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing query id");
+                throw new ProtocolException("Missing query id");
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                //TODO Write custom exception
-                throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to encode resource credentials");
-            throw new RuntimeException("Unable to encode resource credentials", e);
+            throw new ProtocolException("Unable to encode resource credentials", e);
         }
     }
 
@@ -147,31 +136,26 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing resource URL");
+                throw new ApplicationException("Missing resource URL");
             }
             if (resourceCredentials == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing credentials");
+                throw new NotAuthorizedException("Missing credentials");
             }
             if (queryId == null){
-                //TODO: Write custom exception
-                throw new RuntimeException("Missing query id");
+                throw new ApplicationException("Missing query id");
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                //TODO Write custom exception
-                throw new RuntimeException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
             logger.error("Unable to encode resource credentials");
-            throw new RuntimeException("Unable to encode resource credentials", e);
+            throw new NotAuthorizedException("Unable to encode resource credentials", e);
         } catch (IOException e){
-            //TODO What to do with this exception?
-            throw new RuntimeException("Error getting results", e);
+            throw new ResourceInterfaceException("Error getting results", e);
         }
     }
 

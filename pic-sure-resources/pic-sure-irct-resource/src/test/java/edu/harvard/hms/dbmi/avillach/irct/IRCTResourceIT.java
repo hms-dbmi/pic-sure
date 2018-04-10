@@ -10,6 +10,8 @@ import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.junit.Test;
 
+import javax.json.Json;
+
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 import static org.junit.Assert.*;
 
@@ -63,13 +65,26 @@ public class IRCTResourceIT extends BaseIT {
 		Map<String, String> credentials = new HashMap<String, String>();
 		String body = json.writeValueAsString(credentials);
 		HttpResponse response = retrievePostResponse(endpointUrl+"/v1.4/info", null, body);
-		assertEquals("Missing credentials should return a 500",500, response.getStatusLine().getStatusCode());
+		assertEquals("Missing credentials should return a 401",401, response.getStatusLine().getStatusCode());
+		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		String errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		String errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		body = json.writeValueAsString(credentials);
 		response = retrievePostResponse(endpointUrl+"/v1.4/info", null, body);
-		assertEquals("Incorrect token should return a 500",500, response.getStatusLine().getStatusCode());
-
+		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+/*		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+*/
 		//This should work
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		body = json.writeValueAsString(credentials);
@@ -91,13 +106,27 @@ public class IRCTResourceIT extends BaseIT {
 
 		//Should throw an error if credentials missing or wrong
 		HttpResponse response = retrievePostResponse(endpointUrl+"/v1.4/search", null, body);
-		assertEquals("Missing credentials should return a 500", 500, response.getStatusLine().getStatusCode());
+		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		String errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		String errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		queryRequest.setResourceCredentials(credentials);
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/search", null, body);
-		assertEquals("Incorrect token should return a 500", 500, response.getStatusLine().getStatusCode());
+		assertEquals("Incorrect token should return a 401", 401, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+/*		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+*/
 
 		//Should throw an error if missing query string
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
@@ -106,6 +135,12 @@ public class IRCTResourceIT extends BaseIT {
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/search", null, body);
 		assertEquals("Missing query string should return a 500",500, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertEquals("Error message should be " + IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, errorMessage);
 
 		//This should work
 		queryRequest.setQuery("%antibody%");
@@ -140,13 +175,24 @@ public class IRCTResourceIT extends BaseIT {
 
 		//Should throw an error if credentials missing or wrong
 		HttpResponse response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
-		assertEquals("Missing credentials should return a 500", 500, response.getStatusLine().getStatusCode());
+		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		String errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		String errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		queryRequest.setResourceCredentials(credentials);
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
-		assertEquals("Incorrect token should return a 500",500, response.getStatusLine().getStatusCode());
+		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
 
 		//Should throw an error if missing query string
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
@@ -155,17 +201,31 @@ public class IRCTResourceIT extends BaseIT {
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
 		assertEquals("Missing query string should return a 500",500, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE));
+
 
 		//Try a poorly worded queryString
 		queryRequest.setQuery("poorlyWordedQueryString");
 		body = json.writeValueAsString(queryRequest);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
 		assertEquals("Incorrectly formatted string should return 500",500, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "ri_error", errorType);
+		/*errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+*/
+		JsonNode jsonNode = json.readTree(queryString);
 
 		//Request can be an object that also requests the format
 		ObjectNode queryNode = json.createObjectNode();
-		queryNode.put("queryString", queryString);
-		queryNode.put("format", "CSV");
+        queryNode.put("queryString", jsonNode);
 		queryRequest.setQuery(queryNode);
 
 		body = json.writeValueAsString(queryRequest);
@@ -178,7 +238,7 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("ResourceResultId should not be null",result.getResourceResultId());
 
         //Or else just a query
-        queryRequest.setQuery(queryString);
+        queryRequest.setQuery(jsonNode);
         body = json.writeValueAsString(queryRequest);
         response = retrievePostResponse(endpointUrl+"/v1.4/query", null, body);
         assertEquals(200, response.getStatusLine().getStatusCode());
@@ -196,14 +256,28 @@ public class IRCTResourceIT extends BaseIT {
 
 		//Should throw an error if credentials missing or wrong
 		HttpResponse response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/result", null, body);
-		assertEquals("Missing credentials should return a 500",500, response.getStatusLine().getStatusCode());
+		assertEquals("Missing credentials should return a 401",401, response.getStatusLine().getStatusCode());
+		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		String errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		String errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		body = json.writeValueAsString(credentials);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/result", null, body);
-		assertEquals("Incorrect token should return a 500",500, response.getStatusLine().getStatusCode());
+		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+/*		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+*/
 
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         body = json.writeValueAsString(credentials);
 
         //TODO This is just returning what IRCT returns - do we need to test it?
@@ -227,12 +301,26 @@ public class IRCTResourceIT extends BaseIT {
 
         //Should throw an error if credentials missing or wrong
         HttpResponse response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/status", null, body);
-		assertEquals("Missing credentials should return a 500", 500, response.getStatusLine().getStatusCode());
+		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		String errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+		String errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		body = json.writeValueAsString(credentials);
 		response = retrievePostResponse(endpointUrl+"/v1.4/query/"+testQueryResultId+"/status", null, body);
-		assertEquals("Incorrect token should return a 500",500, response.getStatusLine().getStatusCode());
+		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "error", errorType);
+/*		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
+*/
 
 		//This should work
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
@@ -253,6 +341,10 @@ public class IRCTResourceIT extends BaseIT {
 		response = retrievePostResponse(endpointUrl+"/v1.4/query/1/status", null, body);
 		assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());
 
+		responseMessage = json.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", responseMessage);
+		errorType = responseMessage.get("errorType").asText();
+		assertEquals("Error type should be error", "ri_error", errorType);
 
 		//TODO Do we need to check for different statuses?  If so, how?
 	}

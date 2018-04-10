@@ -12,7 +12,9 @@ import javax.ws.rs.core.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -34,6 +36,8 @@ public class IRCTResourceRS implements IResourceRS
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
 	private static final String AUTHORIZATION = "AUTHORIZATION";
 	private static final String BEARER_STRING = "Bearer ";
+	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
+	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = Logger.getLogger(this.getClass());
 
@@ -57,20 +61,24 @@ public class IRCTResourceRS implements IResourceRS
 	public ResourceInfo info(Map<String,String> resourceCredentials) {
 		logger.debug("Calling IRCT Resource info()");
 		if (resourceCredentials == null){
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		String pathName = "/resourceService/resources";
 		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
 		if (token == null){
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
 		headers[0] = authorizationHeader;
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200){
-			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+            logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			//TODO Is there a better way to make sure the correct exception type is thrown?
+		    if (response.getStatusLine().getStatusCode() == 401) {
+                throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+            }
+			throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		return new ResourceInfo().setName("IRCT Resource : " + TARGET_IRCT_URL)
 				.setQueryFormats(
@@ -84,19 +92,19 @@ public class IRCTResourceRS implements IResourceRS
 		logger.debug("Calling IRCT Resource search()");
 		try {
 			if (searchJson == null) {
-				throw new RuntimeException("Missing query request data");
+				throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 			}
 			Map<String, String> resourceCredentials = searchJson.getResourceCredentials();
 			if (resourceCredentials == null) {
-				throw new RuntimeException("Missing credentials");
+				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 			}
 			String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
 			if (token == null) {
-				throw new RuntimeException("Missing credentials");
+				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 			}
 			Object search = searchJson.getQuery();
 			if (search == null) {
-				throw new RuntimeException(("Missing query request data"));
+				throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
 			}
 			String searchTerm = search.toString();
 			Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
@@ -106,7 +114,11 @@ public class IRCTResourceRS implements IResourceRS
 			HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-				throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+				//TODO Is there a better way to make sure the correct exception type is thrown?
+				if (response.getStatusLine().getStatusCode() == 401) {
+					throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+				}
+				throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
 			SearchResults results = new SearchResults();
 			results.setSearchQuery(searchTerm);
@@ -114,7 +126,7 @@ public class IRCTResourceRS implements IResourceRS
 			return results;
 		} catch (UnsupportedEncodingException e){
 			//TODO what to do about this
-			throw new RuntimeException(e);
+			throw new ApplicationException("Error encoding search term: " + e.getMessage());
 		}
 	}
 
@@ -124,21 +136,21 @@ public class IRCTResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Calling IRCT Resource query()");
 		if (queryJson == null) {
-			throw new RuntimeException("Missing query request data");
+			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 		}
 		Map<String, String> resourceCredentials = queryJson.getResourceCredentials();
 		if (resourceCredentials == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 
 		//TODO Do we want/need to do it this way, should we revert query field back to string?
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
-			throw new RuntimeException(("Missing query request data"));
+			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
 		}
 
 		JsonNode queryNode = json.valueToTree(queryObject);
@@ -160,7 +172,11 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrievePostResponse(TARGET_IRCT_URL + pathName, headers, queryString);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			//TODO Is there a better way to make sure the correct exception type is thrown?
+			if (response.getStatusLine().getStatusCode() == 401) {
+				throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			}
+			throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		//Returns an object like so: {"resultId":230464}
 		//TODO later Add things like duration and expiration
@@ -182,7 +198,7 @@ public class IRCTResourceRS implements IResourceRS
 			return status;
 		} catch (IOException e){
 			//TODO: Deal with this
-			throw new RuntimeException(e);
+			throw new ApplicationException(e);
 		}
 	}
 
@@ -192,11 +208,11 @@ public class IRCTResourceRS implements IResourceRS
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
 		logger.debug("calling IRCT Resource queryStatus() for query " + queryId);
 		if (resourceCredentials == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
@@ -205,7 +221,11 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			//TODO Is there a better way to make sure the correct exception type is thrown?
+			if (response.getStatusLine().getStatusCode() == 401) {
+				throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			}
+			throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
 		QueryStatus status = new QueryStatus();
@@ -215,7 +235,7 @@ public class IRCTResourceRS implements IResourceRS
 			//Is this an object as expected or an error message?
 			if (responseNode.get("message") != null){
 				//TODO Custom exception
-				throw new RuntimeException(responseNode.get("message").asText());
+				throw new ResourceInterfaceException(responseNode.get("message").asText());
 			}
 			String resourceStatus = responseNode.get("status").asText();
 			status.setResourceStatus(resourceStatus);
@@ -223,7 +243,7 @@ public class IRCTResourceRS implements IResourceRS
 			status.setResourceResultId(responseNode.get("resultId").asText());
 		} catch (IOException e){
 			//TODO: Deal with this
-			throw new RuntimeException(e);
+			throw new ApplicationException(e);
 		}
 		return status;
 	}
@@ -234,11 +254,11 @@ public class IRCTResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
 		logger.debug("calling IRCT Resource queryResult() for query " + queryId);
 		if (resourceCredentials == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new RuntimeException("Missing credentials");
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
 		Header[] headers = new Header[1];
@@ -248,13 +268,17 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			throw new ResourceCommunicationException(TARGET_IRCT_URL, response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			//TODO Is there a better way to make sure the correct exception type is thrown?
+			if (response.getStatusLine().getStatusCode() == 401) {
+				throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			}
+			throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
 		} catch (IOException e){
 			//TODO: Deal with this
-			throw new RuntimeException(e);
+			throw new ApplicationException(e);
 		}
 	}
 

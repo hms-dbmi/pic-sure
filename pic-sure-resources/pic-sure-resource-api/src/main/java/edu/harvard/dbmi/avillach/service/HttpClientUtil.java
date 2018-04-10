@@ -2,7 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.exception.ResourceCommunicationException;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -30,7 +30,7 @@ public class HttpClientUtil {
 			return client.execute(get);
 		} catch (IOException e) {
 			//TODO: Write custom exception
-			throw new ResourceCommunicationException(uri, e);
+			throw new ResourceInterfaceException(uri, e);
 		}
 	}
 
@@ -45,7 +45,7 @@ public class HttpClientUtil {
 			return client.execute(post);
 		} catch (IOException e) {
 			//TODO: Write custom exception
-			throw new ResourceCommunicationException(uri, e);
+			throw new ResourceInterfaceException(uri, e);
 		}
 	}
 

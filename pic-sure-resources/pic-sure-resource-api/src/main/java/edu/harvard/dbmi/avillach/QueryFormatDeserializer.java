@@ -34,8 +34,12 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
                 extraFields.put(field.getKey(), field.getValue().toString());
             }
         }
-        qf.setSpecification(extraFields);
-        qf.setExamples(examples);
+        if (!extraFields.isEmpty()){
+            qf.setSpecification(extraFields);
+        }
+        if (!examples.isEmpty()){
+            qf.setExamples(examples);
+        }
         return qf;
     }
 

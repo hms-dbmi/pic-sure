@@ -11,6 +11,7 @@ import org.junit.Test;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
@@ -41,8 +42,7 @@ public class ResourceWebClientTest {
             cut.info(testURL, null);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing credentials", e.getMessage());
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
@@ -50,8 +50,7 @@ public class ResourceWebClientTest {
             cut.info(null, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing resource URL", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Assuming everything goes right
@@ -67,8 +66,7 @@ public class ResourceWebClientTest {
             cut.info(testURL, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertTrue( e.getMessage().contains("Resource returned 500"));
+            assertTrue( e.getMessage().contains("returned 500"));
         }
 
         //What if resource returns the wrong type of object for some reason?
@@ -82,7 +80,6 @@ public class ResourceWebClientTest {
             cut.info(testURL, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
         }
     }
@@ -101,16 +98,14 @@ public class ResourceWebClientTest {
             cut.search(testURL, null);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing query request info", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         QueryRequest request = new QueryRequest();
         try {
             cut.search(null, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing resource URL", e.getMessage());
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
 
         //If everything goes right
@@ -126,22 +121,22 @@ public class ResourceWebClientTest {
             cut.search(testURL, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Resource returned 500"));
         }
 
         //What if resource returns the wrong type of object for some reason?
-        String incorrectResponse = json.writeValueAsString(new ResourceInfo());
+        ResourceInfo incorrectResponse = new ResourceInfo();
+        incorrectResponse.setName("resource name");
+        incorrectResponse.setId(new UUID(1L, 1L));
         wireMockRule.stubFor(any(urlEqualTo("/search"))
                 .willReturn(aResponse()
                         .withStatus(200)
-                        .withBody(incorrectResponse)));
+                        .withBody(json.writeValueAsString(incorrectResponse))));
 
         try {
             cut.search(testURL, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
         }
     }
@@ -160,16 +155,14 @@ public class ResourceWebClientTest {
             cut.query(testURL, null);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing query request info", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         QueryRequest request = new QueryRequest();
         try {
             cut.query(null, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing resource URL", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything goes correctly
@@ -185,22 +178,22 @@ public class ResourceWebClientTest {
             cut.query(testURL, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Resource returned 500"));
         }
 
         //What if resource returns the wrong type of object for some reason?
-        String incorrectResponse = json.writeValueAsString(new ResourceInfo());
+        ResourceInfo incorrectResponse = new ResourceInfo();
+        incorrectResponse.setName("resource name");
+        incorrectResponse.setId(new UUID(1L, 1L));
         wireMockRule.stubFor(any(urlEqualTo("/query"))
                 .willReturn(aResponse()
                         .withStatus(200)
-                        .withBody(incorrectResponse)));
+                        .withBody(json.writeValueAsString(incorrectResponse))));
 
         try {
             cut.query(testURL, request);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
         }
     }
@@ -219,8 +212,7 @@ public class ResourceWebClientTest {
             cut.queryResult(testURL, testId, null);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing credentials", e.getMessage());
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
@@ -228,15 +220,13 @@ public class ResourceWebClientTest {
             cut.queryResult(testURL, null, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing query id", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
             cut.queryResult(null, testId, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing resource URL", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything should work here
@@ -252,7 +242,6 @@ public class ResourceWebClientTest {
             cut.queryResult(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Resource returned 500"));
         }
     }
@@ -275,8 +264,7 @@ public class ResourceWebClientTest {
             cut.queryStatus(testURL, testId, null);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing credentials", e.getMessage());
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
@@ -284,15 +272,13 @@ public class ResourceWebClientTest {
             cut.queryStatus(testURL, null, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing query id", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
             cut.queryStatus(null, testId, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
-            assertEquals("Missing resource URL", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything should work here
@@ -313,22 +299,22 @@ public class ResourceWebClientTest {
             cut.queryStatus(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Resource returned 500"));
         }
 
         //What if resource returns the wrong type of object for some reason?
-        String incorrectResponse = json.writeValueAsString(new ResourceInfo());
+        ResourceInfo incorrect = new ResourceInfo();
+        incorrect.setName("resource name");
+        incorrect.setId(new UUID(1L, 1L));
         wireMockRule.stubFor(any(urlMatching("/query/.*/status"))
                 .willReturn(aResponse()
                         .withStatus(200)
-                        .withBody(incorrectResponse)));
+                        .withBody(json.writeValueAsString(incorrect))));
 
         try {
             cut.queryStatus(testURL, testId, credentials);
             fail();
         } catch (Exception e) {
-            //TODO Will change what this error actually says/does
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
         }
     }
