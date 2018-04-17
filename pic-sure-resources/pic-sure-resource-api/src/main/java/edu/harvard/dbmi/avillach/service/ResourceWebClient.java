@@ -6,18 +6,15 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
-import org.apache.http.Header;
 import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicHeader;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Map;
-import java.util.UUID;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 
@@ -32,7 +29,7 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 @ApplicationScoped
 public class ResourceWebClient {
 
-    private Logger logger = Logger.getLogger(this.getClass());
+    private Logger logger = LoggerFactory.getLogger(this.getClass());
     private final static ObjectMapper json = new ObjectMapper();
 
     public static final String BEARER_TOKEN_KEY = "BEARER_TOKEN";
@@ -48,7 +45,7 @@ public class ResourceWebClient {
             if (baseURL == null){
                 throw new ApplicationException("Missing resource URL");
             }
-            logger.debug("Calling /info at ResourceURL: " + baseURL);
+            logger.debug("Calling /info at ResourceURL: {}", baseURL);
             String pathName = "/info";
             String body = json.writeValueAsString(resourceCredentials);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);

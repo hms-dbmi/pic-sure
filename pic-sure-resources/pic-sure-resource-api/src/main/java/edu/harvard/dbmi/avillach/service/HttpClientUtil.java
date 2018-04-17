@@ -11,17 +11,20 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.client.HttpClient;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 import java.io.IOException;
 import java.util.List;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
-    private static Logger logger = Logger.getLogger(HttpClientUtil.class);
+	private final static Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
 
-    public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
+
+	public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
             logger.debug("HttpClientUtil retrieveGetResponse()");
 			HttpClient client = HttpClientBuilder.create().build();
