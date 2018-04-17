@@ -19,7 +19,7 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
         QueryFormat qf = new QueryFormat();
 
         Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        HashMap<String, String> extraFields = new HashMap<>();
+        HashMap<String, JsonNode> extraFields = new HashMap<>();
         List<Map<String, String>> examples = new ArrayList<>();
         while (fields.hasNext()){
             Map.Entry<String, JsonNode> field = fields.next();
@@ -31,7 +31,7 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
                 HashMap<String, String> test = mapper.convertValue(field.getValue(), HashMap.class);
                 examples.add(test);
             } else {
-                extraFields.put(field.getKey(), field.getValue().toString());
+                extraFields.put(field.getKey(), field.getValue());
             }
         }
         if (!extraFields.isEmpty()){
