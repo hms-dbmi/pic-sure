@@ -9,8 +9,13 @@ import javax.inject.Inject;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 public class PicsureInfoService {
+
+	Logger logger = LoggerFactory.getLogger(PicsureInfoService.class);
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -24,6 +29,9 @@ public class PicsureInfoService {
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
 	public ResourceInfo info(UUID resourceId, String resourceCredentials) {
+
+		// please use {}-placeholders to put any of your parameters into the log String
+		logger.debug("Entering info with resourceId: {}", resourceId);
 		Resource resource = resourceRepo.getById(resourceId);
 		//return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
 		return null;
