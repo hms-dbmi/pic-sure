@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.domain.*;
@@ -32,7 +34,7 @@ public class PicsureRS {
 	
 	@POST
 	@Path("/info/{resourceId}")
-	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId, String resourceCredentials) {	
+	public ResourceInfo resourceInfo(@PathParam("resourceId") String resourceId, Map<String, String> resourceCredentials) {
 		System.out.println("Resource info requested for : " + resourceId);
 		return infoService.info(UUID.fromString(resourceId), resourceCredentials);
 	}
@@ -45,25 +47,25 @@ public class PicsureRS {
 	
 	@POST
 	@Path("/search/{resourceId}")
-	public SearchResults search(@PathParam("resourceId") UUID resourceId, Query searchQuery) {
-		return searchService.search(resourceId, searchQuery.getResourceCredentials(), searchQuery.getQuery());
+	public SearchResults search(@PathParam("resourceId") UUID resourceId, QueryRequest searchQueryRequest) {
+		return searchService.search(resourceId, searchQueryRequest);
 	}
 	
 	@POST
 	@Path("/query/{resourceId}")
-	public QueryResults query(@PathParam("resourceId") UUID resourceId, Query dataQuery) {
-		return queryService.query(resourceId, dataQuery.getResourceCredentials(), dataQuery.getQuery());
+	public QueryStatus query(@PathParam("resourceId") UUID resourceId, QueryRequest dataQueryRequest) {
+		return queryService.query(resourceId, dataQueryRequest);
 	}
 	
-	@GET
-	@Path("/query/{queryId}/status)")
-	public QueryStatus queryStatus(@PathParam("queryId") UUID queryId, String resourceCredentials) {
+	@POST
+	@Path("/query/{queryId}/status")
+	public QueryStatus queryStatus(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryStatus(queryId, resourceCredentials);
 	}
 	
-	@GET
+	@POST
 	@Path("/query/{queryId}/result")
-	public QueryResults queryResult(@PathParam("queryId") UUID queryId, String resourceCredentials) {
+	public Response queryResult(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryResult(queryId, resourceCredentials);
 	}
 	

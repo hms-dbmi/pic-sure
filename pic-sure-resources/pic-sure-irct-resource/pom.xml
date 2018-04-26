@@ -149,6 +149,7 @@
 						<configuration>
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</env>
 						</configuration>
 					</execution>
@@ -242,5 +243,10 @@
 			<artifactId>resteasy-jaxb-provider</artifactId>
 			<version>3.0.8.Final</version>
 		</dependency>
-	</dependencies>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-util</artifactId>
+            <version>2.0.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
 </project>

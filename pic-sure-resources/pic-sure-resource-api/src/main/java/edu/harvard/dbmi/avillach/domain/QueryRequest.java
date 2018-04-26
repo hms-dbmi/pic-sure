@@ -2,21 +2,23 @@ package edu.harvard.dbmi.avillach.domain;
 
 import java.util.Map;
 
-public class Query {
+public class QueryRequest {
 	private Map<String, String> resourceCredentials;
-	private String query;
+
+	//instead of string
+	private Object query;
 	
 	public Map<String, String> getResourceCredentials() {
 		return resourceCredentials;
 	}
-	public Query setResourceCredentials(Map<String, String> resourceCredentials) {
+	public QueryRequest setResourceCredentials(Map<String, String> resourceCredentials) {
 		this.resourceCredentials = resourceCredentials;
 		return this;
 	}
-	public String getQuery() {
+	public Object getQuery() {
 		return query;
 	}
-	public Query setQuery(String query) {
+	public QueryRequest setQuery(Object query) {
 		this.query = query;
 		return this;
 	}

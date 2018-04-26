@@ -19,7 +19,8 @@ public class ResourceTestInitializer
     @PostConstruct
     public void insertTestUsers() {
 		Resource fooResource = new Resource()
-				.setBaseUrl("https://nhanes.hms.harvard.edu/rest/v1")
+//				.setBaseUrl("https://nhanes.hms.harvard.edu/rest/v1")
+                .setBaseUrl("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4")
 				.setName("nhanes.hms.harvard.edu");
 		em.persist(fooResource);

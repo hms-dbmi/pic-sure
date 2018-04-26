@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -7,6 +9,7 @@ import java.util.UUID;
  * Information about interacting with a specific resource.
  * 
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ResourceInfo {
 	private UUID id;
 	private String name;

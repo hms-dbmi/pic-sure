@@ -2,7 +2,6 @@ package edu.harvard.dbmi.avillach;
 
 import static org.junit.Assert.assertEquals;
 
-import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Base64;
@@ -11,15 +10,16 @@ import java.util.Map;
 
 import javax.ws.rs.core.HttpHeaders;
 
+import edu.harvard.dbmi.avillach.service.HttpClientUtil;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import jdk.incubator.http.HttpClient;
-import jdk.incubator.http.HttpRequest;
-import jdk.incubator.http.HttpResponse;
-import jdk.incubator.http.HttpResponse.BodyHandler;
 
 public class SystemServiceIT {
 	private static String endpointUrl;
@@ -31,35 +31,24 @@ public class SystemServiceIT {
 
 	@Test
 	public void testStatusEndpointSuccceedsWithSystemUser() throws Exception {
-		HttpClient client = HttpClient.newHttpClient();
-		System.out.println(endpointUrl);
 		String jwt = generateJwtUser1();
-		HttpResponse<String> response = client.send(
-				HttpRequest.newBuilder()
-				.GET()
-				.uri(URI.create(endpointUrl + "system/status"))
-				.header(HttpHeaders.AUTHORIZATION, "Bearer "+ jwt)
-				.build(),
-				BodyHandler.asString());
-		assertEquals("System status should be RUNNING", "RUNNING", response.body());
-		assertEquals("Response status code should be 200", 200, response.statusCode());
+		Header[] headers = new Header[1];
+		headers[0] = new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
+		HttpResponse response = HttpClientUtil.retrieveGetResponse(endpointUrl + "/system/status", headers);
+		assertEquals("System status should be RUNNING", "RUNNING", IOUtils.toString(response.getEntity().getContent(), "UTF-8"));
+		assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
 	}
 
 	@Test
 	public void testStatusEndpointFailsWithNonSystemUser()  {
 		try{
-			HttpClient client = HttpClient.newHttpClient();
-		System.out.println(endpointUrl);
-		String jwt = generateJwtUser2();
-		HttpResponse<String> response = client.send(
-				HttpRequest.newBuilder()
-				.GET()
-				.uri(URI.create(endpointUrl + "system/status"))
-				.header(HttpHeaders.AUTHORIZATION, "Bearer "+ jwt)
-				.build(),
-				BodyHandler.asString());
-		assertEquals("System status should be RUNNING", "User has insufficient privileges.", response.body());
-		assertEquals("Response status code should be 401", 401, response.statusCode());
+			String jwt = generateJwtUser2();
+			Header[] headers = new Header[1];
+			headers[0] = new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
+			HttpResponse response = HttpClientUtil.retrieveGetResponse(endpointUrl + "/system/status", headers);
+
+			assertEquals("System status should be RUNNING", "User has insufficient privileges.", IOUtils.toString(response.getEntity().getContent(), "UTF-8"));
+			assertEquals("Response status code should be 401", 401, response.getStatusLine().getStatusCode());
 		}catch(Exception e) {
 			e.printStackTrace();
 		}

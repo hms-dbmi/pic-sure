@@ -25,6 +25,10 @@ public class ProtocolException extends WebApplicationException {
         this.content = content;
     }
 
+    public ProtocolException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
     public ProtocolException(Response.Status status, Object content) {
         super(status);
         this.content = content;
