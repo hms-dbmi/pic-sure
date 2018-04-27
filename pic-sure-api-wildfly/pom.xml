@@ -260,7 +260,7 @@
 								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</environmentVariables>
 							<systemPropertyVariables>
-								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE/</service.url>
+								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
