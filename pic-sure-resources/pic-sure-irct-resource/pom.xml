@@ -175,7 +175,7 @@
 						</goals>
 						<configuration>
 							<systemPropertyVariables>
-								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure/v1.4/</service.url>
+								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
