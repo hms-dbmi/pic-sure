@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.HttpHeaders;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
@@ -31,12 +32,12 @@ public class PicsureInfoService {
 	 * @param resourceCredentials - Resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
+	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials, HttpHeaders headers) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
-		return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
+		return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials, headers);
 	}
 
 	/**

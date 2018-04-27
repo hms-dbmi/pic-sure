@@ -6,12 +6,15 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.Map;
@@ -36,7 +39,7 @@ public class ResourceWebClient {
 
     public ResourceWebClient() { }
 
-    public ResourceInfo info(String baseURL, Map<String, String> resourceCredentials){
+    public ResourceInfo info(String baseURL, Map<String, String> resourceCredentials, HttpHeaders httpHeaders){
         logger.debug("Calling ResourceWebClient info()");
         try {
             if (resourceCredentials == null){
@@ -48,7 +51,12 @@ public class ResourceWebClient {
             logger.debug("Calling /info at ResourceURL: {}", baseURL);
             String pathName = "/info";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            //Is there a better way to deal with these different types of Header objects?
+            Header[] headers = new Header[1];
+            //Pass on the authorization
+            Header authorizationHeader = new BasicHeader("Authorization", httpHeaders.getHeaderString("Authorization"));
+            headers[0] = authorizationHeader;
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("Resource did not return a 200");
                 throw new ResourceInterfaceException(baseURL +  " returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
@@ -59,7 +67,7 @@ public class ResourceWebClient {
         }
     }
 
-    public SearchResults search(String baseURL, QueryRequest searchQueryRequest){
+    public SearchResults search(String baseURL, QueryRequest searchQueryRequest, HttpHeaders httpHeaders){
         logger.debug("Calling ResourceWebClient search()");
         try {
             if (baseURL == null){
@@ -70,7 +78,12 @@ public class ResourceWebClient {
             }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            //Is there a better way to deal with these different types of Header objects?
+            Header[] headers = new Header[1];
+            //Pass on the authorization
+            Header authorizationHeader = new BasicHeader("Authorization", httpHeaders.getHeaderString("Authorization"));
+            headers[0] = authorizationHeader;
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode() + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
@@ -82,7 +95,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryStatus query(String baseURL, QueryRequest dataQueryRequest){
+    public QueryStatus query(String baseURL, QueryRequest dataQueryRequest, HttpHeaders httpHeaders){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -93,7 +106,12 @@ public class ResourceWebClient {
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            //Is there a better way to deal with these different types of Header objects?
+            Header[] headers = new Header[1];
+            //Pass on the authorization
+            Header authorizationHeader = new BasicHeader("Authorization", httpHeaders.getHeaderString("Authorization"));
+            headers[0] = authorizationHeader;
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
@@ -104,7 +122,7 @@ public class ResourceWebClient {
         }
     }
 
-    public QueryStatus queryStatus(String baseURL, String queryId, Map<String, String> resourceCredentials){
+    public QueryStatus queryStatus(String baseURL, String queryId, Map<String, String> resourceCredentials, HttpHeaders httpHeaders){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -118,7 +136,12 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            //Is there a better way to deal with these different types of Header objects?
+            Header[] headers = new Header[1];
+            //Pass on the authorization
+            Header authorizationHeader = new BasicHeader("Authorization", httpHeaders.getHeaderString("Authorization"));
+            headers[0] = authorizationHeader;
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }
@@ -129,7 +152,7 @@ public class ResourceWebClient {
         }
     }
 
-    public Response queryResult(String baseURL, String queryId, Map<String, String> resourceCredentials){
+    public Response queryResult(String baseURL, String queryId, Map<String, String> resourceCredentials, HttpHeaders httpHeaders){
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (baseURL == null){
@@ -143,7 +166,12 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            //Is there a better way to deal with these different types of Header objects?
+            Header[] headers = new Header[1];
+            //Pass on the authorization
+            Header authorizationHeader = new BasicHeader("Authorization", httpHeaders.getHeaderString("Authorization"));
+            headers[0] = authorizationHeader;
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
             }

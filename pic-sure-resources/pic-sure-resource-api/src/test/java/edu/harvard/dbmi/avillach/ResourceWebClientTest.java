@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
+import org.powermock.api.mockito.PowerMockito;
+import static org.powermock.api.mockito.PowerMockito.when;
 import org.junit.Rule;
 import org.junit.Test;
 
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,13 +23,15 @@ import static org.junit.Assert.*;
 public class ResourceWebClientTest {
 
     private final static ObjectMapper json = new ObjectMapper();
-    private final static String token = "testToken";
+//    private final static String token = "testToken";
+    private final static String token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJzYW1scHxmb29AYmFyLmNvbSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MCIsImlhdCI6MTUyNDg0MjkxMiwiZW1haWwiOiJmb29AYmFyLmNvbSIsImV4cCI6MTk5ODIyODUxMn0.lTRCZUb-WRALPdmLcfi_JKazk8FrItrjWnx8LCm6NDRCbeU6HDUIO17xPmZuaeYB34jXQv40pZ4TjP5NlVRpKA";
     private final static int port = 8079;
     private final static String testURL = "http://localhost:"+port;
     private final ResourceWebClient cut = new ResourceWebClient();
 
     @Rule
     public WireMockClassRule wireMockRule = new WireMockClassRule(port);
+
 
     @Test
     public void testInfo() throws JsonProcessingException{
@@ -37,9 +42,13 @@ public class ResourceWebClientTest {
                 .withStatus(200)
               .withBody(resourceInfo)));
 
+        HttpHeaders headers = PowerMockito.mock(HttpHeaders.class);
+        when(headers.getHeaderString("Authorization")).thenReturn("Bearer " + token);
+
+
         //Should throw an error if any parameters are missing
         try {
-            cut.info(testURL, null);
+            cut.info(testURL, null, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 401 Unauthorized", e.getMessage());
@@ -47,14 +56,14 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         try {
-            cut.info(null, credentials);
+            cut.info(null, credentials, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Assuming everything goes right
-        ResourceInfo result = cut.info(testURL, credentials);
+        ResourceInfo result = cut.info(testURL, credentials, headers);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -63,7 +72,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.info(testURL, credentials);
+            cut.info(testURL, credentials, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("returned 500"));
@@ -77,7 +86,7 @@ public class ResourceWebClientTest {
                         .withBody(incorrectResponse)));
 
         try {
-            cut.info(testURL, credentials);
+            cut.info(testURL, credentials, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
@@ -93,23 +102,26 @@ public class ResourceWebClientTest {
                         .withStatus(200)
                         .withBody(searchResults)));
 
+        HttpHeaders headers = PowerMockito.mock(HttpHeaders.class);
+        when(headers.getHeaderString("Authorization")).thenReturn("Bearer " + token);
+
         //Should throw an error if any parameters are missing
         try {
-            cut.search(testURL, null);
+            cut.search(testURL, null, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         QueryRequest request = new QueryRequest();
         try {
-            cut.search(null, request);
+            cut.search(null, request, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
 
         //If everything goes right
-        SearchResults result = cut.search(testURL, request);
+        SearchResults result = cut.search(testURL, request, headers);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -118,7 +130,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.search(testURL, request);
+            cut.search(testURL, request, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -134,7 +146,7 @@ public class ResourceWebClientTest {
                         .withBody(json.writeValueAsString(incorrectResponse))));
 
         try {
-            cut.search(testURL, request);
+            cut.search(testURL, request, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
@@ -149,24 +161,26 @@ public class ResourceWebClientTest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withBody(queryResults)));
+        HttpHeaders headers = PowerMockito.mock(HttpHeaders.class);
+        when(headers.getHeaderString("Authorization")).thenReturn("Bearer " + token);
 
         //Should fail if any parameters are missing
         try {
-            cut.query(testURL, null);
+            cut.query(testURL, null, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         QueryRequest request = new QueryRequest();
         try {
-            cut.query(null, request);
+            cut.query(null, request, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything goes correctly
-        QueryStatus result = cut.query(testURL, request);
+        QueryStatus result = cut.query(testURL, request, headers);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -175,7 +189,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.query(testURL, request);
+            cut.query(testURL, request, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -191,7 +205,7 @@ public class ResourceWebClientTest {
                         .withBody(json.writeValueAsString(incorrectResponse))));
 
         try {
-            cut.query(testURL, request);
+            cut.query(testURL, request, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
@@ -206,10 +220,12 @@ public class ResourceWebClientTest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withBody("Any old response will work")));
+        HttpHeaders headers = PowerMockito.mock(HttpHeaders.class);
+        when(headers.getHeaderString("Authorization")).thenReturn("Bearer " + token);
 
         //Should fail if missing any parameters
         try {
-            cut.queryResult(testURL, testId, null);
+            cut.queryResult(testURL, testId, null, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 401 Unauthorized", e.getMessage());
@@ -217,20 +233,20 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         try {
-            cut.queryResult(testURL, null, credentials);
+            cut.queryResult(testURL, null, credentials, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
-            cut.queryResult(null, testId, credentials);
+            cut.queryResult(null, testId, credentials, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything should work here
-        Response result = cut.queryResult(testURL,testId, credentials);
+        Response result = cut.queryResult(testURL,testId, credentials, headers);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -239,7 +255,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryResult(testURL, testId, credentials);
+            cut.queryResult(testURL, testId, credentials, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -258,10 +274,12 @@ public class ResourceWebClientTest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withBody(queryStatus)));
+        HttpHeaders headers = PowerMockito.mock(HttpHeaders.class);
+        when(headers.getHeaderString("Authorization")).thenReturn("Bearer " + token);
 
         //Fails with any missing parameters
         try {
-            cut.queryStatus(testURL, testId, null);
+            cut.queryStatus(testURL, testId, null, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 401 Unauthorized", e.getMessage());
@@ -269,20 +287,20 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         try {
-            cut.queryStatus(testURL, null, credentials);
+            cut.queryStatus(testURL, null, credentials, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
-            cut.queryStatus(null, testId, credentials);
+            cut.queryStatus(null, testId, credentials, headers);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Everything should work here
-        QueryStatus result = cut.queryStatus(testURL,testId, credentials);
+        QueryStatus result = cut.queryStatus(testURL,testId, credentials, headers);
         assertNotNull("Result should not be null", result);
         //Make sure all necessary fields are present
         assertNotNull("Duration should not be null",result.getDuration());
@@ -296,7 +314,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryStatus(testURL, testId, credentials);
+            cut.queryStatus(testURL, testId, credentials, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -312,7 +330,7 @@ public class ResourceWebClientTest {
                         .withBody(json.writeValueAsString(incorrect))));
 
         try {
-            cut.queryStatus(testURL, testId, credentials);
+            cut.queryStatus(testURL, testId, credentials, headers);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));

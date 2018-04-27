@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.HttpHeaders;
 
 public class PicsureSearchService {
 
@@ -26,12 +27,12 @@ public class PicsureSearchService {
      *                       and resource specific query (could be a string or a json object)
 	 * @return {@link SearchResults}
 	 */
-	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
+	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest, HttpHeaders headers) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
-		return resourceWebClient.search(resource.getBaseUrl(), searchQueryRequest);
+		return resourceWebClient.search(resource.getBaseUrl(), searchQueryRequest, headers);
 	}
 
 }
