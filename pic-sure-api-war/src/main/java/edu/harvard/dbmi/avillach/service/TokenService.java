@@ -32,9 +32,7 @@ public class TokenService {
 
             //Essentially we want to return jws.getBody() with an additional active: true field
             responseMap.put("active", true);
-            for (Map.Entry<String, Object> entry : jws.getBody().entrySet()){
-                responseMap.put(entry.getKey(), entry.getValue());
-            }
+            responseMap.putAll(jws.getBody());
 
            return Response.ok(responseMap, MediaType.APPLICATION_JSON_TYPE).build();
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
