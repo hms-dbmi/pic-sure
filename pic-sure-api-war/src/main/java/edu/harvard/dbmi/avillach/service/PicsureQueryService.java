@@ -18,7 +18,6 @@ import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
-import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 /**
@@ -48,13 +47,13 @@ public class PicsureQueryService {
 	 * @return {@link QueryResults} object
 	 */
 	@Transactional
-	public QueryStatus query(UUID resourceId, QueryRequest dataQueryRequest, HttpHeaders headers) {
+	public QueryStatus query(UUID resourceId, QueryRequest dataQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			//TODO Create custom exception
 			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
 		}
-		QueryStatus results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest, headers);
+		QueryStatus results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
 		Query queryEntity = new Query();
@@ -79,14 +78,14 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials, HttpHeaders headers) {
+	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
 		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials, headers);
+		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 		query.setStatus(status.getStatus());
 		em.persist(query);
 		status.setStartTime(query.getStartTime().getTime());
@@ -104,14 +103,14 @@ public class PicsureQueryService {
 	 * @return {@link QueryResults}
 	 */
 	@Transactional
-	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials, HttpHeaders headers) {
+	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
 		//TODO Do we need to update any information in the query object?
-		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials, headers);
+		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 	}
 
 }
