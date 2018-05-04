@@ -16,12 +16,14 @@ public class BaseIT {
 	private static final String CLIENT_SECRET = System.getenv("PIC_SURE_CLIENT_SECRET");
 
 	protected static String endpointUrl;
+	protected static String irctEndpointUrl;
 	
 	protected static HttpClient client = HttpClient.newHttpClient();
 	
 	@BeforeClass
 	public static void beforeClass() {
 		endpointUrl = System.getProperty("service.url");
+		irctEndpointUrl = System.getProperty("irct.service.url");
 	}
 
 	/* These users are initialized in the database in the UserTestInitializer class. An instance

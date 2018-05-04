@@ -44,28 +44,23 @@
 		<dependency>
 			<groupId>javax</groupId>
 			<artifactId>javaee-api</artifactId>
-			<version>8.0</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>javax.xml.bind</groupId>
 			<artifactId>jaxb-api</artifactId>
-			<version>2.3.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.sun.xml.bind</groupId>
 			<artifactId>jaxb-core</artifactId>
-			<version>2.3.0</version>
 		</dependency>
 		<dependency>
 			<groupId>com.sun.xml.bind</groupId>
 			<artifactId>jaxb-impl</artifactId>
-			<version>2.3.0</version>
 		</dependency>
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt</artifactId>
-			<version>0.9.0</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -135,6 +130,15 @@
 									<overWrite>true</overWrite>
 									<outputDirectory>${jboss.home}/modules/system/layers/base/com/sql/mysql/main/</outputDirectory>
 								</artifactItem>
+								<artifactItem>
+									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+									<artifactId>pic-sure-irct-resource</artifactId>
+									<version>${project.version}</version>
+									<type>war</type>
+									<overWrite>true</overWrite>
+									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
+									<destFileName>IRCT.war</destFileName>
+								</artifactItem>
 							</artifactItems>
 						</configuration>
 					</execution>
@@ -189,6 +193,12 @@
 						<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
 						<java-opt>--add-modules=jdk.incubator.httpclient</java-opt>
 					</java-opts>
+					<env>
+						<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
+						<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
+						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1</TARGET_IRCT_URL>
+						<RESULT_FORMAT>JSON</RESULT_FORMAT>
+					</env>
 					<add-user>
 						<users>
 							<user>
@@ -261,6 +271,7 @@
 							</environmentVariables>
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
+								<irct.service.url>http://localhost:8080/IRCT/</irct.service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
