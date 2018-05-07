@@ -137,7 +137,6 @@
 									<type>war</type>
 									<overWrite>true</overWrite>
 									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
-									<destFileName>IRCT.war</destFileName>
 								</artifactItem>
 							</artifactItems>
 						</configuration>
@@ -271,7 +270,7 @@
 							</environmentVariables>
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
-								<irct.service.url>http://localhost:8080/IRCT/</irct.service.url>
+								<irct.service.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
