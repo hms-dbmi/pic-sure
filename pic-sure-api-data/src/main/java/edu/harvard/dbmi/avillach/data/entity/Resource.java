@@ -2,7 +2,7 @@ package edu.harvard.dbmi.avillach.data.entity;
 
 import javax.persistence.Entity;
 
-@Entity
+@Entity(name = "resource")
 public class Resource extends BaseEntity{
 
 	private String name;

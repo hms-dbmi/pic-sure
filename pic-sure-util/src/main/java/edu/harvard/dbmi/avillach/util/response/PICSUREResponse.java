@@ -114,4 +114,8 @@ public class PICSUREResponse {
         return error(status, null, content, MediaType.APPLICATION_JSON_TYPE);
     }
 
+    public static Response unauthorizedError(Object content) {
+        return error(Response.Status.UNAUTHORIZED, "Unauthorized", content, DEFAULT_MEDIA_TYPE);
+    }
+
 }

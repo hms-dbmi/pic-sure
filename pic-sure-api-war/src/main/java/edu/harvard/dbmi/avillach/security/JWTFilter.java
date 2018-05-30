@@ -16,6 +16,7 @@ import javax.ws.rs.ext.Provider;
 
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
@@ -41,26 +42,31 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			String token = authorizationHeader.substring(6).trim();
 
-			Jws<Claims> jws = Jwts.parser().setSigningKey(Base64.getEncoder().encode(clientSecret.getBytes())).parseClaimsJws(token);
+			Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 
 			String subject = jws.getBody().getSubject();
 			
 			String userId = jws.getBody().get(userIdClaim, String.class);
 						
 			User authenticatedUser = userRepo.findOrCreate(subject, userId);
-			
+
+			if (authenticatedUser == null)
+				requestContext.abortWith(PICSUREResponse.unauthorizedError("Cannot find or create a user"));
+
+
 			String[] rolesAllowed = resourceInfo.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
 							: new String[]{};
 			for(String role : rolesAllowed) {
-				if(!authenticatedUser.getRoles().contains(role)) {
-					requestContext.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("User has insufficient privileges.").build());
+				if(authenticatedUser.getRoles() == null
+					|| !authenticatedUser.getRoles().contains(role)) {
+					requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
 				}
 			}
 			
 		} catch (Exception e) {
 			e.printStackTrace();
-			requestContext.abortWith(Response.status(Response.Status.UNAUTHORIZED).build());
+			requestContext.abortWith(PICSUREResponse.unauthorizedError("Exception: " + e.getClass().getName() + " - " + e.getMessage()));
 		}
 	}
 

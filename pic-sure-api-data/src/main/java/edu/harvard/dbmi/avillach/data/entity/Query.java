@@ -9,7 +9,7 @@ import javax.persistence.ManyToOne;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
-@Entity
+@Entity(name = "query")
 public class Query extends BaseEntity {
 
 	//TODO may not need these two things

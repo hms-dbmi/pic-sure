@@ -28,7 +28,7 @@ public class TokenService {
                 return Response.ok(responseMap, MediaType.APPLICATION_JSON_TYPE).build();
             }
 
-            Jws<Claims> jws = Jwts.parser().setSigningKey(Base64.getEncoder().encode(clientSecret.getBytes())).parseClaimsJws(token);
+            Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 
             //Essentially we want to return jws.getBody() with an additional active: true field
             responseMap.put("active", true);
