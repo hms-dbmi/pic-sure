@@ -19,6 +19,7 @@ public class TokenService {
 
     @POST
     @Path("/inspect")
+    @Consumes("application/json")
     public Response inspectToken(Map<String, String> tokenMap){
         Map<String, Object> responseMap = new HashMap<>();
         responseMap.put("active", "false");

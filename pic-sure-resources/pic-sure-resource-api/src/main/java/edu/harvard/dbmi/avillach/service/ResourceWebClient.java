@@ -6,12 +6,16 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.Map;
@@ -31,7 +35,7 @@ public class ResourceWebClient {
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
     private final static ObjectMapper json = new ObjectMapper();
-
+    public static final String BEARER_STRING = "Bearer ";
     public static final String BEARER_TOKEN_KEY = "BEARER_TOKEN";
 
     public ResourceWebClient() { }
@@ -48,14 +52,13 @@ public class ResourceWebClient {
             logger.debug("Calling /info at ResourceURL: {}", baseURL);
             String pathName = "/info";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                logger.error("Resource did not return a 200");
-                throw new ResourceInterfaceException(baseURL +  " returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throwError(resourcesResponse, baseURL);
             }
             return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
-            throw new NotAuthorizedException("Unable to encode resourcecredentials", e);
+            throw new NotAuthorizedException("Unable to encode resource credentials", e);
         }
     }
 
@@ -65,14 +68,15 @@ public class ResourceWebClient {
             if (baseURL == null){
                 throw new NotAuthorizedException("Missing resource URL");
             }
-            if (searchQueryRequest == null){
+            if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
                 throw new ProtocolException("Missing query request info");
             }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode() + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throwError(resourcesResponse, baseURL);
             }
             return readObjectFromResponse(resourcesResponse, SearchResults.class);
         } catch (JsonProcessingException e){
@@ -93,9 +97,9 @@ public class ResourceWebClient {
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throwError(resourcesResponse, baseURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -118,9 +122,9 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throwError(resourcesResponse, baseURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -143,9 +147,9 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, null, body);
+            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throw new ResourceInterfaceException("Resource returned " + resourcesResponse.getStatusLine().getStatusCode()  + ": " + resourcesResponse.getStatusLine().getReasonPhrase());
+                throwError(resourcesResponse, baseURL);
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
@@ -154,6 +158,20 @@ public class ResourceWebClient {
         } catch (IOException e){
             throw new ResourceInterfaceException("Error getting results", e);
         }
+    }
+
+    private void throwError(HttpResponse response, String baseURL){
+        logger.error("Resource did not return a 200");
+        if (response.getStatusLine().getStatusCode() == 401) {
+            throw new NotAuthorizedException(baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+        }
+        throw new ResourceInterfaceException("Resource returned " + response.getStatusLine().getStatusCode() + ": " + response.getStatusLine().getReasonPhrase());
+    }
+
+    private Header[] createAuthorizationHeader(Map<String, String> resourceCredentials){
+        Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + resourceCredentials.get(BEARER_TOKEN_KEY));
+        Header[] headers = {authorizationHeader};
+        return headers;
     }
 
 }

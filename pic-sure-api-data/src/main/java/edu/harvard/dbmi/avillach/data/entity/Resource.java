@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
 
 @Entity
@@ -8,6 +9,9 @@ public class Resource extends BaseEntity{
 	private String name;
 	private String description;
 	private String baseUrl;
+
+	@Column(length = 8192)
+	private String token;
 	
 	public String getName() {
 		return name;
@@ -30,6 +34,15 @@ public class Resource extends BaseEntity{
 	}
 	public Resource setBaseUrl(String baseUrl) {
 		this.baseUrl = baseUrl;
+		return this;
+	}
+
+	public String getToken() {
+		return token;
+	}
+
+	public Resource setToken(String token) {
+		this.token = token;
 		return this;
 	}
 }
