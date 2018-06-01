@@ -34,9 +34,6 @@ public class PicsureQueryService {
 	@Inject
 	ResourceWebClient resourceWebClient;
 
-	@PersistenceContext
-	private EntityManager em;
-
 	/**
 	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
 	 * database for the query.
@@ -62,7 +59,7 @@ public class PicsureQueryService {
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
 		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
-		em.persist(queryEntity);
+		queryRepo.persist(queryEntity);
 		results.setPicsureResultId(queryEntity.getUuid());
 		results.setResourceID(resourceId);
 		return results;
@@ -87,7 +84,7 @@ public class PicsureQueryService {
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 		query.setStatus(status.getStatus());
-		em.persist(query);
+		queryRepo.persist(query);
 		status.setStartTime(query.getStartTime().getTime());
 		status.setResourceID(resource.getUuid());
 		return status;

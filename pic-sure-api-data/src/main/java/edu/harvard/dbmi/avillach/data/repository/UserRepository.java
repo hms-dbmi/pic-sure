@@ -20,12 +20,9 @@ public class UserRepository extends BaseRepository<User> {
 
 	private Logger logger = LoggerFactory.getLogger(UserRepository.class);
 	
-	protected UserRepository() {
+	public UserRepository() {
 		super(new User());
 	}
-
-	@PersistenceContext
-	private EntityManager em;
 	
 	public User findBySubject(String subject) {
 		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
