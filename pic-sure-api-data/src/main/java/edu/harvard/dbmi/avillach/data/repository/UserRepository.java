@@ -39,7 +39,6 @@ public class UserRepository extends BaseRepository<User> {
 		} catch (NoResultException e) {
 			logger.error("findOrCreate() UserId " + userId +
 					" could not be found by `entityManager`");
-
 			user = createUser(subject, userId);
 		}catch(NonUniqueResultException e){
 			logger.error("findOrCreate() Exception:" + e.getMessage());
@@ -49,6 +48,7 @@ public class UserRepository extends BaseRepository<User> {
 	}
 	
 	public User createUser(String subject, String userId) {
+		logger.info("createUser() creating user by userId: " + userId);
 		em.persist(new User().setSubject(subject).setUserId(userId));
 		return findBySubject(subject);
 	}
