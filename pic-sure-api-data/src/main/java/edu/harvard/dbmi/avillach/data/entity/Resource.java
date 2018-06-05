@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 
@@ -10,6 +12,7 @@ public class Resource extends BaseEntity{
 	private String description;
 	private String baseUrl;
 
+	@JsonIgnore
 	@Column(length = 8192)
 	private String token;
 	
