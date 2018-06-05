@@ -1,8 +1,10 @@
 package edu.harvard.dbmi.avillach.service;
 
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.*;
 
 import javax.annotation.Resource;
+import javax.mail.internet.HeaderTokenizer;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -20,25 +22,39 @@ public class TokenService {
     @POST
     @Path("/inspect")
     public Response inspectToken(Map<String, String> tokenMap){
-        Map<String, Object> responseMap = new HashMap<>();
-        responseMap.put("active", "false");
+        TokenInspection tokenInspection = _inspectToken(tokenMap);
+        if (tokenInspection.message != null)
+            tokenInspection.responseMap.put("message", tokenInspection.message);
+
+        return PICSUREResponse.success(tokenInspection.responseMap);
+    }
+
+    private TokenInspection _inspectToken(Map<String, String> tokenMap){
+        TokenInspection tokenInspection = new TokenInspection();
+        tokenInspection.responseMap.put("active", false);
         try {
             String token = tokenMap.get("token");
             if (token == null){
-                return Response.ok(responseMap, MediaType.APPLICATION_JSON_TYPE).build();
+                tokenInspection.message = "Token not found";
+                return tokenInspection;
             }
 
             Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 
             //Essentially we want to return jws.getBody() with an additional active: true field
-            responseMap.put("active", true);
-            responseMap.putAll(jws.getBody());
+            tokenInspection.responseMap.put("active", true);
+            tokenInspection.responseMap.putAll(jws.getBody());
 
-           return Response.ok(responseMap, MediaType.APPLICATION_JSON_TYPE).build();
+            return tokenInspection;
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
-            e.printStackTrace();
-            return Response.ok(responseMap, MediaType.APPLICATION_JSON_TYPE).build();
+            tokenInspection.message = "error: " + e.getMessage();
+            return tokenInspection;
         }
+    }
+
+    private class TokenInspection {
+        Map<String, Object> responseMap = new HashMap<>();
+        String message = null;
     }
 
 }
