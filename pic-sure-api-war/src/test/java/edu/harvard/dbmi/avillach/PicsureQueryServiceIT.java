@@ -206,9 +206,22 @@ public class PicsureQueryServiceIT {
         EntityUtils.consume(response.getEntity());
 
         post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));
-        response = client.execute(post);
+        String results = null;
+
+        //Need to give it time to complete query
+        int i = 0;
+        while (i < 10){
+            response = client.execute(post);
+            results = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+            if (response.getStatusLine().getStatusCode() == 500){
+                Thread.sleep(2000);
+                i++;
+            } else {
+                i = 10;
+            }
+        }
+
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
-        String results = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
         assertNotNull("Results should not be null", results);
 
         //Nonexistent resultId
@@ -232,7 +245,7 @@ public class PicsureQueryServiceIT {
                 .setIssuer("http://localhost:8080")
                 .setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
                 .setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-                .signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("bar".getBytes()))
+                .signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("foo".getBytes()))
                 .compact();
     }
 }

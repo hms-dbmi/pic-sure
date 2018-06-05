@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import java.io.InputStream;
 import java.sql.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
 
 /**
@@ -50,6 +52,14 @@ public class PicsureQueryService {
 			//TODO Create custom exception
 			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
 		}
+		if (dataQueryRequest == null){
+			throw new ProtocolException("Missing query request data");
+		}
+		if (dataQueryRequest.getResourceCredentials() == null){
+			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
+		}
+		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+
 		QueryStatus results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
@@ -81,6 +91,10 @@ public class PicsureQueryService {
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
+		if (resourceCredentials == null){
+			throw new NotAuthorizedException("Missing credentials");
+		}
+		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 		query.setStatus(status.getStatus());
@@ -107,6 +121,10 @@ public class PicsureQueryService {
 		}
 		Resource resource = query.getResource();
 		//TODO Do we need to update any information in the query object?
+		if (resourceCredentials == null){
+			throw new NotAuthorizedException("Missing credentials");
+		}
+		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 	}
 

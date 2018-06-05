@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +37,10 @@ public class PicsureInfoService {
 		if (resource == null){
 			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
+		if (resourceCredentials == null){
+			resourceCredentials = new HashMap<String, String>();
+		}
+		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.info(resource.getBaseUrl(), resourceCredentials);
 	}
 

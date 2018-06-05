@@ -60,7 +60,7 @@ public class SystemServiceIT {
 				.setIssuer("http://localhost:8080")
 				.setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
 				.setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-				.signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("bar".getBytes()))
+				.signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("foo".getBytes()))
 				.compact();
 	}
 

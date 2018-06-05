@@ -21,6 +21,7 @@ public class TokenService {
 
     @POST
     @Path("/inspect")
+    @Consumes("application/json")
     public Response inspectToken(Map<String, String> tokenMap){
         TokenInspection tokenInspection = _inspectToken(tokenMap);
         if (tokenInspection.message != null)

@@ -66,7 +66,8 @@ public class JWTFilter implements ContainerRequestFilter {
 			
 		} catch (Exception e) {
 			e.printStackTrace();
-			requestContext.abortWith(PICSUREResponse.unauthorizedError("Exception: " + e.getClass().getName() + " - " + e.getMessage()));
+			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges. Caused by Exception: "
+					+ e.getClass().getSimpleName() + " - " + e.getMessage()));
 		}
 	}
 
