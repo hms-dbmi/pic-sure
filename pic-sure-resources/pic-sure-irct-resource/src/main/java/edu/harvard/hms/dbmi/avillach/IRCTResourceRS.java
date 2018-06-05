@@ -7,11 +7,13 @@ import java.util.Date;
 import java.util.Map;
 
 import javax.ws.rs.*;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
@@ -35,8 +37,6 @@ public class IRCTResourceRS implements IResourceRS
 	private static final String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
 	private static final String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
-	private static final String AUTHORIZATION = "AUTHORIZATION";
-	private static final String BEARER_STRING = "Bearer ";
 	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 	private final static ObjectMapper json = new ObjectMapper();
@@ -69,10 +69,8 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null){
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
-		Header[] headers = new Header[1];
-		headers[0] = authorizationHeader;
-		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200){
             logger.error(TARGET_IRCT_URL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -108,11 +106,9 @@ public class IRCTResourceRS implements IResourceRS
 				throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
 			}
 			String searchTerm = search.toString();
-			Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
-			Header[] headers = new Header[1];
-			headers[0] = authorizationHeader;
+
 			String pathName = "/resourceService/find?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+			HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token));
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error(TARGET_IRCT_URL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -165,12 +161,9 @@ public class IRCTResourceRS implements IResourceRS
 			queryString = query.toString();
 		}
 
-		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
-		Header[] headers = new Header[1];
-		headers[0] = authorizationHeader;
 		String pathName = "/queryService/runQuery";
 		long starttime = new Date().getTime();
-		HttpResponse response = retrievePostResponse(TARGET_IRCT_URL + pathName, headers, queryString);
+		HttpResponse response = retrievePostResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token), queryString);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -215,11 +208,9 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
-		Header[] headers = new Header[1];
-		headers[0] = authorizationHeader;
+
 		String pathName = "/resultService/resultStatus/"+queryId;
-		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -234,10 +225,10 @@ public class IRCTResourceRS implements IResourceRS
 			//TODO Is this the best way to do this?
 			JsonNode responseNode = json.readTree(response.getEntity().getContent());
 			//Is this an object as expected or an error message?
-			if (responseNode.get("message") != null){
+			/*if (responseNode.get("message") != null){
 				//TODO Custom exception
 				throw new ResourceInterfaceException(responseNode.get("message").asText());
-			}
+			}*/
 			String resourceStatus = responseNode.get("status").asText();
 			status.setResourceStatus(resourceStatus);
 			status.setStatus(mapStatus(resourceStatus));
@@ -261,19 +252,16 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		Header authorizationHeader = new BasicHeader(AUTHORIZATION, BEARER_STRING + token);
-		Header[] headers = new Header[1];
-		headers[0] = authorizationHeader;
 		String pathName = "/resultService/result/"+queryId+"/"+RESULT_FORMAT;
 		//Returns a String in the format requested
-		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, headers);
+		HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_IRCT_URL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
 			if (response.getStatusLine().getStatusCode() == 401) {
 				throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
-			throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+				throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
@@ -296,6 +284,12 @@ public class IRCTResourceRS implements IResourceRS
 				return null;
 		}
 
+	}
+
+	private Header[] createAuthorizationHeader(String token){
+		Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, ResourceWebClient.BEARER_STRING + token);
+		Header[] headers = {authorizationHeader};
+		return headers;
 	}
 
 }

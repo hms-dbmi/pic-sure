@@ -22,7 +22,8 @@ public class ResourceTestInitializer
 //				.setBaseUrl("https://nhanes.hms.harvard.edu/rest/v1")
                 .setBaseUrl("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4")
-				.setName("nhanes.hms.harvard.edu");
+				.setName("nhanes.hms.harvard.edu")
+                .setToken("eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJzYW1scHxmb29AYmFyLmNvbSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MCIsImlhdCI6MTUyNzYxNzUwNCwiZW1haWwiOiJmb29AYmFyLmNvbSIsImV4cCI6MjAwMTAwMzEwNH0.e3lxNWXL5pBtmcjadPjX7YDPi8tSoU6VeVK38bUEyL6YnS4_Dwh-rPVgxjbaxbN8o7XqBOSslwWdy7Jxw-6slQ");
 		em.persist(fooResource);
     }
     

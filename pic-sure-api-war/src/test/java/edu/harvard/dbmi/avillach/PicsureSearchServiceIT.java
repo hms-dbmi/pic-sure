@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -62,7 +63,9 @@ public class PicsureSearchServiceIT {
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         response = client.execute(post);
         assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
-        EntityUtils.consume(response.getEntity());
+        JsonNode responseNode = json.readTree(response.getEntity().getContent());
+        assertEquals("Should return missing query message", "Missing query request data", responseNode.get("message").asText());
+
 
         QueryRequest searchQueryRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -71,7 +74,8 @@ public class PicsureSearchServiceIT {
         post.setEntity(new StringEntity(json.writeValueAsString(searchQueryRequest)));
         response = client.execute(post);
         assertEquals("Missing query search info should return 500", 500, response.getStatusLine().getStatusCode());
-        EntityUtils.consume(response.getEntity());
+        responseNode = json.readTree(response.getEntity().getContent());
+        assertEquals("Should return missing query message", "Missing query request info", responseNode.get("message").asText());
 
         searchQueryRequest.setQuery("blood");
         post.setEntity(new StringEntity(json.writeValueAsString(searchQueryRequest)));
@@ -90,7 +94,7 @@ public class PicsureSearchServiceIT {
                 .setIssuer("http://localhost:8080")
                 .setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
                 .setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-                .signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("bar".getBytes()))
+                .signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("foo".getBytes()))
                 .compact();
     }
 }

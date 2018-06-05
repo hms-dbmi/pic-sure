@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import java.util.HashMap;
 import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
@@ -31,6 +32,13 @@ public class PicsureSearchService {
 		if (resource == null){
 			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
+		if (searchQueryRequest == null){
+			throw new ProtocolException("Missing query request data");
+		}
+		if (searchQueryRequest.getResourceCredentials() == null){
+			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
+		}
+		searchQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.search(resource.getBaseUrl(), searchQueryRequest);
 	}
 
