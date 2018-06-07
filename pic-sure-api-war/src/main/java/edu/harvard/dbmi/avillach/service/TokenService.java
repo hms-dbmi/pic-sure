@@ -2,6 +2,8 @@ package edu.harvard.dbmi.avillach.service;
 
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
 import javax.mail.internet.HeaderTokenizer;
@@ -16,6 +18,8 @@ import java.util.Map;
 @Path("/token")
 public class TokenService {
 
+    Logger logger = LoggerFactory.getLogger(TokenService.class);
+
     @Resource(mappedName = "java:global/client_secret")
     private String clientSecret;
 
@@ -23,6 +27,7 @@ public class TokenService {
     @Path("/inspect")
     @Consumes("application/json")
     public Response inspectToken(Map<String, String> tokenMap){
+        logger.info("TokenInspect starting...");
         TokenInspection tokenInspection = _inspectToken(tokenMap);
         if (tokenInspection.message != null)
             tokenInspection.responseMap.put("message", tokenInspection.message);
@@ -48,6 +53,7 @@ public class TokenService {
 
             return tokenInspection;
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
+            logger.error("_inspectToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
             tokenInspection.message = "error: " + e.getMessage();
             return tokenInspection;
         }
