@@ -20,9 +20,13 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
+
+	Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
 	@Context
 	ResourceInfo resourceInfo;
