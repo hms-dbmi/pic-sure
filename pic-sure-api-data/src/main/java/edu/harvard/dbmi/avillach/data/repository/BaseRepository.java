@@ -33,12 +33,12 @@ public class BaseRepository<T> {
 	}
 	
 	@SuppressWarnings("unchecked")
-	protected CriteriaQuery<T> query(){
+	public CriteriaQuery<T> query(){
 		return cb().createQuery(type);
 	}
 	
 	@SuppressWarnings("rawtypes")
-	protected <V> Predicate eq(Root root, String columnName, V value){
+	public <V> Predicate eq(Root root, String columnName, V value){
 		return cb().equal(root.get(columnName), value);
 	}
 
@@ -60,7 +60,7 @@ public class BaseRepository<T> {
 		return query().from(type);
 	}
 	
-	protected class InParam<S>{
+	public class InParam<S>{
 		private String parameterName;
 		private Class<S> parameterValueClass;
 		private S parameterValue;
@@ -91,11 +91,11 @@ public class BaseRepository<T> {
 		}
 	}
 	
-	protected InParam inParam(Class type){
+	public InParam inParam(Class type){
 		return new InParam(type);
 	}
 	
-	protected StoredProcedureQuery createQueryFor(String procedureName, Class entityType, InParam ... inParams){
+	public StoredProcedureQuery createQueryFor(String procedureName, Class entityType, InParam ... inParams){
 		StoredProcedureQuery validationsQuery = 
 				em.createStoredProcedureQuery(procedureName, entityType);
 		for(InParam param : inParams){
@@ -103,5 +103,9 @@ public class BaseRepository<T> {
 			.setParameter(param.parameterName, param.parameterValue);			
 		}
 		return validationsQuery;
+	}
+
+	public void persist(T t){
+		em.persist(t);
 	}
 }
