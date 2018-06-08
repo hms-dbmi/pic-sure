@@ -20,7 +20,7 @@ public class UserRepository extends BaseRepository<User> {
 
 	private Logger logger = LoggerFactory.getLogger(UserRepository.class);
 	
-	public UserRepository() {
+	protected UserRepository() {
 		super(new User());
 	}
 	

@@ -9,5 +9,5 @@ import javax.transaction.Transactional;
 @ApplicationScoped
 public class QueryRepository extends BaseRepository<Query>{
 
-    public QueryRepository() {super(new Query());}
+    protected QueryRepository() {super(new Query());}
 }

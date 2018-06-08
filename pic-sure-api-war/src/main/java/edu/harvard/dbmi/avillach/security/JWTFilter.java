@@ -6,6 +6,7 @@ import java.util.Base64;
 import javax.annotation.Resource;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
@@ -57,7 +58,6 @@ public class JWTFilter implements ContainerRequestFilter {
 			if (authenticatedUser == null)
 				requestContext.abortWith(PICSUREResponse.unauthorizedError("Cannot find or create a user"));
 
-
 			String[] rolesAllowed = resourceInfo.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
 							: new String[]{};
@@ -68,10 +68,13 @@ public class JWTFilter implements ContainerRequestFilter {
 				}
 			}
 			
-		} catch (Exception e) {
+		} catch (NotAuthorizedException e) {
+			// we should show different response based on role
+			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
+		} catch (Exception e){
+			// we should show different response based on role
 			e.printStackTrace();
-			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges. Caused by Exception: "
-					+ e.getClass().getSimpleName() + " - " + e.getMessage()));
+			requestContext.abortWith(PICSUREResponse.applicationError("Inner application user, please contact system admin"));
 		}
 	}
 
