@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
@@ -20,7 +19,6 @@ import static org.junit.Assert.*;
 public class IRCTResourceIT extends BaseIT {
 
 	private final static String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU";
-	private final static ObjectMapper json = new ObjectMapper();
 	private final static String queryString = "{" +
 			"    \"select\": [" +
 			"        {" +
@@ -83,9 +81,7 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
-/*		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
-*/
+
 		//This should work
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		body = json.writeValueAsString(credentials);
@@ -274,19 +270,14 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
-/*		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
-*/
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         body = json.writeValueAsString(credentials);
 
         //TODO This is just returning what IRCT returns - do we need to test it?
 		//False query id should return a failure message
-        response = retrievePostResponse(irctEndpointUrl+"/pic-sure/v1.4/query/1/result", null, body);
-		assertEquals("Should return a 200",200, response.getStatusLine().getStatusCode());
-		JsonNode responseNode = json.readTree(response.getEntity().getContent());
-		assertNotNull("Nonexistent queryId should return an error message", responseNode.get("message"));
+        response = retrievePostResponse(irctEndpointUrl+"/pic-sure/v1.4/query/111/result", null, body);
+		assertEquals("Should return a 500",500, response.getStatusLine().getStatusCode());
 
         //This should work
 		response = retrievePostResponse(irctEndpointUrl+"/pic-sure/v1.4/query/"+testQueryResultId+"/result", null, body);
@@ -333,14 +324,15 @@ public class IRCTResourceIT extends BaseIT {
 		//Make sure all necessary fields are present
         //TODO The numerical values are set in PicSureRS layer, may not apply here
 		assertNotNull("Duration should not be null",queryStatus.getDuration());
+
 		assertNotNull("Expiration should not be null",queryStatus.getExpiration());
 		assertNotNull("ResourceStatus should not be null",queryStatus.getResourceStatus());
 		assertNotNull("Status should not be null",queryStatus.getStatus());
 		assertNotNull("Starttime should not be null",queryStatus.getStartTime());
 
 		//Try a queryId that doesn't exist
-		response = retrievePostResponse(irctEndpointUrl+"/pic-sure/v1.4/query/1/status", null, body);
-		assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());
+		response = retrievePostResponse(irctEndpointUrl+"/pic-sure/v1.4/query/111/status", null, body);
+		//assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());
 
 		responseMessage = json.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);

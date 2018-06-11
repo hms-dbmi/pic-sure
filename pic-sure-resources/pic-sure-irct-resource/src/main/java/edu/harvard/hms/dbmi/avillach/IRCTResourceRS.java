@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Map;
 
@@ -109,21 +110,28 @@ public class IRCTResourceRS implements IResourceRS
 
 			String pathName = "/resourceService/find?term=" + URLEncoder.encode(searchTerm, "UTF-8");
 			HttpResponse response = retrieveGetResponse(TARGET_IRCT_URL + pathName, createAuthorizationHeader(token));
+			SearchResults results = new SearchResults();
+			results.setSearchQuery(searchTerm);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error(TARGET_IRCT_URL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				//TODO Is there a better way to make sure the correct exception type is thrown?
+				//If the result is empty, a 500 is thrown for some reason
+				JsonNode responseObject = json.readTree(response.getEntity().getContent());
+				if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
+					return results;
+				}
+					//TODO Is there a better way to make sure the correct exception type is thrown?
 				if (response.getStatusLine().getStatusCode() == 401) {
 					throw new NotAuthorizedException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 				}
 				throw new ResourceInterfaceException(TARGET_IRCT_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
-			SearchResults results = new SearchResults();
-			results.setSearchQuery(searchTerm);
 			results.setResults(readObjectFromResponse(response, Object.class));
 			return results;
 		} catch (UnsupportedEncodingException e){
 			//TODO what to do about this
 			throw new ApplicationException("Error encoding search term: " + e.getMessage());
+		} catch (IOException e){
+			throw new ApplicationException("Error reading response: " + e.getMessage());
 		}
 	}
 
