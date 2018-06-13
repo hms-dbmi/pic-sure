@@ -10,7 +10,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 public class ResourceRepository extends BaseRepository<Resource> {
 
 	protected ResourceRepository() {
-		super(new Resource());
+		super(Resource.class);
 	}
 
 	

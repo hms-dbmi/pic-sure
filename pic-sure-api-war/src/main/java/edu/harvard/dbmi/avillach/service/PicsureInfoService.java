@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import javax.inject.Inject;
+import javax.ws.rs.Path;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
@@ -13,7 +14,6 @@ import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public class PicsureInfoService {
 
@@ -50,6 +50,11 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public List<Resource> resources() {
+
+		//To my understanding, picsure info service is for a specific resource
+		//which means list resources should be listing the resources under this
+		//specific one, not all resources in the system
+
 		//TODO Need to limit the metadata returned
 		return resourceRepo.list();
 	}

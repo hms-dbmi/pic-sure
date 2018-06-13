@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
-import java.io.Serializable;
-import java.util.List;
+import org.hibernate.Session;
 
 import javax.persistence.EntityManager;
 import javax.persistence.ParameterMode;
@@ -11,14 +10,21 @@ import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
+import java.io.Serializable;
+import java.util.List;
+import java.util.UUID;
 
-public class BaseRepository<T> {
+/**
+ *
+ * @param <T> the type of the entity class
+ * @param <K> the type of the primary key
+ */
+public class BaseRepository<T, K> {
 
-	@SuppressWarnings("rawtypes")
-	protected Class type;
+	protected final Class<T> type;
 	
-	protected BaseRepository(T instance){
-		type = instance.getClass();
+	protected BaseRepository(Class<T> type){
+		this.type = type;
 	}
 
 	@PersistenceContext
@@ -31,31 +37,37 @@ public class BaseRepository<T> {
 	protected CriteriaBuilder cb() {
 		return em().getCriteriaBuilder();
 	}
-	
-	@SuppressWarnings("unchecked")
+
+	/**
+	 *
+	 * @return a criteriaQuery instance created by criteriaBuilder in entitiyManager
+	 */
 	public CriteriaQuery<T> query(){
 		return cb().createQuery(type);
 	}
-	
-	@SuppressWarnings("rawtypes")
-	public <V> Predicate eq(Root root, String columnName, V value){
+
+	public Predicate eq(Root root, String columnName, Object value){
 		return cb().equal(root.get(columnName), value);
 	}
 
-	@SuppressWarnings("unchecked")
-	public T getById(Serializable id){
-		return (T) em().find(type, id);
+	public T getById(K id){
+		return em().find(type, id);
 	}
 
-	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public List<T> list(){
 		CriteriaQuery<T> query = query();
-		Root root = query.from(type);
-		query.select(root);
-		return em.createQuery(query).getResultList();
+		return em().createQuery(query
+				.select(query
+						.from(type)))
+				.getResultList();
 	}
-	
-	@SuppressWarnings("unchecked")
+
+	public List<T> listByIDs(UUID... ids){
+		if (ids == null || ids.length < 1)
+			return list();
+		return em().unwrap(Session.class).byMultipleIds(type).multiLoad(ids);
+	}
+
 	protected Root<T> root(){
 		return query().from(type);
 	}
@@ -97,7 +109,7 @@ public class BaseRepository<T> {
 	
 	public StoredProcedureQuery createQueryFor(String procedureName, Class entityType, InParam ... inParams){
 		StoredProcedureQuery validationsQuery = 
-				em.createStoredProcedureQuery(procedureName, entityType);
+				em().createStoredProcedureQuery(procedureName, entityType);
 		for(InParam param : inParams){
 			validationsQuery.registerStoredProcedureParameter(param.parameterName, param.parameterValueClass, ParameterMode.IN)
 			.setParameter(param.parameterName, param.parameterValue);			
@@ -106,6 +118,13 @@ public class BaseRepository<T> {
 	}
 
 	public void persist(T t){
-		em.persist(t);
+		em().persist(t);
 	}
+
+	public void remove(T t){
+		em().remove(t);
+
+	}
+
+
 }

@@ -100,9 +100,17 @@ public class PICSUREResponse {
     }
 
     /**
-     *  if users are unauthorized, sending bad JSON, or anything user's fault,
-     *  this method should be used
-     * @param status specify what wrong behavior users sent like 400, 401, etc.
+     * Default method for protocol Error means client side has entered something wrong,
+     * the default error status is 400
+     * @param content error content
+     * @return
+     */
+    public static Response protocolError(Object content){
+        return error(Response.Status.BAD_REQUEST, content, MediaType.APPLICATION_JSON_TYPE);
+    }
+
+    /**
+     * @param status giving the flexibility of pointing out what specific status to return
      * @param content error content
      * @return
      */
@@ -114,6 +122,11 @@ public class PICSUREResponse {
         return error(status, null, content, MediaType.APPLICATION_JSON_TYPE);
     }
 
+    /**
+     * status code is 401
+     * @param content
+     * @return
+     */
     public static Response unauthorizedError(Object content) {
         return error(Response.Status.UNAUTHORIZED, "Unauthorized", content, DEFAULT_MEDIA_TYPE);
     }

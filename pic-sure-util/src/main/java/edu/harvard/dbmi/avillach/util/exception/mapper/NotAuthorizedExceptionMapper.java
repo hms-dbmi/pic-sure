@@ -8,7 +8,7 @@ import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class NotAuthorizedMapper implements ExceptionMapper<NotAuthorizedException>{
+public class NotAuthorizedExceptionMapper implements ExceptionMapper<NotAuthorizedException>{
     @Override
     public Response toResponse(NotAuthorizedException exception) {
         return PICSUREResponse.protocolError(Response.Status.UNAUTHORIZED,

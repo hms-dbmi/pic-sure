@@ -8,7 +8,7 @@ import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class ResourceInterfaceMapper implements ExceptionMapper<ResourceInterfaceException>{
+public class ResourceInterfaceExceptionMapper implements ExceptionMapper<ResourceInterfaceException>{
     @Override
     public Response toResponse(ResourceInterfaceException exception) {
         return PICSUREResponse.riError(exception.getMessage());

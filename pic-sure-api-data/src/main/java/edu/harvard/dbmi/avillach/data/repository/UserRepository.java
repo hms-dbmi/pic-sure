@@ -21,7 +21,7 @@ public class UserRepository extends BaseRepository<User> {
 	private Logger logger = LoggerFactory.getLogger(UserRepository.class);
 	
 	protected UserRepository() {
-		super(new User());
+		super(User.class);
 	}
 	
 	public User findBySubject(String subject) {

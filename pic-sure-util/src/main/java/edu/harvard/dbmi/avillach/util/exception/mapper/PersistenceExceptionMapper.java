@@ -8,7 +8,7 @@ import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class PersistenceMapper implements ExceptionMapper<PersistenceException>{
+public class PersistenceExceptionMapper implements ExceptionMapper<PersistenceException>{
 
     @Override
     public Response toResponse(PersistenceException exception) {

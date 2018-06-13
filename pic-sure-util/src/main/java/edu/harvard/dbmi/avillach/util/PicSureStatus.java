@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.domain;
+package edu.harvard.dbmi.avillach.util;
 
 public enum PicSureStatus {
 	QUEUED,
