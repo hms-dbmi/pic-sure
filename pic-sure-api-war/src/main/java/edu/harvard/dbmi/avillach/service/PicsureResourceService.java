@@ -74,7 +74,7 @@ public class PicsureResourceService {
 
         resource = resourceRepo.getById(uuid);
         if (resource != null){
-            return PICSUREResponse.applicationError("Cannot delete the resource by id: " + resourceId)
+            return PICSUREResponse.applicationError("Cannot delete the resource by id: " + resourceId);
         }
 
         return PICSUREResponse.success("Successfully delted resource by id: " + resourceId);

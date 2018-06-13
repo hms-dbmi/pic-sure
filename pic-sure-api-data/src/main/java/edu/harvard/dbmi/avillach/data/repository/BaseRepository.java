@@ -1,7 +1,5 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
-import org.hibernate.Session;
-
 import javax.persistence.EntityManager;
 import javax.persistence.ParameterMode;
 import javax.persistence.PersistenceContext;
@@ -10,9 +8,7 @@ import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
-import java.io.Serializable;
 import java.util.List;
-import java.util.UUID;
 
 /**
  *
@@ -60,12 +56,6 @@ public class BaseRepository<T, K> {
 				.select(query
 						.from(type)))
 				.getResultList();
-	}
-
-	public List<T> listByIDs(UUID... ids){
-		if (ids == null || ids.length < 1)
-			return list();
-		return em().unwrap(Session.class).byMultipleIds(type).multiLoad(ids);
 	}
 
 	protected Root<T> root(){
@@ -123,7 +113,6 @@ public class BaseRepository<T, K> {
 
 	public void remove(T t){
 		em().remove(t);
-
 	}
 
 

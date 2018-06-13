@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.util.exception.mapper;
 
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import org.hibernate.HibernateException;
 
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.ExceptionMapper;

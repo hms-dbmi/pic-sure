@@ -46,7 +46,8 @@
         </dependency>
         <dependency>
             <groupId>org.hibernate</groupId>
-            <artifactId>hibernate-core</artifactId>
+            <artifactId>hibernate-annotations</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
