@@ -1,14 +1,12 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
-import javax.persistence.EntityManager;
-import javax.persistence.ParameterMode;
-import javax.persistence.PersistenceContext;
-import javax.persistence.StoredProcedureQuery;
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
+import org.hibernate.Session;
+
+import javax.persistence.*;
+import javax.persistence.criteria.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  *
@@ -43,19 +41,78 @@ public class BaseRepository<T, K> {
 	}
 
 	public Predicate eq(Root root, String columnName, Object value){
-		return cb().equal(root.get(columnName), value);
+		return eq(cb(),root,columnName,value);
+	}
+
+	public Predicate eq(CriteriaBuilder cb, Root root, String columnName, Object value){
+		return cb.equal(root.get(columnName), value);
+	}
+
+	public <V extends Number> Predicate lt(CriteriaBuilder cb, Root root, String columnName, V value){
+		return cb.lt(root.get(columnName),value);
+	}
+
+	public <V extends Number> Predicate gt(CriteriaBuilder cb, Root root, String columnName, V value){
+		return cb.gt(root.get(columnName),value);
+	}
+
+	public <V extends Comparable> Predicate between(CriteriaBuilder cb, Root root, String columnName, V value1, V value2){
+		Expression<V> exp = root.get(columnName);
+		return cb.between(exp,value1,value2);
+	}
+
+	public Predicate like(CriteriaBuilder cb, Root root, String columnName, String value){
+		Expression<String> exp = root.get(columnName);
+		return cb.like(exp, value);
 	}
 
 	public T getById(K id){
 		return em().find(type, id);
 	}
 
-	public List<T> list(){
+	/**
+	 * assume the operator is eq
+	 * @param columnName
+	 * @param value
+	 * @return
+	 */
+	public List<T> getByColumn(String columnName, Object value){
+		Root root = root();
+		return getByColumns(root, eq(cb(),root,columnName,value));
+	}
+
+	/**
+	 * assume the operator is eq
+	 * @param columnNameValueMap
+	 * @return
+	 */
+	public List<T> getByColumns(Root root, Map<String, Object> columnNameValueMap){
+		CriteriaBuilder cb = cb();
+		List<Predicate> predicates = new ArrayList<>();
+		for (Map.Entry<String, Object> entry : columnNameValueMap.entrySet()){
+			predicates.add(eq(cb,root,entry.getKey(), entry.getValue()));
+		}
+		return getByColumns(root, (Predicate[]) predicates.toArray());
+	}
+
+	/**
+	 * given the ability to assign your own predicates like lt, eq, like
+	 * @param root
+	 * @param predicates provide your own predicates
+	 * @return
+	 */
+	public List<T> getByColumns(Root root, Predicate... predicates){
+
 		CriteriaQuery<T> query = query();
-		return em().createQuery(query
-				.select(query
-						.from(type)))
+		query.select(root);
+		if (predicates != null)
+			query.where(predicates);
+		return em().createQuery(query)
 				.getResultList();
+	}
+
+	public List<T> list(){
+		return getByColumns(root());
 	}
 
 	protected Root<T> root(){
