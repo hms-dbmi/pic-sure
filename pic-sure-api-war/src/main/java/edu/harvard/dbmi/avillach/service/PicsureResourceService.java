@@ -21,7 +21,7 @@ import java.util.UUID;
 /**
  * Service handling business logic for CRUD on resources
  */
-@Path("/resource/")
+@Path("/resource")
 public class PicsureResourceService {
 
     Logger logger = LoggerFactory.getLogger(PicsureResourceService.class);
@@ -31,25 +31,30 @@ public class PicsureResourceService {
 
     @GET
     @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
-    @Path("get{resourceId:(/[^/]+?)?}")
-    public Response getResourceByIdOrAll(
+    @Path("/{resourceId}")
+    public Response getResourceById(
             @PathParam("resourceId") String resourceId) {
-        logger.info("Looing for resource by ID: " + resourceId);
-        if (resourceId == null || resourceId.length() <= 1)
-            resourceId = "all";
-        else
-            resourceId = resourceId.substring(1);
+        logger.info("Looking for resource by ID: " + resourceId + "...");
 
-        List<Resource> resources;
-        if (("all").equalsIgnoreCase(resourceId)){
-            resources = resourceRepo.list();
-        } else {
-            Resource resource = resourceRepo.getById(UUID.fromString(resourceId));
-            if (resource == null)
-                return PICSUREResponse.protocolError("Resource is not found by given resource ID: " + resourceId);
-            else
-                return PICSUREResponse.success(resource);
-        }
+        Resource resource = resourceRepo.getById(UUID.fromString(resourceId));
+        if (resource == null)
+            return PICSUREResponse.protocolError("Resource is not found by given resource ID: " + resourceId);
+        else
+            return PICSUREResponse.success(resource);
+
+    }
+
+    @GET
+    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @Path("")
+    public Response getResourceAll() {
+        logger.info("Getting all resources...");
+        List<Resource> resources = null;
+
+        resources = resourceRepo.list();
+
+        if (resources == null)
+            return PICSUREResponse.applicationError("Error occurs when listing all resources.");
 
         return PICSUREResponse.success(resources);
     }
@@ -57,7 +62,7 @@ public class PicsureResourceService {
     @POST
     @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Path("add")
+    @Path("/")
     public Response addResource(List<Resource> resources){
         if (resources == null || resources.isEmpty())
             return PICSUREResponse.protocolError("No resource to be added.");
@@ -72,10 +77,10 @@ public class PicsureResourceService {
         return PICSUREResponse.success("All resources are added.", addedResources);
     }
 
-    @POST
+    @PUT
     @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Path("update")
+    @Path("/")
     public Response updateResource(List<Resource> resources){
         if (resources == null || resources.isEmpty())
             return PICSUREResponse.protocolError("No resource to be updated.");
@@ -114,9 +119,9 @@ public class PicsureResourceService {
 
 
     @Transactional
-    @GET
+    @DELETE
     @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
-    @Path("remove/{resourceId}")
+    @Path("/{resourceId}")
     public Response removeById(@PathParam("resourceId") final String resourceId) {
         UUID uuid = UUID.fromString(resourceId);
         Resource resource = resourceRepo.getById(uuid);
