@@ -5,73 +5,35 @@
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-		<artifactId>pic-sure-api</artifactId>
+		<artifactId>pic-sure-resources</artifactId>
 		<version>2.0.0-SNAPSHOT</version>
 	</parent>
-	<artifactId>pic-sure-api-wildfly</artifactId>
+	<artifactId>pic-sure-aggregate-resource</artifactId>
+	<name>pic-sure-aggregate-resource</name>
 	<packaging>war</packaging>
-	<name>pic-sure-api-wildfly</name>
 	<url>http://maven.apache.org</url>
 	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<wildfly.version>11.0.0.Final</wildfly.version>
-		<argLine>--add-modules jdk.incubator.httpclient</argLine>
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
-	<dependencies>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-api-data</artifactId>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-irct-resource</artifactId>
-			<classifier>classes</classifier>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-aggregate-resource</artifactId>
-			<classifier>classes</classifier>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-resource-api</artifactId>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-api-war</artifactId>
-			<version>${project.version}</version>
-			<type>war</type>
-		</dependency>
-		<dependency>
-			<groupId>javax</groupId>
-			<artifactId>javaee-api</artifactId>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>javax.xml.bind</groupId>
-			<artifactId>jaxb-api</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>com.sun.xml.bind</groupId>
-			<artifactId>jaxb-core</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>com.sun.xml.bind</groupId>
-			<artifactId>jaxb-impl</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>io.jsonwebtoken</groupId>
-			<artifactId>jjwt</artifactId>
-			<scope>test</scope>
-		</dependency>
-	</dependencies>
 	<build>
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-war-plugin</artifactId>
+				<configuration>
+					<attachClasses>true</attachClasses>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<source>7</source>
+					<target>7</target>
+				</configuration>
+			</plugin>
 			<plugin>
 				<artifactId>maven-clean-plugin</artifactId>
 				<version>3.0.0</version>
@@ -87,12 +49,6 @@
 							</excludes>
 						</fileset>
 					</filesets>
-				</configuration>
-			</plugin>
-			<plugin>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<skip>true</skip>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -119,42 +75,6 @@
 							</artifactItems>
 						</configuration>
 					</execution>
-					<execution>
-						<id>retrieve-mysql-driver</id>
-						<phase>generate-sources</phase>
-						<goals>
-							<goal>copy</goal>
-						</goals>
-						<inherited>false</inherited>
-						<configuration>
-							<artifactItems>
-								<artifactItem>
-									<groupId>mysql</groupId>
-									<artifactId>mysql-connector-java</artifactId>
-									<version>5.1.38</version>
-									<type>jar</type>
-									<overWrite>true</overWrite>
-									<outputDirectory>${jboss.home}/modules/system/layers/base/com/sql/mysql/main/</outputDirectory>
-								</artifactItem>
-								<artifactItem>
-									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-									<artifactId>pic-sure-irct-resource</artifactId>
-									<version>${project.version}</version>
-									<type>war</type>
-									<overWrite>true</overWrite>
-									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
-								</artifactItem>
-								<artifactItem>
-									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-									<artifactId>pic-sure-aggregate-resource</artifactId>
-									<version>${project.version}</version>
-									<type>war</type>
-									<overWrite>true</overWrite>
-									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
-								</artifactItem>
-							</artifactItems>
-						</configuration>
-					</execution>
 				</executions>
 			</plugin>
 			<plugin>
@@ -177,41 +97,20 @@
 							</resources>
 						</configuration>
 					</execution>
-					<execution>
-						<id>copy-module-xml</id>
-						<phase>generate-sources</phase>
-						<goals>
-							<goal>copy-resources</goal>
-						</goals>
-						<configuration>
-							<outputDirectory>${jboss.home}/modules/</outputDirectory>
-							<resources>
-								<resource>
-									<directory>src/main/resources/modules/</directory>
-								</resource>
-							</resources>
-						</configuration>
-					</execution>
 				</executions>
 			</plugin>
+
 			<plugin>
 				<groupId>org.wildfly.plugins</groupId>
 				<artifactId>wildfly-maven-plugin</artifactId>
-				<version>1.2.1.Final</version>
+				<version>1.2.0.Alpha6</version>
 				<configuration>
 					<port>9990</port>
 					<jbossHome>${jboss.home}</jbossHome>
 					<java-opts>
 						<java-opt>-Xmx1024m</java-opt>
 						<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
-						<java-opt>--add-modules=jdk.incubator.httpclient</java-opt>
 					</java-opts>
-					<env>
-						<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
-						<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
-						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1</TARGET_IRCT_URL>
-						<RESULT_FORMAT>JSON</RESULT_FORMAT>
-					</env>
 					<add-user>
 						<users>
 							<user>
@@ -249,10 +148,8 @@
 						</goals>
 						<configuration>
 							<env>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<TARGET_PICSURE_URL>http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure</TARGET_PICSURE_URL>
 								<RESULT_FORMAT>CSV</RESULT_FORMAT>
-								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
-								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 							</env>
 						</configuration>
 					</execution>
@@ -277,15 +174,8 @@
 							<goal>integration-test</goal>
 						</goals>
 						<configuration>
-							<environmentVariables>
-								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
-								<RESULT_FORMAT>CSV</RESULT_FORMAT>
-							</environmentVariables>
 							<systemPropertyVariables>
-								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
-								<irct.service.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.service.url>
-								<aggregate.service.url>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/</aggregate.service.url>
+								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
@@ -319,17 +209,56 @@
 					</dependency>
 				</dependencies>
 			</plugin>
-
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>9</source>
-					<target>9</target>
-					<compilerArgument>--add-modules=jdk.incubator.httpclient</compilerArgument>
-				</configuration>
-			</plugin>
 		</plugins>
-
 	</build>
+	<dependencies>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-resource-api</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>javax</groupId>
+			<artifactId>javaee-api</artifactId>
+			<version>7.0</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.9.4</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>2.6</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jboss.resteasy</groupId>
+			<artifactId>resteasy-jaxb-provider</artifactId>
+			<version>3.0.8.Final</version>
+		</dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-util</artifactId>
+            <version>2.0.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.7</version>
+            <scope>compile</scope>
+        </dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>3.7</version>
+			<scope>compile</scope>
+		</dependency>
+	</dependencies>
 </project>

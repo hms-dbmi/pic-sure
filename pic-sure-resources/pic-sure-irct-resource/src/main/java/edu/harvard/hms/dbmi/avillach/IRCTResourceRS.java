@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Map;
 
@@ -21,6 +20,7 @@ import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.commons.lang3.StringUtils;
 
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import org.apache.http.message.BasicHeader;
@@ -163,8 +163,8 @@ public class IRCTResourceRS implements IResourceRS
 
 		JsonNode query = queryNode.get("queryString");
 		if (query == null){
-			//Assume this means the entire string is the query
-			queryString = queryNode.toString();
+			//Assume this means the entire string is the query - Object nodes return blank asText but JsonNodes add too many quotes
+			queryString = StringUtils.isBlank(queryNode.asText()) ? queryNode.toString() : queryNode.asText();
 		} else {
 			queryString = query.toString();
 		}

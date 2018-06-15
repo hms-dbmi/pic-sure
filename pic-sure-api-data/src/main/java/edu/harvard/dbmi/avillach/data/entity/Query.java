@@ -30,6 +30,8 @@ public class Query extends BaseEntity {
 	@JoinColumn(name = "resourceId")
 	private Resource resource;
 
+	private byte[] metadata;
+
 	public Resource getResource() {
 		return resource;
 	}
@@ -76,5 +78,13 @@ public class Query extends BaseEntity {
 
 	public void setQuery(String query) {
 		this.query = query;
+	}
+
+	public byte[] getMetadata() {
+		return metadata;
+	}
+
+	public void setMetadata(byte[] metadata) {
+		this.metadata = metadata;
 	}
 }
