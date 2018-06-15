@@ -37,18 +37,26 @@ public class PICSUREResponse {
         return success(content, DEFAULT_MEDIA_TYPE);
     }
 
+    public static Response success(String message, Object content){
+        return success(message, content, DEFAULT_MEDIA_TYPE);
+    }
+
     public static Response success(Object content, MediaType type){
         return Response.ok(content, type)
                 .build();
     }
 
-    public static Response success(Object content, String type){
-        return Response.ok(content, type)
+    public static Response success(String message, Object content, MediaType type){
+        return Response.ok(new PICSUREResponseOKwithMsgAndContent(message, content), type)
                 .build();
     }
 
     public static Response error(Object content) {
         return error(content, MediaType.APPLICATION_JSON_TYPE);
+    }
+
+    public static Response error(String message, Object content) {
+        return error(DEFAULT_RESPONSE_ERROR_CODE, null, message, content, DEFAULT_MEDIA_TYPE);
     }
 
     public static Response error(Object content, MediaType type){
@@ -70,9 +78,9 @@ public class PICSUREResponse {
                 .build();
     }
 
-    private static Response error(int status, String errorType, Object content, MediaType type){
+    private static Response error(Response.Status status, String errorType, String message, Object content, MediaType type){
         return Response.status(status)
-                .entity(new PICSUREResponseError(errorType, content))
+                .entity(new PICSUREResponseErrorWithMsgAndContent(errorType, message, content))
                 .type(type)
                 .build();
     }
@@ -87,6 +95,10 @@ public class PICSUREResponse {
         return error(DEFAULT_RESPONSE_ERROR_CODE, "application_error", content, DEFAULT_MEDIA_TYPE);
     }
 
+    public static Response applicationError(String message, Object content){
+        return error(DEFAULT_RESPONSE_ERROR_CODE, "application_error", message, content, DEFAULT_MEDIA_TYPE);
+    }
+
     /**
      *  if the resource interface get some error back from the resource
      *  when the user is requesting, which means IRCT think users are doing well,
@@ -99,6 +111,10 @@ public class PICSUREResponse {
         return error(DEFAULT_RESPONSE_ERROR_CODE, "ri_error", content, DEFAULT_MEDIA_TYPE);
     }
 
+    public static Response riError(String message, Object content){
+        return error(DEFAULT_RESPONSE_ERROR_CODE, "ri_error", message, content, DEFAULT_MEDIA_TYPE);
+    }
+
     /**
      * Default method for protocol Error means client side has entered something wrong,
      * the default error status is 400
@@ -107,6 +123,10 @@ public class PICSUREResponse {
      */
     public static Response protocolError(Object content){
         return error(Response.Status.BAD_REQUEST, content, MediaType.APPLICATION_JSON_TYPE);
+    }
+
+    public static Response protocolError(String message, Object content){
+        return error(Response.Status.BAD_REQUEST, message, content, MediaType.APPLICATION_JSON_TYPE);
     }
 
     /**
@@ -118,10 +138,6 @@ public class PICSUREResponse {
         return error(status, content, MediaType.APPLICATION_JSON_TYPE);
     }
 
-    public static Response protocolError(int status, Object content){
-        return error(status, null, content, MediaType.APPLICATION_JSON_TYPE);
-    }
-
     /**
      * status code is 401
      * @param content
@@ -129,6 +145,10 @@ public class PICSUREResponse {
      */
     public static Response unauthorizedError(Object content) {
         return error(Response.Status.UNAUTHORIZED, "Unauthorized", content, DEFAULT_MEDIA_TYPE);
+    }
+
+    public static Response unauthorizedError(String message, Object content) {
+        return error(Response.Status.UNAUTHORIZED, "Unauthorized", message, content, DEFAULT_MEDIA_TYPE);
     }
 
 }

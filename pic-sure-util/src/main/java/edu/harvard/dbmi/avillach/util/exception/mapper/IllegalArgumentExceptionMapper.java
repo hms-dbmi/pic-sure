@@ -11,6 +11,7 @@ public class IllegalArgumentExceptionMapper implements ExceptionMapper<IllegalAr
 
     @Override
     public Response toResponse(IllegalArgumentException exception) {
+        exception.printStackTrace();
         return PICSUREResponse.protocolError(exception.getMessage());
     }
 }

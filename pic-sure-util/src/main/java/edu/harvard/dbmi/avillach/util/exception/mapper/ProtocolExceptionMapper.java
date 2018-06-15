@@ -12,6 +12,6 @@ public class ProtocolExceptionMapper implements ExceptionMapper<ProtocolExceptio
 
     @Override
     public Response toResponse(ProtocolException exception) {
-        return PICSUREResponse.protocolError(exception.getResponse().getStatus(), exception.getContent());
+        return PICSUREResponse.protocolError(exception.getStatus(), exception.getContent());
     }
 }

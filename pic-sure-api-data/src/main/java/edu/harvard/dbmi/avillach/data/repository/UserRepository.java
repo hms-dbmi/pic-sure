@@ -14,9 +14,11 @@ import edu.harvard.dbmi.avillach.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.UUID;
+
 @Transactional
 @ApplicationScoped
-public class UserRepository extends BaseRepository<User> {
+public class UserRepository extends BaseRepository<User, UUID> {
 
 	private Logger logger = LoggerFactory.getLogger(UserRepository.class);
 	
@@ -31,6 +33,12 @@ public class UserRepository extends BaseRepository<User> {
 		return em.createQuery(query.where(eq(queryRoot, "subject", subject))).getSingleResult();
 	}
 
+	/**
+	 *
+	 * @param subject the information for searching for the user
+	 * @param userId the userId for creating the user, if user cannot be found
+	 * @return
+	 */
 	public User findOrCreate(String subject, String userId) {
 		User user;
 		try{

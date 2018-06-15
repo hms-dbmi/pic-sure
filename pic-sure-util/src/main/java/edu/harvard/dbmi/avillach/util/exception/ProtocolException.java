@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.util.exception;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
 
@@ -10,14 +12,17 @@ import javax.ws.rs.core.Response;
  */
 public class ProtocolException extends WebApplicationException {
 
+    @JsonIgnore
+    private Response.Status status;
+
     private Object content;
 
     public ProtocolException() {
-        super(Response.Status.INTERNAL_SERVER_ERROR);
+        this.status = Response.Status.INTERNAL_SERVER_ERROR;
     }
 
     public ProtocolException(Response.Status status) {
-        super(status);
+        this.status = status;
     }
 
     public ProtocolException(Object content) {
@@ -30,8 +35,12 @@ public class ProtocolException extends WebApplicationException {
     }
 
     public ProtocolException(Response.Status status, Object content) {
-        super(status);
+        this.status = status;
         this.content = content;
+    }
+
+    public Response.Status getStatus() {
+        return status;
     }
 
     public Object getContent() {

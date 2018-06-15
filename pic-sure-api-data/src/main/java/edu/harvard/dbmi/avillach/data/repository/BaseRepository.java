@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
+import org.hibernate.Criteria;
 import org.hibernate.Session;
 
 import javax.persistence.*;
 import javax.persistence.criteria.*;
+import javax.transaction.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -13,7 +15,7 @@ import java.util.Map;
  * @param <T> the type of the entity class
  * @param <K> the type of the primary key
  */
-public class BaseRepository<T, K> {
+public abstract class BaseRepository<T, K> {
 
 	protected final Class<T> type;
 	
@@ -77,8 +79,9 @@ public class BaseRepository<T, K> {
 	 * @return
 	 */
 	public List<T> getByColumn(String columnName, Object value){
-		Root root = root();
-		return getByColumns(root, eq(cb(),root,columnName,value));
+	    CriteriaQuery query = query();
+		Root root = root(query);
+		return getByColumns(query, root, eq(cb(),root,columnName,value));
 	}
 
 	/**
@@ -86,13 +89,14 @@ public class BaseRepository<T, K> {
 	 * @param columnNameValueMap
 	 * @return
 	 */
-	public List<T> getByColumns(Root root, Map<String, Object> columnNameValueMap){
+	public List<T> getByColumns(CriteriaQuery query, Map<String, Object> columnNameValueMap){
 		CriteriaBuilder cb = cb();
-		List<Predicate> predicates = new ArrayList<>();
+	    List<Predicate> predicates = new ArrayList<>();
+		Root root = root(query);
 		for (Map.Entry<String, Object> entry : columnNameValueMap.entrySet()){
 			predicates.add(eq(cb,root,entry.getKey(), entry.getValue()));
 		}
-		return getByColumns(root, (Predicate[]) predicates.toArray());
+		return getByColumns(query, root, (Predicate[]) predicates.toArray());
 	}
 
 	/**
@@ -101,22 +105,22 @@ public class BaseRepository<T, K> {
 	 * @param predicates provide your own predicates
 	 * @return
 	 */
-	public List<T> getByColumns(Root root, Predicate... predicates){
+	public List<T> getByColumns(CriteriaQuery query, Root root, Predicate... predicates){
 
-		CriteriaQuery<T> query = query();
 		query.select(root);
-		if (predicates != null)
+		if (predicates != null && predicates.length > 0)
 			query.where(predicates);
 		return em().createQuery(query)
 				.getResultList();
 	}
 
 	public List<T> list(){
-		return getByColumns(root());
+        CriteriaQuery query = query();
+		return getByColumns(query, root(query));
 	}
 
-	protected Root<T> root(){
-		return query().from(type);
+	protected Root<T> root(CriteriaQuery query){
+		return query.from(type);
 	}
 	
 	public class InParam<S>{

@@ -12,6 +12,7 @@ public class HibernateExceptionMapper implements ExceptionMapper<HibernateExcept
 
     @Override
     public Response toResponse(HibernateException exception) {
+        exception.printStackTrace();
         return PICSUREResponse.applicationError(exception.getMessage());
     }
 }

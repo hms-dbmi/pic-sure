@@ -12,6 +12,7 @@ public class PersistenceExceptionMapper implements ExceptionMapper<PersistenceEx
 
     @Override
     public Response toResponse(PersistenceException exception) {
+        exception.printStackTrace();
         return PICSUREResponse.applicationError(exception.getMessage());
     }
 }
