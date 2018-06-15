@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.util.response;
 
+import javax.validation.constraints.NotEmpty;
+import javax.validation.constraints.NotNull;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -40,7 +42,7 @@ public class PICSUREResponse {
     public static Response success(String message, Object content){
         return success(message, content, DEFAULT_MEDIA_TYPE);
     }
-
+    
     public static Response success(Object content, MediaType type){
         return Response.ok(content, type)
                 .build();

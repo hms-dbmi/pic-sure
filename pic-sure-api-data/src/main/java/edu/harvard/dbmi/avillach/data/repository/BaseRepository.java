@@ -176,5 +176,9 @@ public abstract class BaseRepository<T, K> {
 		em().remove(t);
 	}
 
+	public T merge(T t){
+	    return em().merge(t);
+    }
+
 
 }

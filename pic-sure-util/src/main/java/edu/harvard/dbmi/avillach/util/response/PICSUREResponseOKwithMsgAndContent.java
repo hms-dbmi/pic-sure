@@ -1,8 +1,10 @@
 package edu.harvard.dbmi.avillach.util.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 @JsonSerialize
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class PICSUREResponseOKwithMsgAndContent {
 
     private String message;
