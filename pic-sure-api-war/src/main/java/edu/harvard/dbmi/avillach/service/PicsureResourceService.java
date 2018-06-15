@@ -21,7 +21,6 @@ import java.util.UUID;
 /**
  * Service handling business logic for CRUD on resources
  */
-@RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
 @Path("/resource/")
 public class PicsureResourceService {
 
@@ -29,6 +28,7 @@ public class PicsureResourceService {
     ResourceRepository resourceRepo;
 
     @GET
+    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
     @Path("get/{resourceId}")
     public Response getResourceByIdOrAll(
             @DefaultValue("all")
@@ -48,6 +48,7 @@ public class PicsureResourceService {
     }
 
     @POST
+    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("add")
     public Response addResource(List<Resource> resources){
@@ -73,6 +74,7 @@ public class PicsureResourceService {
     }
 
     @GET
+    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
     @Path("remove/{resourceId}")
     public Response removeById(@PathParam("resourceId") final String resourceId) {
         UUID uuid = UUID.fromString(resourceId);
