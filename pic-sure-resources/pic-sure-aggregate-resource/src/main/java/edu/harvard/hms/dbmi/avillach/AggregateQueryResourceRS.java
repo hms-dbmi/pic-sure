@@ -38,7 +38,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials for resource with id ";
 	public static final String INCORRECTLY_FORMATTED_REQUEST = "Incorrectly formatted query request data";
 
-	private Header[] headers = new Header[1];
+	private Header[] headers = {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN)};
 
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -49,8 +49,6 @@ public class AggregateQueryResourceRS implements IResourceRS
 			throw new RuntimeException("TARGET_PICSURE_URL environment variable must be set.");
 		if(PICSURE_2_TOKEN == null)
 			throw new RuntimeException("PICSURE_2_TOKEN environment variable must be set.");
-		Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN);
-		headers[0] = authorizationHeader;
 	}
 	
 	@GET
@@ -75,7 +73,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	@POST
 	@Path("/query")
 	public QueryStatus query(QueryRequest queryRequest) {
-		logger.debug("Calling AggregateQueryResource query()");
+		logger.debug("Calling Aggregate Query Resource query()");
 		if (queryRequest == null) {
 			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 		}
@@ -178,7 +176,6 @@ public class AggregateQueryResourceRS implements IResourceRS
 		try {
 			ArrayList<UUID> queryIdList = SerializationUtils.deserialize(status.getResultMetadata());
 
-			//TODO What format to actually put this in
 			List<JsonNode> responses = new ArrayList<>();
 			for (UUID qid : queryIdList) {
 				pathName = "/query/" + qid + "/result";
@@ -193,7 +190,6 @@ public class AggregateQueryResourceRS implements IResourceRS
 						}
 						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 					}
-					//TODO Probably not this
 					responses.add(json.readTree(response.getEntity().getContent()));
 
 				} catch (IOException e) {

@@ -74,7 +74,7 @@ public class AggregateResourceIT extends BaseIT {
 
     @BeforeClass
     public static void setUp() throws IOException{
-        //Will need to have a resource UUID to make queries to
+        //Will need to know the resource uuids
         String jwt = generateJwtForSystemUser();
         headers[0] = new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         HttpResponse response = retrieveGetResponse(endpointUrl+"/info/resources", headers);
@@ -93,6 +93,7 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testQuery() throws IOException {
+        //Create multiple queries and add them to a main query as a list
         QueryRequest queryRequest1 = new QueryRequest();
         QueryRequest queryRequest2 = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
@@ -241,7 +242,6 @@ public class AggregateResourceIT extends BaseIT {
             JsonNode responseMessage = json.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
             status = responseMessage.get("status").asText();
-
         }
         credentials = new HashMap<String, String>();
         body = json.writeValueAsString(credentials);
@@ -277,7 +277,6 @@ public class AggregateResourceIT extends BaseIT {
         assertNotNull("Response message should not be null", responseMessage);
         //There were 2 queries so there should be 2 results
         assertEquals("There should be 2 results in the array", 2, responseMessage.size());
-
 
     }
 

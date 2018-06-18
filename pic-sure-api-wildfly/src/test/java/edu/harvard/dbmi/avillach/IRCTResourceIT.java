@@ -31,7 +31,7 @@ public class IRCTResourceIT extends BaseIT {
 			"            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
 			"        }" +
 			"    ]," +
-			"    \"where\": [\n" +
+			"    \"where\": [" +
 			"        {" +
 			"            \"predicate\": \"CONTAINS\"," +
 			"            \"field\": {" +
