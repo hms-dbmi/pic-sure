@@ -1,13 +1,12 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
-import java.sql.Date;
+import edu.harvard.dbmi.avillach.util.PicSureStatus;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
-
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import java.sql.Date;
 
 @Entity(name = "query")
 public class Query extends BaseEntity {

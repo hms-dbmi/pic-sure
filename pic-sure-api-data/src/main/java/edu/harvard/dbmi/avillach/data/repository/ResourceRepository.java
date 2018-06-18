@@ -5,12 +5,14 @@ import javax.transaction.Transactional;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 
+import java.util.UUID;
+
 @Transactional
 @ApplicationScoped
-public class ResourceRepository extends BaseRepository<Resource> {
+public class ResourceRepository extends BaseRepository<Resource, UUID> {
 
 	protected ResourceRepository() {
-		super(new Resource());
+		super(Resource.class);
 	}
 
 	

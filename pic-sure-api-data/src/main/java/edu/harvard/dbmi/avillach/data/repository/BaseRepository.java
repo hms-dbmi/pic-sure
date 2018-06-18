@@ -1,24 +1,26 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
-import java.io.Serializable;
+import org.hibernate.Criteria;
+import org.hibernate.Session;
+
+import javax.persistence.*;
+import javax.persistence.criteria.*;
+import javax.transaction.Transactional;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-import javax.persistence.EntityManager;
-import javax.persistence.ParameterMode;
-import javax.persistence.PersistenceContext;
-import javax.persistence.StoredProcedureQuery;
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Predicate;
-import javax.persistence.criteria.Root;
+/**
+ *
+ * @param <T> the type of the entity class
+ * @param <K> the type of the primary key
+ */
+public abstract class BaseRepository<T, K> {
 
-public class BaseRepository<T> {
-
-	@SuppressWarnings("rawtypes")
-	protected Class type;
+	protected final Class<T> type;
 	
-	protected BaseRepository(T instance){
-		type = instance.getClass();
+	protected BaseRepository(Class<T> type){
+		this.type = type;
 	}
 
 	@PersistenceContext
@@ -31,33 +33,94 @@ public class BaseRepository<T> {
 	protected CriteriaBuilder cb() {
 		return em().getCriteriaBuilder();
 	}
-	
-	@SuppressWarnings("unchecked")
+
+	/**
+	 *
+	 * @return a criteriaQuery instance created by criteriaBuilder in entitiyManager
+	 */
 	public CriteriaQuery<T> query(){
 		return cb().createQuery(type);
 	}
-	
-	@SuppressWarnings("rawtypes")
-	public <V> Predicate eq(Root root, String columnName, V value){
-		return cb().equal(root.get(columnName), value);
+
+	public Predicate eq(Root root, String columnName, Object value){
+		return eq(cb(),root,columnName,value);
 	}
 
-	@SuppressWarnings("unchecked")
-	public T getById(Serializable id){
-		return (T) em().find(type, id);
+	public Predicate eq(CriteriaBuilder cb, Root root, String columnName, Object value){
+		return cb.equal(root.get(columnName), value);
 	}
 
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	public List<T> list(){
-		CriteriaQuery<T> query = query();
-		Root root = query.from(type);
+	public <V extends Number> Predicate lt(CriteriaBuilder cb, Root root, String columnName, V value){
+		return cb.lt(root.get(columnName),value);
+	}
+
+	public <V extends Number> Predicate gt(CriteriaBuilder cb, Root root, String columnName, V value){
+		return cb.gt(root.get(columnName),value);
+	}
+
+	public <V extends Comparable> Predicate between(CriteriaBuilder cb, Root root, String columnName, V value1, V value2){
+		Expression<V> exp = root.get(columnName);
+		return cb.between(exp,value1,value2);
+	}
+
+	public Predicate like(CriteriaBuilder cb, Root root, String columnName, String value){
+		Expression<String> exp = root.get(columnName);
+		return cb.like(exp, value);
+	}
+
+	public T getById(K id){
+		return em().find(type, id);
+	}
+
+	/**
+	 * assume the operator is eq
+	 * @param columnName
+	 * @param value
+	 * @return
+	 */
+	public List<T> getByColumn(String columnName, Object value){
+	    CriteriaQuery query = query();
+		Root root = root(query);
+		return getByColumns(query, root, eq(cb(),root,columnName,value));
+	}
+
+	/**
+	 * assume the operator is eq
+	 * @param columnNameValueMap
+	 * @return
+	 */
+	public List<T> getByColumns(CriteriaQuery query, Map<String, Object> columnNameValueMap){
+		CriteriaBuilder cb = cb();
+	    List<Predicate> predicates = new ArrayList<>();
+		Root root = root(query);
+		for (Map.Entry<String, Object> entry : columnNameValueMap.entrySet()){
+			predicates.add(eq(cb,root,entry.getKey(), entry.getValue()));
+		}
+		return getByColumns(query, root, (Predicate[]) predicates.toArray());
+	}
+
+	/**
+	 * given the ability to assign your own predicates like lt, eq, like
+	 * @param root
+	 * @param predicates provide your own predicates
+	 * @return
+	 */
+	public List<T> getByColumns(CriteriaQuery query, Root root, Predicate... predicates){
+
 		query.select(root);
-		return em.createQuery(query).getResultList();
+		if (predicates != null && predicates.length > 0)
+			query.where(predicates);
+		return em().createQuery(query)
+				.getResultList();
 	}
-	
-	@SuppressWarnings("unchecked")
-	protected Root<T> root(){
-		return query().from(type);
+
+	public List<T> list(){
+        CriteriaQuery query = query();
+		return getByColumns(query, root(query));
+	}
+
+	protected Root<T> root(CriteriaQuery query){
+		return query.from(type);
 	}
 	
 	public class InParam<S>{
@@ -97,7 +160,7 @@ public class BaseRepository<T> {
 	
 	public StoredProcedureQuery createQueryFor(String procedureName, Class entityType, InParam ... inParams){
 		StoredProcedureQuery validationsQuery = 
-				em.createStoredProcedureQuery(procedureName, entityType);
+				em().createStoredProcedureQuery(procedureName, entityType);
 		for(InParam param : inParams){
 			validationsQuery.registerStoredProcedureParameter(param.parameterName, param.parameterValueClass, ParameterMode.IN)
 			.setParameter(param.parameterName, param.parameterValue);			
@@ -106,6 +169,16 @@ public class BaseRepository<T> {
 	}
 
 	public void persist(T t){
-		em.persist(t);
+		em().persist(t);
 	}
+
+	public void remove(T t){
+		em().remove(t);
+	}
+
+	public T merge(T t){
+	    return em().merge(t);
+    }
+
+
 }

@@ -2,10 +2,7 @@ package edu.harvard.dbmi.avillach.data.entity;
 
 import java.util.UUID;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.MappedSuperclass;
+import javax.persistence.*;
 
 import org.hibernate.annotations.GenericGenerator;
 
@@ -16,6 +13,7 @@ public abstract class BaseEntity {
 	@GenericGenerator(
 		name = "UUID",
 		strategy = "org.hibernate.id.UUIDGenerator")
+	@Column(columnDefinition = "BINARY(16)")
 	private UUID uuid;
 
 	public UUID getUuid() {

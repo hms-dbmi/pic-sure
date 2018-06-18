@@ -17,7 +17,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-resource-api</artifactId>
+			<artifactId>pic-sure-util</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 		<dependency>

@@ -8,10 +8,10 @@ import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class ProtocolMapper implements ExceptionMapper<ProtocolException>{
+public class ProtocolExceptionMapper implements ExceptionMapper<ProtocolException>{
 
     @Override
     public Response toResponse(ProtocolException exception) {
-        return PICSUREResponse.protocolError(exception.getResponse().getStatus(), exception.getContent());
+        return PICSUREResponse.protocolError(exception.getStatus(), exception.getContent());
     }
 }

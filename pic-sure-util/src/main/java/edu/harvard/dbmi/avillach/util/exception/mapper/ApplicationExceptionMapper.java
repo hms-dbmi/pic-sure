@@ -8,7 +8,7 @@ import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class ApplicationMapper implements ExceptionMapper<ApplicationException>{
+public class ApplicationExceptionMapper implements ExceptionMapper<ApplicationException>{
 
     @Override
     public Response toResponse(ApplicationException exception) {

@@ -1,11 +1,14 @@
 package edu.harvard.dbmi.avillach.service;
 
+import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
+import javax.inject.Inject;
 import javax.mail.internet.HeaderTokenizer;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
@@ -23,6 +26,9 @@ public class TokenService {
     @Resource(mappedName = "java:global/client_secret")
     private String clientSecret;
 
+    @Inject
+    UserRepository userRepo;
+
     @POST
     @Path("/inspect")
     @Consumes("application/json")
@@ -32,6 +38,7 @@ public class TokenService {
         if (tokenInspection.message != null)
             tokenInspection.responseMap.put("message", tokenInspection.message);
 
+        logger.info("Finished token introspection.");
         return PICSUREResponse.success(tokenInspection.responseMap);
     }
 
@@ -46,6 +53,15 @@ public class TokenService {
             }
 
             Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
+
+            String subject = jws.getBody().getSubject();
+
+            // the first subject is for finding, second is for creating
+            User user = userRepo.findOrCreate(subject, subject);
+            if (user == null)
+                logger.error("Cannot find or create user with subject - "+ subject +" - extracted from token.");
+            else
+                logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
 
             //Essentially we want to return jws.getBody() with an additional active: true field
             tokenInspection.responseMap.put("active", true);
