@@ -3,11 +3,13 @@ package edu.harvard.dbmi.avillach.service;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.dbmi.avillach.utils.PicsureWarNaming;
 import io.jsonwebtoken.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
+import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.mail.internet.HeaderTokenizer;
 import javax.ws.rs.*;
@@ -30,6 +32,7 @@ public class TokenService {
     UserRepository userRepo;
 
     @POST
+    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_TOKEN_INTROSPECTION)
     @Path("/inspect")
     @Consumes("application/json")
     public Response inspectToken(Map<String, String> tokenMap){
@@ -64,7 +67,10 @@ public class TokenService {
                 logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
 
             //Essentially we want to return jws.getBody() with an additional active: true field
-            tokenInspection.responseMap.put("active", true);
+            if (user.getRoles() != null
+                    && user.getRoles().contains(PicsureWarNaming.RoleNaming.ROLE_INTROSPECTION_USER))
+                tokenInspection.responseMap.put("active", true);
+
             tokenInspection.responseMap.putAll(jws.getBody());
 
             return tokenInspection;

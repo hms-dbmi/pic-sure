@@ -10,6 +10,9 @@ public class PicsureWarNaming {
         public static final String ROLE_SYSTEM = "ROLE_SYSTEM";
         public static final String ROLE_RESEARCH = "ROLE_RESEARCH";
         public static final String ROLE_USER = "ROLE_USER";
+        public static final String ROLE_TOKEN_INTROSPECTION = "ROLE_TOKEN_INTROSPECTION";
+        public static final String ROLE_INTROSPECTION_USER = "ROLE_INTROSPECTION_USER";
+
 
         public static List<String> allRoles(){
             List<String> roles = new ArrayList<>();
