@@ -57,7 +57,18 @@ public class UserRepository extends BaseRepository<User, UUID> {
 	
 	public User createUser(String subject, String userId) {
 		logger.info("createUser() creating user by userId: " + userId);
-		em.persist(new User().setSubject(subject).setUserId(userId));
+		em().persist(new User().setSubject(subject).setUserId(userId));
 		return findBySubject(subject);
+	}
+
+	public User changeRole(User user, String role){
+		logger.info("Starting changing the role of user: " + user.getUuid()
+				+ ", with userId: " + user.getUserId() + ", to " + role);
+		user.setRoles(role);
+		em().merge(user);
+		User updatedUser = getById(user.getUuid());
+		logger.info("User: " + updatedUser.getUuid() + ", with userId: " +
+				updatedUser.getUserId() + ", now has a new role: " + updatedUser.getRoles());
+		return updatedUser;
 	}
 }

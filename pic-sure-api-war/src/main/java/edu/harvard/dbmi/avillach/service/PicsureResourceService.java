@@ -87,8 +87,12 @@ public class PicsureResourceService {
 
         List<Resource> addedResources = addOrUpdate(resources, false);
 
+        if (addedResources.isEmpty())
+            return PICSUREResponse.error("No resource(s) has been updated.");
+
+
         if (addedResources.size() < resources.size())
-            return PICSUREResponse.applicationError(Integer.toString(resources.size()-addedResources.size())
+            return PICSUREResponse.error(Integer.toString(resources.size()-addedResources.size())
                     + " resources are NOT operated." +
                     " Updated resources are as follow: ", addedResources);
 
@@ -104,11 +108,17 @@ public class PicsureResourceService {
     private List<Resource> addOrUpdate(@NotNull List<Resource> resources, boolean forAdd){
         List<Resource> operatedResources = new ArrayList<>();
         for (Resource resource : resources){
-            if (forAdd)
+            boolean dbContacted = false;
+            if (forAdd) {
                 resourceRepo.persist(resource);
-            else
+                dbContacted = true;
+            }
+            else if (resourceRepo.getById(resource.getUuid()) != null) {
                 resourceRepo.merge(resource);
-            if (resourceRepo.getById(resource.getUuid()) == null){
+                dbContacted = true;
+            }
+
+            if (!dbContacted || resourceRepo.getById(resource.getUuid()) == null){
                 continue;
             }
             operatedResources.add(resource);
@@ -135,7 +145,8 @@ public class PicsureResourceService {
             return PICSUREResponse.applicationError("Cannot delete the resource by id: " + resourceId);
         }
 
-        return PICSUREResponse.success("Successfully deleted resource by id: " + resourceId, null, MediaType.APPLICATION_JSON_TYPE);
+        return PICSUREResponse.success("Successfully deleted resource by id: " + resourceId + ", listing rest of the resources as below"
+                , resourceRepo.list());
 
     }
 

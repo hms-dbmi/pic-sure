@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import javax.persistence.*;
@@ -26,26 +27,16 @@ public abstract class BaseEntity {
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((uuid == null) ? 0 : uuid.hashCode());
-		return result;
+		return Objects.hash(uuid);
 	}
 
 	@Override
 	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (obj == null)
+		if (obj == this) return true;
+		if (!(obj instanceof BaseEntity)) {
 			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		BaseEntity other = (BaseEntity) obj;
-		if (uuid == null) {
-			if (other.uuid != null)
-				return false;
-		} else if (!uuid.equals(other.uuid))
-			return false;
-		return true;
+		}
+		BaseEntity entity = (BaseEntity) obj;
+		return this.uuid == entity.uuid;
 	}
 }

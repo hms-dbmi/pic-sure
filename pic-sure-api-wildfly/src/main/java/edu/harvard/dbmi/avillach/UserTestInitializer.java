@@ -7,6 +7,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 
 import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.utils.PicsureWarNaming;
 
 @Singleton
 @Startup
@@ -18,7 +19,7 @@ public class UserTestInitializer
     @PostConstruct
     public void insertTestUsers() {
 		User systemUser = new User()
-				.setRoles("ROLE_SYSTEM")
+				.setRoles(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
 				.setSubject("samlp|foo@bar.com")
 				.setUserId("foo@bar.com");
 		User nonSystemUser = new User()
