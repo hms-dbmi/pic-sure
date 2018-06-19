@@ -21,6 +21,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +46,11 @@ public class JWTFilter implements ContainerRequestFilter {
 		try {
 			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
 
+			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+				requestContext.abortWith(PICSUREResponse.protocolError("No authorization header found."));
+				return;
+			}
+
 			String token = authorizationHeader.substring(6).trim();
 
 			Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
@@ -55,8 +61,10 @@ public class JWTFilter implements ContainerRequestFilter {
 						
 			User authenticatedUser = userRepo.findOrCreate(subject, userId);
 
-			if (authenticatedUser == null)
+			if (authenticatedUser == null) {
 				requestContext.abortWith(PICSUREResponse.unauthorizedError("Cannot find or create a user"));
+				return;
+			}
 
 			String[] rolesAllowed = resourceInfo.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
@@ -65,6 +73,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				if(authenticatedUser.getRoles() == null
 					|| !authenticatedUser.getRoles().contains(role)) {
 					requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
+					return;
 				}
 			}
 			
@@ -74,7 +83,7 @@ public class JWTFilter implements ContainerRequestFilter {
 		} catch (Exception e){
 			// we should show different response based on role
 			e.printStackTrace();
-			requestContext.abortWith(PICSUREResponse.applicationError("Inner application user, please contact system admin"));
+			requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
 		}
 	}
 
