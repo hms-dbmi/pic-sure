@@ -12,6 +12,7 @@
   <modules>
     <module>pic-sure-resource-api</module>
     <module>pic-sure-irct-resource</module>
+    <module>pic-sure-aggregate-resource</module>
   </modules>
   <dependencies>
     <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->

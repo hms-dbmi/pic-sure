@@ -23,8 +23,15 @@ public class ResourceTestInitializer
                 .setBaseUrl("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4")
 				.setName("nhanes.hms.harvard.edu")
-                .setToken("eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJzYW1scHxmb29AYmFyLmNvbSIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MCIsImlhdCI6MTUyNzYxNzUwNCwiZW1haWwiOiJmb29AYmFyLmNvbSIsImV4cCI6MjAwMTAwMzEwNH0.e3lxNWXL5pBtmcjadPjX7YDPi8tSoU6VeVK38bUEyL6YnS4_Dwh-rPVgxjbaxbN8o7XqBOSslwWdy7Jxw-6slQ");
+                .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM");
 		em.persist(fooResource);
+
+        Resource aggregateResource = new Resource()
+                .setBaseUrl("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/group")
+                .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM")
+                .setDescription("Aggregate Resource RS")
+                .setName("Aggregate Resource RS");
+        em.persist(aggregateResource);
     }
     
 }

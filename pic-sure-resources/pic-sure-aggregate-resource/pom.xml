@@ -8,8 +8,8 @@
 		<artifactId>pic-sure-resources</artifactId>
 		<version>2.0.0-SNAPSHOT</version>
 	</parent>
-	<artifactId>pic-sure-irct-resource</artifactId>
-	<name>pic-sure-irct-resource</name>
+	<artifactId>pic-sure-aggregate-resource</artifactId>
+	<name>pic-sure-aggregate-resource</name>
 	<packaging>war</packaging>
 	<url>http://maven.apache.org</url>
 	<properties>
@@ -148,7 +148,7 @@
 						</goals>
 						<configuration>
 							<env>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<TARGET_PICSURE_URL>http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure</TARGET_PICSURE_URL>
 								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</env>
 						</configuration>
@@ -252,6 +252,13 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>3.7</version>
+            <scope>compile</scope>
         </dependency>
-    </dependencies>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>3.7</version>
+			<scope>compile</scope>
+		</dependency>
+	</dependencies>
 </project>

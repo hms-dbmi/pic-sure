@@ -21,6 +21,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +69,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				}
 			}
 			
-		} catch (NotAuthorizedException e) {
+		} catch (NotAuthorizedException | SignatureException e) {
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
 		} catch (Exception e){

@@ -32,6 +32,12 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-aggregate-resource</artifactId>
+			<classifier>classes</classifier>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
@@ -133,6 +139,14 @@
 								<artifactItem>
 									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 									<artifactId>pic-sure-irct-resource</artifactId>
+									<version>${project.version}</version>
+									<type>war</type>
+									<overWrite>true</overWrite>
+									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
+								</artifactItem>
+								<artifactItem>
+									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+									<artifactId>pic-sure-aggregate-resource</artifactId>
 									<version>${project.version}</version>
 									<type>war</type>
 									<overWrite>true</overWrite>
@@ -271,6 +285,7 @@
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
 								<irct.service.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.service.url>
+								<aggregate.service.url>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/</aggregate.service.url>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>
