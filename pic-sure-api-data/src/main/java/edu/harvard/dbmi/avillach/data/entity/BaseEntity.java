@@ -39,4 +39,9 @@ public abstract class BaseEntity {
 		BaseEntity entity = (BaseEntity) obj;
 		return this.uuid == entity.uuid;
 	}
+
+	@Override
+	public String toString() {
+		return this.uuid.toString();
+	}
 }

@@ -43,7 +43,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
+		logger.debug("Entered jwtfilter.filter()...");
 		String tokenForLogging = null;
+		User userForLogging = null;
 		try {
 			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
 
@@ -64,9 +66,12 @@ public class JWTFilter implements ContainerRequestFilter {
 			User authenticatedUser = userRepo.findOrCreate(subject, userId);
 
 			if (authenticatedUser == null) {
+				logger.error("Cannot find or create a user from token: " + token);
 				requestContext.abortWith(PICSUREResponse.unauthorizedError("Cannot find or create a user"));
 				return;
 			}
+
+			userForLogging = authenticatedUser;
 
 			String[] rolesAllowed = resourceInfo.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
@@ -74,15 +79,19 @@ public class JWTFilter implements ContainerRequestFilter {
 			for(String role : rolesAllowed) {
 				if(authenticatedUser.getRoles() == null
 					|| !authenticatedUser.getRoles().contains(role)) {
+					logger.error("The roles of the user - " + userForLogging + " - doesn't match the restrictions.");
 					requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
 					return;
 				}
 			}
-			
+
+			logger.info("User - " + userForLogging + " - has just passed all the jwtfilter.filter() layer.");
+
 		} catch (SignatureException e) {
 			logger.error("Token - " + tokenForLogging + " - is invalid.");
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
+			logger.error("User - " + userForLogging + " - has insufficient privileges.");
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
 		} catch (Exception e){
