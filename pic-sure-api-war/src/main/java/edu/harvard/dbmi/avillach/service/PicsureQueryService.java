@@ -1,23 +1,16 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.io.InputStream;
 import java.sql.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryResults;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
-import javax.persistence.EntityManager;
-import javax.persistence.PersistenceContext;
 import javax.transaction.Transactional;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
@@ -42,8 +35,8 @@ public class PicsureQueryService {
 	 * 
 	 * @param resourceId - id of targeted resource
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
-	 *                       and resource specific query (could be a string or a json o
-	 * @return {@link QueryResults} object
+	 *                       and resource specific query (could be a string or a json object)
+	 * @return {@link QueryStatus}
 	 */
 	@Transactional
 	public QueryStatus query(UUID resourceId, QueryRequest dataQueryRequest) {
@@ -69,8 +62,15 @@ public class PicsureQueryService {
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
 		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
+		queryEntity.setMetadata(results.getResultMetadata());
 		queryRepo.persist(queryEntity);
 		results.setPicsureResultId(queryEntity.getUuid());
+		//In cases where there is no resource result id, the picsure result id will stand in
+		if (queryEntity.getResourceResultId() == null){
+		    results.setResourceResultId(queryEntity.getUuid().toString());
+			queryEntity.setResourceResultId(results.getPicsureResultId().toString());
+			queryRepo.persist(queryEntity);
+		}
 		results.setResourceID(resourceId);
 		return results;
 	}
@@ -97,6 +97,7 @@ public class PicsureQueryService {
 		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		status.setPicsureResultId(queryId);
 		query.setStatus(status.getStatus());
 		queryRepo.persist(query);
 		status.setStartTime(query.getStartTime().getTime());
@@ -111,7 +112,7 @@ public class PicsureQueryService {
 	 * 
 	 * @param queryId - id of target resource
 	 * @param resourceCredentials - resource specific credentials object
-	 * @return {@link QueryResults}
+	 * @return Response
 	 */
 	@Transactional
 	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
@@ -128,4 +129,23 @@ public class PicsureQueryService {
 		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 	}
 
+    /**
+     *
+     * @param queryId The UUID of the query to get metadata about
+     * @return a QueryStatus object containing the metadata stored about the given query
+     */
+	public QueryStatus queryMetadata(UUID queryId){
+        Query query = queryRepo.getById(queryId);
+        if (query == null){
+            throw new ProtocolException("No query with id " + queryId.toString() + " exists");
+        }
+        QueryStatus response = new QueryStatus();
+        response.setStartTime(query.getStartTime().getTime());
+        response.setPicsureResultId(query.getUuid());
+        response.setResourceID(query.getResource().getUuid());
+        response.setStatus(query.getStatus());
+        response.setResourceResultId(query.getResourceResultId());
+        response.setResultMetadata(query.getMetadata());
+        return response;
+    }
 }

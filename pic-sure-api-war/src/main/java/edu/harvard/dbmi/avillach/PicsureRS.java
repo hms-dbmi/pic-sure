@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach;
 
-import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,6 +66,12 @@ public class PicsureRS {
 	@Path("/query/{queryId}/result")
 	public Response queryResult(@PathParam("queryId") UUID queryId, Map<String, String> resourceCredentials) {
 		return queryService.queryResult(queryId, resourceCredentials);
+	}
+
+	@GET
+	@Path("/query/{queryId}/metadata")
+	public QueryStatus queryMetdata(@PathParam("queryId") UUID queryId){
+		return queryService.queryMetadata(queryId);
 	}
 	
 }

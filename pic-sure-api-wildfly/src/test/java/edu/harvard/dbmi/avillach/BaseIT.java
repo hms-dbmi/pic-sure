@@ -6,20 +6,23 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.junit.BeforeClass;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import jdk.incubator.http.HttpClient;
+import org.apache.http.client.HttpClient;
 
 public class BaseIT {
 	private static final String CLIENT_SECRET = System.getenv("PIC_SURE_CLIENT_SECRET");
 
 	protected static String endpointUrl;
 	protected static String irctEndpointUrl;
-	
-	protected static HttpClient client = HttpClient.newHttpClient();
-	
+
+	protected static HttpClient client = HttpClientBuilder.create().build();
+	protected final static ObjectMapper json = new ObjectMapper();
+
 	@BeforeClass
 	public static void beforeClass() {
 		endpointUrl = System.getProperty("service.url");
@@ -37,7 +40,7 @@ public class BaseIT {
 				.setIssuer("http://localhost:8080")
 				.setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
 				.setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-				.signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode(CLIENT_SECRET.getBytes()).toString())
+				.signWith(SignatureAlgorithm.HS512, CLIENT_SECRET.getBytes())
 				.compact();
 	}
 
