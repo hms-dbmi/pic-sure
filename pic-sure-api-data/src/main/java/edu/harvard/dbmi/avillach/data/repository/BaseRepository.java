@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
+import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import org.hibernate.Criteria;
 import org.hibernate.Session;
 
@@ -15,7 +16,7 @@ import java.util.Map;
  * @param <T> the type of the entity class
  * @param <K> the type of the primary key
  */
-public abstract class BaseRepository<T, K> {
+public abstract class BaseRepository<T extends BaseEntity, K> {
 
 	protected final Class<T> type;
 	

@@ -2,10 +2,7 @@ package edu.harvard.dbmi.avillach.data.entity;
 
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
+import javax.persistence.*;
 import java.sql.Date;
 
 @Entity(name = "query")
@@ -29,6 +26,7 @@ public class Query extends BaseEntity {
 	@JoinColumn(name = "resourceId")
 	private Resource resource;
 
+	@Column(length = 8192)
 	private byte[] metadata;
 
 	public Resource getResource() {

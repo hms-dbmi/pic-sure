@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import java.util.Objects;
 
 @Entity(name = "resource")
 public class Resource extends BaseEntity{
@@ -12,7 +14,6 @@ public class Resource extends BaseEntity{
 	private String description;
 	private String baseUrl;
 
-	@JsonIgnore
 	@Column(length = 8192)
 	private String token;
 	
@@ -40,10 +41,12 @@ public class Resource extends BaseEntity{
 		return this;
 	}
 
+	@JsonIgnore
 	public String getToken() {
 		return token;
 	}
 
+	@JsonProperty
 	public Resource setToken(String token) {
 		this.token = token;
 		return this;
