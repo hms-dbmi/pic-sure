@@ -43,6 +43,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
+		String tokenForLogging = null;
 		try {
 			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
 
@@ -52,6 +53,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 
 			String token = authorizationHeader.substring(6).trim();
+			tokenForLogging = token;
 
 			Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 
@@ -77,6 +79,9 @@ public class JWTFilter implements ContainerRequestFilter {
 				}
 			}
 			
+		} catch (SignatureException e) {
+			logger.error("Token - " + tokenForLogging + " - is invalid.");
+			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
