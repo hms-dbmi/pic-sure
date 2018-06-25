@@ -1,21 +1,18 @@
 package edu.harvard.dbmi.avillach.service;
 
-import com.fasterxml.jackson.databind.ser.Serializers;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.dbmi.avillach.utils.PicsureWarNaming;
+import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
-import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,7 +32,7 @@ public class PicsureUserService extends PicsureBaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("/{userId}")
     public Response getUserById(
             @PathParam("userId") String userId) {
@@ -43,14 +40,14 @@ public class PicsureUserService extends PicsureBaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getUserAll() {
         return getEntityAll(userRepo);
     }
 
     @POST
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
@@ -58,7 +55,7 @@ public class PicsureUserService extends PicsureBaseEntityService<User> {
     }
 
     @POST
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{uuid}/role/{role}")
     public Response changeRole(
@@ -74,14 +71,14 @@ public class PicsureUserService extends PicsureBaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("/availableRoles")
     public Response availableRoles(){
-        return PICSUREResponse.success(PicsureWarNaming.RoleNaming.allRoles());
+        return PICSUREResponse.success(PicsureNaming.RoleNaming.allRoles());
     }
 
     @PUT
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
@@ -90,7 +87,7 @@ public class PicsureUserService extends PicsureBaseEntityService<User> {
 
     @Transactional
     @DELETE
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("/{userId}")
     public Response removeById(@PathParam("userId") final String userId) {
         return removeEntityById(userId, userRepo);

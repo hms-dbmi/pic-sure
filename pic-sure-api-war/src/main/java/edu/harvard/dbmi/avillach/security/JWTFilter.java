@@ -88,7 +88,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			logger.info("User - " + userForLogging + " - has just passed all the jwtfilter.filter() layer.");
 
 		} catch (SignatureException e) {
-			logger.error("Token - " + tokenForLogging + " - is invalid.");
+			logger.error("The signature of token - " + tokenForLogging + " - is invalid.");
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
 			logger.error("User - " + userForLogging + " - has insufficient privileges.");

@@ -1,13 +1,13 @@
 package edu.harvard.dbmi.avillach;
 
+import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.util.PicsureNaming;
+
 import javax.annotation.PostConstruct;
 import javax.ejb.Singleton;
 import javax.ejb.Startup;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
-
-import edu.harvard.dbmi.avillach.data.entity.User;
-import edu.harvard.dbmi.avillach.utils.PicsureWarNaming;
 
 @Singleton
 @Startup
@@ -19,7 +19,7 @@ public class UserTestInitializer
     @PostConstruct
     public void insertTestUsers() {
 		User systemUser = new User()
-				.setRoles(PicsureWarNaming.RoleNaming.ROLE_SYSTEM)
+				.setRoles(PicsureNaming.RoleNaming.ROLE_SYSTEM)
 				.setSubject("samlp|foo@bar.com")
 				.setUserId("foo@bar.com");
 		User nonSystemUser = new User()
