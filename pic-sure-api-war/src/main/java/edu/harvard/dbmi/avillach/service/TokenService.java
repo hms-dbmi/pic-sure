@@ -15,6 +15,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Path("/token")
@@ -43,10 +44,16 @@ public class TokenService {
     }
 
     private TokenInspection _inspectToken(Map<String, String> tokenMap){
+        logger.debug("_inspectToken, the incoming token map is: " + tokenMap.entrySet()
+                .stream()
+                .map(entry -> entry.getKey() + " - " + entry.getValue())
+                .collect(Collectors.joining(", ")));
+
         TokenInspection tokenInspection = new TokenInspection();
         tokenInspection.responseMap.put("active", false);
         try {
             String token = tokenMap.get("token");
+            logger.debug("getting token: " + token);
             if (token == null){
                 tokenInspection.message = "Token not found";
                 return tokenInspection;
@@ -70,6 +77,11 @@ public class TokenService {
 
             tokenInspection.responseMap.putAll(jws.getBody());
 
+            logger.info("_inspectToken() Successfully inspect and return response map: "
+                    + tokenInspection.responseMap.entrySet()
+                    .stream()
+                    .map(entry -> entry.getKey() + " - " + entry.getValue())
+                    .collect(Collectors.joining(", ")));
             return tokenInspection;
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
             logger.error("_inspectToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
