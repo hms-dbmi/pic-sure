@@ -1,10 +1,10 @@
-package edu.harvard.dbmi.avillach.utils;
+package edu.harvard.dbmi.avillach.util;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PicsureWarNaming {
+public class PicsureNaming {
 
     public static class RoleNaming{
         public static final String ROLE_SYSTEM = "ROLE_SYSTEM";

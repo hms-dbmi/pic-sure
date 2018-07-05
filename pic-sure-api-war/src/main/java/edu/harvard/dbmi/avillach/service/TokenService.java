@@ -3,7 +3,7 @@ package edu.harvard.dbmi.avillach.service;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.dbmi.avillach.utils.PicsureWarNaming;
+import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import io.jsonwebtoken.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,13 +11,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Resource;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
-import javax.mail.internet.HeaderTokenizer;
 import javax.ws.rs.*;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Path("/token")
@@ -32,7 +30,7 @@ public class TokenService {
     UserRepository userRepo;
 
     @POST
-    @RolesAllowed(PicsureWarNaming.RoleNaming.ROLE_TOKEN_INTROSPECTION)
+    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_TOKEN_INTROSPECTION)
     @Path("/inspect")
     @Consumes("application/json")
     public Response inspectToken(Map<String, String> tokenMap){
@@ -46,10 +44,16 @@ public class TokenService {
     }
 
     private TokenInspection _inspectToken(Map<String, String> tokenMap){
+        logger.debug("_inspectToken, the incoming token map is: " + tokenMap.entrySet()
+                .stream()
+                .map(entry -> entry.getKey() + " - " + entry.getValue())
+                .collect(Collectors.joining(", ")));
+
         TokenInspection tokenInspection = new TokenInspection();
         tokenInspection.responseMap.put("active", false);
         try {
             String token = tokenMap.get("token");
+            logger.debug("getting token: " + token);
             if (token == null){
                 tokenInspection.message = "Token not found";
                 return tokenInspection;
@@ -68,11 +72,16 @@ public class TokenService {
 
             //Essentially we want to return jws.getBody() with an additional active: true field
             if (user.getRoles() != null
-                    && user.getRoles().contains(PicsureWarNaming.RoleNaming.ROLE_INTROSPECTION_USER))
+                    && user.getRoles().contains(PicsureNaming.RoleNaming.ROLE_INTROSPECTION_USER))
                 tokenInspection.responseMap.put("active", true);
 
             tokenInspection.responseMap.putAll(jws.getBody());
 
+            logger.info("_inspectToken() Successfully inspect and return response map: "
+                    + tokenInspection.responseMap.entrySet()
+                    .stream()
+                    .map(entry -> entry.getKey() + " - " + entry.getValue())
+                    .collect(Collectors.joining(", ")));
             return tokenInspection;
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
             logger.error("_inspectToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
