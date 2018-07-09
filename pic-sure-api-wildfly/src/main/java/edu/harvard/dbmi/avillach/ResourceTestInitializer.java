@@ -14,7 +14,7 @@ import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 @Startup
 public class ResourceTestInitializer 
 {
-    @PersistenceContext
+    @PersistenceContext(unitName = "picsure")
     private EntityManager em;
     
     @PostConstruct

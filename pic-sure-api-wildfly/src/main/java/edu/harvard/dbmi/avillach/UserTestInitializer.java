@@ -13,7 +13,7 @@ import javax.persistence.PersistenceContext;
 @Startup
 public class UserTestInitializer 
 {
-    @PersistenceContext
+    @PersistenceContext(unitName = "picsure")
     private EntityManager em;
     
     @PostConstruct

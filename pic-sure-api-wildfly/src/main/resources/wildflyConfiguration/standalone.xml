@@ -148,8 +148,8 @@
                         <password>sa</password>
                     </security>
                 </datasource>
-                <datasource jndi-name="java:/PicsureDS" pool-name="PicsureDS" enabled="true" use-java-context="true">
-                    <connection-url>jdbc:h2:mem:picsure;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url>
+                <datasource jndi-name="java:jboss/datasources/PicsureDS" pool-name="PicsureDS" enabled="true" use-java-context="true">
+                    <connection-url>jdbc:h2:mem:picsure;INIT=RUNSCRIPT FROM '~/picsure2-dump-initial.sql';DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url>
                     <driver>h2</driver>
                     <security>
                         <user-name>sa</user-name>
@@ -333,7 +333,7 @@
             <worker name="default"/>
             <buffer-pool name="default"/>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:infinispan:4.0">
+        <subsystem xmlns="urn:jboss:domain:infinispan:5.0">
             <cache-container name="server" default-cache="default" module="org.wildfly.clustering.server">
                 <local-cache name="default">
                     <transaction mode="BATCH"/>
@@ -356,11 +356,11 @@
             <cache-container name="hibernate" module="org.hibernate.infinispan">
                 <local-cache name="entity">
                     <transaction mode="NON_XA"/>
-                    <eviction strategy="LRU" max-entries="10000"/>
+                    <object-memory size="10000"/>
                     <expiration max-idle="100000"/>
                 </local-cache>
                 <local-cache name="local-query">
-                    <eviction strategy="LRU" max-entries="10000"/>
+                    <object-memory size="10000"/>
                     <expiration max-idle="100000"/>
                 </local-cache>
                 <local-cache name="timestamps"/>
@@ -405,6 +405,7 @@
         		<bindings>
         			<simple name="java:global/client_secret" value="${env.PIC_SURE_CLIENT_SECRET}"/>
         			<simple name="java:global/user_id_claim" value="${env.PIC_SURE_USER_ID_CLAIM}"/>
+                    <simple name="java:/connection_method" value="create-drop"/>
         		</bindings>
             <remote-naming/>
         </subsystem>
