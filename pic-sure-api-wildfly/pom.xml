@@ -45,7 +45,7 @@
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-api-war</artifactId>
 			<version>${project.version}</version>
-			<classifier>war</classifier>
+			<type>war</type>
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
