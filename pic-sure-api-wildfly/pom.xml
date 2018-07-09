@@ -14,7 +14,7 @@
 	<url>http://maven.apache.org</url>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<wildfly.version>11.0.0.Final</wildfly.version>
+		<wildfly.version>13.0.0.Final</wildfly.version>
 		<argLine>--add-modules jdk.incubator.httpclient</argLine>
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
 	</properties>
@@ -23,9 +23,6 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-war-plugin</artifactId>
-				<configuration>
-					<attachClasses>true</attachClasses>
-				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

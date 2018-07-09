@@ -13,7 +13,7 @@ import edu.harvard.dbmi.avillach.data.entity.User;
 @Startup
 public class ResourceTestInitializer 
 {
-    @PersistenceContext
+    @PersistenceContext(unitName = "picsure")
     private EntityManager em;
     
     @PostConstruct

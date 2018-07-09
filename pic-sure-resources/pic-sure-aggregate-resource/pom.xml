@@ -13,7 +13,7 @@
 	<packaging>war</packaging>
 	<url>http://maven.apache.org</url>
 	<properties>
-		<wildfly.version>11.0.0.Final</wildfly.version>
+		<wildfly.version>13.0.0.Final</wildfly.version>
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
