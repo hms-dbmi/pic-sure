@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence>
+	<persistence-unit name="picsure">
+		<provider>org.hibernate.ejb.HibernatePersistence</provider>
+		<jta-data-source>java:/PicsureDS</jta-data-source>
+		<class>edu.harvard.dbmi.avillach.data.entity.User</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.Resource</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.Query</class>
+		<properties>
+			<property name="hibernate.archive.autodetection" value="class" />
+            <property name="hibernate.show_sql" value="true" />
+			<property name="hibernate.dialect" value="org.hibernate.dialect.HSQLDialect" />
+			<property name="hibernate.hbm2ddl.auto" value="create-drop" />
+		</properties>
+	</persistence-unit>
+</persistence>
