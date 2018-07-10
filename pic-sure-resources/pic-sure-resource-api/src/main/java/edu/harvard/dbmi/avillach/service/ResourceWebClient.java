@@ -70,6 +70,9 @@ public class ResourceWebClient {
             if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
                 throw new ProtocolException("Missing query request info");
             }
+            if (searchQueryRequest.getResourceCredentials() == null){
+                throw new NotAuthorizedException("Missing credentials");
+            }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
 
@@ -93,6 +96,9 @@ public class ResourceWebClient {
             }
             if (dataQueryRequest == null){
                 throw new ProtocolException("Missing query request info");
+            }
+            if (dataQueryRequest.getResourceCredentials() == null){
+                throw new NotAuthorizedException("Missing credentials");
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);

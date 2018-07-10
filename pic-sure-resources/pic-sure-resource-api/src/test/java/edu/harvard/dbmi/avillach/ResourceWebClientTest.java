@@ -109,7 +109,29 @@ public class ResourceWebClientTest {
             assertEquals("HTTP 401 Unauthorized", e.getMessage());
         }
 
-        //If everything goes right
+        //Should fail if no credentials given
+        request.setQuery("query");
+        try {
+            cut.search(testURL, request);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+        }
+
+        //With credentials but not search term
+        Map<String, String> credentials = new HashMap<>();
+        credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
+        request.setQuery(null);
+        request.setResourceCredentials(credentials);
+        try {
+            cut.search(testURL, request);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+
+        request.setQuery("%blood%");
         SearchResults result = cut.search(testURL, request);
         assertNotNull("Result should not be null", result);
 
@@ -165,6 +187,17 @@ public class ResourceWebClientTest {
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
+
+        //Should fail if no credentials given
+        try {
+            cut.query(testURL, request);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+        }
+
+        Map<String, String> credentials = new HashMap<>();
+        request.setResourceCredentials(credentials);
 
         //Everything goes correctly
         QueryStatus result = cut.query(testURL, request);
