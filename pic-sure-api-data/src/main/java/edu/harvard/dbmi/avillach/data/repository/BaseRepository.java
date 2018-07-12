@@ -37,7 +37,7 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 
 	/**
 	 *
-	 * @return a criteriaQuery instance created by criteriaBuilder in entitiyManager
+	 * @return a criteriaQuery instance created by criteriaBuilder in entityManager
 	 */
 	public CriteriaQuery<T> query(){
 		return cb().createQuery(type);

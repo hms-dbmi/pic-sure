@@ -26,8 +26,18 @@ public class UserTestInitializer
 				.setRoles("")
 				.setSubject("samlp|foo2@bar.com")
 				.setUserId("foo2@bar.com");
+		User tokenInspectionSystem = new User()
+				.setRoles(PicsureNaming.RoleNaming.ROLE_TOKEN_INTROSPECTION)
+				.setSubject("samlp|foo3@bar.com")
+				.setUserId("foo3@bar.com");
+		User tokenInspectionUser = new User()
+				.setRoles(PicsureNaming.RoleNaming.ROLE_INTROSPECTION_USER)
+				.setSubject("samlp|foo4@bar.com")
+				.setUserId("foo4@bar.com");
 		em.persist(systemUser);
 		em.persist(nonSystemUser);
+		em.persist(tokenInspectionUser);
+		em.persist(tokenInspectionSystem);
     }
     
 }

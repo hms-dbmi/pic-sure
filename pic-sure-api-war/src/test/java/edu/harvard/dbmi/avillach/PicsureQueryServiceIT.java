@@ -2,11 +2,8 @@ package edu.harvard.dbmi.avillach;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -20,22 +17,16 @@ import org.junit.Test;
 
 import javax.ws.rs.core.HttpHeaders;
 import java.net.URI;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 
-public class PicsureQueryServiceIT {
+public class PicsureQueryServiceIT extends BaseIT{
 
-    private static String endpointUrl;
     private static String resourceId;
     private static String jwt;
-    private final static ObjectMapper json = new ObjectMapper();
-    private final static String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU";
-    private static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
     private final static String queryString = "{" +
             "    \"select\": [" +
             "        {" +
@@ -69,7 +60,7 @@ public class PicsureQueryServiceIT {
         HttpClient client = HttpClientBuilder.create().build();
         String uri = endpointUrl + "/info/resources";
         HttpGet get = new HttpGet(uri);
-        jwt = generateJwtUser1();
+        jwt = generateJwtForSystemUser();
         get.setHeader("Content-type","application/json");
         get.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         HttpResponse response = client.execute(get);
@@ -239,13 +230,4 @@ public class PicsureQueryServiceIT {
         EntityUtils.consume(response.getEntity());
     }
 
-    public static String generateJwtUser1() {
-        return Jwts.builder()
-                .setSubject("samlp|foo@bar.com")
-                .setIssuer("http://localhost:8080")
-                .setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
-                .setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-                .signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode("foo".getBytes()))
-                .compact();
-    }
 }
