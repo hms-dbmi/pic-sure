@@ -59,14 +59,6 @@ public class IRCTResourceIT extends BaseIT {
 	@Test
 	public void testInfo() throws UnsupportedOperationException, IOException {
 		System.out.println(irctEndpointUrl);
-//		try {
-//			System.out.println("Sleeping...");
-//			Thread.sleep(120000);
-//		} catch (InterruptedException e) {
-//			// TODO Auto-generated catch block
-//			e.printStackTrace();
-//		}
-//		System.out.println(irctEndpointUrl);
 
 		//Should throw an error if credentials missing or wrong
 		Map<String, String> credentials = new HashMap<String, String>();
