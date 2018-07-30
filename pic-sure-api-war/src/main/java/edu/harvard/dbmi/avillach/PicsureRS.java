@@ -61,12 +61,11 @@ public class PicsureRS {
 	}
 	
 	@POST
-	@Path("/query/{resourceId}")
+	@Path("/query")
 	@ApiOperation(value = "Submits a query to the given resource")
-	public QueryStatus query(@ApiParam(value="The UUID of the resource to query") @PathParam("resourceId") UUID resourceId,
-							 @ApiParam(value="Object containing credentials map under 'resourceCredentials' " +
+	public QueryStatus query(@ApiParam(value="Object containing credentials map under 'resourceCredentials' " +
 									 "and query object under 'query'")QueryRequest dataQueryRequest) {
-		return queryService.query(resourceId, dataQueryRequest);
+		return queryService.query(dataQueryRequest);
 	}
 	
 	@POST
