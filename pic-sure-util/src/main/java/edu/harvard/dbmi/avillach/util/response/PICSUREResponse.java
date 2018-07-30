@@ -70,18 +70,19 @@ public class PICSUREResponse {
     }
 
     public static Response error(Response.Status status, Object content, MediaType type){
+    		if(status==null) status = DEFAULT_RESPONSE_ERROR_CODE;
         return error(status, null, content, type);
     }
 
     private static Response error(Response.Status status, String errorType, Object content, MediaType type){
-        return Response.status(status)
+        return Response.status(status.getStatusCode())
                 .entity(new PICSUREResponseError(errorType, content))
                 .type(type)
                 .build();
     }
 
     private static Response error(Response.Status status, String errorType, String message, Object content, MediaType type){
-        return Response.status(status)
+        return Response.status(status.getStatusCode())
                 .entity(new PICSUREResponseErrorWithMsgAndContent(errorType, message, content))
                 .type(type)
                 .build();

@@ -22,7 +22,7 @@ public class ResourceIT extends BaseIT{
 		Resource[] resources = json.readValue(response.getEntity().getContent(), Resource[].class);
 
 		assertEquals("The first resource should be named nhanes.hms.harvard.edu", "nhanes.hms.harvard.edu", resources[0].getName());
-		assertEquals("The first resource should have description HMS DBMI NHANES PIC-SURE 1.4", "HMS DBMI NHANES PIC-SURE 1.4", resources[0].getDescription());
+		assertEquals("The first resource should have description HMS DBMI NHANES PIC-SURE 1.4", "HMS DBMI NHANES PIC-SURE 1.4  Supply token with key 'IRCT_BEARER_TOKEN'", resources[0].getDescription());
 		assertNotNull("The first resource should have a valid UUID", resources[0].getUuid());
 	}
 

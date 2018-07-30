@@ -33,13 +33,13 @@ public class PicsureQueryService {
 	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
 	 * database for the query.
 	 * 
-	 * @param resourceId - id of targeted resource
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
 	 *                       and resource specific query (could be a string or a json object)
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus query(UUID resourceId, QueryRequest dataQueryRequest) {
+	public QueryStatus query(QueryRequest dataQueryRequest) {
+		UUID resourceId = dataQueryRequest.getResourceUUID();
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			//TODO Create custom exception
