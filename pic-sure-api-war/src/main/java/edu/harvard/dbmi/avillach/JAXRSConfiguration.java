@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
+import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.service.PicsureResourceService;
 import edu.harvard.dbmi.avillach.service.PicsureUserService;
 import edu.harvard.dbmi.avillach.service.SystemService;
@@ -28,20 +29,21 @@ public class JAXRSConfiguration extends Application {
         beanConfig.setScan(true);
     }
 
-    @Override
-    public Set<Class<?>> getClasses() {
-        HashSet<Class<?>> set = new HashSet<Class<?>>();
-
-        set.add(PicsureRS.class);
-        //Add other services here
-        set.add(PicsureResourceService.class);
-        set.add(PicsureUserService.class);
-        set.add(SystemService.class);
-        set.add(TokenService.class);
-
-        set.add(io.swagger.jaxrs.listing.ApiListingResource.class);
-        set.add(io.swagger.jaxrs.listing.SwaggerSerializers.class);
-
-        return set;
-    }
+//    @Override
+//    public Set<Class<?>> getClasses() {
+//        HashSet<Class<?>> set = new HashSet<Class<?>>();
+//
+//        set.add(PicsureRS.class);
+//        //Add other services here
+//        set.add(PicsureResourceService.class);
+//        set.add(PicsureUserService.class);
+//        set.add(SystemService.class);
+//        set.add(TokenService.class);
+//        set.add(JWTFilter.class);
+//
+//        set.add(io.swagger.jaxrs.listing.ApiListingResource.class);
+//        set.add(io.swagger.jaxrs.listing.SwaggerSerializers.class);
+//
+//        return set;
+//    }
 }
