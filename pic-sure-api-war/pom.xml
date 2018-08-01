@@ -69,7 +69,7 @@
 		</dependency>
 	</dependencies>
 	<build>
-		<finalName>pic-sure-api-war</finalName>
+		<!--<finalName>pic-sure-api-war</finalName>-->
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
