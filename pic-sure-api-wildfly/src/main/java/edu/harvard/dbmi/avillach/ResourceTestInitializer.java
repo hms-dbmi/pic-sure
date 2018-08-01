@@ -21,7 +21,7 @@ public class ResourceTestInitializer
     public void insertTestUsers() {
 		Resource fooResource = new Resource()
 //				.setBaseUrl("https://nhanes.hms.harvard.edu/rest/v1")
-                .setBaseUrl("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
+                .setBaseUrl("http://localhost:8080/pic-sure-irct-resource-2.0.0-SNAPSHOT/pic-sure/v1.4")
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4  Supply token with key '" + IRCTResourceRS.IRCT_BEARER_TOKEN_KEY + "'")
 				.setName("nhanes.hms.harvard.edu")
                 .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM");

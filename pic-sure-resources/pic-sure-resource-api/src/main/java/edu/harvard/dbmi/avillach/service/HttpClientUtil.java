@@ -68,10 +68,11 @@ public class HttpClientUtil {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+            logger.debug(responseBody);
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
 			//TODO: Write custom exception
-			throw new RuntimeException("Incorrect object type returned");
+			throw new RuntimeException("Incorrect object type returned", e);
 
 		}
     }

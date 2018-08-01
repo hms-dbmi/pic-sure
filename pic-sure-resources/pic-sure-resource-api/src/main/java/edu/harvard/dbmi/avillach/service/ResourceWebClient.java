@@ -127,6 +127,8 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
+            logger.debug(baseURL + pathName);
+            logger.debug(body);
             HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);

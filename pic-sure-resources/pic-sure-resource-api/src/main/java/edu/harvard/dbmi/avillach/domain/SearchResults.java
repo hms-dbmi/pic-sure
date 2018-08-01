@@ -9,15 +9,17 @@ public class SearchResults {
 		return results;
 	}
 
-	public void setResults(Object results) {
+	public SearchResults setResults(Object results) {
 		this.results = results;
+		return this;
 	}
 
 	public String getSearchQuery() {
 		return searchQuery;
 	}
 
-	public void setSearchQuery(String searchQuery) {
+	public SearchResults setSearchQuery(String searchQuery) {
 		this.searchQuery = searchQuery;
+		return this;
 	}
 }
