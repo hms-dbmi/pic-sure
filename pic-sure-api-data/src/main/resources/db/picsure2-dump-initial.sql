@@ -47,7 +47,7 @@ CREATE TABLE `query` (
 CREATE TABLE `resource` (
   `uuid` binary(16) NOT NULL,
   `baseUrl` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `description` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `description` varchar(8192) COLLATE utf8_bin DEFAULT NULL,
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `token` varchar(8192) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`)
