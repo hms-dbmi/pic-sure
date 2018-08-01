@@ -5,12 +5,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import java.util.Objects;
 
 @Entity(name = "resource")
 public class Resource extends BaseEntity{
 
 	private String name;
+	@Column(length = 8192)
 	private String description;
 	private String baseUrl;
 
@@ -24,7 +24,7 @@ public class Resource extends BaseEntity{
 		this.name = name;
 		return this;
 	}
-	
+
 	public String getDescription() {
 		return description;
 	}
