@@ -109,12 +109,13 @@ public class AggregateResourceIT extends BaseIT {
 
         QueryRequest topQuery = new QueryRequest();
         topQuery.setQuery(queryList);
+        topQuery.setResourceUUID(aggregateUUID);
 
 
         String body = json.writeValueAsString(topQuery);
 
         //Should throw an error if credentials missing or wrong
-        HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
+        HttpResponse response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -126,8 +127,8 @@ public class AggregateResourceIT extends BaseIT {
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
         queryRequest2.setResourceCredentials(credentials);
         body = json.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
-        assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+        response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        assertEquals("Invalid credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
@@ -141,7 +142,7 @@ public class AggregateResourceIT extends BaseIT {
         queryRequest1.setQuery(null);
         queryRequest2.setResourceCredentials(credentials);
         body = json.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
+        response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -149,7 +150,7 @@ public class AggregateResourceIT extends BaseIT {
         //Try a poorly worded queryString
         queryRequest1.setQuery("poorly worded query");
         body = json.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
+        response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Incorrectly formatted query should return a 500", 500, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -157,7 +158,7 @@ public class AggregateResourceIT extends BaseIT {
         //Make sure all queries work
         queryRequest1.setQuery(queryString);
         body = json.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
+        response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -168,7 +169,7 @@ public class AggregateResourceIT extends BaseIT {
         //Want the status to be ERROR if one query errors - send query to be tested by queryStatus
         queryRequest2.setQuery(errorQuery);
         body = json.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query/" + aggregateUUID, headers, body);
+        response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);

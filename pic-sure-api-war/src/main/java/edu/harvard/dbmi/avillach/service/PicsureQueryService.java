@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
@@ -18,7 +19,7 @@ import javax.ws.rs.core.Response;
 /**
  * Service handling business logic for queries to resources
  */
-public class PicsureQueryService {
+public class PicsureQueryService extends PicsureBaseService{
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -45,6 +46,9 @@ public class PicsureQueryService {
 			//TODO Create custom exception
 			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
 		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
 		if (dataQueryRequest == null){
 			throw new ProtocolException("Missing query request data");
 		}
@@ -53,7 +57,8 @@ public class PicsureQueryService {
 		}
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
-		QueryStatus results = resourceWebClient.query(resource.getBaseUrl(), dataQueryRequest);
+		dataQueryRequest.setTargetURL(resource.getTargetURL());
+		QueryStatus results = resourceWebClient.query(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
 		Query queryEntity = new Query();
@@ -91,12 +96,21 @@ public class PicsureQueryService {
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
+		if (resource == null){
+			throw new ApplicationException("Missing resource");
+		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
+		QueryRequest queryRequest = new QueryRequest();
+		queryRequest.setTargetURL(resource.getTargetURL());
 		if (resourceCredentials == null){
 			throw new NotAuthorizedException("Missing credentials");
 		}
 		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		queryRequest.setResourceCredentials(resourceCredentials);
 		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		QueryStatus status = resourceWebClient.queryStatus(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
 		status.setPicsureResultId(queryId);
 		query.setStatus(status.getStatus());
 		queryRepo.persist(query);
@@ -121,12 +135,23 @@ public class PicsureQueryService {
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
 		}
 		Resource resource = query.getResource();
+		if (resource == null){
+			throw new ApplicationException("Missing resource");
+		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
+		QueryRequest queryRequest = new QueryRequest();
+
+		queryRequest.setTargetURL(resource.getTargetURL());
+
 		//TODO Do we need to update any information in the query object?
 		if (resourceCredentials == null){
 			throw new NotAuthorizedException("Missing credentials");
 		}
 		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return resourceWebClient.queryResult(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
+		queryRequest.setResourceCredentials(resourceCredentials);
+		return resourceWebClient.queryResult(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
 	}
 
     /**

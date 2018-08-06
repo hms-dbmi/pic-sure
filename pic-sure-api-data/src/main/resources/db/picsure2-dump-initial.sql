@@ -46,7 +46,7 @@ CREATE TABLE `query` (
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `resource` (
   `uuid` binary(16) NOT NULL,
-  `baseUrl` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `targetURL` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `description` varchar(8192) COLLATE utf8_bin DEFAULT NULL,
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `token` varchar(8192) COLLATE utf8_bin DEFAULT NULL,

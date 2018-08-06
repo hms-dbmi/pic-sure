@@ -60,7 +60,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 	@GET
 	@Path("/info")
-	public ResourceInfo info(Map<String, String> resourceCredentials){
+	public ResourceInfo info(QueryRequest queryRequest){
 		return new ResourceInfo();
 	}
 
@@ -121,10 +121,11 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 	@POST
 	@Path("/query/{resourceQueryId}/status")
-	public QueryStatus queryStatus(@PathParam("resourceQueryId")String queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId")String queryId, QueryRequest statusRequest) {
 		logger.debug("calling Aggregate Query Resource queryStatus()");
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setPicsureResultId(UUID.fromString(queryId));
+		Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
@@ -165,8 +166,9 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Aggregate Query Resource queryResult()");
+		Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
