@@ -228,7 +228,7 @@
 					<env>
 						<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 						<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
-						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1</TARGET_IRCT_URL>
+						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 						<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
 						<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
 						<RESULT_FORMAT>JSON</RESULT_FORMAT>

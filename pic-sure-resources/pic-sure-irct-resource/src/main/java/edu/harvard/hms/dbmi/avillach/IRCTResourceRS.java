@@ -79,7 +79,7 @@ public class IRCTResourceRS implements IResourceRS
 		}
 		String pathName = "resourceService/resources";
 
-		HttpResponse response = retrieveGetResponse(queryRequest.getTargetURL() + pathName, createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(queryRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200){
             logger.error(queryRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -118,8 +118,9 @@ public class IRCTResourceRS implements IResourceRS
 			if (searchJson.getTargetURL() == null){
 				throw new ProtocolException(MISSING_TARGET_URL);
 			}
-			String pathName = "resourceService/find?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse response = retrieveGetResponse(searchJson.getTargetURL() + pathName, createAuthorizationHeader(token));
+			String pathName = "resourceService/find";
+			String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
+			HttpResponse response = retrieveGetResponse(composeURL(searchJson.getTargetURL(), pathName) + queryParameter, createAuthorizationHeader(token));
 			SearchResults results = new SearchResults();
 			results.setSearchQuery(searchTerm);
 			if (response.getStatusLine().getStatusCode() != 200) {
@@ -184,7 +185,7 @@ public class IRCTResourceRS implements IResourceRS
 
 		String pathName = "queryService/runQuery";
 		long starttime = new Date().getTime();
-		HttpResponse response = retrievePostResponse(queryJson.getTargetURL() + pathName, createAuthorizationHeader(token), queryString);
+		HttpResponse response = retrievePostResponse(composeURL(queryJson.getTargetURL(), pathName), createAuthorizationHeader(token), queryString);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(queryJson.getTargetURL() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -237,7 +238,7 @@ public class IRCTResourceRS implements IResourceRS
             throw new ProtocolException(MISSING_TARGET_URL);
         }
 		String pathName = "resultService/resultStatus/"+queryId;
-		HttpResponse response = retrieveGetResponse(statusQuery.getTargetURL() + pathName, createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(statusQuery.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(statusQuery.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -288,7 +289,7 @@ public class IRCTResourceRS implements IResourceRS
         }
 		String pathName = "resultService/result/"+queryId+"/"+RESULT_FORMAT;
 		//Returns a String in the format requested
-		HttpResponse response = retrieveGetResponse(resultRequest.getTargetURL() + pathName, createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?

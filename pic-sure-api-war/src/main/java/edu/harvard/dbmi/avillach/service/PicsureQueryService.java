@@ -33,7 +33,7 @@ public class PicsureQueryService extends PicsureBaseService{
 	/**
 	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
 	 * database for the query.
-	 * 
+	 *
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
 	 *                       and resource specific query (could be a string or a json object)
 	 * @return {@link QueryStatus}
@@ -81,10 +81,10 @@ public class PicsureQueryService extends PicsureBaseService{
 	}
 
 	/**
-	 * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource 
+	 * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource
 	 * from the database and calling the target resource for an updated status. The QueryResults
 	 * in the database are updated each time this is called.
-	 * 
+	 *
 	 * @param queryId - id of targeted resource
 	 * @param resourceCredentials - resource specific credentials object
 	 * @return {@link QueryStatus}
@@ -107,7 +107,9 @@ public class PicsureQueryService extends PicsureBaseService{
 		if (resourceCredentials == null){
 			throw new NotAuthorizedException("Missing credentials");
 		}
-		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		if(resource.getToken()!=null) {
+			resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		}
 		queryRequest.setResourceCredentials(resourceCredentials);
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
@@ -123,7 +125,7 @@ public class PicsureQueryService extends PicsureBaseService{
 	 * Streams the result for a given queryId by looking up the target resource
 	 * from the database and calling the target resource for a result. The queryStatus
 	 * method should be used to verify that the result is available prior to retrieving it.
-	 * 
+	 *
 	 * @param queryId - id of target resource
 	 * @param resourceCredentials - resource specific credentials object
 	 * @return Response

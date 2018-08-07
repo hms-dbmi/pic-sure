@@ -11,13 +11,13 @@ import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 
 @Singleton
 @Startup
-public class ResourceTestInitializer 
+public class ResourceTestInitializer
 {
     @PersistenceContext(unitName = "picsure")
     private EntityManager em;
-    
+
     @PostConstruct
-    public void insertTestUsers() {
+    public void insertTestResources() {
         String TARGET_PICSURE_URL = System.getenv("TARGET_PICSURE_URL");
 
 		Resource fooResource = new Resource()
@@ -38,5 +38,5 @@ public class ResourceTestInitializer
                 .setName("Aggregate Resource RS");
         em.persist(aggregateResource);
     }
-    
+
 }
