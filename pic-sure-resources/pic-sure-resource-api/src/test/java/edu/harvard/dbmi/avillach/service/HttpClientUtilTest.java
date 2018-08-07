@@ -22,5 +22,11 @@ public class HttpClientUtilTest {
 		
 		test = HttpClientUtil.composeURL("http://foo.bar.com/pic-sure/", "/info");
 		assertEquals("http://foo.bar.com/pic-sure/info", test);
+
+		test = HttpClientUtil.composeURL("http://localhost:8080", "/info");
+		assertEquals("http://localhost:8080/info", test);
+
+		test = HttpClientUtil.composeURL("http://localhost:8080/", "/info");
+		assertEquals("http://localhost:8080/info", test);
 	}
 }

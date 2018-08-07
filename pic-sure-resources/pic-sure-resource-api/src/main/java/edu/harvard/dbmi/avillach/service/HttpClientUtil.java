@@ -55,7 +55,7 @@ public class HttpClientUtil {
 			};
 			allPathComponents.addAll(basePathComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
 			allPathComponents.addAll(pathNameComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
-			return new URI(uri.getScheme(), uri.getHost(), "/" + String.join("/", allPathComponents), uri.getFragment()).toString();
+			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), uri.getQuery(), uri.getFragment()).toString();
 		} catch (URISyntaxException e) {
 			throw new RuntimeException("baseURL invalid : " + baseURL, e);
 		}
