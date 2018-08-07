@@ -94,7 +94,9 @@ public class PicsureQueryService {
 		if (resourceCredentials == null){
 			throw new NotAuthorizedException("Missing credentials");
 		}
-		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		if(resource.getToken()!=null) {
+			resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		}
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getBaseUrl(), query.getResourceResultId(), resourceCredentials);
 		status.setPicsureResultId(queryId);
