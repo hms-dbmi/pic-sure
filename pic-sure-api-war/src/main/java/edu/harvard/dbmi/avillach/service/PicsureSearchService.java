@@ -12,7 +12,7 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
 
-public class PicsureSearchService extends PicsureBaseService{
+public class PicsureSearchService {
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -46,7 +46,7 @@ public class PicsureSearchService extends PicsureBaseService{
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 		searchQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return resourceWebClient.search(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), searchQueryRequest);
+		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
 	}
 
 }

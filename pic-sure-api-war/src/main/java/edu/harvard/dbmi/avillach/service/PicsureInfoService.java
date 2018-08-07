@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class PicsureInfoService extends PicsureBaseService{
+public class PicsureInfoService {
 
 	Logger logger = LoggerFactory.getLogger(PicsureInfoService.class);
 
@@ -50,7 +50,7 @@ public class PicsureInfoService extends PicsureBaseService{
 		QueryRequest queryRequest = new QueryRequest();
 		queryRequest.setResourceCredentials(resourceCredentials);
 		queryRequest.setTargetURL(resource.getTargetURL());
-		return resourceWebClient.info(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), queryRequest);
+		return resourceWebClient.info(resource.getResourceRSPath(), queryRequest);
 	}
 
 	/**

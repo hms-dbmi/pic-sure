@@ -19,7 +19,7 @@ import javax.ws.rs.core.Response;
 /**
  * Service handling business logic for queries to resources
  */
-public class PicsureQueryService extends PicsureBaseService{
+public class PicsureQueryService {
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -58,7 +58,7 @@ public class PicsureQueryService extends PicsureBaseService{
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		dataQueryRequest.setTargetURL(resource.getTargetURL());
-		QueryStatus results = resourceWebClient.query(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), dataQueryRequest);
+		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
 		Query queryEntity = new Query();
@@ -112,7 +112,7 @@ public class PicsureQueryService extends PicsureBaseService{
 		}
 		queryRequest.setResourceCredentials(resourceCredentials);
 		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
+		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
 		status.setPicsureResultId(queryId);
 		query.setStatus(status.getStatus());
 		queryRepo.persist(query);
@@ -153,7 +153,7 @@ public class PicsureQueryService extends PicsureBaseService{
 		}
 		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		queryRequest.setResourceCredentials(resourceCredentials);
-		return resourceWebClient.queryResult(TARGET_PICSURE_URL + "/" + resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
+		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
 	}
 
     /**
