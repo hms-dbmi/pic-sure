@@ -16,7 +16,13 @@ import org.slf4j.LoggerFactory;
 
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
@@ -34,6 +40,24 @@ public class HttpClientUtil {
 		} catch (IOException e) {
 			//TODO: Write custom exception
 			throw new ResourceInterfaceException(uri, e);
+		}
+	}
+	
+	static String composeURL(String baseURL, String pathName) {
+		URI uri;
+		try {
+			uri = new URI(baseURL);
+			List<String> basePathComponents = Arrays.asList(uri.getPath().split("/"));
+			List<String> pathNameComponents = Arrays.asList(pathName.split("/"));
+			List<String> allPathComponents = new LinkedList<String>();
+			Predicate<? super String> nonEmpty = (segment)->{
+				return ! segment.isEmpty();
+			};
+			allPathComponents.addAll(basePathComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
+			allPathComponents.addAll(pathNameComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
+			return new URI(uri.getScheme(), uri.getHost(), "/" + String.join("/", allPathComponents), uri.getFragment()).toString();
+		} catch (URISyntaxException e) {
+			throw new RuntimeException("baseURL invalid : " + baseURL, e);
 		}
 	}
 

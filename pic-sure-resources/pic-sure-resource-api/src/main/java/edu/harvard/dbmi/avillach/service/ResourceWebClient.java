@@ -51,7 +51,7 @@ public class ResourceWebClient {
             logger.debug("Calling /info at ResourceURL: {}", baseURL);
             String pathName = "/info";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(baseURL, pathName), createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);
             }
@@ -76,7 +76,7 @@ public class ResourceWebClient {
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
 
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(baseURL, pathName), createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);
             }
@@ -102,7 +102,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(baseURL, pathName), createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);
             }
@@ -127,9 +127,9 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(resourceCredentials);
-            logger.debug(baseURL + pathName);
+            logger.debug(composeURL(baseURL, pathName));
             logger.debug(body);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(baseURL, pathName), createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);
             }
@@ -154,7 +154,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(resourceCredentials);
-            HttpResponse resourcesResponse = retrievePostResponse(baseURL + pathName, createAuthorizationHeader(resourceCredentials), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(baseURL, pathName), createAuthorizationHeader(resourceCredentials), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, baseURL);
             }
