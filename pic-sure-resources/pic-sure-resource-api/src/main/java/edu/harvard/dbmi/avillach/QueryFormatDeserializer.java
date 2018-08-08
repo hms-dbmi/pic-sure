@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.*;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.*;
 
 public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
@@ -19,8 +18,8 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
         QueryFormat qf = new QueryFormat();
 
         Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        HashMap<String, JsonNode> extraFields = new HashMap<>();
-        List<Map<String, String>> examples = new ArrayList<>();
+        HashMap<String, Object> extraFields = new HashMap<>();
+        List<Map<String, Object>> examples = new ArrayList<>();
         while (fields.hasNext()){
             Map.Entry<String, JsonNode> field = fields.next();
             if (field.getKey().equalsIgnoreCase("name")){
@@ -28,10 +27,10 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
             } else if (field.getKey().equalsIgnoreCase("description")){
                 qf.setDescription(field.getValue().asText());
             } else if (field.getKey().equalsIgnoreCase("examples")){
-                HashMap<String, String> test = mapper.convertValue(field.getValue(), HashMap.class);
-                examples.add(test);
+            	    List<Map<String, Object>> test = mapper.convertValue(field.getValue(), ArrayList.class);
+                examples = test;
             } else {
-                extraFields.put(field.getKey(), field.getValue());
+                extraFields.put(field.getKey(), mapper.convertValue(field.getValue(), HashMap.class));
             }
         }
         if (!extraFields.isEmpty()){

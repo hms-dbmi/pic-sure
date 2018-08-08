@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import edu.harvard.dbmi.avillach.QueryFormatDeserializer;
 
@@ -13,8 +12,8 @@ import java.util.Map;
 public class QueryFormat {
 	private String name;
 	private String description;
-	private Map<String, JsonNode> specification;
-	private List<Map<String,String>> examples;
+	private Map<String, Object> specification;
+	private List<Map<String, Object>> examples;
 	
 	public String getName() {
 		return name;
@@ -32,18 +31,18 @@ public class QueryFormat {
 		return this;
 	}
 	
-	public Map<String, JsonNode> getSpecification() {
+	public Map<String, Object> getSpecification() {
 		return specification;
 	}
-	public QueryFormat setSpecification(Map<String, JsonNode> specification) {
+	public QueryFormat setSpecification(Map<String, Object> specification) {
 		this.specification = specification;
 		return this;
 	}
 	
-	public List<Map<String,String>> getExamples() {
+	public List<Map<String,Object>> getExamples() {
 		return examples;
 	}
-	public QueryFormat setExamples(List<Map<String,String>> examples) {
+	public QueryFormat setExamples(List<Map<String,Object>> examples) {
 		this.examples = examples;
 		return this;
 	}
