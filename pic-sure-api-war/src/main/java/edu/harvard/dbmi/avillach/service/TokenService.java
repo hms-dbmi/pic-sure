@@ -83,7 +83,7 @@ public class TokenService {
                     .map(entry -> entry.getKey() + " - " + entry.getValue())
                     .collect(Collectors.joining(", ")));
             return tokenInspection;
-        } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
+        } catch (JwtException | IllegalArgumentException e) {
             logger.error("_inspectToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
             tokenInspection.message = "error: " + e.getMessage();
             return tokenInspection;

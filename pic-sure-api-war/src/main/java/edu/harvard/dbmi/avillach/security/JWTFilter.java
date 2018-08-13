@@ -18,10 +18,7 @@ import javax.ws.rs.ext.Provider;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureException;
+import io.jsonwebtoken.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,8 +84,8 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			logger.info("User - " + userForLogging + " - has just passed all the jwtfilter.filter() layer.");
 
-		} catch (SignatureException e) {
-			logger.error("The signature of token - " + tokenForLogging + " - is invalid.");
+		} catch (JwtException e) {
+			logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + tokenForLogging + " - is invalid.");
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
 			logger.error("User - " + userForLogging + " - has insufficient privileges.");
