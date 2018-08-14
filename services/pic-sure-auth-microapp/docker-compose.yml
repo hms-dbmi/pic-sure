@@ -1,0 +1,13 @@
+version: '3'
+services:
+  httpd:
+    build:
+      context: ./httpd
+      dockerfile: Dockerfile
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./pic-sure-auth-ui/src/main/webapp:/usr/local/apache2/htdocs
+      - ./pic-sure-auth-ui/target/webjars/META-INF/resources/webjars:/usr/local/apache2/htdocs/webjars
+      - ./pic-sure-auth-ui/src/main/resources:/usr/local/apache2/htdocs/settings

@@ -1,0 +1,51 @@
+{{#unless createOrUpdateUser}}
+<div class="col-md-12">
+    <button id="edit-user-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-user-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form>
+    {{#unless createOrUpdateUser}}
+    UUID:<br>
+    <input type="text" name="userId" style="width: 100%;" readonly value="{{user.uuid}}">
+    <br>
+    {{/unless}}
+    User ID:<br>
+    <input type="text" name="userId" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{user.userId}}">
+    <br>
+    Subject:<br>
+    <input type="text" name="subject" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{user.subject}}">
+    <br>
+    Roles:<br>
+    {{#unless createOrUpdateUser}}
+        <ul>
+        {{#each user.roles}}
+            <li>{{this}}</li>
+        {{/each}}
+        </ul>
+    {{/unless}}
+
+
+    {{#if createOrUpdateUser}}
+        <div class="checkbox-group required">
+            {{#each availableRoles}}
+                <input type="checkbox" name="{{this}}" value="{{this}}"> {{this}}<br>
+            {{/each}}
+        </div>
+    {{/if}}
+    <br>
+    {{#if createOrUpdateUser}}
+        <div>
+        <button id="save-user-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save user
+        </button>
+        <div id="cancel-user-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+</form>
