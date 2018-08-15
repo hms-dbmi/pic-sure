@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.security;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Base64;
 
 import javax.annotation.Resource;
@@ -42,60 +43,82 @@ public class JWTFilter implements ContainerRequestFilter {
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
 		String tokenForLogging = null;
-		User userForLogging = null;
+		String userForLogging = null;
+
+		String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+		if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+			throw new NotAuthorizedException("No authorization header found.");
+		}
+		String token = authorizationHeader.substring(6).trim();
+		tokenForLogging = token;
+
 		try {
-			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
-
-			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-				requestContext.abortWith(PICSUREResponse.protocolError("No authorization header found."));
-				return;
-			}
-
-			String token = authorizationHeader.substring(6).trim();
-			tokenForLogging = token;
-
 			Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 
 			String subject = jws.getBody().getSubject();
-			
 			String userId = jws.getBody().get(userIdClaim, String.class);
 						
 			User authenticatedUser = userRepo.findOrCreate(subject, userId);
 
 			if (authenticatedUser == null) {
 				logger.error("Cannot find or create a user from token: " + token);
-				requestContext.abortWith(PICSUREResponse.unauthorizedError("Cannot find or create a user"));
-				return;
+				throw new NotAuthorizedException("Cannot find or create a user");
 			}
 
-			userForLogging = authenticatedUser;
+			// currently only user id will be logged, in the future, it might contain roles and other information,
+			// like xxxuser|roles|otherInfo
+			userForLogging = authenticatedUser.getUserId();
 
-			String[] rolesAllowed = resourceInfo.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
+			// check authorization of the authenticated user
+			checkRoles(authenticatedUser, resourceInfo
+					.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-							: new String[]{};
-			for(String role : rolesAllowed) {
-				if(authenticatedUser.getRoles() == null
-					|| !authenticatedUser.getRoles().contains(role)) {
-					logger.error("The roles of the user - " + userForLogging + " - doesn't match the restrictions.");
-					requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
-					return;
-				}
-			}
+					: new String[]{});
 
-			logger.info("User - " + userForLogging + " - has just passed all the jwtfilter.filter() layer.");
+			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
 		} catch (JwtException e) {
-			logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + tokenForLogging + " - is invalid.");
+			logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + tokenForLogging + " - is invalid: " + e.getMessage());
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
-			logger.error("User - " + userForLogging + " - has insufficient privileges.");
+			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
 			// we should show different response based on role
-			requestContext.abortWith(PICSUREResponse.unauthorizedError("User has insufficient privileges."));
+			requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
 		} catch (Exception e){
 			// we should show different response based on role
 			e.printStackTrace();
 			requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
 		}
+	}
+
+	/**
+	 * check if user contains the input list of roles
+	 *
+	 * @param authenticatedUser
+	 * @param rolesAllowed
+	 * @return
+	 */
+	private boolean checkRoles(User authenticatedUser, String[] rolesAllowed) throws NotAuthorizedException{
+
+		String logMsg = "The roles of the user - id: " + authenticatedUser.getUserId() + " - "; //doesn't match the required restrictions";
+		boolean b = true;
+		if (rolesAllowed.length < 1) {
+			return true;
+		}
+
+		if (authenticatedUser.getRoles() == null) {
+			logger.error(logMsg + "user doesn't have a role.");
+			throw new NotAuthorizedException("user doesn't have a role.");
+		}
+
+		for (String role : rolesAllowed) {
+			if(!authenticatedUser.getRoles().contains(role)) {
+				logger.error(logMsg + "doesn't match the required restrictions, role from user: "
+						+ authenticatedUser.getRoles() + ", role required: " + Arrays.toString(rolesAllowed));
+				throw new NotAuthorizedException("doesn't match the required restrictions.");
+			}
+		}
+		return b;
 	}
 
 }
