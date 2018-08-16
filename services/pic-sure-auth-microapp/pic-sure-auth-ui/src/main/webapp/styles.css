@@ -46,6 +46,10 @@
     background-color: #76a6de;
 }
 
+.btn-right {
+    float: right;
+}
+
  .search-box-spinner {
      position: absolute !important;
      right: 1.5em;

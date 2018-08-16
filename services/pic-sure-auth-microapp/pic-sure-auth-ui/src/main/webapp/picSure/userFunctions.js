@@ -1,9 +1,7 @@
-define([],
-		function(){
+define(["util/notification"],
+		function(notification){
     var userFunctions = {
-        init: function () {
-
-        }
+        init: function () {}
     };
     userFunctions.fetchUsers = function (object, callback) {
         $.ajax({
@@ -14,7 +12,7 @@ define([],
                 callback(response, object);
             }.bind(object),
             error: function(response){
-                alert("fetchUsers failed");
+                notification.showFailureMessage("Failed to load users.");
             }
         });
     }.bind(userFunctions);
@@ -28,36 +26,40 @@ define([],
                 callback(response);
             },
             error: function(response){
-                alert("failed");
+                notification.showFailureMessage("Failed to load user details.");
             }
         });
     }.bind(userFunctions);
 
     userFunctions.createOrUpdateUser = function (user, requestType, callback) {
+        var successMessage = requestType == 'POST' ? 'User created' : 'User updated';
+        var failureMessage = requestType == 'POST' ? 'Failed to create user' : 'Failed to update user';
         $.ajax({
-            url: window.location.origin + "/picsure/user",
+            url: window.location.origin + '/picsure/user',
             type: requestType,
             contentType: 'application/json',
             data: JSON.stringify(user),
             success: function(response){
+                notification.showSuccessMessage(successMessage);
                 callback(response);
-            },
+            }.bind(this),
             error: function(response){
-                alert("failed");
+                notification.showSuccessMessage(failureMessage);
             }
         });
     }.bind(userFunctions);
 
     userFunctions.deleteUser = function (uuid, callback) {
         $.ajax({
-            url: window.location.origin + "/picsure/user/" + uuid,
+            url: window.location.origin + '/picsure/user/' + uuid,
             type: 'DELETE',
             contentType: 'application/json',
             success: function(response){
+                notification.showSuccessMessage('User deleted');
                 callback(response);
             },
             error: function(response){
-                alert("failed");
+                notification.showFailureMessage('Failed to delete user');
             }
         });
     }.bind(userFunctions);
@@ -68,11 +70,10 @@ define([],
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
-                console.log(response);
                 callback(response);
             },
             error: function(response){
-                alert("failed");
+                console.log('Failed to load roles');
             }
         });
     }.bind(userFunctions);

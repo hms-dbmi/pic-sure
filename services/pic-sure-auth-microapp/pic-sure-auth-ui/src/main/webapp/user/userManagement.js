@@ -1,11 +1,5 @@
-define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/userMenu.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions"],
-		function(BB, HBS, template, userMenuTemplate, userTableTemplate, modalTemplate, userFunctions){
-    // HBS.registerHelper("ifUserExists", function(uuid, options){
-    //     if(uuid.trim().length > 0){
-    //         return options.fn(this);
-    //     }
-    // });
-
+define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/userMenu.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		function(BB, HBS, template, userMenuTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
     var userManagementModel = BB.Model.extend({
     });
 
@@ -24,13 +18,6 @@ define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/user
             "click #delete-user-button":"deleteUser",
             "submit":                   "saveUserAction",
         },
-        displayUserMenu: function (result) {
-            this.$el.html();
-
-            $("#modalDialog", this.$el).show();
-            $(".modal-title", this.$el).html("Add user");
-            $(".modal-body", this.$el).html(this.crudUserTemplate(result));
-        },
         displayUsers: function (result, view) {
             this.userTableTemplate = HBS.compile(userTableTemplate);
             var lar = $('.user-data', view.$el);
@@ -42,7 +29,6 @@ define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/user
             $("#modalDialog", this.$el).show();
 
             $(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, availableRoles: this.model.get("availableRoles")}));
-
         },
         editUserMenu: function (events) {
             $(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: this.model.get("selectedUser"), availableRoles: this.model.get("availableRoles")}));
@@ -68,7 +54,6 @@ define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/user
                 $(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: false, user: this.model.get("selectedUser")}));
             }.bind(this));
         },
-
         saveUserAction: function (e) {
             e.preventDefault();
             var userId = this.$('input[name=userId]').val();
@@ -106,26 +91,26 @@ define(["backbone","handlebars", "text!user/userManagement.hbs", "text!user/user
                 this.render();
             }.bind(this));
         },
-
         deleteUser: function (event) {
             var uuid = this.$('input[name=userId]').val();
-            userFunctions.deleteUser(uuid, function (response) {
-                alert("User deleted!");
-                this.render()
-            }.bind(this));
-            console.log("Clicked delete user");
-        },
+		    notification.showConfirmationDialog(function () {
 
-        closeDialog: function () {
-		    // cleanup
-            this.model.unset("selectedUser");
-            $("#modalDialog").hide();
-        },
+		        userFunctions.deleteUser(uuid, function (response) {
+                    this.render()
+                }.bind(this));
+
+            }.bind(this));
+	    },
         getUserRoles: function (stringRoles) {
             var roles = stringRoles.split(",").map(function(item) {
                 return item.trim();
             });
             this.model.get("selectedUser").roles = roles;
+        },
+        closeDialog: function () {
+            // cleanup
+            this.model.unset("selectedUser");
+            $("#modalDialog").hide();
         },
         render : function(){
             this.$el.html(this.template({}));
