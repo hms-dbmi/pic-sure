@@ -15,7 +15,7 @@ define(["Noty", "handlebars", "text!options/confirmationDialog.hbs",],
 
     notification.showFailureMessage = function (message) {
         new Noty({
-            type: "success",
+            type: "error",
             text: message,
             timeout: 3000
         }).show();
