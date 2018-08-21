@@ -8,8 +8,8 @@
 		<artifactId>pic-sure-resources</artifactId>
 		<version>2.0.0-SNAPSHOT</version>
 	</parent>
-	<artifactId>pic-sure-irct-resource</artifactId>
-	<name>pic-sure-irct-resource</name>
+	<artifactId>pic-sure-generic-resource</artifactId>
+	<name>pic-sure-generic-resource</name>
 	<packaging>war</packaging>
 	<url>http://maven.apache.org</url>
 	<properties>
@@ -137,31 +137,6 @@
 						</users>
 					</add-user>
 				</configuration>
-
-				<executions>
-					<execution>
-						<id>wildfly-run</id>
-						<phase>pre-integration-test</phase>
-						<goals>
-							<goal>start</goal>
-							<goal>deploy</goal>
-						</goals>
-						<configuration>
-							<env>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
-								<RESULT_FORMAT>CSV</RESULT_FORMAT>
-							</env>
-						</configuration>
-					</execution>
-					<execution>
-						<id>wildfly-stop</id>
-						<phase>post-integration-test</phase>
-						<goals>
-							<goal>undeploy</goal>
-							<goal>shutdown</goal>
-						</goals>
-					</execution>
-				</executions>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

@@ -38,7 +38,8 @@ public class HttpClientUtil {
 			HttpClient client = HttpClientBuilder.create().build();
 			HttpPost post = new HttpPost(uri);
 			Map<String, String> clientCredentials = new HashMap<String, String>();
-			clientCredentials.put("IRCT_BEARER_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU");
+			clientCredentials.put("BEARER_TOKEN", token);
+
 			post.setHeader("Content-type","application/json");
 			post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));
 			return client.execute(post);

@@ -12,7 +12,12 @@
 			<property name="hibernate.archive.autodetection" value="class" />
 			<property name="hibernate.show_sql" value="false" />
 			<property name="hibernate.dialect" value="org.hibernate.dialect.MySQLDialect" />
+			<property name="hibernate.hbm2ddl.update" value="validate" />
+			<!--
+			https://docs.jboss.org/hibernate/orm/5.2/userguide/html_single/Hibernate_User_Guide.html#configurations-hbmddl
+			For how to use this (hibernate.hbm2ddl) option.
 			<property name="hibernate.hbm2ddl.auto" value="validate" />
+			-->
 		</properties>
 	</persistence-unit>
 </persistence>
