@@ -3,9 +3,7 @@ package edu.harvard.hms.dbmi.avillach;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.Date;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
@@ -20,6 +18,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.commons.lang3.StringUtils;
@@ -29,8 +28,6 @@ import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
-
 @Path("/datasource")
 @Produces("application/json")
 @Consumes("application/json")
@@ -38,6 +35,8 @@ public class GenericResourceRS implements IResourceRS
 {
 	private String TARGET_URL = System.getenv("TARGET_URL");
 	private String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
+
+    private Header[] hdrs = {};
 
 	public static final String BEARER_TOKEN = "BEARER_TOKEN";
 
@@ -53,11 +52,6 @@ public class GenericResourceRS implements IResourceRS
 		if(RESULT_FORMAT == null)
 			throw new RuntimeException("RESULT_FORMAT environment variable must be set.");
 	}
-
-	/*
-	
-	 */
-
 
     /**
      * Create an instance with configuration passed in with a Properties object. It overwrites the defaults
@@ -89,18 +83,9 @@ public class GenericResourceRS implements IResourceRS
 	public ResourceInfo info(Map<String,String> resourceCredentials) {
 		logger.debug("Getting information about the datasource");
 
-		if (resourceCredentials == null){
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
-
-		String token = resourceCredentials.get(BEARER_TOKEN);
-		if (token == null){
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
-
-		// TODO the `infoPath` should be dynamically assigned, on a per resource basis, or come from the request
-		String targetURL = TARGET_URL + "infoPath";
-		HttpResponse response = retrieveGetResponse(targetURL, createAuthorizationHeader(token));
+		// TODO the `service-info` should be dynamically assigned, on a per resource basis, or come from the request
+		/*String targetURL = TARGET_URL + "service-info";
+		HttpResponse response = retrieveGetResponse(targetURL, this.hdrs);
 
 		if (response.getStatusLine().getStatusCode() != 200){
             logger.error(targetURL +" did not return a 200: {} {}",
@@ -114,9 +99,14 @@ public class GenericResourceRS implements IResourceRS
             }
 
 			throw new ResourceInterfaceException(targetURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-		}
+		}*/
 
-		return new ResourceInfo().setName("Resource : " + TARGET_URL ).setQueryFormats(readListFromResponse(response, QueryFormat.class));
+		// TODO: fake it for now, until `service-info` becomes available
+		QueryFormat qf = new QueryFormat();
+		qf.setDescription("Sample Description 1");
+		qf.setName("Sample QueryFormat name");
+		List<QueryFormat> queryFormats = Arrays.asList(qf);
+		return new ResourceInfo().setName("GA4GH DOS API Server").setQueryFormats(queryFormats);
 	}
 
 	@POST
@@ -127,27 +117,20 @@ public class GenericResourceRS implements IResourceRS
 
 		try {
 			if (searchJson == null) {
-				throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
-			}
-			Map<String, String> resourceCredentials = searchJson.getResourceCredentials();
-			if (resourceCredentials == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-			}
-			String token = resourceCredentials.get(BEARER_TOKEN);
-			if (token == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-			}
-			Object search = searchJson.getQuery();
-			if (search == null) {
-				throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
-			}
-			String searchTerm = search.toString();
+				//throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+			} else {
+                Object search = searchJson.getQuery();
+                if (search == null) {
+                    //throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+                }
+                // searchTerm = search.toString();
+            }
 
-			String targetURL = TARGET_URL + "resourceService/find?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse response = retrieveGetResponse(targetURL, createAuthorizationHeader(token));
+			String targetURL = TARGET_URL + "dataobjects";
+			HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(targetURL, null);
 			SearchResults results = new SearchResults();
 
-			results.setSearchQuery(searchTerm);
+			//results.setSearchQuery(searchTerm);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				//If the result is empty, a 500 is thrown for some reason
@@ -161,7 +144,7 @@ public class GenericResourceRS implements IResourceRS
 				}
 				throw new ResourceInterfaceException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
-			results.setResults(readObjectFromResponse(response, Object.class));
+			results.setResults(edu.harvard.hms.dbmi.avillach.HttpClientUtil.readDataObjectsFromResponse(response, Object.class));
 			return results;
 
 		} catch (UnsupportedEncodingException e){
@@ -177,25 +160,39 @@ public class GenericResourceRS implements IResourceRS
 	@Override
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Query the datasource");
+
 		if (queryJson == null) {
 			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 		}
+
 		Map<String, String> resourceCredentials = queryJson.getResourceCredentials();
-		if (resourceCredentials == null) {
+		/*if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		String token = resourceCredentials.get(BEARER_TOKEN);
 		if (token == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
+		}*/
+
+        long starttime = new Date().getTime();
+        QueryStatus status = new QueryStatus();
+        status.setStartTime(starttime);
+        status.setStatus(PicSureStatus.QUEUED);
 
 		//TODO Do we want/need to do it this way, should we revert query field back to string?
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
 			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
-		}
+		} else {
+		    logger.debug("query() "+queryObject.toString());
+        }
 
 		JsonNode queryNode = json.valueToTree(queryObject);
+        logger.debug("query() queryNode (toString):"+queryNode.toString());
+        if (queryNode.isTextual()) {
+            logger.debug("query() queryNode (asText):" + queryNode.asText());
+            logger.debug("query() queryNode (toString):" + queryNode.textValue());
+        }
 		String queryString = null;
 
 		JsonNode query = queryNode.get("queryString");
@@ -205,10 +202,12 @@ public class GenericResourceRS implements IResourceRS
 		} else {
 			queryString = query.toString();
 		}
+		logger.debug("query() queryString: "+queryString);
 
-		String pathName = "queryService/runQuery";
-		long starttime = new Date().getTime();
-		HttpResponse response = retrievePostResponse(TARGET_URL + pathName, createAuthorizationHeader(token), queryString);
+		String pathName = TARGET_URL + "dataobjects/"+queryString.replace("\"", "");
+
+		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(pathName, null);
+
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_URL + pathName + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -222,18 +221,15 @@ public class GenericResourceRS implements IResourceRS
 		try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			JsonNode responseNode = json.readTree(responseBody);
-			String resultId = responseNode.get("resultId").asText();
-			//Check to see if it's ready yet, if not just send back running with no results
-			QueryStatus status = queryStatus(resultId, resourceCredentials);
-			status.setResourceResultId(resultId);
-			status.setStartTime(starttime);
-			//Changing response to QueryStatus from QueryResponse makes it impossible to send back results right away
-			/*			results.setStatus(status);
-			//If it's already ready go ahead and get the results
-			if(status.getStatus() == PicSureStatus.AVAILABLE){
-				results = queryResult(resultId, resourceCredentials);
-				results.getStatus().setStartTime(starttime);
-			}*/
+
+            long endtime = new Date().getTime();
+            status.setDuration(endtime-starttime);
+			status.setPicsureResultId(UUID.fromString(responseNode.get("data_object").get("id").asText()));
+			status.setStatus(PicSureStatus.AVAILABLE);
+
+			status.setResultMetadata(SerializationUtils.serialize(responseBody));
+
+			status.setSizeInBytes(responseBody.length());
 			return status;
 		} catch (IOException e){
 			//TODO: Deal with this
@@ -249,13 +245,9 @@ public class GenericResourceRS implements IResourceRS
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		String token = resourceCredentials.get(BEARER_TOKEN);
-		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
 
 		String pathName = "resultService/resultStatus/"+queryId;
-		HttpResponse response = retrieveGetResponse(TARGET_URL + pathName, createAuthorizationHeader(token));
+		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(TARGET_URL + pathName, null);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -286,20 +278,14 @@ public class GenericResourceRS implements IResourceRS
 	}
 
 	@POST
-	@Path("/query/{resourceQueryId}/result")
+	@Path("/query/{dataObjectId}/result")
 	@Override
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
-		logger.debug("calling IRCT Resource queryResult() for query {}", queryId);
-		if (resourceCredentials == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
-		String token = resourceCredentials.get(BEARER_TOKEN);
-		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		}
-		String pathName = "resultService/result/"+queryId+"/"+RESULT_FORMAT;
-		//Returns a String in the format requested
-		HttpResponse response = retrieveGetResponse(TARGET_URL + pathName, createAuthorizationHeader(token));
+	public Response queryResult(@PathParam("dataObjectId") String dataObjectId, Map<String, String> resourceCredentials) {
+		logger.debug("queryResult() calling dataobject/{}", dataObjectId);
+		String pathName = TARGET_URL + "dataobjects/"+dataObjectId;
+        logger.debug("queryResult() pathName:{}", pathName);
+
+		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(pathName, null);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(TARGET_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			//TODO Is there a better way to make sure the correct exception type is thrown?
@@ -308,6 +294,7 @@ public class GenericResourceRS implements IResourceRS
 			}
 				throw new ResourceInterfaceException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
+
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
 		} catch (IOException e){
