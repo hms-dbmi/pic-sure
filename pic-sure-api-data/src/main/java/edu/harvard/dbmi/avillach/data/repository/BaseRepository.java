@@ -69,6 +69,10 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 		return cb.like(exp, value);
 	}
 
+	public Predicate or(CriteriaBuilder cb, Predicate... restrictions){
+		return cb.or(restrictions);
+	}
+
 	public T getById(K id){
 		return em().find(type, id);
 	}

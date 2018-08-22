@@ -63,8 +63,7 @@ public class TokenService {
 
             String subject = jws.getBody().getSubject();
 
-            // the first subject is for finding, second is for creating
-            User user = userRepo.findOrCreate(subject, subject);
+            User user = userRepo.findOrCreate(new User().setSubject(subject).setUserId(subject));
             if (user == null)
                 logger.error("Cannot find or create user with subject - "+ subject +" - extracted from token.");
             else
