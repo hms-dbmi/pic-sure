@@ -14,6 +14,8 @@ public class QueryRequest {
 	private Object query;
 
 	private UUID resourceUUID;
+
+	private String targetURL;
 	
 	public Map<String, String> getResourceCredentials() {
 		return resourceCredentials;
@@ -36,5 +38,13 @@ public class QueryRequest {
 
 	public void setResourceUUID(UUID resourceUUID) {
 		this.resourceUUID = resourceUUID;
+	}
+
+	public String getTargetURL() {
+		return targetURL;
+	}
+
+	public void setTargetURL(String targetURL) {
+		this.targetURL = targetURL;
 	}
 }

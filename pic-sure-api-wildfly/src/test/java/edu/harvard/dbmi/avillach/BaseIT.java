@@ -50,7 +50,7 @@ public class BaseIT {
 				.setIssuer("http://localhost:8080")
 				.setIssuedAt(new Date()).addClaims(Map.of("email","foo2@bar.com"))
 				.setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
-				.signWith(SignatureAlgorithm.HS512, Base64.getEncoder().encode(CLIENT_SECRET.getBytes()))
+				.signWith(SignatureAlgorithm.HS512, CLIENT_SECRET.getBytes())
 				.compact();
 	}
 }

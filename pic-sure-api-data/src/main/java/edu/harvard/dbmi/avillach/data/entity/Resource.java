@@ -12,7 +12,8 @@ public class Resource extends BaseEntity{
 	private String name;
 	@Column(length = 8192)
 	private String description;
-	private String baseUrl;
+	private String targetURL;
+	private String resourceRSPath;
 
 	@Column(length = 8192)
 	private String token;
@@ -33,11 +34,20 @@ public class Resource extends BaseEntity{
 		return this;
 	}
 	
-	public String getBaseUrl() {
-		return baseUrl;
+	public String getTargetURL() {
+		return targetURL;
 	}
-	public Resource setBaseUrl(String baseUrl) {
-		this.baseUrl = baseUrl;
+	public Resource setTargetURL(String targetURL) {
+		this.targetURL = targetURL;
+		return this;
+	}
+
+	public String getResourceRSPath() {
+		return resourceRSPath;
+	}
+
+	public Resource setResourceRSPath(String resourceRSPath) {
+		this.resourceRSPath = resourceRSPath;
 		return this;
 	}
 

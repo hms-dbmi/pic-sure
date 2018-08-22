@@ -32,7 +32,7 @@ public class TestResourceRS implements IResourceRS {
 	@GET
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(String queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(String queryId, QueryRequest statusRequest) {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -40,13 +40,13 @@ public class TestResourceRS implements IResourceRS {
 	@GET
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public Response queryResult(String queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(String queryId, QueryRequest resultRequest) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public ResourceInfo info(Map<String, String> resourceCredentials) {
+	public ResourceInfo info(QueryRequest queryRequest) {
 		// TODO Auto-generated method stub
 		return null;
 	}
