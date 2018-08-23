@@ -38,7 +38,7 @@ public class GenericResourceRS implements IResourceRS
 
     private Header[] hdrs = {};
 
-	public static final String BEARER_TOKEN = "BEARER_TOKEN";
+	public static final String BEARER_STRING = "Bearer ";
 
 	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
