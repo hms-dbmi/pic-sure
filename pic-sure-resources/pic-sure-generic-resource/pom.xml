@@ -8,8 +8,8 @@
 		<artifactId>pic-sure-resources</artifactId>
 		<version>2.0.0-SNAPSHOT</version>
 	</parent>
-	<artifactId>pic-sure-generic-resource</artifactId>
-	<name>pic-sure-generic-resource</name>
+	<artifactId>pic-sure-ga4gh-dos</artifactId>
+	<name>pic-sure-ga4gh-dos</name>
 	<packaging>war</packaging>
 	<url>http://maven.apache.org</url>
 	<properties>
