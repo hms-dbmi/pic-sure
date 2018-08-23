@@ -102,7 +102,7 @@
                         <descriptor>src/assembly/webapp-zip.xml</descriptor>
                     </descriptors>
                     <attach>true</attach>
-                    <outputDirectory>httpd</outputDirectory>
+                    <outputDirectory>../httpd</outputDirectory>
                 </configuration>
                 <executions>
                     <execution>
