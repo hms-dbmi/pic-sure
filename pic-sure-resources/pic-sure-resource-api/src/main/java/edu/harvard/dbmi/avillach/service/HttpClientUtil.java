@@ -43,7 +43,7 @@ public class HttpClientUtil {
 		}
 	}
 	
-	static String composeURL(String baseURL, String pathName) {
+	public static String composeURL(String baseURL, String pathName) {
 		URI uri;
 		try {
 			uri = new URI(baseURL);

@@ -38,6 +38,12 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-gnome-i2b2-count-resource</artifactId>
+			<classifier>classes</classifier>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
@@ -171,6 +177,14 @@
 									<overWrite>true</overWrite>
 									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
 								</artifactItem>
+								<artifactItem>
+									<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+									<artifactId>pic-sure-gnome-i2b2-count-resource</artifactId>
+									<version>${project.version}</version>
+									<type>war</type>
+									<overWrite>true</overWrite>
+									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
+								</artifactItem>
 							</artifactItems>
 						</configuration>
 					</execution>
@@ -230,8 +244,9 @@
 						<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 						<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-						<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
+						<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM</PICSURE_2_TOKEN>
 						<RESULT_FORMAT>JSON</RESULT_FORMAT>
+						<I2B2_LABEL>BCH_IMPORT</I2B2_LABEL>
 					</env>
 					<add-user>
 						<users>
@@ -272,7 +287,7 @@
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
+								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM</PICSURE_2_TOKEN>
 								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
@@ -311,7 +326,7 @@
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
+								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM</PICSURE_2_TOKEN>
 								<RESULT_FORMAT>CSV</RESULT_FORMAT>
 							</environmentVariables>
 							<systemPropertyVariables>
