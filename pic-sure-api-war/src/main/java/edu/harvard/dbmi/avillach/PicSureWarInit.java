@@ -28,7 +28,7 @@ public class PicSureWarInit {
     // decide which authentication method is going to be used
     private String verify_user_method;
     public static final String VERIFY_METHOD_LOCAL="local";
-    public static final String VERIFY_METHOD_TOKEN_INTRO="tokenIntro";
+    public static final String VERIFY_METHOD_TOKEN_INTRO="tokenIntrospection";
     private String token_introspection_url;
     private String token_introspection_token;
 
