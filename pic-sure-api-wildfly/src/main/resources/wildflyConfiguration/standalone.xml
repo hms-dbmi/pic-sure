@@ -415,6 +415,9 @@
             <bindings>
                 <simple name="java:global/client_secret" value="${env.PIC_SURE_CLIENT_SECRET}"/>
                 <simple name="java:global/user_id_claim" value="${env.PIC_SURE_USER_ID_CLAIM}"/>
+                <simple name="java:global/verify_user_method" value="${env.VERIFY_USER_METHOD}"/>
+                <simple name="java:global/token_introspection_url" value="${env.TOKEN_INTROSPECTION_URL}"/>
+                <simple name="java:global/token_introspection_token" value="${env.TOKEN_INTROSPECTION_TOKEN}"/>
             </bindings>
             <remote-naming/>
         </subsystem>

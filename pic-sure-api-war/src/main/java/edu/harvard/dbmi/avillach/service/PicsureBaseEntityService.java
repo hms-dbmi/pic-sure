@@ -58,8 +58,12 @@ public abstract class PicsureBaseEntityService <T extends BaseEntity> {
 
         List<T> addedEntities = addOrUpdate(entities, true, baseRepository);
 
+        if (addedEntities.isEmpty())
+            return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
+                    "(s) has been added.");
+
         if (addedEntities.size() < entities.size())
-            return PICSUREResponse.applicationError(Integer.toString(entities.size()-addedEntities.size())
+            return PICSUREResponse.success(Integer.toString(entities.size()-addedEntities.size())
                     + " " + type.getSimpleName().toLowerCase() +
                     "s are NOT operated." +
                     " Added " + type.getSimpleName().toLowerCase() +
@@ -77,12 +81,12 @@ public abstract class PicsureBaseEntityService <T extends BaseEntity> {
         List<T> addedEntities = addOrUpdate(entities, false, baseRepository);
 
         if (addedEntities.isEmpty())
-            return PICSUREResponse.error("No " + type.getSimpleName().toLowerCase() +
+            return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     "(s) has been updated.");
 
 
         if (addedEntities.size() < entities.size())
-            return PICSUREResponse.error(Integer.toString(entities.size()-addedEntities.size())
+            return PICSUREResponse.success(Integer.toString(entities.size()-addedEntities.size())
                     + " " +type.getSimpleName().toLowerCase()+
                     "s are NOT operated." +
                     " Updated " + type.getSimpleName().toLowerCase() +
@@ -106,7 +110,7 @@ public abstract class PicsureBaseEntityService <T extends BaseEntity> {
                 dbContacted = true;
             }
 
-            if (!dbContacted || baseRepository.getById(t.getUuid()) == null){
+            if (!dbContacted || t.getUuid() == null || baseRepository.getById(t.getUuid()) == null){
                 continue;
             }
             operatedEntities.add(t);

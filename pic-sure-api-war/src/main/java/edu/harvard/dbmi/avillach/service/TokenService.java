@@ -63,8 +63,7 @@ public class TokenService {
 
             String subject = jws.getBody().getSubject();
 
-            // the first subject is for finding, second is for creating
-            User user = userRepo.findOrCreate(subject, subject);
+            User user = userRepo.findOrCreate(new User().setSubject(subject).setUserId(subject));
             if (user == null)
                 logger.error("Cannot find or create user with subject - "+ subject +" - extracted from token.");
             else
@@ -83,7 +82,7 @@ public class TokenService {
                     .map(entry -> entry.getKey() + " - " + entry.getValue())
                     .collect(Collectors.joining(", ")));
             return tokenInspection;
-        } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException | IllegalArgumentException e) {
+        } catch (JwtException | IllegalArgumentException e) {
             logger.error("_inspectToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
             tokenInspection.message = "error: " + e.getMessage();
             return tokenInspection;
