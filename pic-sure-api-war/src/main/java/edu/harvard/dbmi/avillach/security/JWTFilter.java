@@ -29,8 +29,10 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
+import java.security.Principal;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -86,6 +88,35 @@ public class JWTFilter implements ContainerRequestFilter {
 			// currently only user id will be logged, in the future, it might contain roles and other information,
 			// like xxxuser|roles|otherInfo
 			userForLogging = authenticatedUser.getUserId();
+
+			String username = userForLogging;
+			//The request context wants to remember who the user is
+			requestContext.setSecurityContext(new SecurityContext() {
+				@Override
+				public Principal getUserPrincipal() {
+					return new Principal() {
+						@Override
+						public String getName() {
+							return username;
+						}
+					};
+				}
+
+				@Override
+				public boolean isUserInRole(String s) {
+					return requestContext.getSecurityContext().isUserInRole(s);
+				}
+
+				@Override
+				public boolean isSecure() {
+					return requestContext.getSecurityContext().isSecure();
+				}
+
+				@Override
+				public String getAuthenticationScheme() {
+					return requestContext.getSecurityContext().getAuthenticationScheme();
+				}
+			});
 
 			// check authorization of the authenticated user
 			checkRoles(authenticatedUser, resourceInfo
