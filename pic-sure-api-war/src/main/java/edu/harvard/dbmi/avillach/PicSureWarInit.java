@@ -61,6 +61,7 @@ public class PicSureWarInit {
     }
 
     private void loadTokenIntrospection(){
+        logger.info("start loading token introspection...");
         try {
             Context ctx = new InitialContext();
             verify_user_method = (String) ctx.lookup("global/verify_user_method");

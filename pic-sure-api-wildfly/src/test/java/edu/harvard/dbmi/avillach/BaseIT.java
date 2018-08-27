@@ -16,6 +16,7 @@ import org.apache.http.client.HttpClient;
 
 public class BaseIT {
 	private static final String CLIENT_SECRET = System.getenv("PIC_SURE_CLIENT_SECRET");
+	private static final String USER_ID_CLAIM = System.getenv("PIC_SURE_USER_ID_CLAIM");
 
 	protected static String endpointUrl;
 	protected static String irctEndpointUrl;
@@ -38,7 +39,7 @@ public class BaseIT {
 		return Jwts.builder()
 				.setSubject("samlp|foo@bar.com")
 				.setIssuer("http://localhost:8080")
-				.setIssuedAt(new Date()).addClaims(Map.of("email","foo@bar.com"))
+				.setIssuedAt(new Date()).addClaims(Map.of(USER_ID_CLAIM,"foo@bar.com"))
 				.setExpiration(Date.from(LocalDateTime.now().plusMinutes(15L).atZone(ZoneId.systemDefault()).toInstant()))
 				.signWith(SignatureAlgorithm.HS512, CLIENT_SECRET.getBytes())
 				.compact();
