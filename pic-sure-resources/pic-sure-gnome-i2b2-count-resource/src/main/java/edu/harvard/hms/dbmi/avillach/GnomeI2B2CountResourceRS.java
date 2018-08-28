@@ -303,8 +303,8 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 			ArrayNode i2b2Data = (ArrayNode) i2b2Response.get("data");
 
 			//Find matching ids
-			List<String> gnomepatientIds = new ArrayList<>();
-			List<String> i2b2patientIds = new ArrayList<>();
+			Set<String> gnomepatientIds = new HashSet<>();
+			Set<String> i2b2patientIds = new HashSet<>();
 			for (JsonNode jsn : gnomeData){
 				gnomepatientIds.addAll(getFields(jsn, GNOME_LABEL));
 			}
@@ -313,8 +313,8 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 			}
 
 			//Make sure ids are in the same format so they match appropriately
-			gnomepatientIds = gnomepatientIds.stream().map(s -> cleanString(s)).distinct().collect(Collectors.toList());
-			i2b2patientIds = i2b2patientIds.stream().map(s -> cleanString(s)).distinct().collect(Collectors.toList());
+			gnomepatientIds = gnomepatientIds.stream().map(s -> cleanString(s)).distinct().collect(Collectors.toSet());
+			i2b2patientIds = i2b2patientIds.stream().map(s -> cleanString(s)).distinct().collect(Collectors.toSet());
 
 			//Keep the patient ids that are on both
 			gnomepatientIds.retainAll(i2b2patientIds);
