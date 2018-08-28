@@ -32,6 +32,7 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
                 .collect(Collectors.toSet());
 
         interceptorContext.setProperty("requestContent", filtered);
+        //Return original body to the request
         interceptorContext.setInputStream(new ByteArrayInputStream(requestContent.getBytes()));
 
         return interceptorContext.proceed();
