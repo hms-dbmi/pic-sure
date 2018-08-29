@@ -23,8 +23,8 @@ public class ContainerResponseLogger implements ContainerResponseFilter {
         StringBuilder stringBuilder = new StringBuilder(requestContext.getMethod() + " at " + requestContext.getUriInfo().getRequestUri());
 
         //Get the username if it exists
-        if (requestContext.getSecurityContext().getUserPrincipal() != null){
-            stringBuilder.insert(0, requestContext.getSecurityContext().getUserPrincipal().getName() + " requested ");
+        if (requestContext.getProperty("username") != null){
+            stringBuilder.insert(0, requestContext.getProperty("username") + " requested ");
         } else {
             stringBuilder.append(" requested ");
         }

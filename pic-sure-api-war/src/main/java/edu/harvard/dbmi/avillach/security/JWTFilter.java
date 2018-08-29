@@ -89,34 +89,8 @@ public class JWTFilter implements ContainerRequestFilter {
 			// like xxxuser|roles|otherInfo
 			userForLogging = authenticatedUser.getUserId();
 
-			String username = userForLogging;
 			//The request context wants to remember who the user is
-			requestContext.setSecurityContext(new SecurityContext() {
-				@Override
-				public Principal getUserPrincipal() {
-					return new Principal() {
-						@Override
-						public String getName() {
-							return username;
-						}
-					};
-				}
-
-				@Override
-				public boolean isUserInRole(String s) {
-					return requestContext.getSecurityContext().isUserInRole(s);
-				}
-
-				@Override
-				public boolean isSecure() {
-					return requestContext.getSecurityContext().isSecure();
-				}
-
-				@Override
-				public String getAuthenticationScheme() {
-					return requestContext.getSecurityContext().getAuthenticationScheme();
-				}
-			});
+			requestContext.setProperty("username", userForLogging);
 
 			// check authorization of the authenticated user
 			checkRoles(authenticatedUser, resourceInfo
