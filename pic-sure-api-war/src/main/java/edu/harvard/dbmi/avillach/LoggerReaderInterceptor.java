@@ -55,7 +55,11 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
 
         //The query object might have resourceCredentials in it
         JsonNode node = mapper.valueToTree(request.getQuery());
+        request.setQuery(cleanInnerQuery(node));
+        return request;
+    }
 
+    private Object cleanInnerQuery(JsonNode node){
         if (containsResourceCredentials(node)){
             //Somewhere in here is a resourceCredentials.
             JsonNodeType type = node.getNodeType();
@@ -64,10 +68,10 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
             if (type.equals(JsonNodeType.OBJECT)){
                 try {
                     //If the query was itself a QueryRequest, clean it of resourceCredentials
-                    QueryRequest innerQuery = cleanQueryRequest(writer.writeValueAsString(node));
+                    QueryRequest innerQuery = cleanQueryRequest(mapper.writeValueAsString(node));
                     //Replace the original query with the cleaned one
-                    request.setQuery(innerQuery);
-                } catch (JsonProcessingException e) {
+                    return innerQuery;
+                } catch (IOException e) {
                     //Guess it wasn't a QueryRequest, but something inside here was
                     ObjectNode newNode = mapper.createObjectNode();
                     Iterator<Map.Entry<String,JsonNode>> nodes = node.fields();
@@ -77,12 +81,11 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
                         if (containsResourceCredentials(innerNode.getValue())){
                             try {
                                 //This had resourceCredentials; clean it
-                                QueryRequest testQuery = cleanQueryRequest(writer.writeValueAsString(innerNode));
+                                QueryRequest testQuery = cleanQueryRequest(mapper.writeValueAsString(innerNode));
                                 newNode.put(innerNode.getKey(), mapper.valueToTree(testQuery));
-                            } catch (JsonProcessingException e2){
-                                //TODO
-                                //Hmm, maybe it's further inside?  Do we need to keep digging?
-                                System.out.println("Was not a queryRequest");
+                            } catch (IOException e2){
+                                //Not a QueryRequest, clean whatever it is
+                                newNode.put(innerNode.getKey(), (JsonNode) cleanInnerQuery(innerNode.getValue()));
                             }
                         } else {
                             //This node is safe; put it back
@@ -90,7 +93,7 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
                         }
                     }
                     //Replace the original query with our cleaned node
-                    request.setQuery(newNode);
+                    return newNode;
                 }
             } else if (type.equals(JsonNodeType.ARRAY)){
                 //Make a replacement ArrayNode
@@ -104,20 +107,23 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
                             QueryRequest testQuery = cleanQueryRequest(mapper.writeValueAsString(next));
                             //Add the cleaned QueryRequest
                             newNode.add(mapper.valueToTree(testQuery));
-                        } catch (JsonProcessingException e) {
-                            //TODO Hmm?
-                            System.out.println("Not a query request");
+                        } catch (IOException e) {
+                            //Not a QueryRequest, clean what it actually is
+                            newNode.add((JsonNode) cleanInnerQuery(next));
                         }
                     } else {
                         //Safe to return
                         newNode.add(next);
                     }
                 }
-                request.setQuery(newNode);
-
+                return newNode;
+            } else {
+                //TODO Do we need to deal with other node types?
+                return node;
             }
+        } else {
+            return node;
         }
-        return request;
     }
 
     //Do any subnodes have a resourceCredentials node?

@@ -4,14 +4,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonView;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import edu.harvard.dbmi.avillach.QueryRequestDeserializer;
 import edu.harvard.dbmi.avillach.Views;
 import io.swagger.annotations.ApiModel;
 
 @ApiModel(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
 		" token for the resource.  The query is a string or object that contains a search term or query")
-//@JsonDeserialize(using = QueryRequestDeserializer.class)
 public class QueryRequest {
 
 	private Map<String, String> resourceCredentials;
