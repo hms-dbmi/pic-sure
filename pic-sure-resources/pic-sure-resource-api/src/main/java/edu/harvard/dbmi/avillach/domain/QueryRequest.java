@@ -3,8 +3,6 @@ package edu.harvard.dbmi.avillach.domain;
 import java.util.Map;
 import java.util.UUID;
 
-import com.fasterxml.jackson.annotation.JsonView;
-import edu.harvard.dbmi.avillach.Views;
 import io.swagger.annotations.ApiModel;
 
 @ApiModel(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
@@ -20,7 +18,6 @@ public class QueryRequest {
 
 	private String targetURL;
 
-	@JsonView(Views.Redact.class)
 	public Map<String, String> getResourceCredentials() {
 		return resourceCredentials;
 	}
@@ -28,7 +25,7 @@ public class QueryRequest {
 		this.resourceCredentials = resourceCredentials;
 		return this;
 	}
-	@JsonView(Views.Default.class)
+
 	public Object getQuery() {
 		return query;
 	}
@@ -37,7 +34,6 @@ public class QueryRequest {
 		return this;
 	}
 
-	@JsonView(Views.Default.class)
 	public UUID getResourceUUID() {
 		return resourceUUID;
 	}
@@ -46,7 +42,6 @@ public class QueryRequest {
 		this.resourceUUID = resourceUUID;
 	}
 
-	@JsonView(Views.Default.class)
 	public String getTargetURL() {
 		return targetURL;
 	}

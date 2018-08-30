@@ -180,8 +180,10 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testQueryStatus() throws IOException {
-        Map<String, String> credentials = new HashMap<String, String>();
-        String body = json.writeValueAsString(credentials);
+//        Map<String, String> credentials = new HashMap<String, String>();
+        QueryRequest request = new QueryRequest();
+        request.setResourceCredentials(new HashMap<>());
+        String body = json.writeValueAsString(request);
 
         //Should get 401 for missing or invalid credentials
         HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
@@ -193,8 +195,8 @@ public class AggregateResourceIT extends BaseIT {
         String errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = json.writeValueAsString(credentials);
+        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
+        body = json.writeValueAsString(request);
 
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -206,8 +208,8 @@ public class AggregateResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         //This should retrieve the status of the query successfully
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(credentials);
+        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+        body = json.writeValueAsString(request);
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
@@ -233,7 +235,9 @@ public class AggregateResourceIT extends BaseIT {
     public void testResult() throws IOException, InterruptedException {
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        String body = json.writeValueAsString(credentials);
+        QueryRequest request = new QueryRequest();
+        request.setResourceCredentials(credentials);
+        String body = json.writeValueAsString(request);
 
         //Need to make sure result is ready
         while (!status.equals(PicSureStatus.AVAILABLE.name())){
@@ -244,8 +248,8 @@ public class AggregateResourceIT extends BaseIT {
             assertNotNull("Response message should not be null", responseMessage);
             status = responseMessage.get("status").asText();
         }
-        credentials = new HashMap<String, String>();
-        body = json.writeValueAsString(credentials);
+        request.setResourceCredentials(new HashMap<>());
+        body = json.writeValueAsString(request);
 
         //Missing or invalid credentials should return 401
         HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
@@ -257,8 +261,8 @@ public class AggregateResourceIT extends BaseIT {
         String errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = json.writeValueAsString(credentials);
+        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
+        body = json.writeValueAsString(request);
 
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -270,8 +274,8 @@ public class AggregateResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         //Should return an array of results
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(credentials);
+        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+        body = json.writeValueAsString(request);
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = json.readTree(response.getEntity().getContent());
