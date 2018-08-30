@@ -29,8 +29,9 @@ public class ContainerResponseLogger implements ContainerResponseFilter {
             stringBuilder.append(" requested ");
         }
 
-        //Get the request body if it exists
-        if (requestContext.getProperty("requestContent") != null){
+        //Get the request body if it exists; don't log token introspection content though
+        if (requestContext.getProperty("requestContent") != null
+                && !requestContext.getUriInfo().getRequestUri().getPath().contains("token/inspect")){
             stringBuilder.append("\n" + requestContext.getProperty("requestContent"));
 
         }

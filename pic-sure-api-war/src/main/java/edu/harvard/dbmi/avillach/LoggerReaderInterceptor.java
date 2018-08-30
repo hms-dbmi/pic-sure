@@ -44,12 +44,11 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
             }
             //Trim extra characters hanging from resourceCredentials
             while (rcBegin > 0 && (requestString.charAt(rcBegin-1) == '"'
-            || requestString.charAt(rcBegin-1) == ','
-            || StringUtils.isBlank(requestString.charAt(rcBegin-1)+""))) rcBegin--;
+                    || requestString.charAt(rcBegin-1) == ','
+                    || StringUtils.isBlank(requestString.charAt(rcBegin-1)+""))) rcBegin--;
             while (endBracket < requestString.length()-2 &&
-                   // (requestString.charAt(endBracket+1) == '}'
                     ( requestString.charAt(endBracket+1) == ','
-                    || StringUtils.isBlank(requestString.charAt(endBracket+1)+"")))
+                            || StringUtils.isBlank(requestString.charAt(endBracket+1)+"")))
                 endBracket++;
             requestString = requestString.substring(0, rcBegin) + requestString.substring(endBracket+1);
         }
