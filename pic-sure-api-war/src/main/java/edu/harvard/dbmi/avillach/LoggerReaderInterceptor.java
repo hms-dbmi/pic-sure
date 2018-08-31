@@ -1,8 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
-import com.fasterxml.jackson.databind.*;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.ext.Provider;
@@ -15,7 +13,7 @@ import java.io.InputStream;
 @Provider
 public class LoggerReaderInterceptor implements ReaderInterceptor {
 
-    private ObjectMapper mapper = new ObjectMapper();
+    private final String sentinel = "RESOURCE_CREDENTIALS_REDACTED";
 
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext interceptorContext)
@@ -42,15 +40,7 @@ public class LoggerReaderInterceptor implements ReaderInterceptor {
                     break;
                 }
             }
-            //Trim extra characters hanging from resourceCredentials
-            while (rcBegin > 0 && (requestString.charAt(rcBegin-1) == '"'
-                    || requestString.charAt(rcBegin-1) == ','
-                    || StringUtils.isBlank(requestString.charAt(rcBegin-1)+""))) rcBegin--;
-            while (endBracket < requestString.length()-2 &&
-                    ( requestString.charAt(endBracket+1) == ','
-                            || StringUtils.isBlank(requestString.charAt(endBracket+1)+"")))
-                endBracket++;
-            requestString = requestString.substring(0, rcBegin) + requestString.substring(endBracket+1);
+            requestString = requestString.substring(0, rcBegin-1) +sentinel+ requestString.substring(endBracket+1);
         }
 
         //Put string to context for logging
