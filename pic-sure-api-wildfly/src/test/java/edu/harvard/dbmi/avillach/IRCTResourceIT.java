@@ -22,20 +22,20 @@ public class IRCTResourceIT extends BaseIT {
 	private final static String queryString = "{" +
 			"    \"select\": [" +
 			"        {" +
-			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}" +
+			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}" +
 			"        }," +
 			"        {" +
-			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}" +
+			"            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}" +
 			"        }," +
 			"        {" +
-			"            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
+			"            \"alias\": \"age\",    \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
 			"        }" +
 			"    ]," +
 			"    \"where\": [" +
 			"        {" +
 			"            \"predicate\": \"CONTAINS\"," +
 			"            \"field\": {" +
-			"                \"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male/\"," +
+			"                \"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/male/\"," +
 			"                \"dataType\": \"STRING\"" +
 			"            }," +
 			"            \"fields\": {" +
@@ -53,7 +53,7 @@ public class IRCTResourceIT extends BaseIT {
 	@Test
 	public void testStatus() throws UnsupportedOperationException, IOException {
 		System.out.println(irctEndpointUrl);
-		HttpResponse response = retrieveGetResponse(irctEndpointUrl+"pic-sure/v1.4/status", null);
+		HttpResponse response = retrieveGetResponse(irctEndpointUrl+"pic-sure/v1.4/status", headers);
 		assertEquals("Status should return a 200", 200, response.getStatusLine().getStatusCode());
 	}
 
@@ -65,10 +65,10 @@ public class IRCTResourceIT extends BaseIT {
 		//Should throw an error if credentials missing or wrong
 		Map<String, String> credentials = new HashMap<String, String>();
 		request.setResourceCredentials(credentials);
-		String body = json.writeValueAsString(request);
-		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", null, body);
+		String body = objectMapper.writeValueAsString(request);
+		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
 		assertEquals("Missing credentials should return a 401",401, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -77,10 +77,10 @@ public class IRCTResourceIT extends BaseIT {
 
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
 		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -88,10 +88,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		request.setTargetURL(null);
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
 		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -99,10 +99,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		//This should work
 		request.setTargetURL(targetURL);
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
         assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
-        JsonNode responseNode = json.readTree(response.getEntity().getContent());
+        JsonNode responseNode = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response should not be null", responseNode);
         assertNotNull("Response should have a name", responseNode.get("name"));
         assertNotNull("Response should have data in queryFormats", responseNode.get("queryFormats"));
@@ -116,12 +116,12 @@ public class IRCTResourceIT extends BaseIT {
 		queryRequest.setQuery("%antibody%");
 		queryRequest.setTargetURL(targetURL);
 
-		String body = json.writeValueAsString(queryRequest);
+		String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if credentials missing or wrong
-		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -131,10 +131,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		queryRequest.setResourceCredentials(credentials);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Incorrect token should return a 401", 401, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -146,10 +146,10 @@ public class IRCTResourceIT extends BaseIT {
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery(null);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Missing query string should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -159,10 +159,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		queryRequest.setQuery("%antibody%");
 		queryRequest.setTargetURL(null);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -171,10 +171,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		//This should work
 		queryRequest.setTargetURL(targetURL);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
-        JsonNode responseNode = json.readTree(response.getEntity().getContent());
+        JsonNode responseNode = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Result should not be null", responseNode);
         assertNotNull("Search results should not be null", responseNode.get("results"));
 		assertFalse("Search results should not be empty", responseNode.get("results").size() == 0);
@@ -182,10 +182,10 @@ public class IRCTResourceIT extends BaseIT {
 
         //Valid request with no results should return an empty result
 		queryRequest.setQuery("thisShouldFindNothing");
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
-		responseNode = json.readTree(response.getEntity().getContent());
+		responseNode = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Result should not be null", responseNode);
 		assertNotNull("Search results should not be null", responseNode.get("results"));
 		assertTrue("Search results should be empty", responseNode.get("results").size() == 0);
@@ -199,12 +199,12 @@ public class IRCTResourceIT extends BaseIT {
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery(queryString);
 		queryRequest.setTargetURL(targetURL);
-		String body = json.writeValueAsString(queryRequest);
+		String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if credentials missing or wrong
-		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -214,10 +214,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		queryRequest.setResourceCredentials(credentials);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -226,10 +226,10 @@ public class IRCTResourceIT extends BaseIT {
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery(null);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals("Missing query string should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -239,10 +239,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		//Try a poorly worded queryString
 		queryRequest.setQuery("poorlyWordedQueryString");
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals("Incorrectly formatted string should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "ri_error", errorType);
@@ -252,24 +252,24 @@ public class IRCTResourceIT extends BaseIT {
 
 		queryRequest.setQuery(queryString);
 		queryRequest.setTargetURL(null);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 
 		queryRequest.setTargetURL(targetURL);
-		JsonNode jsonNode = json.readTree(queryString);
+		JsonNode jsonNode = objectMapper.readTree(queryString);
 
 		//Request can be an object that also requests the format
-		ObjectNode queryNode = json.createObjectNode();
+		ObjectNode queryNode = objectMapper.createObjectNode();
         queryNode.put("queryString", jsonNode);
 		queryRequest.setQuery(queryNode);
 
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
 		assertEquals(200, response.getStatusLine().getStatusCode());
 		QueryStatus result = readObjectFromResponse(response, QueryStatus.class);
 		assertNotNull("Result should not be null", result);
@@ -279,8 +279,8 @@ public class IRCTResourceIT extends BaseIT {
 
         //Or else just a query
         queryRequest.setQuery(jsonNode);
-        body = json.writeValueAsString(queryRequest);
-        response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", null, body);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
         assertEquals(200, response.getStatusLine().getStatusCode());
         result = readObjectFromResponse(response, QueryStatus.class);
         assertNotNull("Result should not be null", result);
@@ -295,12 +295,12 @@ public class IRCTResourceIT extends BaseIT {
 		queryRequest.setTargetURL(targetURL);
 	    Map<String, String> credentials = new HashMap<String, String>();
 	    queryRequest.setResourceCredentials(credentials);
-        String body = json.writeValueAsString(queryRequest);
+        String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if credentials missing or wrong
-		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", null, body);
+		HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Missing credentials should return a 401",401, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -309,35 +309,35 @@ public class IRCTResourceIT extends BaseIT {
 
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
 
         //TODO This is just returning what IRCT returns - do we need to test it?
 		//False query id should return a failure message
-        response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/111/result", null, body);
+        response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/111/result", headers, body);
 		assertEquals("Should return a 500",500, response.getStatusLine().getStatusCode());
 
 		queryRequest.setTargetURL(null);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 
         //This should work
 		queryRequest.setTargetURL(targetURL);
-		body = json.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", null, body);
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
 		String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 		assertFalse("Response content should not be empty", responseBody.isEmpty());
@@ -349,12 +349,12 @@ public class IRCTResourceIT extends BaseIT {
 		request.setTargetURL(targetURL);
         Map<String, String>credentials = new HashMap<String, String>();
         request.setResourceCredentials(credentials);
-        String body = json.writeValueAsString(request);
+        String body = objectMapper.writeValueAsString(request);
 
         //Should throw an error if credentials missing or wrong
-        HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", null, body);
+        HttpResponse response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
 		assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -364,10 +364,10 @@ public class IRCTResourceIT extends BaseIT {
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		request.setResourceCredentials(credentials);
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
 		assertEquals("Incorrect token should return a 401",401, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
@@ -378,18 +378,18 @@ public class IRCTResourceIT extends BaseIT {
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		request.setResourceCredentials(credentials);
 		request.setTargetURL(null);
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 
 		//This should work
 		request.setTargetURL(targetURL);
-		body = json.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", null, body);
+		body = objectMapper.writeValueAsString(request);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
 		QueryStatus queryStatus = readObjectFromResponse(response, QueryStatus.class);
 		assertNotNull("Result should not be null", queryStatus);
@@ -403,10 +403,10 @@ public class IRCTResourceIT extends BaseIT {
 		assertNotNull("Starttime should not be null",queryStatus.getStartTime());
 
 		//Try a queryId that doesn't exist
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/111/status", null, body);
+		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/111/status", headers, body);
 		//assertEquals("Nonexistent queryId should return a 500",500, response.getStatusLine().getStatusCode());
 
-		responseMessage = json.readTree(response.getEntity().getContent());
+		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "ri_error", errorType);

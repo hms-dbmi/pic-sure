@@ -39,8 +39,8 @@ public class SystemServiceIT extends BaseIT {
 			get.setHeader(HttpHeaders.AUTHORIZATION, "Bearer "+ jwt);
 			HttpResponse response = client.execute(get);
 			assertEquals("Request should be rejected with 401", 401, response.getStatusLine().getStatusCode());
-			JsonNode responseBody = json.readTree(response.getEntity().getContent());
-			assertEquals("Message should report 'User has insufficient privileges.'", "User has insufficient privileges.", responseBody.get("message").asText());
+			JsonNode responseBody = objectMapper.readTree(response.getEntity().getContent());
+			assertEquals("Message should report: User is not authorized. [doesn't match the required role restrictions.]", "User is not authorized. [doesn't match the required role restrictions.]", responseBody.get("message").asText());
 
 		}catch(Exception e) {
 			fail("Exception: " + e.getMessage());
