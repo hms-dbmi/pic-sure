@@ -127,6 +127,8 @@ public class GenericResourceRS implements IResourceRS
             }
 
 			String targetURL = TARGET_URL + "dataobjects";
+			logger.debug("search() targetURL:"+targetURL);
+
 			HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(targetURL, null);
 			SearchResults results = new SearchResults();
 
@@ -144,6 +146,7 @@ public class GenericResourceRS implements IResourceRS
 				}
 				throw new ResourceInterfaceException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 			}
+
 			results.setResults(edu.harvard.hms.dbmi.avillach.HttpClientUtil.readDataObjectsFromResponse(response, Object.class));
 			return results;
 
@@ -241,7 +244,7 @@ public class GenericResourceRS implements IResourceRS
 	@Path("/query/{resourceQueryId}/status")
 	@Override
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
-		logger.debug("calling IRCT Resource queryStatus() for query {}", queryId);
+		logger.debug("Getting status for for queryId {}", queryId);
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
@@ -274,6 +277,7 @@ public class GenericResourceRS implements IResourceRS
 			//TODO: Deal with this
 			throw new ApplicationException(e);
 		}
+		logger.debug("Finished. Returning status {}", status.toString());
 		return status;
 	}
 

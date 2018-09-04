@@ -11,7 +11,9 @@
   <name>pic-sure-resources</name>
   <modules>
     <module>pic-sure-resource-api</module>
-    <module>pic-sure-ga4gh-dos</module>
+    <module>pic-sure-ga4gh-dos
+
+    </module>
     <module>pic-sure-irct-resource</module>
     <module>pic-sure-aggregate-resource</module>
   </modules>
