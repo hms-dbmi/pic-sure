@@ -278,6 +278,8 @@
 							<goal>deploy</goal>
 						</goals>
 						<configuration>
+							<!-- Notices: these envs is for something that needs to be read from env in pre-integration-test -->
+							<!-- These are for normal system config (not includes integration tests usage) -->
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
 								<IRCT_RS_URL>http://localhost:8080/pic-sure-irct-resource-${project.version}/pic-sure/v1.4</IRCT_RS_URL>
@@ -308,9 +310,6 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
 				<version>2.20</version>
-				<configuration><!-- <includes> <include>edu.harvard.dbmi.avillach.SystemServiceIT</include> 
-						</includes> -->
-				</configuration>
 				<executions>
 					<execution>
 						<id>integration-test</id>
@@ -318,6 +317,7 @@
 							<goal>integration-test</goal>
 						</goals>
 						<configuration>
+							<!-- All these variables are for integration tests (which is all in wildfly) -->
 							<environmentVariables>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>

@@ -91,7 +91,7 @@
     <profile>
         <subsystem xmlns="urn:jboss:domain:logging:5.0">
             <console-handler name="CONSOLE">
-                <level name="DEBUG"/>
+                <level name="INFO"/>
                 <formatter>
                     <named-formatter name="COLOR-PATTERN"/>
                 </formatter>
@@ -114,7 +114,7 @@
                 <level name="WARN"/>
             </logger>
             <root-logger>
-                <level name="DEBUG"/>
+                <level name="INFO"/>
                 <handlers>
                     <handler name="CONSOLE"/>
                     <handler name="FILE"/>
