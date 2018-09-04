@@ -19,8 +19,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.util.exception.ResourceCommunicationException;
-
-import javax.json.JsonObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
@@ -69,7 +69,14 @@ public class HttpClientUtil {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			// Get only the data_objects field from the returned structure. Ugly, but has to de- and then re-serialize
             JsonNode jn = json.readTree(responseBody);
-            return json.readValue(jn.get("data_objects").toString(), new TypeReference<List<T>>() {});
+            if (null == jn.get("data_objects")) {
+                Object singleObject = json.readValue(jn.get("data_object").toString(), new TypeReference<Object>() {});
+                ArrayList<T> sl = new ArrayList<T>();
+                sl.add((T) singleObject);
+                return sl;
+            } else {
+                return json.readValue(jn.get("data_objects").toString(), new TypeReference<List<T>>() {});
+            }
 		} catch (IOException e) {
 			e.printStackTrace();
 			return new ArrayList<T>();

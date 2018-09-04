@@ -114,19 +114,28 @@ public class GenericResourceRS implements IResourceRS
 	@Override
 	public SearchResults search(QueryRequest searchJson) {
 		logger.debug("Searching datasource for objects");
-
+		String searchTerm = null;
 		try {
 			if (searchJson == null) {
-				//throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+				throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 			} else {
-                Object search = searchJson.getQuery();
-                if (search == null) {
-                    //throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+                Object searchQuery = searchJson.getQuery();
+                if (searchQuery == null) {
+                    throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+                } else {
+                	logger.debug("/search search "+searchQuery.toString());
+                    JsonNode queryNode = json.valueToTree(searchQuery);
+                    JsonNode searchTermNode = queryNode.get("searchTerm");
+                    if (searchTermNode != null){
+                        searchTerm = searchTermNode.toString().replace("\"","");
+                    }
                 }
-                // searchTerm = search.toString();
             }
 
 			String targetURL = TARGET_URL + "dataobjects";
+			if (searchTerm != null) {
+			    targetURL = targetURL + "/" + searchTerm;
+            }
 			logger.debug("search() targetURL:"+targetURL);
 
 			HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(targetURL, null);
@@ -208,7 +217,7 @@ public class GenericResourceRS implements IResourceRS
 		logger.debug("query() queryString: "+queryString);
 
 		String pathName = TARGET_URL + "dataobjects/"+queryString.replace("\"", "");
-
+		logger.debug("query() pathName: "+pathName);
 		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(pathName, null);
 
 		if (response.getStatusLine().getStatusCode() != 200) {
