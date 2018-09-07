@@ -80,6 +80,7 @@
 		</dependency>
 	</dependencies>
 	<build>
+		<finalName>${project.artifactId}-${project.version}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -102,7 +103,7 @@
 				<version>3.0.0</version>
 				<configuration>
 					<failOnError>false</failOnError>
-					<excludeDefaultDirectories>true</excludeDefaultDirectories>
+					<!--<excludeDefaultDirectories>true</excludeDefaultDirectories>-->
 					<filesets>
 						<fileset>
 							<directory>target/</directory>
@@ -171,6 +172,14 @@
 									<overWrite>true</overWrite>
 									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
 								</artifactItem>
+								<!--<artifactItem>-->
+									<!--<groupId>edu.harvard.hms.dbmi.avillach</groupId>-->
+									<!--<artifactId>pic-sure-api-wildfly</artifactId>-->
+									<!--<version>${project.version}</version>-->
+									<!--<type>war</type>-->
+									<!--<overWrite>true</overWrite>-->
+									<!--<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>-->
+								<!--</artifactItem>-->
 							</artifactItems>
 						</configuration>
 					</execution>
@@ -225,14 +234,14 @@
 						<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
 						<java-opt>--add-modules=jdk.incubator.httpclient</java-opt>
 					</java-opts>
-					<env>
-						<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
-						<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
-						<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
-						<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-						<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
-						<RESULT_FORMAT>JSON</RESULT_FORMAT>
-					</env>
+					<!--<env>-->
+						<!--<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>-->
+						<!--<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>-->
+						<!--<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>-->
+						<!--<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}/PICSURE</TARGET_PICSURE_URL>-->
+						<!--<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>-->
+						<!--<RESULT_FORMAT>JSON</RESULT_FORMAT>-->
+					<!--</env>-->
 					<add-user>
 						<users>
 							<user>
@@ -269,15 +278,19 @@
 							<goal>deploy</goal>
 						</goals>
 						<configuration>
+							<!-- Notices: these envs is for something that needs to be read from env in pre-integration-test -->
+							<!-- These are for normal system config (not includes integration tests usage) -->
 							<env>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
-								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
-								<RESULT_FORMAT>CSV</RESULT_FORMAT>
+								<IRCT_RS_URL>http://localhost:8080/pic-sure-irct-resource-${project.version}/pic-sure/v1.4</IRCT_RS_URL>
+								<AGGREGATE_RS_URL>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/pic-sure/group</AGGREGATE_RS_URL>
+								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>
+								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjg3OTM1NTIxMjcyLCJzdWIiOiJmb29AYmFyLmNvbSIsImVtYWlsIjoiZm9vQGJhci5jb20iLCJpc3MiOiJiYXIiLCJqdGkiOiJGb28iLCJpYXQiOjE1MzU2MDc2NzJ9.WCL2cbiRe8oiwedB3QMTr6dlIXybvyOytSUcuFcPoNA</PICSURE_2_TOKEN>
+								<RESULT_FORMAT>JSON</RESULT_FORMAT>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 							</env>
-							<skip>${skipIT}</skip>
+							<!--<skip>${skipIT}</skip>-->
 						</configuration>
 					</execution>
 					<execution>
@@ -287,9 +300,9 @@
 							<goal>undeploy</goal>
 							<goal>shutdown</goal>
 						</goals>
-						<configuration>
-							<skip>${skipIT}</skip>
-						</configuration>
+						<!--<configuration>-->
+							<!--<skip>${skipIT}</skip>-->
+						<!--</configuration>-->
 					</execution>
 				</executions>
 			</plugin>
@@ -297,9 +310,6 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
 				<version>2.20</version>
-				<configuration><!-- <includes> <include>edu.harvard.dbmi.avillach.SystemServiceIT</include> 
-						</includes> -->
-				</configuration>
 				<executions>
 					<execution>
 						<id>integration-test</id>
@@ -307,17 +317,20 @@
 							<goal>integration-test</goal>
 						</goals>
 						<configuration>
+							<!-- All these variables are for integration tests (which is all in wildfly) -->
 							<environmentVariables>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
+								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
 								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
-								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</TARGET_PICSURE_URL>
-								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhdmxib3RAbm90aGluZy5jb20iLCJpc3MiOiJiYXIiLCJleHAiOjE1MzMwNjE0NTAsImlhdCI6MTUzMjk2MTQ1MCwianRpIjoiRm9vIiwiZW1haWwiOiJhdmxib3RAbm90aGluZy5jb20ifQ.ShzI2oPKvC9uDSufT0GYCP3ZxdGm1lZ-v4tQSGtT1e0</PICSURE_2_TOKEN>
-								<RESULT_FORMAT>CSV</RESULT_FORMAT>
+								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>
+								<!--<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjg3OTM1NTIwNTI5LCJzdWIiOiJpbnRlZ3JhdGlvbi50ZXN0QGhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiaW50ZWdyYXRpb24udGVzdEBobXMuaGFydmFyZC5lZHUiLCJpc3MiOiJiYXIiLCJqdGkiOiJGb28iLCJpYXQiOjE1MzU2MDY5Mjl9.c1ugEOGwcx7ZPgqyZVvlIBiICM5qUvFohhgoXS9bNkY</PICSURE_2_TOKEN>-->
+								<!--<RESULT_FORMAT>CSV</RESULT_FORMAT>-->
 							</environmentVariables>
 							<systemPropertyVariables>
-								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/PICSURE</service.url>
-								<irct.service.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.service.url>
-								<aggregate.service.url>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/</aggregate.service.url>
+								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</service.url>
+								<irct.rs.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.rs.url>
+								<aggregate.rs.url>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/pic-sure/group</aggregate.rs.url>
+								<irct.token>eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjg3OTM1NTE5NjI0LCJzdWIiOiJpbnRlZ3JhdGlvbi50ZXN0QGhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiaW50ZWdyYXRpb24udGVzdEBobXMuaGFydmFyZC5lZHUiLCJpc3MiOiJiYXIiLCJqdGkiOiJGb28iLCJpYXQiOjE1MzU2MDYwMjR9.RUKkN5_Bsd5MWHhV_YTnotoMqTtrOLszsBTN9FC4n48</irct.token>
 							</systemPropertyVariables>
 						</configuration>
 					</execution>

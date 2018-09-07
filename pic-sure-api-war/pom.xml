@@ -75,7 +75,7 @@
 		</dependency>
 	</dependencies>
 	<build>
-		<finalName>pic-sure-api-war</finalName>
+		<finalName>${project.artifactId}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -108,7 +108,6 @@
 				<artifactId>maven-war-plugin</artifactId>
 				<configuration>
 					<failOnMissingWebXml>false</failOnMissingWebXml>
-					<attachClasses>true</attachClasses>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -121,6 +120,5 @@
 				</configuration>
 			</plugin>
 		</plugins>
-
 	</build>
 </project>

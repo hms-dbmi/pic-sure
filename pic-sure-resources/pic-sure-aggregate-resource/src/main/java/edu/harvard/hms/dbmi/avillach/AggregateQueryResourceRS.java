@@ -13,6 +13,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.lang3.SerializationUtils;
@@ -20,6 +21,7 @@ import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 
 import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,9 +49,9 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 	public AggregateQueryResourceRS() {
 		if(TARGET_PICSURE_URL == null)
-			throw new RuntimeException("TARGET_PICSURE_URL environment variable must be set.");
+			throw new PicsureQueryException("TARGET_PICSURE_URL environment variable must be set.");
 		if(PICSURE_2_TOKEN == null)
-			throw new RuntimeException("PICSURE_2_TOKEN environment variable must be set.");
+			throw new PicsureQueryException("PICSURE_2_TOKEN environment variable must be set.");
 	}
 	
 	@GET
@@ -94,6 +96,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 				try {
 					String queryString = json.writeValueAsString(qr);
 					String pathName = "/query/";
+					logger.debug("Aggregate RS, sending query: " + queryString + ", to: " + composeURL(TARGET_PICSURE_URL, pathName));
 					HttpResponse response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, queryString);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
@@ -153,6 +156,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 					presentStatuses.add(status.getStatus());
 				} catch (IOException e) {
+					logger.error("queryStatus() queryId is: " + queryId + "throws " + e.getClass().getSimpleName() + ", " + e.getMessage());
 					throw new ApplicationException("Unable to encode resource credentials");
 				}
 			}
@@ -191,9 +195,14 @@ public class AggregateQueryResourceRS implements IResourceRS
 						}
 						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 					}
-					responses.add(json.readTree(response.getEntity().getContent()));
+
+					// temporarily like this for debug
+					String entityString = EntityUtils.toString(response.getEntity());
+					logger.info("Aggregate queryResult string: " + entityString);
+					responses.add(json.readTree(entityString));
 
 				} catch (IOException e) {
+					logger.error("queryResult() queryId is: " + queryId + "throws " + e.getClass().getSimpleName() + ", " + e.getMessage());
 					throw new ApplicationException("Unable to encode resource credentials");
 				}
 			}
