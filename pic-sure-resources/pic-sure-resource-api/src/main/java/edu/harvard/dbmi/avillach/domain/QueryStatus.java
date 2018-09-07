@@ -6,15 +6,28 @@ import java.util.UUID;
 
 public class QueryStatus {
 	private PicSureStatus status;
-	
+
+	/**
+	 * a uuid associated to a Resource in the database
+	 */
 	private UUID resourceID;
 	
 	private String resourceStatus;
 
+	/**
+	 * when user makes a query, a corresponding Result uuid is generated
+	 */
 	private UUID picsureResultId;
 
+	/**
+	 * when a resource might generate its own resultId and return it,
+	 * we can keep it here
+	 */
 	private String resourceResultId;
 
+	/**
+	 * any metadata will be stored here
+	 */
 	private byte[] resultMetadata;
 
 	private long sizeInBytes;
