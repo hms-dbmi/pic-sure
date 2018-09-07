@@ -45,6 +45,14 @@ public class TestResourceRS implements IResourceRS {
 		return null;
 	}
 
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		// TODO Auto-generated method stub

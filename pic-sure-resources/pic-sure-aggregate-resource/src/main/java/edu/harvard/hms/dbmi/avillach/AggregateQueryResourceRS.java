@@ -205,6 +205,14 @@ public class AggregateQueryResourceRS implements IResourceRS
 		}
 	}
 
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling Aggregate Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
+	}
+
 	private PicSureStatus determineStatus(Set statuses){
 		if (statuses.contains(PicSureStatus.ERROR)) {
 			return PicSureStatus.ERROR;

@@ -39,9 +39,10 @@ public class PicsureRS {
 	@Path("/info/{resourceId}")
 	@ApiOperation(value = "Returns information about the provided resource")
 	public ResourceInfo resourceInfo(@ApiParam(value="The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
-									 @ApiParam(value="Key-value map, key is identifier for resource, value is token for resource") Map<String, String> resourceCredentials) {
+									 @ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
+											 "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
 		System.out.println("Resource info requested for : " + resourceId);
-		return infoService.info(UUID.fromString(resourceId), resourceCredentials);
+		return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest);
 	}
 	
 	@GET
@@ -72,16 +73,26 @@ public class PicsureRS {
 	@Path("/query/{queryId}/status")
 	@ApiOperation(value = "Returns the status of the given query")
 	public QueryStatus queryStatus(@ApiParam(value="The UUID of the query to fetch the status of") @PathParam("queryId") UUID queryId,
-								   @ApiParam(value="Key-value map, key is identifier for resource, value is token for resource") Map<String, String> resourceCredentials) {
-		return queryService.queryStatus(queryId, resourceCredentials);
+								   @ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
+										   "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+		return queryService.queryStatus(queryId, credentialsQueryRequest);
 	}
 	
 	@POST
 	@Path("/query/{queryId}/result")
 	@ApiOperation(value = "Returns result for given query")
 	public Response queryResult(@ApiParam(value="The UUID of the query to fetch the results of") @PathParam("queryId") UUID queryId,
-								@ApiParam(value="Key-value map, key is identifier for resource, value is token for resource") Map<String, String> resourceCredentials) {
-		return queryService.queryResult(queryId, resourceCredentials);
+								@ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
+										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+		return queryService.queryResult(queryId, credentialsQueryRequest);
+	}
+
+	@POST
+	@Path("/query/sync")
+	@ApiOperation(value = "Returns result for given query")
+	public Response querySync(@ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
+										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+		return queryService.querySync(credentialsQueryRequest);
 	}
 
 	@GET

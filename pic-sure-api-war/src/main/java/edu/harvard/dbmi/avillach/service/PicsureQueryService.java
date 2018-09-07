@@ -31,7 +31,7 @@ public class PicsureQueryService {
 	ResourceWebClient resourceWebClient;
 
 	/**
-	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
+	 * Executes a query on a PIC-SURE resource and creates a Query entity in the
 	 * database for the query.
 	 *
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
@@ -82,15 +82,15 @@ public class PicsureQueryService {
 
 	/**
 	 * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource
-	 * from the database and calling the target resource for an updated status. The QueryResults
+	 * from the database and calling the target resource for an updated status. The Query entities
 	 * in the database are updated each time this is called.
 	 *
 	 * @param queryId - id of targeted resource
-	 * @param resourceCredentials - resource specific credentials object
+	 * @param credentialsQueryRequest - contains resource specific credentials object
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
@@ -102,17 +102,15 @@ public class PicsureQueryService {
 		if (resource.getTargetURL() == null){
 			throw new ApplicationException("Resource is missing target URL");
 		}
-		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(resource.getTargetURL());
-		if (resourceCredentials == null){
+		if (credentialsQueryRequest == null || credentialsQueryRequest.getResourceCredentials() == null){
 			throw new NotAuthorizedException("Missing credentials");
 		}
+		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 		if(resource.getToken()!=null) {
-			resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
-		queryRequest.setResourceCredentials(resourceCredentials);
 		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
+		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 		status.setPicsureResultId(queryId);
 		query.setStatus(status.getStatus());
 		queryRepo.persist(query);
@@ -127,11 +125,11 @@ public class PicsureQueryService {
 	 * method should be used to verify that the result is available prior to retrieving it.
 	 *
 	 * @param queryId - id of target resource
-	 * @param resourceCredentials - resource specific credentials object
+	 * @param credentialsQueryRequest - contains resource specific credentials object
 	 * @return Response
 	 */
 	@Transactional
-	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
 			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
@@ -143,17 +141,48 @@ public class PicsureQueryService {
 		if (resource.getTargetURL() == null){
 			throw new ApplicationException("Resource is missing target URL");
 		}
-		QueryRequest queryRequest = new QueryRequest();
-
-		queryRequest.setTargetURL(resource.getTargetURL());
+		if (credentialsQueryRequest == null || credentialsQueryRequest.getResourceCredentials() == null){
+			throw new NotAuthorizedException("Missing credentials");
+		}		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 
 		//TODO Do we need to update any information in the query object?
-		if (resourceCredentials == null){
-			throw new NotAuthorizedException("Missing credentials");
+
+		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+	}
+
+	/**
+	 * Streams the result for a query by looking up the target resource
+	 * from the database and calling the target resource for a result.
+	 *
+	 * @param queryRequest - contains resource specific credentials object
+	 * @return Response
+	 */
+	@Transactional
+	public Response querySync(QueryRequest queryRequest) {
+		UUID resourceId = queryRequest.getResourceUUID();
+		if (resourceId == null){
+			throw new ProtocolException("Missing resource Id");
 		}
-		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		queryRequest.setResourceCredentials(resourceCredentials);
-		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), queryRequest);
+		Resource resource = resourceRepo.getById(resourceId);
+		if (resource == null){
+			throw new ApplicationException("Missing resource");
+		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
+		if (queryRequest == null || queryRequest.getResourceCredentials() == null){
+			throw new NotAuthorizedException("Missing credentials");
+		}		queryRequest.setTargetURL(resource.getTargetURL());
+
+		Query queryEntity = new Query();
+		queryEntity.setResource(resource);
+		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
+		queryEntity.setQuery(queryRequest.getQuery().toString());
+		queryRepo.persist(queryEntity);
+		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
+		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		return Response.ok(resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity()).header("resultId", queryEntity.getResourceResultId()).build();
 	}
 
     /**
