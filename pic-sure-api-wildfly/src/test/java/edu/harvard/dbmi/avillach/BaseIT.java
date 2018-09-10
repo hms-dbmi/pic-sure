@@ -19,6 +19,7 @@ public class BaseIT {
 
 	protected static String endpointUrl;
 	protected static String irctEndpointUrl;
+	protected static String hsapiEndpointUrl;
 
 	protected static HttpClient client = HttpClientBuilder.create().build();
 	protected final static ObjectMapper json = new ObjectMapper();
@@ -27,6 +28,7 @@ public class BaseIT {
 	public static void beforeClass() {
 		endpointUrl = System.getProperty("service.url");
 		irctEndpointUrl = System.getProperty("irct.service.url");
+		hsapiEndpointUrl = System.getProperty("hsapi.service.url");
 	}
 
 	/* These users are initialized in the database in the UserTestInitializer class. An instance
