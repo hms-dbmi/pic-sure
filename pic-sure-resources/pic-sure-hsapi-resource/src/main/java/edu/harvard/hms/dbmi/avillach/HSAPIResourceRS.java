@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 
 import edu.harvard.dbmi.avillach.service.IResourceRS;
@@ -30,6 +31,7 @@ public class HSAPIResourceRS implements IResourceRS
 
 	private final static ObjectMapper json = new ObjectMapper();
 	private ResourceInfo HSAPIresourceInfo = new ResourceInfo();
+	private Header[] headers;
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
@@ -172,7 +174,7 @@ public class HSAPIResourceRS implements IResourceRS
 
 		String path = buildPath(queryNode);
 
-		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), path), null);
+		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), path), headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			if (response.getStatusLine().getStatusCode() == 401) {

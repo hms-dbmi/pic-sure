@@ -15,17 +15,21 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
 @Startup
 public class ResourceTestInitializer
 {
+    public static String TARGET_PICSURE_URL = System.getenv("TARGET_PICSURE_URL");
+    public static String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
+    public static String AGGREGATE_RS_URL = System.getenv("AGGREGATE_RS_URL");
+    public static String IRCT_RS_URL = System.getenv("IRCT_RS_URL");
     @PersistenceContext(unitName = "picsure")
     private EntityManager em;
 
     @PostConstruct
     public void insertTestResources() {
-        String TARGET_PICSURE_URL = System.getenv("TARGET_PICSURE_URL");
+        System.out.println("ResourceTestInitializer, target picsure url is!!!: " + TARGET_PICSURE_URL);
 
 		Resource fooResource = new Resource()
-				.setTargetURL("https://nhanes.hms.harvard.edu/rest/v1/")
+				.setTargetURL(TARGET_IRCT_URL)
 //                .setTargetURL("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
-                .setResourceRSPath(composeURL(TARGET_PICSURE_URL, "v1.4"))
+                .setResourceRSPath(IRCT_RS_URL)
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4  Supply token with key '" + IRCTResourceRS.IRCT_BEARER_TOKEN_KEY + "'")
 				.setName("nhanes.hms.harvard.edu")
                 .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM");
@@ -34,7 +38,7 @@ public class ResourceTestInitializer
         Resource aggregateResource = new Resource()
 //                .setTargetURL("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/group")
                 .setTargetURL(TARGET_PICSURE_URL)
-                .setResourceRSPath(composeURL(TARGET_PICSURE_URL,"group"))
+                .setResourceRSPath(AGGREGATE_RS_URL)
                 .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM")
                 .setDescription("Aggregate Resource RS")
                 .setName("Aggregate Resource RS");

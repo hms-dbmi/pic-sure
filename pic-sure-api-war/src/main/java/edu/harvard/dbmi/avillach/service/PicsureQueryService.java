@@ -9,7 +9,10 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
@@ -20,6 +23,8 @@ import javax.ws.rs.core.Response;
  * Service handling business logic for queries to resources
  */
 public class PicsureQueryService {
+
+	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -44,7 +49,7 @@ public class PicsureQueryService {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			//TODO Create custom exception
-			throw new RuntimeException("No resource with id " + resourceId.toString() + " exists");
+			throw new PicsureQueryException("No resource with id " + resourceId.toString() + " exists");
 		}
 		if (resource.getTargetURL() == null){
 			throw new ApplicationException("Resource is missing target URL");
@@ -69,6 +74,8 @@ public class PicsureQueryService {
 		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
 		queryEntity.setMetadata(results.getResultMetadata());
 		queryRepo.persist(queryEntity);
+
+		logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
 		results.setPicsureResultId(queryEntity.getUuid());
 		//In cases where there is no resource result id, the picsure result id will stand in
 		if (queryEntity.getResourceResultId() == null){

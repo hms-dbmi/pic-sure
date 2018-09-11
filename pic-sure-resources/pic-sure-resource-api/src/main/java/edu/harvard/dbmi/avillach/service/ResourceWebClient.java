@@ -230,7 +230,7 @@ public class ResourceWebClient {
         String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase();
         try {
             JsonNode responseNode = json.readTree(response.getEntity().getContent());
-            if (responseNode.has("message")){
+            if (responseNode != null && responseNode.has("message")){
                 errorMessage += "/n" + responseNode.get("message").asText();
             }
         } catch (IOException e ){

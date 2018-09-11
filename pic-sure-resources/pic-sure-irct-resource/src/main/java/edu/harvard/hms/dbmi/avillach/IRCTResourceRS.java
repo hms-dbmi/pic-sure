@@ -16,6 +16,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
@@ -48,9 +49,9 @@ public class IRCTResourceRS implements IResourceRS
 
 	public IRCTResourceRS() {
 /*		if(TARGET_IRCT_URL == null)
-			throw new RuntimeException("TARGET_IRCT_URL environment variable must be set.");*/
+			throw new PicsureQueryException("TARGET_IRCT_URL environment variable must be set.");*/
 		if(RESULT_FORMAT == null)
-			throw new RuntimeException("RESULT_FORMAT environment variable must be set.");
+			throw new PicsureQueryException("RESULT_FORMAT environment variable must be set.");
 	}
 
 	@GET
@@ -200,6 +201,8 @@ public class IRCTResourceRS implements IResourceRS
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			JsonNode responseNode = json.readTree(responseBody);
 			String resultId = responseNode.get("resultId").asText();
+
+			logger.debug("IRCT_RS query() get a resultId: " + resultId);
 			//Check to see if it's ready yet, if not just send back running with no results
 			QueryStatus status = queryStatus(resultId, queryJson);
 			status.setResourceResultId(resultId);
@@ -257,6 +260,8 @@ public class IRCTResourceRS implements IResourceRS
 				//TODO Custom exception
 				throw new ResourceInterfaceException(responseNode.get("message").asText());
 			}*/
+
+			logger.debug("IRCT_RS queryStatus() returns response: " + responseNode.toString());
 			String resourceStatus = responseNode.get("status").asText();
 			status.setResourceStatus(resourceStatus);
 			status.setStatus(mapStatus(resourceStatus));

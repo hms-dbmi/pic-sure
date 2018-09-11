@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -29,6 +30,9 @@ public class HttpClientUtil {
 	private final static Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
 
+	public static HttpResponse retrieveGetResponse(String uri, List<Header> headers) {
+		return retrieveGetResponse(uri, headers.toArray(new Header[headers.size()]));
+	}
 
 	public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
@@ -57,7 +61,7 @@ public class HttpClientUtil {
 			allPathComponents.addAll(pathNameComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
 			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), uri.getQuery(), uri.getFragment()).toString();
 		} catch (URISyntaxException e) {
-			throw new RuntimeException("baseURL invalid : " + baseURL, e);
+			throw new ApplicationException("baseURL invalid : " + baseURL, e);
 		}
 	}
 
@@ -76,6 +80,10 @@ public class HttpClientUtil {
 		}
 	}
 
+	public static HttpResponse retrievePostResponse(String uri, List<Header> headers, String body) {
+		return retrievePostResponse(uri, headers.toArray(new Header[headers.size()]), body);
+	}
+
 	public static <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readListFromResponse()");
 
@@ -84,7 +92,7 @@ public class HttpClientUtil {
 			return json.readValue(responseBody, new TypeReference<List<T>>() {});
 		} catch (IOException e) {
         	//TODO: Write custom exception
-			throw new RuntimeException("Incorrect object type returned");
+			throw new ApplicationException("Incorrect object type returned");
 		}
 	}
 
@@ -92,11 +100,11 @@ public class HttpClientUtil {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
-            logger.debug(responseBody);
+            logger.debug("Response body is: " + responseBody);
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
 			//TODO: Write custom exception
-			throw new RuntimeException("Incorrect object type returned", e);
+			throw new ApplicationException("Incorrect object type returned", e);
 
 		}
     }
