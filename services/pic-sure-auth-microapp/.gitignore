@@ -15,3 +15,7 @@ buildNumber.properties
 
 
 httpd/pic-sure-auth-ui-webapp.zip
+
+.project
+.settings/
+.classpath
