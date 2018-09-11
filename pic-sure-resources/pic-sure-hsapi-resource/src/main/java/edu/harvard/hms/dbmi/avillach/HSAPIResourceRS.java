@@ -172,9 +172,10 @@ public class HSAPIResourceRS implements IResourceRS
 
 		JsonNode queryNode = json.valueToTree(queryObject);
 
-		String path = buildPath(queryNode);
+		String path = buildPath(resultRequest);
 
-		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), path), headers);
+
+		HttpResponse response = retrieveGetResponse(path, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			if (response.getStatusLine().getStatusCode() == 401) {
@@ -189,30 +190,42 @@ public class HSAPIResourceRS implements IResourceRS
 		}
 	}
 
-	private String buildPath (JsonNode node){
+	private String buildPath (QueryRequest request){
+		JsonNode node = json.valueToTree(request.getQuery());
+
 		if (!node.has("entity")){
 			throw new ProtocolException("Entity required");
 		}
 		String path = node.get("entity").asText();
 
-		//We only add each subsequent part if the previous ones are present
-		//TODO Should we throw an error if later parts are present without the previous ones,
-		// or just ignore it and let the resource return a 404?
-		if (node.has("id")){
+		//Alert user if their request is ill-formed
+		if (node.has("id")) {
 			path += "/" + node.get("id").asText();
-			if (node.has("subentity")){
-				path += "/" + node.get("subentity").asText();
-				if (node.has("pathname")){
-					path += "/" + node.get("pathname").asText();
-				}
+		}
+
+		if (node.has("subentity")) {
+			if (!node.has("id")) {
+				throw new ProtocolException("Cannot have subentity without an id");
 			}
+			path += "/" + node.get("subentity").asText();
+		}
+
+		if (node.has("pathname")){
+			if (!node.has("subentity")) {
+				throw new ProtocolException("Cannot have pathname without subentity");
+			}
+			path += "/" + node.get("pathname").asText();
 		}
 
 		if (node.has("page")){
-			path += "/?page=" + node.get("page").asText();
+			if (node.has("pathname") || (node.has("id") && !node.has("subentity"))){
+				throw new ProtocolException("Page can only be included at the end of entities or subentities");
+			}
+			String query = "/?page=" + node.get("page").asText();
+			return composeURL(request.getTargetURL(), path, query);
 		}
 
-		return path;
+		return composeURL(request.getTargetURL(), path);
 	}
 
 }

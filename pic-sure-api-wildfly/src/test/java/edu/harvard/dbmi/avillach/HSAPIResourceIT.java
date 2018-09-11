@@ -78,33 +78,11 @@ public class HSAPIResourceIT extends BaseIT {
 	//These tests will throw a 404 unless we have a valid queryId which can't really be gotten just for a test....
 	/*@Test
 	public void testQueryStatus() throws UnsupportedOperationException, IOException {
-		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
-
-		String body = objectMapper.writeValueAsString(queryRequest);
-
-		HttpResponse response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/"+resultId+"/status"), headers, body);
-		assertEquals("Search should return a 500",500, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		String errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be 'Query status is not implemented in this resource.  Please use query/sync'", "Query status is not implemented in this resource.  Please use query/sync", errorMessage);
-	}
+			}
 
 	@Test
 	public void testRequest() throws UnsupportedOperationException, IOException {
-		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
-
-		String body = objectMapper.writeValueAsString(queryRequest);
-
-		HttpResponse response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/"+resultId+"/result"), headers, body);
-		assertEquals("Search should return a 500",500, response.getStatusLine().getStatusCode());
-		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		String errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be 'Query result is not implemented in this resource.  Please use query/sync'", "Query result is not implemented in this resource.  Please use query/sync", errorMessage);
-	}*/
+		}*/
 
 	@Test
 	public void testQuerySync() throws UnsupportedOperationException, IOException {
@@ -158,34 +136,21 @@ public class HSAPIResourceIT extends BaseIT {
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
 		assertEquals(200, response.getStatusLine().getStatusCode());
-		//TODO What to check for
-		//TODO There's no result Id here, only on the picsure rs level... that should be acceptable right?
-		//Should have a resultId in the header
-/*		assertTrue("Response should contain resultId", response.containsHeader("resultId"));
-		Header[] headers = response.getAllHeaders();
-		for (Header h : headers){
-			if (h.getName().equals("resultId")){
-				resultId = h.getValue();
-				break;
-			}
-		}
-		assertNotNull("Response should contain resultId", resultId);*/
 
 		//Need to get an id to use
 		JsonNode result = objectMapper.readTree(response.getEntity().getContent());
+		assertNotNull("Results should not be null", result.get("results"));
 		String id = result.get("results").get(0).get("resource_id").asText();
 
-		//TODO Hmm What else should I check*/
 		//This skips over the required id
-		/*queryNode.put("subentity", "file");
+		queryNode.put("subentity", "files");
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
 		assertEquals("Incorrect entity should return 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorMessage = responseMessage.get("message").asText();
-		//TODO Should we do something different instead?
-		assertTrue("Error message should be '404 NOT FOUND'", errorMessage.contains("404 NOT FOUND"));*/
+		assertTrue("Error message should be 'Cannot have subentity without an id'", errorMessage.contains("Cannot have subentity without an id"));
 
 		queryNode.put("id", id);
 		body = objectMapper.writeValueAsString(queryRequest);
@@ -193,14 +158,30 @@ public class HSAPIResourceIT extends BaseIT {
 		assertEquals(200, response.getStatusLine().getStatusCode());
 
 		//Need to get a pathname to use
-	/*	result = objectMapper.readTree(response.getEntity().getContent());
+		result = objectMapper.readTree(response.getEntity().getContent());
+		assertNotNull("Results should not be null", result.get("results"));
+
 		String pathname = result.get("results").get(0).get("url").asText();
 		pathname = pathname.substring(pathname.lastIndexOf("/"));
 		queryNode.put("pathname", pathname);
-		queryNode.put("subentity", "file");
+		queryNode.put("subentity", "files");
 		body = objectMapper.writeValueAsString(queryRequest);
-		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), null, body);
-		assertEquals(200, response.getStatusLine().getStatusCode());*/
+		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
+		assertEquals(200, response.getStatusLine().getStatusCode());
+
+		//Should fail with a page where it isn't allowed
+		queryNode.put("page", "2");
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
+		assertEquals(500, response.getStatusLine().getStatusCode());
+
+		//But should work with a page for this one
+		queryNode.remove("pathname");
+		body = objectMapper.writeValueAsString(queryRequest);
+		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
+		assertEquals(200, response.getStatusLine().getStatusCode());
+        result = objectMapper.readTree(response.getEntity().getContent());
+		assertNotNull("Response message should not be null", result.get("results"));
 
 	}
 }
