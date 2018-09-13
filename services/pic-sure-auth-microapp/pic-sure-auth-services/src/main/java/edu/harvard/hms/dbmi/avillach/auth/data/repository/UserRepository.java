@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.data.repository;
+package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.persistence.NoResultException;
@@ -9,7 +9,7 @@ import javax.transaction.Transactional;
 import javax.ws.rs.NotAuthorizedException;
 
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
-import edu.harvard.hms.dbmi.avillach.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

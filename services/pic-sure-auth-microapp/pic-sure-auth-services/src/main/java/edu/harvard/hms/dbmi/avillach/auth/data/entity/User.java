@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.data.entity;
+package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
 import javax.persistence.Entity;
 

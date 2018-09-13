@@ -1,7 +1,7 @@
-package edu.harvard.hms.dbmi.avillach.service;
+package edu.harvard.hms.dbmi.avillach.auth.service;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.User;
-import edu.harvard.hms.dbmi.avillach.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import io.jsonwebtoken.*;
