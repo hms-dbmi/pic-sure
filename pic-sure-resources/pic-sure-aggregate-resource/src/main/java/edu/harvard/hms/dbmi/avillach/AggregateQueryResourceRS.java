@@ -36,9 +36,9 @@ public class AggregateQueryResourceRS implements IResourceRS
 	private static final String PICSURE_2_TOKEN = System.getenv("PICSURE_2_TOKEN");
 
 	private static final String BEARER_STRING = "Bearer ";
-	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
+	//TODO Clean up error messages
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials for resource with id ";
-	public static final String INCORRECTLY_FORMATTED_REQUEST = "Incorrectly formatted query request data";
+
 
 	private Header[] headers = {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN)};
 
@@ -77,7 +77,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryRequest) {
 		logger.debug("Calling Aggregate Query Resource query()");
 		if (queryRequest == null) {
-			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setStartTime(new Date().getTime());
@@ -111,7 +111,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 			}
 		} catch (ClassCastException | IllegalArgumentException e){
 			logger.error(e.getMessage());
-			throw new ProtocolException(INCORRECTLY_FORMATTED_REQUEST);
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
         statusResponse.setStatus(determineStatus(presentStatuses));
         statusResponse.setResultMetadata(SerializationUtils.serialize(queryIdList));
@@ -190,7 +190,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 					// temporarily like this for debug
 					String entityString = EntityUtils.toString(response.getEntity());
-					logger.info("Aggregate queryResult string: " + entityString);
+					logger.debug("Aggregate queryResult string: " + entityString);
 					responses.add(json.readTree(entityString));
 
 				} catch (IOException e) {

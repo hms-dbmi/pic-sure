@@ -70,7 +70,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
             fail("Missing request data should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureSearchService.MISSING_TARGET_URL + "'", PicsureSearchService.MISSING_TARGET_URL, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
         }
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
@@ -81,7 +81,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
             fail("Missing request data should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureSearchService.MISSING_RESOURCE_PATH + "'", PicsureSearchService.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
 
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
@@ -92,7 +92,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
             fail("Missing request data should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureSearchService.MISSING_DATA + "'", PicsureSearchService.MISSING_DATA, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA, e.getContent().toString());
         }
 
         //Missing resourceId should error
@@ -101,7 +101,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
             fail("Missing resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureSearchService.MISSING_RESOURCE_ID + "'", PicsureSearchService.MISSING_RESOURCE_ID, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString());
 
         }
 
@@ -111,7 +111,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
             fail("Nonexistent resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + PicsureSearchService.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(PicsureSearchService.RESOURCE_NOT_FOUND));
+            assertTrue("Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND));
         }
 
         //This should work

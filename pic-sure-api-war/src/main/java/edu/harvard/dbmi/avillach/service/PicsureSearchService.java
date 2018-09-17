@@ -20,12 +20,6 @@ public class PicsureSearchService {
 	@Inject
 	ResourceWebClient resourceWebClient;
 
-	public final static String MISSING_DATA = "Missing query request data";
-	public final static String MISSING_TARGET_URL = "Resource is missing target URL";
-	public final static String MISSING_RESOURCE_PATH = "Resource is missing resourceRS path";
-	public final static String RESOURCE_NOT_FOUND = "No resource with id: ";
-	public final static String MISSING_RESOURCE_ID = "Missing resource id";
-
 	/**
 	 * Executes a concept search against a target resource
 	 * 
@@ -36,20 +30,20 @@ public class PicsureSearchService {
 	 */
 	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
 		if (resourceId == null){
-			throw new ProtocolException(MISSING_RESOURCE_ID);
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException(RESOURCE_NOT_FOUND + resourceId.toString());
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException(MISSING_TARGET_URL);
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(MISSING_RESOURCE_PATH);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (searchQueryRequest == null){
-			throw new ProtocolException(MISSING_DATA);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		searchQueryRequest.setTargetURL(resource.getTargetURL());
 

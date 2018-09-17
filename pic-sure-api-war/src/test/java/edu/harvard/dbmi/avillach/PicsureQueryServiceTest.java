@@ -11,10 +11,8 @@ import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
@@ -31,7 +29,6 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
-import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -41,7 +38,6 @@ import static org.mockito.Mockito.when;
 public class PicsureQueryServiceTest extends BaseServiceTest {
 
     private UUID resourceId = UUID.randomUUID();
-    private String token = "tokenDoesntMatterForTestIDontThink";
     private String queryString = "queryDoesntMatterForTest";
     private UUID queryId = UUID.randomUUID();
     private Query queryEntity;
@@ -62,18 +58,18 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
     @Mock
     private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
-    @Before
-    public void setUp() {
-        //TODO Reorganize this so things are only setup when needed.
-        //Create a QueryStatus to return
+    @Test
+    public void testQuery() {
+
+        /* SET UP MOCKS */
+        //Add needed data to results that are returned
         results.setResourceID(resourceId);
         results.setStatus(PicSureStatus.PENDING);
         results.setStartTime(new Date().getTime());
 
-        when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
-        when(resourceRepo.getById(not(ArgumentMatchers.same(resourceId)))).thenReturn(null);
-        when(mockResource.getUuid()).thenReturn(resourceId);
+        //Return mocks when needed
         when(webClient.query(any(), any())).thenReturn(results);
+        when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
 
         //Mock persisting the queryentity, so that it has an ID and we can test that the correct information is stored in it
         doAnswer(new Answer<Void>() {
@@ -84,13 +80,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
                 return null;
             }
         }).when(queryRepo).persist(any(Query.class));
-        when(queryRepo.getById(queryId)).thenReturn(queryEntity);
 
-
-    }
-
-    @Test
-    public void testQuery() throws Exception {
+        /* END SET UP */
 
         //Test missing query data
         try {
@@ -98,12 +89,12 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing query request info should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_DATA + "'", PicsureQueryService.MISSING_DATA, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA, e.getContent().toString());
         }
 
         QueryRequest dataQueryRequest = new QueryRequest();
+        //At this level we don't check the credentials themselves, just that the map exists
         Map<String, String> clientCredentials = new HashMap<String, String>();
-        clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
 
         //Test missing resourceId
@@ -113,7 +104,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_RESOURCE_ID + "'", PicsureQueryService.MISSING_RESOURCE_ID, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString());
         }
 
         //Test nonexistent resourceId
@@ -123,7 +114,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Nonexistent resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + PicsureQueryService.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(PicsureQueryService.RESOURCE_NOT_FOUND));
+            assertTrue("Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND));
         }
 
         //Test missing targetURL
@@ -133,7 +124,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing targetURL should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_TARGET_URL + "'", PicsureQueryService.MISSING_TARGET_URL, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
         }
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
@@ -145,7 +136,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing resourceRS path should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_RESOURCE_PATH + "'", PicsureQueryService.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
 
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
@@ -169,6 +160,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
     @Test
     public void testQueryStatus(){
+        /* SET UP MOCKS */
+
         //Setup a pre-existing query Entity
         queryEntity = new Query();
         queryEntity.setUuid(queryId);
@@ -179,21 +172,15 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         queryEntity.setStartTime(new java.sql.Date(results.getStartTime()));
         when(queryRepo.getById(queryId)).thenReturn(queryEntity);
 
-        //TODO: Do we check client credentials at this level?
-        /*try {
-            QueryStatus result = queryService.queryStatus(queryId, null);
-            fail("Missing resource credentials should throw an error");
-        } catch (Exception e){
-        }*/
+        when(mockResource.getUuid()).thenReturn(resourceId);
 
         Map<String, String> clientCredentials = new HashMap<String, String>();
-        clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         try {
             QueryStatus result = queryService.queryStatus(null, clientCredentials);
             fail("Missing queryId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_QUERY_ID + "'", PicsureQueryService.MISSING_QUERY_ID, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'", ProtocolException.MISSING_QUERY_ID, e.getContent().toString());
         }
 
         //Nonexistent queryId
@@ -202,7 +189,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Nonexistent queryId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + PicsureQueryService.QUERY_NOT_FOUND + "'", e.getContent().toString().contains(PicsureQueryService.QUERY_NOT_FOUND));
+            assertTrue("Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND));
         }
 
         //Test missing target URL
@@ -211,7 +198,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing targetURL should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_TARGET_URL + "'", PicsureQueryService.MISSING_TARGET_URL, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
         }
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
@@ -222,7 +209,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing resourceRS path should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_RESOURCE_PATH + "'", PicsureQueryService.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
 
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
@@ -258,20 +245,14 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         Response resp = mock(Response.class);
         when(webClient.queryResult(any(),any(), any())).thenReturn(resp);
 
-        /*try {
-            Response result = queryService.queryResult(queryId, null);
-            fail("Missing resource credentials should throw an error");
-        } catch (Exception e){
-        }*/
 
         Map<String, String> clientCredentials = new HashMap<String, String>();
-//        clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         try {
             Response result = queryService.queryResult(null, clientCredentials);
             fail("Missing queryId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_QUERY_ID + "'", PicsureQueryService.MISSING_QUERY_ID, e.getContent().toString());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'", ProtocolException.MISSING_QUERY_ID, e.getContent().toString());
         }
 
         //Nonexistent queryId
@@ -280,7 +261,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Nonexistent queryId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + PicsureQueryService.QUERY_NOT_FOUND + "'", e.getContent().toString().contains(PicsureQueryService.QUERY_NOT_FOUND));
+            assertTrue("Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND));
         }
 
         //Test missing target URL
@@ -289,7 +270,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing targetURL should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_TARGET_URL + "'", PicsureQueryService.MISSING_TARGET_URL, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
         }
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
@@ -300,7 +281,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
             fail("Missing resourceRS path should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureQueryService.MISSING_RESOURCE_PATH + "'", PicsureQueryService.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
 
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");

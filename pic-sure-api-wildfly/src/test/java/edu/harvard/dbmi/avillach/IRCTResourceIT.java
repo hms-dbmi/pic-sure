@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -47,8 +49,6 @@ public class IRCTResourceIT extends BaseIT {
     //This is a previously created query id, uncertain if this is the best way to go
 	private String testQueryResultId = "231066";
 	private final String targetURL = "https://nhanes.hms.harvard.edu/rest/v1/";
-
-	//TODO: May change the way all errors are dealt with
 
 	@Test
 	public void testStatus() throws UnsupportedOperationException, IOException {
@@ -93,8 +93,8 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
-		errorType = responseMessage.get("errorType").asText();
-		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
 
 
 		//This should work
@@ -154,7 +154,7 @@ public class IRCTResourceIT extends BaseIT {
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, errorMessage);
+		assertEquals("Error message should be " + ProtocolException.MISSING_DATA, ProtocolException.MISSING_DATA, errorMessage);
 
 
 		queryRequest.setQuery("%antibody%");
@@ -164,10 +164,8 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
-		errorType = responseMessage.get("errorType").asText();
-		assertEquals("Error type should be error", "error", errorType);
 		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + IRCTResourceRS.MISSING_TARGET_URL, IRCTResourceRS.MISSING_TARGET_URL, errorMessage);
+		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
 		//This should work
 		queryRequest.setTargetURL(targetURL);
@@ -234,7 +232,7 @@ public class IRCTResourceIT extends BaseIT {
 		errorType = responseMessage.get("errorType").asText();
 		assertEquals("Error type should be error", "error", errorType);
 		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_REQUEST_DATA_MESSAGE));
+		assertTrue("Error message should be " + ProtocolException.MISSING_DATA, errorMessage.contains(ProtocolException.MISSING_DATA));
 
 
 		//Try a poorly worded queryString
@@ -257,8 +255,8 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
-		errorType = responseMessage.get("errorType").asText();
-		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
 		queryRequest.setTargetURL(targetURL);
 		JsonNode jsonNode = objectMapper.readTree(queryString);
@@ -331,8 +329,8 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
-		errorType = responseMessage.get("errorType").asText();
-		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
         //This should work
 		queryRequest.setTargetURL(targetURL);
@@ -383,8 +381,8 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
-		errorType = responseMessage.get("errorType").asText();
-		assertEquals("Error type should be error", "error", errorType);
+		errorMessage = responseMessage.get("message").asText();
+		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
 		//This should work
 		request.setTargetURL(targetURL);

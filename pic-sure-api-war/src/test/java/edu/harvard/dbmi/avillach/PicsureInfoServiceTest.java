@@ -53,7 +53,6 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
     @Test
     public void testInfoEndpoints() {
-
         Map<String, String> clientCredentials = new HashMap<String, String>();
 
         //Should fail with a nonexistent id
@@ -62,7 +61,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
             fail();
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + PicsureInfoService.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(PicsureInfoService.RESOURCE_NOT_FOUND));        }
+            assertTrue("Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND));        }
 
         //Should fail without the url in the resource
         try {
@@ -70,22 +69,20 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureInfoService.MISSING_RESOURCE_PATH + "'", PicsureInfoService.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 
-
         //Should fail without the url in the resource
         try {
             ResourceInfo info = infoService.info(resourceId, clientCredentials);
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + PicsureInfoService.MISSING_TARGET_URL + "'", PicsureInfoService.MISSING_TARGET_URL, e.getContent().toString());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
         }
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
-
 
         ResourceInfo responseInfo = infoService.info(resourceId, clientCredentials);
         assertNotNull("Resource response should not be null", responseInfo);

@@ -25,7 +25,6 @@ public class PicsureSearchServiceIT extends BaseIT{
         //Result to return
         HashMap<String, String> anyOldResult = new HashMap<>();
 
-        //TODO be more specific with this url?
         wireMockRule.stubFor(any(anyUrl())
                 .willReturn(aResponse()
                         .withStatus(200)

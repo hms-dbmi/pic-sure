@@ -6,7 +6,6 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicHeader;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
@@ -14,10 +13,8 @@ import org.junit.runners.MethodSorters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.ws.rs.core.HttpHeaders;
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
@@ -77,10 +74,6 @@ public class AggregateResourceIT extends BaseIT {
 
     @BeforeClass
     public static void setUp() throws IOException{
-        //Will need to know the resource uuids
-        String jwt = generateJwtForSystemUser();
-        System.out.println("jwt token is: " + jwt);
-        headers.add(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt));
         HttpResponse response = retrieveGetResponse(endpointUrl+"/info/resources", headers);
         assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
         List<JsonNode> responseBody = objectMapper.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
@@ -89,7 +82,7 @@ public class AggregateResourceIT extends BaseIT {
         for (JsonNode node : responseBody){
             if (node.get("name").asText().equals("Aggregate Resource RS")){
                 aggregateUUID = UUID.fromString(node.get("uuid").asText());
-            } else {
+            } else if (!node.get("name").asText().equals("Test Resource")){
                 resourceUUID = UUID.fromString(node.get("uuid").asText());
             }
         }
@@ -115,11 +108,7 @@ public class AggregateResourceIT extends BaseIT {
         topQuery.setQuery(queryList);
         topQuery.setResourceUUID(aggregateUUID);
 
-
         String body = objectMapper.writeValueAsString(topQuery);
-
-//        System.out.println("AggregateResourceIT - endpointUrl is: " + endpointUrl + ", body is: " + body + ", headers are: "
-//                + headers.stream().map(e -> e.getName() +": "+ e.getValue()).collect(Collectors.toList()));
 
         //Should throw an error if credentials missing or wrong
         HttpResponse response = retrievePostResponse(endpointUrl+"/query", headers, body);
@@ -167,7 +156,6 @@ public class AggregateResourceIT extends BaseIT {
         queryRequest1.setQuery(queryString);
         body = objectMapper.writeValueAsString(topQuery);
 
-        System.out.println("Aggregate request body: " + body);
         response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
@@ -285,10 +273,6 @@ public class AggregateResourceIT extends BaseIT {
         //Should return an array of results
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         body = objectMapper.writeValueAsString(credentials);
-
-        System.out.println("AggregateResourceIT - endpointUrl is: " + endpointUrl+"/query/" + queryId + "/result" + ", body is: " + body + ", headers are: "
-                + headers.stream().map(e -> e.getName() +": "+ e.getValue()).collect(Collectors.toList()));
-
 
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());

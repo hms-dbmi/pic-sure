@@ -22,7 +22,6 @@ public class PicsureInfoServiceIT extends BaseIT {
         //Result to return
         List<QueryFormat> qfs = new ArrayList<>();
 
-        //TODO be more specific with this url?
         wireMockRule.stubFor(any(anyUrl())
                 .willReturn(aResponse()
                         .withStatus(200)

@@ -18,7 +18,6 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -37,19 +36,16 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 @Consumes("application/json")
 public class IRCTResourceRS implements IResourceRS
 {
-	private static final String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
 	private static final String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
-	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
+
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
-	public static final String MISSING_TARGET_URL = "Missing target URL";
+
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
 	public IRCTResourceRS() {
-/*		if(TARGET_IRCT_URL == null)
-			throw new PicsureQueryException("TARGET_IRCT_URL environment variable must be set.");*/
 		if(RESULT_FORMAT == null)
 			throw new PicsureQueryException("RESULT_FORMAT environment variable must be set.");
 	}
@@ -66,7 +62,7 @@ public class IRCTResourceRS implements IResourceRS
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Calling IRCT Resource info()");
 		if (queryRequest == null){
-			throw new ProtocolException("Missing query request data");
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		if (queryRequest.getResourceCredentials() == null){
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
@@ -76,7 +72,7 @@ public class IRCTResourceRS implements IResourceRS
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 		if (queryRequest.getTargetURL() == null){
-			throw new ProtocolException(MISSING_TARGET_URL);
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		String pathName = "resourceService/resources";
 
@@ -97,7 +93,7 @@ public class IRCTResourceRS implements IResourceRS
 		logger.debug("Calling IRCT Resource search()");
 		try {
 			if (searchJson == null) {
-				throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
 			Map<String, String> resourceCredentials = searchJson.getResourceCredentials();
 			if (resourceCredentials == null) {
@@ -109,11 +105,11 @@ public class IRCTResourceRS implements IResourceRS
 			}
 			Object search = searchJson.getQuery();
 			if (search == null) {
-				throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+				throw new ProtocolException((ProtocolException.MISSING_DATA));
 			}
 			String searchTerm = search.toString();
 			if (searchJson.getTargetURL() == null){
-				throw new ProtocolException(MISSING_TARGET_URL);
+				throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 			}
 			String pathName = "resourceService/find";
 			String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
@@ -145,7 +141,7 @@ public class IRCTResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Calling IRCT Resource query()");
 		if (queryJson == null) {
-			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		Map<String, String> resourceCredentials = queryJson.getResourceCredentials();
 		if (resourceCredentials == null) {
@@ -157,12 +153,12 @@ public class IRCTResourceRS implements IResourceRS
 		}
 
 		if (queryJson.getTargetURL() == null){
-		    throw new ProtocolException(MISSING_TARGET_URL);
+		    throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
         }
 		//TODO Do we want/need to do it this way, should we revert query field back to string?
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
-			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 
 		JsonNode queryNode = json.valueToTree(queryObject);
@@ -215,7 +211,7 @@ public class IRCTResourceRS implements IResourceRS
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusQuery) {
 		logger.debug("calling IRCT Resource queryStatus() for query {}", queryId);
 		if (statusQuery == null){
-            throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
 		Map<String, String> resourceCredentials = statusQuery.getResourceCredentials();
 		if (resourceCredentials == null) {
@@ -226,7 +222,7 @@ public class IRCTResourceRS implements IResourceRS
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
         if (statusQuery.getTargetURL() == null){
-            throw new ProtocolException(MISSING_TARGET_URL);
+            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
         }
 		String pathName = "resultService/resultStatus/"+queryId;
 		HttpResponse response = retrieveGetResponse(composeURL(statusQuery.getTargetURL(), pathName), createAuthorizationHeader(token));
@@ -263,7 +259,7 @@ public class IRCTResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling IRCT Resource queryResult() for query {}", queryId);
         if (resultRequest == null){
-            throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
         Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
@@ -274,7 +270,7 @@ public class IRCTResourceRS implements IResourceRS
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
         if (resultRequest.getTargetURL() == null){
-            throw new ProtocolException(MISSING_TARGET_URL);
+            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
         }
 		String pathName = "resultService/result/"+queryId+"/"+RESULT_FORMAT;
 		//Returns a String in the format requested

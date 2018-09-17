@@ -39,7 +39,9 @@ public class BaseIT {
 
 	protected static UUID resourceId;
 
-	protected static List<Header> headers = new ArrayList<>();
+	//These need to be established here to prevent multiplication of headers
+	protected static String jwt = generateJwtForSystemUser();
+	protected static List<Header> headers = Arrays.asList(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt), new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json"));
 
 	protected static HttpClient client = HttpClientBuilder.create().build();
 	protected final static ObjectMapper objectMapper = new ObjectMapper();
@@ -58,15 +60,9 @@ public class BaseIT {
 		System.out.println("irctEndpointUrl is: " + irctEndpointUrl);
 		aggregate_url = System.getProperty("aggregate.rs.url");
 
-
-		String jwt = generateJwtForSystemUser();
-		headers.add(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt));
-		headers.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json"));
-
 		//insert a resource for testing if necessary
 		try {
 			String uri = composeURL(endpointUrl, "/resource");
-
 			HttpResponse response = retrieveGetResponse(uri, headers);
 			assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
 			List<Resource> resources = objectMapper.readValue(response.getEntity().getContent(), new TypeReference<List<Resource>>() {
@@ -87,23 +83,28 @@ public class BaseIT {
 			}
 
 			if (!testResourceInserted){
-				resources = new ArrayList<>();
-				Resource testResource = new Resource();
-				testResource.setResourceRSPath(resourceRSPath);
-				testResource.setDescription("Test Resource");
-				testResource.setName("Test Resource");
-				testResource.setToken("testToken");
-				testResource.setTargetURL(testURL);
-				resources.add(testResource);
-				response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resources));
+				List<Map<String, String>> resourcesToAdd = new ArrayList<>();
+				Map<String, String> testResource = new HashMap<>();
+				testResource.put("resourceRSPath", resourceRSPath);
+				testResource.put("description", "Test Resource");
+				testResource.put("name", "Test Resource");
+				testResource.put("token", "testToken");
+				testResource.put("targetURL", testURL);
+
+				resourcesToAdd.add(testResource);
+				response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resourcesToAdd));
 				assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
-				List<JsonNode> responseBody = objectMapper.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
-				assertFalse(responseBody.isEmpty());
-				String id = responseBody.get(0).get("uuid").asText();
-				assertNotNull("Resource response should have an id", id);
-				resourceId = UUID.fromString(id);
+				JsonNode responseBody = objectMapper.readTree(response.getEntity().getContent());
+				assertNotNull("Response should not be null", responseBody);
+				JsonNode content = responseBody.get("content");
+				assertNotNull("Content should not be null", content);
+				JsonNode resource = content.get(0);
+				assertNotNull("Response should have a resource", resource);
+				assertTrue("Resource response should have an id", resource.has("uuid"));
+				resourceId = UUID.fromString(resource.get("uuid").asText());
 			}
 		} catch(IOException e) {
+			e.printStackTrace();
 			fail("Unable to set up test resource");
 		}
 	}

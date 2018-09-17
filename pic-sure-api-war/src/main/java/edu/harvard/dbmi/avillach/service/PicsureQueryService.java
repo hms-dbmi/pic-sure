@@ -9,14 +9,12 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
-import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
 
 /**
@@ -25,16 +23,6 @@ import javax.ws.rs.core.Response;
 public class PicsureQueryService {
 
 	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
-
-	//TODO: Consolidate these strings so they are not repeated in multiple classes
-	public final static String MISSING_DATA = "Missing query request data";
-	public final static String MISSING_TARGET_URL = "Resource is missing target URL";
-	public final static String MISSING_RESOURCE_PATH = "Resource is missing resourceRS path";
-	public final static String RESOURCE_NOT_FOUND = "No resource with id: ";
-	public final static String MISSING_RESOURCE_ID = "Missing resource id";
-	public final static String MISSING_QUERY_ID = "Missing query id";
-	public final static String QUERY_NOT_FOUND = "No query with id: ";
-	public final static String MISSING_RESOURCE = "Query is missing Resource";
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -56,21 +44,21 @@ public class PicsureQueryService {
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
 		if (dataQueryRequest == null){
-			throw new ProtocolException(MISSING_DATA);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		UUID resourceId = dataQueryRequest.getResourceUUID();
 		if (resourceId == null){
-			throw new ProtocolException(MISSING_RESOURCE_ID);
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException(RESOURCE_NOT_FOUND + resourceId.toString());
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException(MISSING_TARGET_URL);
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(MISSING_RESOURCE_PATH);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (dataQueryRequest.getResourceCredentials() == null){
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
@@ -114,21 +102,21 @@ public class PicsureQueryService {
 	@Transactional
 	public QueryStatus queryStatus(UUID queryId, Map<String, String> resourceCredentials) {
 		if (queryId == null){
-			throw new ProtocolException(MISSING_QUERY_ID);
+			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			throw new ProtocolException(QUERY_NOT_FOUND + queryId.toString());
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
 		}
 		Resource resource = query.getResource();
 		if (resource == null){
-			throw new ApplicationException(MISSING_RESOURCE);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException(MISSING_TARGET_URL);
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(MISSING_RESOURCE_PATH);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		QueryRequest queryRequest = new QueryRequest();
 		queryRequest.setTargetURL(resource.getTargetURL());
@@ -161,21 +149,21 @@ public class PicsureQueryService {
 	@Transactional
 	public Response queryResult(UUID queryId, Map<String, String> resourceCredentials) {
 		if (queryId == null){
-			throw new ProtocolException(MISSING_QUERY_ID);
+			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			throw new ProtocolException(QUERY_NOT_FOUND + queryId.toString());
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
 		}
 		Resource resource = query.getResource();
 		if (resource == null){
-			throw new ApplicationException(MISSING_RESOURCE);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException(MISSING_TARGET_URL);
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(MISSING_RESOURCE_PATH);
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		QueryRequest queryRequest = new QueryRequest();
 
@@ -198,7 +186,7 @@ public class PicsureQueryService {
 	public QueryStatus queryMetadata(UUID queryId){
         Query query = queryRepo.getById(queryId);
         if (query == null){
-			throw new ProtocolException(QUERY_NOT_FOUND + queryId.toString());
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
         QueryStatus response = new QueryStatus();
         response.setStartTime(query.getStartTime().getTime());
