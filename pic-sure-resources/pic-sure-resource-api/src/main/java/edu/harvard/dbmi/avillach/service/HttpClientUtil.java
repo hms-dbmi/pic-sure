@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+import javax.ws.rs.NotAuthorizedException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -108,4 +109,11 @@ public class HttpClientUtil {
 
 		}
     }
+
+	public static void throwResponseError(HttpResponse response, String baseURL){
+		if (response.getStatusLine().getStatusCode() == 401) {
+			throw new NotAuthorizedException(baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+		}
+		throw new ResourceInterfaceException("Resource returned " + response.getStatusLine().getStatusCode() + ": " + response.getStatusLine().getReasonPhrase());
+	}
 }

@@ -59,7 +59,7 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
@@ -88,7 +88,7 @@ public class ResourceWebClient {
 
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, SearchResults.class);
         } catch (JsonProcessingException e){
@@ -117,7 +117,7 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(dataQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -150,7 +150,7 @@ public class ResourceWebClient {
             logger.debug(body);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -181,7 +181,7 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                throwResponseError(resourcesResponse, rsURL);
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
@@ -190,14 +190,6 @@ public class ResourceWebClient {
         } catch (IOException e){
             throw new ResourceInterfaceException("Error getting results", e);
         }
-    }
-
-    private void throwError(HttpResponse response, String baseURL){
-        logger.error("Resource did not return a 200");
-        if (response.getStatusLine().getStatusCode() == 401) {
-            throw new NotAuthorizedException(baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-        }
-        throw new ResourceInterfaceException("Resource returned " + response.getStatusLine().getStatusCode() + ": " + response.getStatusLine().getReasonPhrase());
     }
 
     private Header[] createAuthorizationHeader(Map<String, String> resourceCredentials){

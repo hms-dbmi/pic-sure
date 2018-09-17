@@ -15,7 +15,6 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -60,7 +59,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 		return Response.ok().build();
 	}
 
-	@GET
+	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest queryRequest){
 		return new ResourceInfo();
@@ -100,10 +99,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 					HttpResponse response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, queryString);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
 					QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
 					//TODO What other information do we need to keep from this?
@@ -148,10 +144,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL , pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
 					status = readObjectFromResponse(response, QueryStatus.class);
 
@@ -192,10 +185,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
 
 					// temporarily like this for debug

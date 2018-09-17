@@ -13,7 +13,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 public interface IResourceRS
 {
 
-	@GET
+	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest queryRequest);
 

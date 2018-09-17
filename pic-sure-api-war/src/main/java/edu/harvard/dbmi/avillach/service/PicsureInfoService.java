@@ -19,6 +19,13 @@ public class PicsureInfoService {
 
 	Logger logger = LoggerFactory.getLogger(PicsureInfoService.class);
 
+	//TODO: Consolidate these strings so they are not repeated in multiple classes
+	public final static String MISSING_DATA = "Missing query request data";
+	public final static String MISSING_TARGET_URL = "Resource is missing target URL";
+	public final static String MISSING_RESOURCE_PATH = "Resource is missing resourceRS path";
+	public final static String RESOURCE_NOT_FOUND = "No resource with id: ";
+	public final static String MISSING_RESOURCE_ID = "Missing resource id";
+
 	@Inject
 	ResourceRepository resourceRepo;
 
@@ -33,15 +40,18 @@ public class PicsureInfoService {
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
 	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
+		if (resourceId == null){
+			throw new ProtocolException(MISSING_RESOURCE_ID);
+		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException(RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException("Resource is missing RS path");
+			throw new ApplicationException(MISSING_RESOURCE_PATH);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(MISSING_TARGET_URL);
 		}
 		if (resourceCredentials == null){
 			resourceCredentials = new HashMap<String, String>();

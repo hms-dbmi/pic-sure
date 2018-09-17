@@ -62,7 +62,7 @@ public class IRCTResourceRS implements IResourceRS
 
 	@POST
 	@Path("/info")
-	@Override
+//	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Calling IRCT Resource info()");
 		if (queryRequest == null){
@@ -83,11 +83,7 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(composeURL(queryRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200){
             logger.error(queryRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			//TODO Is there a better way to make sure the correct exception type is thrown?
-		    if (response.getStatusLine().getStatusCode() == 401) {
-                throw new NotAuthorizedException(queryRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-            }
-			throw new ResourceInterfaceException(queryRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, queryRequest.getTargetURL());
 		}
 		return new ResourceInfo().setName("IRCT Resource : " + queryRequest.getTargetURL())
 				.setQueryFormats(
@@ -131,11 +127,7 @@ public class IRCTResourceRS implements IResourceRS
 				if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
 					return results;
 				}
-					//TODO Is there a better way to make sure the correct exception type is thrown?
-				if (response.getStatusLine().getStatusCode() == 401) {
-					throw new NotAuthorizedException(searchJson.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-				}
-				throw new ResourceInterfaceException(searchJson.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+				throwResponseError(response, searchJson.getTargetURL());
 			}
 			results.setResults(readObjectFromResponse(response, Object.class));
 			return results;
@@ -189,11 +181,7 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrievePostResponse(composeURL(queryJson.getTargetURL(), pathName), createAuthorizationHeader(token), queryString);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(queryJson.getTargetURL() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			//TODO Is there a better way to make sure the correct exception type is thrown?
-			if (response.getStatusLine().getStatusCode() == 401) {
-				throw new NotAuthorizedException(queryJson.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			}
-			throw new ResourceInterfaceException(queryJson.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, queryJson.getTargetURL());
 		}
 		//Returns an object like so: {"resultId":230464}
 		//TODO later Add things like duration and expiration
@@ -244,11 +232,7 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(composeURL(statusQuery.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(statusQuery.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			//TODO Is there a better way to make sure the correct exception type is thrown?
-			if (response.getStatusLine().getStatusCode() == 401) {
-				throw new NotAuthorizedException(statusQuery.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			}
-			throw new ResourceInterfaceException(statusQuery.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, statusQuery.getTargetURL());
 		}
 		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
 		QueryStatus status = new QueryStatus();
@@ -297,11 +281,7 @@ public class IRCTResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			//TODO Is there a better way to make sure the correct exception type is thrown?
-			if (response.getStatusLine().getStatusCode() == 401) {
-				throw new NotAuthorizedException(resultRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			}
-				throw new ResourceInterfaceException(resultRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, resultRequest.getTargetURL());
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();

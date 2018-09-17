@@ -30,7 +30,7 @@ public class QueryFormatDeserializer extends JsonDeserializer<QueryFormat> {
             	    List<Map<String, Object>> test = mapper.convertValue(field.getValue(), ArrayList.class);
                 examples = test;
             } else {
-                extraFields.put(field.getKey(), mapper.convertValue(field.getValue(), HashMap.class));
+                extraFields.put(field.getKey(), mapper.convertValue(field.getValue(), Object.class));
             }
         }
         if (!extraFields.isEmpty()){
