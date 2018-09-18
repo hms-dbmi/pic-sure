@@ -15,7 +15,7 @@ public abstract class BaseEntity {
 		name = "UUID",
 		strategy = "org.hibernate.id.UUIDGenerator")
 	@Column(columnDefinition = "BINARY(16)")
-	private UUID uuid;
+	protected UUID uuid;
 
 	public UUID getUuid() {
 		return uuid;

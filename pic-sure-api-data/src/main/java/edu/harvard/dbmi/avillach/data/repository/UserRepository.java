@@ -5,6 +5,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.NoResultException;
 import javax.persistence.NonUniqueResultException;
 import javax.persistence.PersistenceContext;
+import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Root;
 import javax.transaction.Transactional;
@@ -26,39 +27,57 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		super(User.class);
 	}
 	
-	public User findBySubject(String subject) {
+	public User findBySubjectOrUserId(String subject, String userId) {
 		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
 		Root<User> queryRoot = query.from(User.class);
 		query.select(queryRoot);
-		return em.createQuery(query.where(eq(queryRoot, "subject", subject))).getSingleResult();
+		CriteriaBuilder cb = cb();
+		return em.createQuery(query
+				.where(
+						or(cb,
+								eq(cb, queryRoot, "subject", subject),
+								eq(cb, queryRoot, "userId", userId))))
+				.getSingleResult();
 	}
 
 	/**
 	 *
-	 * @param subject the information for searching for the user
-	 * @param userId the userId for creating the user, if user cannot be found
 	 * @return
 	 */
-	public User findOrCreate(String subject, String userId) {
-		User user;
+	public User findOrCreate(User inputUser) {
+		User user = null;
+		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
 		try{
-			user = findBySubject(subject);
-			logger.debug("findOrCreate() user " + userId + "found a user");
+			user = findBySubjectOrUserId(subject, userId);
+			logger.info("findOrCreate(), trying to find user: {subject: " + subject+
+					", userId: " + userId +
+					"}, and found a user with uuid: " + user.getUuid()
+					+ ", subject: " + user.getSubject()
+					+ ", userId: " + user.getUserId());
 		} catch (NoResultException e) {
-			logger.error("findOrCreate() UserId " + userId +
-					" could not be found by `entityManager`");
-			user = createUser(subject, userId);
+			logger.debug("findOrCreate() UserId " + userId +
+					" could not be found by `entityManager`, going to create a new user.");
+			user = createUser(inputUser);
 		}catch(NonUniqueResultException e){
-			logger.error("findOrCreate() Exception:" + e.getMessage());
-			throw new NotAuthorizedException("Duplicate User Found : " + userId, e);
+			logger.error("findOrCreate() " + e.getClass().getSimpleName() + ": " + e.getMessage());
 		}
 		return user;
 	}
 	
-	public User createUser(String subject, String userId) {
-		logger.info("createUser() creating user by userId: " + userId);
-		em().persist(new User().setSubject(subject).setUserId(userId));
-		return findBySubject(subject);
+	private User createUser(User inputUser) {
+		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
+		if (subject == null && userId == null){
+			logger.error("createUser() cannot create user when both subject and userId are null");
+			return null;
+		}
+		logger.debug("createUser() creating user, subject: " + subject +", userId: " + userId + " ......");
+		em().persist(inputUser);
+
+		User result = getById(inputUser.getUuid());
+		if (result != null)
+			logger.info("createUser() created user: uuid: " + result.getUuid() + ", subject: " + subject +", userId: " + userId + ", role: " + result.getRoles());
+
+		return result;
 	}
 
 	public User changeRole(User user, String role){
@@ -70,5 +89,10 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		logger.info("User: " + updatedUser.getUuid() + ", with userId: " +
 				updatedUser.getUserId() + ", now has a new role: " + updatedUser.getRoles());
 		return updatedUser;
+	}
+
+	@Override
+	public void persist(User user) {
+		findOrCreate(user);
 	}
 }

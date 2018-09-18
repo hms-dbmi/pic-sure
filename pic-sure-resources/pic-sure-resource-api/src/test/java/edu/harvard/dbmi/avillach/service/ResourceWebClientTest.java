@@ -38,24 +38,41 @@ public class ResourceWebClientTest {
                 .withStatus(200)
               .withBody(resourceInfo)));
 
+        //Any targetURL that matches /info will trigger wiremock
+        String targetURL = "/info";
         //Should throw an error if any parameters are missing
         try {
             cut.info(testURL, null);
             fail();
         } catch (Exception e) {
-            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
+        QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
+        queryRequest.setResourceCredentials(credentials);
+        queryRequest.setTargetURL(targetURL);
+        //Obviously should fail without the rsURL
         try {
-            cut.info(null, credentials);
+            cut.info(null, queryRequest);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+        //Should fail without a targetURL
+
+        queryRequest.setTargetURL(null);
+        try {
+            cut.info(testURL, queryRequest);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
         //Assuming everything goes right
-        ResourceInfo result = cut.info(testURL, credentials);
+        queryRequest.setTargetURL(targetURL);
+        ResourceInfo result = cut.info(testURL, queryRequest);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -64,7 +81,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.info(testURL, credentials);
+            cut.info(testURL, queryRequest);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("returned 500"));
@@ -78,7 +95,7 @@ public class ResourceWebClientTest {
                         .withBody(incorrectResponse)));
 
         try {
-            cut.info(testURL, credentials);
+            cut.info(testURL, queryRequest);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
@@ -106,11 +123,14 @@ public class ResourceWebClientTest {
             cut.search(null, request);
             fail();
         } catch (Exception e) {
-            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
+
+        String targetURL = "/search";
 
         //Should fail if no credentials given
         request.setQuery("query");
+        request.setTargetURL(targetURL);
         try {
             cut.search(testURL, request);
             fail();
@@ -130,8 +150,17 @@ public class ResourceWebClientTest {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
-
+        //Should fail with no targetURL
+        request.setTargetURL(null);
         request.setQuery("%blood%");
+        try {
+            cut.search(testURL, request);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+        request.setTargetURL(targetURL);
         SearchResults result = cut.search(testURL, request);
         assertNotNull("Result should not be null", result);
 
@@ -181,6 +210,8 @@ public class ResourceWebClientTest {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         QueryRequest request = new QueryRequest();
+        request.setTargetURL("/query");
+
         try {
             cut.query(null, request);
             fail();
@@ -198,6 +229,16 @@ public class ResourceWebClientTest {
 
         Map<String, String> credentials = new HashMap<>();
         request.setResourceCredentials(credentials);
+        request.setTargetURL(null);
+        //Should fail without a targetURL
+        try {
+            cut.query(testURL, request);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+        request.setTargetURL("/query");
 
         //Everything goes correctly
         QueryStatus result = cut.query(testURL, request);
@@ -246,25 +287,38 @@ public class ResourceWebClientTest {
             cut.queryResult(testURL, testId, null);
             fail();
         } catch (Exception e) {
-            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
+        QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
+        queryRequest.setResourceCredentials(credentials);
         try {
-            cut.queryResult(testURL, null, credentials);
+            cut.queryResult(testURL, null, queryRequest);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
-            cut.queryResult(null, testId, credentials);
+            cut.queryResult(null, testId, queryRequest);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
+        //Should fail without a testURL
+        try {
+            cut.queryResult(testURL, testId, queryRequest);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+        String targetURL = "/query/13452134/result";
+        queryRequest.setTargetURL(targetURL);
+
         //Everything should work here
-        Response result = cut.queryResult(testURL,testId, credentials);
+        Response result = cut.queryResult(testURL,testId, queryRequest);
         assertNotNull("Result should not be null", result);
 
         //What if the resource has a problem?
@@ -273,7 +327,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryResult(testURL, testId, credentials);
+            cut.queryResult(testURL, testId, queryRequest);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -298,25 +352,39 @@ public class ResourceWebClientTest {
             cut.queryStatus(testURL, testId, null);
             fail();
         } catch (Exception e) {
-            assertEquals("HTTP 401 Unauthorized", e.getMessage());
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
+        QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
+        queryRequest.setResourceCredentials(credentials);
         try {
-            cut.queryStatus(testURL, null, credentials);
+            cut.queryStatus(testURL, null, queryRequest);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
         try {
-            cut.queryStatus(null, testId, credentials);
+            cut.queryStatus(null, testId, queryRequest);
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
         }
 
+        //Should fail without a targetURL
+        try {
+            cut.queryStatus(testURL, testId, queryRequest);
+            fail();
+        } catch (Exception e) {
+            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        }
+
+        String targetURL = "/query/13452134/result";
+        queryRequest.setTargetURL(targetURL);
+
+
         //Everything should work here
-        QueryStatus result = cut.queryStatus(testURL,testId, credentials);
+        QueryStatus result = cut.queryStatus(testURL,testId, queryRequest);
         assertNotNull("Result should not be null", result);
         //Make sure all necessary fields are present
         assertNotNull("Duration should not be null",result.getDuration());
@@ -330,7 +398,7 @@ public class ResourceWebClientTest {
                         .withStatus(500)));
 
         try {
-            cut.queryStatus(testURL, testId, credentials);
+            cut.queryStatus(testURL, testId, queryRequest);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Resource returned 500"));
@@ -346,7 +414,7 @@ public class ResourceWebClientTest {
                         .withBody(json.writeValueAsString(incorrect))));
 
         try {
-            cut.queryStatus(testURL, testId, credentials);
+            cut.queryStatus(testURL, testId, queryRequest);
             fail();
         } catch (Exception e) {
             assertTrue( e.getMessage().contains("Incorrect object type returned"));
