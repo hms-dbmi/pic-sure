@@ -153,6 +153,7 @@
 								<TARGET_I2B2_URL>https://ec2-35-170-69-167.compute-1.amazonaws.com/rest/v1</TARGET_I2B2_URL>
 								<TARGET_PICSURE_URL>http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure</TARGET_PICSURE_URL>
 								<PICSURE_2_TOKEN>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM</PICSURE_2_TOKEN>
+								<I2B2_LABEL>Patient Id</I2B2_LABEL>
 							</env>
 						</configuration>
 					</execution>

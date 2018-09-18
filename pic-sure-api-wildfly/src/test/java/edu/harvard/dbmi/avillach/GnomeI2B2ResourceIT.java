@@ -98,7 +98,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         headers[0] = new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         HttpResponse response = retrieveGetResponse(endpointUrl+"/info/resources", headers);
         assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
-        List<JsonNode> responseBody = json.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
+        List<JsonNode> responseBody = objectMapper.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
         assertFalse(responseBody.isEmpty());
 
         for (JsonNode node : responseBody){
@@ -107,9 +107,9 @@ public class GnomeI2B2ResourceIT extends BaseIT {
             }
         }
 
-        i2b2Query = json.readTree(i2b2queryString);
-        gnomeQuery = json.readTree(gnomeQueryString);
-        errorQuery = json.readTree(errorQueryString);
+        i2b2Query = objectMapper.readTree(i2b2queryString);
+        gnomeQuery = objectMapper.readTree(gnomeQueryString);
+        errorQuery = objectMapper.readTree(errorQueryString);
     }
 
     @Test
@@ -124,12 +124,12 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         queryRequest.setQuery(queryMap);
         queryRequest.setResourceUUID(gnomeI2B2UUID);
 
-        String body = json.writeValueAsString(queryRequest);
+        String body = objectMapper.writeValueAsString(queryRequest);
 
         //Should throw an error if credentials missing or wrong
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+        JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         String errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -139,10 +139,10 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, "anInvalidToken");
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -153,35 +153,35 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
         queryRequest.setQuery(null);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
 
         queryMap.remove("gnome");
         queryRequest.setQuery(queryMap);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
 
 
         //Try a poorly worded queryString
         queryMap.put("gnome", "poorly worded query");
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Incorrectly formatted query should return a 500", 500, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
 
         //Make sure all queries work
         queryMap.put("gnome", gnomeQuery);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         assertNotNull("Status should not be null", responseMessage.get("status"));
         queryId = responseMessage.get("picsureResultId").asText();
@@ -189,10 +189,10 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //Want the status to be ERROR if one query errors - send query to be tested by queryStatus
         queryMap.put("i2b2", errorQuery);
-        body = json.writeValueAsString(queryRequest);
+        body = objectMapper.writeValueAsString(queryRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorQueryId = responseMessage.get("picsureResultId").asText();
         assertNotNull("Status should not be null", responseMessage.get("status"));
@@ -202,12 +202,12 @@ public class GnomeI2B2ResourceIT extends BaseIT {
     @Test
     public void testQueryStatus() throws IOException {
         Map<String, String> credentials = new HashMap<String, String>();
-        String body = json.writeValueAsString(credentials);
+        String body = objectMapper.writeValueAsString(credentials);
 
         //Should get 401 for missing or invalid credentials
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+        JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         String errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -216,11 +216,11 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(credentials);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -229,10 +229,10 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //This should retrieve the status of the query successfully
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(credentials);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         status = responseMessage.get("status").asText();
         assertNotNull("Status should not be null", status);
@@ -242,7 +242,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         while (errorStatus.equals(PicSureStatus.PENDING.name())){
             response = retrievePostResponse(composeURL(endpointUrl,"/query/"+errorQueryId+"/status"), headers, body);
             assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-            responseMessage = json.readTree(response.getEntity().getContent());
+            responseMessage = objectMapper.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
             errorStatus = responseMessage.get("status").asText();
         }
@@ -256,25 +256,25 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        String body = json.writeValueAsString(credentials);
+        String body = objectMapper.writeValueAsString(credentials);
 
         //Need to make sure result is ready
         while (!status.equals(PicSureStatus.AVAILABLE.name())){
             Thread.sleep(2000);
             HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
             assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-            JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+            JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
             status = responseMessage.get("status").asText();
         }
 
         credentials.remove(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY);
-        body = json.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(credentials);
 
         //Missing or invalid credentials should return 401
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        JsonNode responseMessage = json.readTree(response.getEntity().getContent());
+        JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         String errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -282,11 +282,11 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = json.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(credentials);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
@@ -295,10 +295,10 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //Should return an array of results
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = json.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(credentials);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-        responseMessage = json.readTree(response.getEntity().getContent());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         //In testing this was the result, but probably the test shouldn't rely on it
         assertEquals("Result should be 2", 2, Integer.parseInt(responseMessage.toString()));

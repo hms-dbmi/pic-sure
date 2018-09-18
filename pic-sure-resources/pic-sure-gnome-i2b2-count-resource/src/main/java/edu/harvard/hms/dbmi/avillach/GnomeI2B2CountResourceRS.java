@@ -81,7 +81,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	@POST
 	@Path("/info")
 	@Override
-	public ResourceInfo info(Map<String,String> resourceCredentials) {
+	public ResourceInfo info(QueryRequest resourceCredentials) {
 		//TODO Not sure what to do with this method - there are kind of two resources right?
 		logger.debug("Calling Gnome-I2B2-Count Resource info()");
 		return new ResourceInfo();
@@ -189,10 +189,14 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("calling Gnome-I2B2-Count Resource queryStatus() for query {}", queryId);
-		if (resourceCredentials == null) {
+		if (statusRequest == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+		}
+		Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
+		if (resourceCredentials == null){
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
 		}
 		String token = resourceCredentials.get(GNOME_BEARER_TOKEN_KEY);
 		if (token == null) {
@@ -257,10 +261,14 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Gnome-I2B2-Count Resource queryResult() for query {}", queryId);
-		if (resourceCredentials == null) {
+		if (resultRequest == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+		}
+		Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
+		if (resourceCredentials == null){
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
 		}
 		String token = resourceCredentials.get(GNOME_BEARER_TOKEN_KEY);
 		if (token == null) {
