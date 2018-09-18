@@ -43,6 +43,13 @@ public class ResourceTestInitializer
                 .setDescription("Aggregate Resource RS")
                 .setName("Aggregate Resource RS");
         em.persist(aggregateResource);
+
+        Resource gnomeI2B2Resource = new Resource()
+                .setResourceRSPath("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/gnome-i2b2-count")
+                .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM")
+                .setDescription("Gnome I2B2 Count Resource RS")
+                .setName("Gnome I2B2 Count Resource RS");
+        em.persist(gnomeI2B2Resource);
     }
 
 }
