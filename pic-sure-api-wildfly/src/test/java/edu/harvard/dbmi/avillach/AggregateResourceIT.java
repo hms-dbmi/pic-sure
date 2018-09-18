@@ -89,7 +89,7 @@ public class AggregateResourceIT extends BaseIT {
         for (JsonNode node : responseBody){
             if (node.get("name").asText().equals("Aggregate Resource RS")){
                 aggregateUUID = UUID.fromString(node.get("uuid").asText());
-            } else {
+            } else if (node.get("name").asText().equals("nhanes.hms.harvard.edu")){
                 resourceUUID = UUID.fromString(node.get("uuid").asText());
             }
         }
@@ -149,6 +149,7 @@ public class AggregateResourceIT extends BaseIT {
         queryRequest1.setResourceCredentials(credentials);
         queryRequest1.setQuery(null);
         queryRequest2.setResourceCredentials(credentials);
+        topQuery.setResourceCredentials(credentials);
         body = objectMapper.writeValueAsString(topQuery);
         response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
