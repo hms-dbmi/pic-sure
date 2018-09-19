@@ -4,51 +4,47 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import edu.harvard.hms.dbmi.avillach.GnomeI2B2CountResourceRS;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import javax.ws.rs.HEAD;
 import javax.ws.rs.core.HttpHeaders;
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
 import static org.junit.Assert.*;
 
 //Need tests executed in order to fill in variables for later tests
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-public class AggregateResourceIT extends BaseIT {
+public class GnomeI2B2ResourceIT extends BaseIT {
 
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
-
-    private final static String token = System.getProperty("irct.token");
-    private final static String queryString = "{" +
+    private final static String token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6MTU0NDQ0MjM0NCwiaWF0IjoxNTM0NDQyMzQ0LCJqdGkiOiJGb28iLCJlbWFpbCI6ImZvb0BiYXIuY29tIn0.u4VVxoGVrxvb8s6QWALqs_BRZnwZ5BX58ZVJS1v6Yls";
+    private final static String i2b2queryString = "{" +
             "    \"select\": [" +
             "        {" +
-            "            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}" +
+            "            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/SEX/M\", \"dataType\":\"STRING\"}" +
             "        }," +
             "        {" +
-            "            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}" +
+            "            \"alias\": \"gender\", \"field\": {\"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/SEX/F\", \"dataType\":\"STRING\"}" +
             "        }," +
             "        {" +
-            "            \"alias\": \"age\",    \"field\": {\"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
+            "            \"alias\": \"age\",    \"field\": {\"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/Age\", \"dataType\":\"STRING\"}" +
             "        }" +
             "    ]," +
             "    \"where\": [" +
             "        {" +
             "            \"predicate\": \"CONTAINS\"," +
             "            \"field\": {" +
-            "                \"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/SEX/male/\"," +
+            "                \"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/SEX/M\"," +
             "                \"dataType\": \"STRING\"" +
             "            }," +
             "            \"fields\": {" +
@@ -57,12 +53,25 @@ public class AggregateResourceIT extends BaseIT {
             "        }" +
             "    ]" +
             "}";
-    private final static String errorQuery = "{" +
+    private final static String gnomeQueryString = "{" +
+            " \"where\": [" +
+            "   { \"field\" : " +
+            "       {" +
+            "           \"pui\" : \"/gnome/query_rest.cgi\"," +
+            "           \"dataType\": \"STRING\"" +
+            "       }," +
+            "   \"predicate\" : \"CONTAINS\"," +
+            "       \"fields\" : {" +
+            "           \"qtype\" : \"variants\"," +
+            "           \"vqueries\" : [\"chr16,2120487,2120487,G,A\"]" +
+            "       }" +
+            "   }]} ";
+    private final static String errorQueryString = "{" +
             "    \"where\": [" +
             "        {" +
             "            \"predicate\": \"CONTAINS\"," +
             "            \"field\": {" +
-            "                \"pui\": \"/i2b2-nhanes/Demo/demographics/demographics/nonexistentpath\"," +
+            "                \"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/nonexistentpath\"," +
             "                \"dataType\": \"STRING\"" +
             "            }," +
             "            \"fields\": {" +
@@ -71,60 +80,54 @@ public class AggregateResourceIT extends BaseIT {
             "        }" +
             "    ]" +
             "}";
-    private static UUID resourceUUID;
-    private static UUID aggregateUUID;
+
+    private static JsonNode i2b2Query;
+    private static JsonNode gnomeQuery;
+    private static JsonNode errorQuery;
+
+    private static UUID gnomeI2B2UUID;
+    private static Header[] headers = new Header[1];
     private static String queryId;
     private static String errorQueryId;
     private static String status;
 
     @BeforeClass
     public static void setUp() throws IOException{
-        //Will need to know the resource uuids
+        //Will need to know the resource uuid
         String jwt = generateJwtForSystemUser();
-        System.out.println("jwt token is: " + jwt);
-        headers.add(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt));
+        headers[0] = new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         HttpResponse response = retrieveGetResponse(endpointUrl+"/info/resources", headers);
         assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
         List<JsonNode> responseBody = objectMapper.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
         assertFalse(responseBody.isEmpty());
 
         for (JsonNode node : responseBody){
-            if (node.get("name").asText().equals("Aggregate Resource RS")){
-                aggregateUUID = UUID.fromString(node.get("uuid").asText());
-            } else if (node.get("name").asText().contains("nhanes")) {
-                resourceUUID = UUID.fromString(node.get("uuid").asText());
+            if (node.get("name").asText().equals("Gnome I2B2 Count Resource RS")){
+                gnomeI2B2UUID = UUID.fromString(node.get("uuid").asText());
             }
         }
+
+        i2b2Query = objectMapper.readTree(i2b2queryString);
+        gnomeQuery = objectMapper.readTree(gnomeQueryString);
+        errorQuery = objectMapper.readTree(errorQueryString);
     }
 
     @Test
     public void testQuery() throws IOException {
-        //Create multiple queries and add them to a main query as a list
-        QueryRequest queryRequest1 = new QueryRequest();
-        QueryRequest queryRequest2 = new QueryRequest();
+        //Create a query
+        QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
-        queryRequest1.setResourceCredentials(credentials);
-        queryRequest1.setQuery(queryString);
-        queryRequest1.setResourceUUID(resourceUUID);
-        queryRequest2.setResourceCredentials(credentials);
-        queryRequest2.setQuery(queryString);
-        queryRequest2.setResourceUUID(resourceUUID);
-        List<QueryRequest> queryList = new ArrayList<>();
-        queryList.add(queryRequest1);
-        queryList.add(queryRequest2);
+        Map<String, Object> queryMap = new HashMap<>();
+        queryRequest.setResourceCredentials(credentials);
+        queryMap.put("i2b2", i2b2Query);
+        queryMap.put("gnome", gnomeQuery);
+        queryRequest.setQuery(queryMap);
+        queryRequest.setResourceUUID(gnomeI2B2UUID);
 
-        QueryRequest topQuery = new QueryRequest();
-        topQuery.setQuery(queryList);
-        topQuery.setResourceUUID(aggregateUUID);
-
-
-        String body = objectMapper.writeValueAsString(topQuery);
-
-//        System.out.println("AggregateResourceIT - endpointUrl is: " + endpointUrl + ", body is: " + body + ", headers are: "
-//                + headers.stream().map(e -> e.getName() +": "+ e.getValue()).collect(Collectors.toList()));
+        String body = objectMapper.writeValueAsString(queryRequest);
 
         //Should throw an error if credentials missing or wrong
-        HttpResponse response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -133,11 +136,12 @@ public class AggregateResourceIT extends BaseIT {
         String errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
-        queryRequest2.setResourceCredentials(credentials);
-        body = objectMapper.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query", headers, body);
-        assertEquals("Invalid credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+        credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, "anInvalidToken");
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
+        queryRequest.setResourceCredentials(credentials);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
+        assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
@@ -145,46 +149,48 @@ public class AggregateResourceIT extends BaseIT {
         errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        logger.info("Aggregate token is: " + token);
-        //Should throw an error if missing query string
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        queryRequest1.setResourceCredentials(credentials);
-        queryRequest1.setQuery(null);
-        queryRequest2.setResourceCredentials(credentials);
-        topQuery.setResourceCredentials(credentials);
-        body = objectMapper.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        //Should throw an error if missing any query
+        credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
+        queryRequest.setResourceCredentials(credentials);
+        queryRequest.setQuery(null);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
 
+        queryMap.remove("gnome");
+        queryRequest.setQuery(queryMap);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
+        assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
+        assertNotNull("Response message should not be null", responseMessage);
+
+
         //Try a poorly worded queryString
-        queryRequest1.setQuery("poorly worded query");
-        body = objectMapper.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        queryMap.put("gnome", "poorly worded query");
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Incorrectly formatted query should return a 500", 500, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
 
         //Make sure all queries work
-        queryRequest1.setQuery(queryString);
-        body = objectMapper.writeValueAsString(topQuery);
-
-        System.out.println("Aggregate request body: " + body);
-        response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        queryMap.put("gnome", gnomeQuery);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         assertNotNull("Status should not be null", responseMessage.get("status"));
-        System.out.println("Aggregate response message from " + endpointUrl+"/query is: " + responseMessage.toString());
         queryId = responseMessage.get("picsureResultId").asText();
-        System.out.println("Aggregate Resource IT, queryResultId is: " + queryId);
         assertNotNull("picsureResultId should not be null", queryId);
 
         //Want the status to be ERROR if one query errors - send query to be tested by queryStatus
-        queryRequest2.setQuery(errorQuery);
-        body = objectMapper.writeValueAsString(topQuery);
-        response = retrievePostResponse(endpointUrl+"/query", headers, body);
+        queryMap.put("i2b2", errorQuery);
+        body = objectMapper.writeValueAsString(queryRequest);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -195,27 +201,24 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testQueryStatus() throws IOException {
-        QueryRequest request = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
-        request.setResourceCredentials(credentials);
-        String body = objectMapper.writeValueAsString(request);
-
+        String body = objectMapper.writeValueAsString(credentials);
 
         //Should get 401 for missing or invalid credentials
-        HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
+        HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
-        System.out.println(("AggregateResourceIT - test missing or invalid credentials returns: " + responseMessage));
         assertNotNull("Response message should not be null", responseMessage);
         String errorType = responseMessage.get("errorType").asText();
         assertEquals("Error type should be error", "error", errorType);
         String errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = objectMapper.writeValueAsString(request);
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
+        credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
+        body = objectMapper.writeValueAsString(credentials);
 
-        response = retrievePostResponse(composeURL(endpointUrl,"/query/" + queryId + "/status"), headers, body);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -225,10 +228,9 @@ public class AggregateResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         //This should retrieve the status of the query successfully
-        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(request);
-
-        response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
+        body = objectMapper.writeValueAsString(credentials);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -238,7 +240,7 @@ public class AggregateResourceIT extends BaseIT {
         //This query should eventually result in an error, since one of the queries should have errored
         String errorStatus = PicSureStatus.PENDING.name();
         while (errorStatus.equals(PicSureStatus.PENDING.name())){
-            response = retrievePostResponse(endpointUrl+"/query/" + errorQueryId + "/status", headers, body);
+            response = retrievePostResponse(composeURL(endpointUrl,"/query/"+errorQueryId+"/status"), headers, body);
             assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
             responseMessage = objectMapper.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
@@ -251,31 +253,26 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testResult() throws IOException, InterruptedException {
-        QueryRequest resultRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
-        credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-
-        QueryRequest request = new QueryRequest();
-        request.setResourceCredentials(credentials);
-        String body = objectMapper.writeValueAsString(request);
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
+        credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
+        String body = objectMapper.writeValueAsString(credentials);
 
         //Need to make sure result is ready
-        while (!status.equals(PicSureStatus.AVAILABLE.name()) && !status.equals(PicSureStatus.ERROR.name())){
+        while (!status.equals(PicSureStatus.AVAILABLE.name())){
             Thread.sleep(2000);
-            HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
+            HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
             assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
             JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
             status = responseMessage.get("status").asText();
         }
-        if (status.equals(PicSureStatus.ERROR.name())){
-            fail("Query ended with an ERROR");
-        }
-        request.setResourceCredentials(new HashMap<>());
-        body = objectMapper.writeValueAsString(request);
+
+        credentials.remove(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY);
+        body = objectMapper.writeValueAsString(credentials);
 
         //Missing or invalid credentials should return 401
-        HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
+        HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -284,10 +281,10 @@ public class AggregateResourceIT extends BaseIT {
         String errorMessage = responseMessage.get("message").asText();
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
-        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = objectMapper.writeValueAsString(request);
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
+        body = objectMapper.writeValueAsString(credentials);
 
-        response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -297,16 +294,14 @@ public class AggregateResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         //Should return an array of results
-
-        request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(request);
-
-        response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/result", headers, body);
+        credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
+        body = objectMapper.writeValueAsString(credentials);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
-        //There were 2 queries so there should be 2 results
-        assertEquals("There should be 2 results in the array", 2, responseMessage.size());
+        //In testing this was the result, but probably the test shouldn't rely on it
+        assertEquals("Result should be 2", 2, Integer.parseInt(responseMessage.toString()));
 
     }
 
