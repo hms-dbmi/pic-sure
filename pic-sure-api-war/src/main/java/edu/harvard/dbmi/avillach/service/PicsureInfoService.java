@@ -27,13 +27,10 @@ public class PicsureInfoService {
 	 * Retrieve resource info for a specific resource.
 	 *
 	 * @param resourceId - Resource UUID
-	 * @param resourceCredentials - Resource specific credentials map
+	 * @param credentialsQueryRequest - Contains resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, Map<String, String> resourceCredentials) {
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
+	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
@@ -44,14 +41,15 @@ public class PicsureInfoService {
 		if (resource.getTargetURL() == null){
 			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-		if (resourceCredentials == null){
-			resourceCredentials = new HashMap<String, String>();
+		if (credentialsQueryRequest == null){
+			credentialsQueryRequest = new QueryRequest();
 		}
-		resourceCredentials.put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setResourceCredentials(resourceCredentials);
-		queryRequest.setTargetURL(resource.getTargetURL());
-		return resourceWebClient.info(resource.getResourceRSPath(), queryRequest);
+		if (credentialsQueryRequest.getResourceCredentials() == null){
+			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
+		}
+		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
+		return resourceWebClient.info(resource.getResourceRSPath(), credentialsQueryRequest);
 	}
 
 	/**

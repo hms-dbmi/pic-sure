@@ -52,7 +52,7 @@ public class PicsureQueryServiceIT extends BaseIT {
         //Test missing info
         String uri = composeURL(endpointUrl, "/query/");
         QueryRequest dataQueryRequest = new QueryRequest();
-        HttpResponse response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(dataQueryRequest));
+        HttpResponse response = retrievePostResponse(uri, headers, "");
         assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
@@ -88,8 +88,10 @@ public class PicsureQueryServiceIT extends BaseIT {
     @Test
     public void testQueryStatus() throws Exception {
 
+        QueryRequest statusRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+        statusRequest.setResourceCredentials(clientCredentials);
         //Result to return
         HashMap<String, String> anyOldResult = new HashMap<>();
         //TODO: This might be different for different resources
@@ -107,7 +109,7 @@ public class PicsureQueryServiceIT extends BaseIT {
         assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(statusRequest));
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
         QueryStatus results = objectMapper.readValue(response.getEntity().getContent(), QueryStatus.class);
         assertNotNull("Status should not be null", results.getStatus());
@@ -116,13 +118,13 @@ public class PicsureQueryServiceIT extends BaseIT {
 
         //Nonexistent resultId
         uri = composeURL(endpointUrl , "/query/20f22062-f63b-4bca-919e-fcfd8d41d15c/status");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(statusRequest));
         assertEquals("Nonexistent resultId should return 500", 500, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
         //Not a uuid
         uri = composeURL(endpointUrl , "/query/20f2241d15c/status");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(statusRequest));
         assertEquals("Incorrectly formatted resultId should return 404", 404, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
     }
@@ -135,8 +137,10 @@ public class PicsureQueryServiceIT extends BaseIT {
                         .withStatus(200)
                         .withBody("anyOldResultWillDo")));
 
+        QueryRequest resultRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+        resultRequest.setResourceCredentials(clientCredentials);
 
         String uri = composeURL(endpointUrl , "/query/"+resultId.toString() + "/result");
         HttpResponse response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(new HashMap<String, String>()));
@@ -144,20 +148,20 @@ public class PicsureQueryServiceIT extends BaseIT {
         EntityUtils.consume(response.getEntity());
 
         //This should return some kind of result
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resultRequest));
         assertEquals("Correct request should return a 200", 200, response.getStatusLine().getStatusCode());
         String result = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
         assertNotNull("Result should not be null, result");
 
         //Nonexistent resultId
         uri = composeURL(endpointUrl , "/query/20f22062-f63b-4bca-919e-fcfd8d41d15c/result");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resultRequest));
         assertEquals("Nonexistent resultId should return 500", 500, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
         //Not a uuid
         uri = composeURL(endpointUrl , "/query/20f2241d15c/result");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resultRequest));
         assertEquals("Incorrectly formatted resultId should return 404", 404, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
     }

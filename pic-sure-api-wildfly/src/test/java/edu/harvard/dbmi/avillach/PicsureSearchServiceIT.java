@@ -32,11 +32,11 @@ public class PicsureSearchServiceIT extends BaseIT{
 
 
         String uri = composeURL(endpointUrl, "/search/"+resourceId);
-        QueryRequest searchQueryRequest = new QueryRequest();
-        HttpResponse response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(searchQueryRequest));
+        HttpResponse response = retrievePostResponse(uri, headers, "");
         assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
+        QueryRequest searchQueryRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         //TODO This needs to not assume which resource is being used/what the token is... what to do!!... maybe we don't need to test this because it's tested by individual resourceRs tests?
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "testToken");

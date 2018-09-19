@@ -282,8 +282,10 @@ public class GnomeI2B2ResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(errorResponse))));
 
+        QueryRequest statusQuery = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
-        String body = objectMapper.writeValueAsString(credentials);
+        statusQuery.setResourceCredentials(credentials);
+        String body = objectMapper.writeValueAsString(statusQuery);
 
         //Should get 401 for missing or invalid credentials
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
@@ -297,7 +299,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(statusQuery);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -310,7 +312,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //This should retrieve the status of the query successfully
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(statusQuery);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
@@ -390,10 +392,12 @@ public class GnomeI2B2ResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(i2b2Response))));
 
+        QueryRequest resultRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        String body = objectMapper.writeValueAsString(credentials);
+        resultRequest.setResourceCredentials(credentials);
+        String body = objectMapper.writeValueAsString(resultRequest);
 
         //Need to make sure result is ready
         while (!status.equals(PicSureStatus.AVAILABLE.name())){
@@ -406,7 +410,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         }
 
         credentials.remove(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
 
         //Missing or invalid credentials should return 401
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
@@ -419,7 +423,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -432,7 +436,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //Should return an array of results
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());

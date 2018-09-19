@@ -124,8 +124,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 		logger.debug("calling Aggregate Query Resource queryStatus()");
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setPicsureResultId(UUID.fromString(queryId));
-		Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
-		if (resourceCredentials == null) {
+		if (statusRequest == null || statusRequest.getResourceCredentials() == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 
@@ -139,7 +138,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 			for (UUID qid : queryIdList) {
 				pathName = "/query/" + qid + "/status";
 				try {
-					String body = json.writeValueAsString(resourceCredentials);
+					String body = json.writeValueAsString(statusRequest);
 
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL , pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {
@@ -165,8 +164,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	@Path("/query/{resourceQueryId}/result")
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Aggregate Query Resource queryResult()");
-		Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
-		if (resourceCredentials == null) {
+		if (resultRequest == null || resultRequest.getResourceCredentials() == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 
@@ -180,7 +178,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 			for (UUID qid : queryIdList) {
 				pathName = "/query/" + qid + "/result";
 				try {
-					String body = json.writeValueAsString(resourceCredentials);
+					String body = json.writeValueAsString(resultRequest);
 
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {

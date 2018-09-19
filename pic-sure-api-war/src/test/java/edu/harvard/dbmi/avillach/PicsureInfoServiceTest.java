@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
@@ -53,11 +54,13 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
     @Test
     public void testInfoEndpoints() {
+        QueryRequest infoRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
+        infoRequest.setResourceCredentials(clientCredentials);
 
         //Should fail with a nonexistent id
         try {
-            ResourceInfo info = infoService.info(UUID.randomUUID(), clientCredentials);
+            ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest);
             fail();
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -65,7 +68,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail without the url in the resource
         try {
-            ResourceInfo info = infoService.info(resourceId, clientCredentials);
+            ResourceInfo info = infoService.info(resourceId, infoRequest);
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
@@ -75,7 +78,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail without the url in the resource
         try {
-            ResourceInfo info = infoService.info(resourceId, clientCredentials);
+            ResourceInfo info = infoService.info(resourceId, infoRequest);
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
@@ -84,7 +87,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         when(mockResource.getTargetURL()).thenReturn("testUrl");
 
-        ResourceInfo responseInfo = infoService.info(resourceId, clientCredentials);
+        ResourceInfo responseInfo = infoService.info(resourceId, infoRequest);
         assertNotNull("Resource response should not be null", responseInfo);
 
         //Should also work without clientCredentials

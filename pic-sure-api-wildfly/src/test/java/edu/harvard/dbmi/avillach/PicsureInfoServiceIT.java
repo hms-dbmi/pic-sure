@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach;
 
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.HttpClientUtil;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
@@ -29,14 +30,18 @@ public class PicsureInfoServiceIT extends BaseIT {
 
         String uri = composeURL(endpointUrl, "/info/" + resourceId);
 
+
         HttpResponse response = retrievePostResponse(uri, headers, "");
         assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
 
+        QueryRequest infoRequest = new QueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
-      //  clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         //TODO I guess we need some way to identify the token key?  Maybe V1.4_BEARER_TOKEN
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "testToken");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        infoRequest.setResourceCredentials(clientCredentials);
+        String body = objectMapper.writeValueAsString(infoRequest);
+
+        response = retrievePostResponse(uri, headers, body);
         assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
         ResourceInfo responseInfo = HttpClientUtil.readObjectFromResponse(response, ResourceInfo.class);
         assertNotNull("Resource response should not be null", responseInfo);
@@ -45,7 +50,7 @@ public class PicsureInfoServiceIT extends BaseIT {
 
         //Try with a non-existent id
         uri = composeURL(endpointUrl , "/info/3b2437fe-df56-4360-8156-27bcf0b1a467");
-        response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(clientCredentials));
+        response = retrievePostResponse(uri, headers, body);
         assertEquals("Incorrect resource Id should return 500", 500, response.getStatusLine().getStatusCode());
     }
 }
