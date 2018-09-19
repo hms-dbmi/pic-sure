@@ -7,6 +7,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.hms.dbmi.avillach.GnomeI2B2CountResourceRS;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
@@ -19,6 +20,7 @@ public class ResourceTestInitializer
     public static String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
     public static String AGGREGATE_RS_URL = System.getenv("AGGREGATE_RS_URL");
     public static String IRCT_RS_URL = System.getenv("IRCT_RS_URL");
+    public static String GNOME_I2B2_RS_URL = System.getenv("GNOME_I2B2_RS_URL");
     @PersistenceContext(unitName = "picsure")
     private EntityManager em;
 
@@ -43,6 +45,14 @@ public class ResourceTestInitializer
                 .setDescription("Aggregate Resource RS")
                 .setName("Aggregate Resource RS");
         em.persist(aggregateResource);
+
+        Resource gnomeI2B2Resource = new Resource()
+                .setTargetURL(TARGET_PICSURE_URL)
+                .setResourceRSPath(GNOME_I2B2_RS_URL)
+                .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM")
+                .setDescription("Gnome I2B2 Count Resource RS Supply tokens with keys " + GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY + " and " + GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY)
+                .setName("Gnome I2B2 Count Resource RS");
+        em.persist(gnomeI2B2Resource);
     }
 
 }

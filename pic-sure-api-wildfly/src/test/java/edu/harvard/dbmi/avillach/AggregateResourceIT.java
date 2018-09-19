@@ -16,8 +16,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.*;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 import static org.junit.Assert.*;
 
 //Need tests executed in order to fill in variables for later tests
@@ -69,7 +69,6 @@ public class AggregateResourceIT extends BaseIT {
     private static UUID resourceUUID;
     private static UUID aggregateUUID;
     private static String queryId;
-    private static String errorQueryId;
     private static String status;
 
     @BeforeClass
@@ -82,7 +81,7 @@ public class AggregateResourceIT extends BaseIT {
         for (JsonNode node : responseBody){
             if (node.get("name").asText().equals("Aggregate Resource RS")){
                 aggregateUUID = UUID.fromString(node.get("uuid").asText());
-            } else if (!node.get("name").asText().equals("Test Resource")){
+            } else if (node.get("name").asText().equals("nhanes.hms.harvard.edu")){
                 resourceUUID = UUID.fromString(node.get("uuid").asText());
             }
         }
@@ -90,6 +89,34 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testQuery() throws IOException {
+        Map<String, String> resourceResponse = new HashMap<>();
+        resourceResponse.put("resultId", "230958");
+        resourceResponse.put("status", "AVAILABLE");
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(equalTo("poorlyWordedQueryString"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(containing("/i2b2-nhanes/Demo"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+
         //Create multiple queries and add them to a main query as a list
         QueryRequest queryRequest1 = new QueryRequest();
         QueryRequest queryRequest2 = new QueryRequest();
@@ -138,6 +165,7 @@ public class AggregateResourceIT extends BaseIT {
         queryRequest1.setResourceCredentials(credentials);
         queryRequest1.setQuery(null);
         queryRequest2.setResourceCredentials(credentials);
+        topQuery.setResourceCredentials(credentials);
         body = objectMapper.writeValueAsString(topQuery);
         response = retrievePostResponse(endpointUrl+"/query", headers, body);
         assertEquals("Missing query should return a 500", 500, response.getStatusLine().getStatusCode());
@@ -173,13 +201,33 @@ public class AggregateResourceIT extends BaseIT {
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
-        errorQueryId = responseMessage.get("picsureResultId").asText();
+        String errorQueryId = responseMessage.get("picsureResultId").asText();
         assertNotNull("Status should not be null", responseMessage.get("status"));
-
     }
 
     @Test
     public void testQueryStatus() throws IOException {
+        Map<String, String> resourceResponse = new HashMap<>();
+        resourceResponse.put("resultId", "230958");
+        resourceResponse.put("status", "AVAILABLE");
+
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("resultId", "230999");
+        errorResponse.put("status", "ERROR");
+
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+
         Map<String, String> credentials = new HashMap<String, String>();
         String body = objectMapper.writeValueAsString(credentials);
 
@@ -198,7 +246,7 @@ public class AggregateResourceIT extends BaseIT {
         body = objectMapper.writeValueAsString(credentials);
 
         response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
-        assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
+        assertEquals("Invalid credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
         errorType = responseMessage.get("errorType").asText();
@@ -216,15 +264,20 @@ public class AggregateResourceIT extends BaseIT {
         status = responseMessage.get("status").asText();
         assertNotNull("Status should not be null", status);
 
-        //This query should eventually result in an error, since one of the queries should have errored
-        String errorStatus = PicSureStatus.PENDING.name();
-        while (errorStatus.equals(PicSureStatus.PENDING.name())){
-            response = retrievePostResponse(endpointUrl+"/query/" + errorQueryId + "/status", headers, body);
-            assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
-            responseMessage = objectMapper.readTree(response.getEntity().getContent());
-            assertNotNull("Response message should not be null", responseMessage);
-            errorStatus = responseMessage.get("status").asText();
-        }
+
+        //TODO What if only one query errors
+        //Create an errored response
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(errorResponse))));
+
+        response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
+        assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
+        responseMessage = objectMapper.readTree(response.getEntity().getContent());
+        assertNotNull("Response message should not be null", responseMessage);
+        String errorStatus = responseMessage.get("status").asText();
         assertEquals("Status should be ERROR", PicSureStatus.ERROR.name(), errorStatus);
 
 
@@ -232,6 +285,20 @@ public class AggregateResourceIT extends BaseIT {
 
     @Test
     public void testResult() throws IOException, InterruptedException {
+        String resultResponse = "aResultOfSomeKind";
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/result/.*"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/result/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(resultResponse))));
+
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         String body = objectMapper.writeValueAsString(credentials);

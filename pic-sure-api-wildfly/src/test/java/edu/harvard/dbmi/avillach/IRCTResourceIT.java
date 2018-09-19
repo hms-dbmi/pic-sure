@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -12,15 +13,18 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 import static org.junit.Assert.*;
 
 public class IRCTResourceIT extends BaseIT {
 
-	private final static String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU";
+	private final static String token = "a.valid-Token";
 	private final static String queryString = "{" +
 			"    \"select\": [" +
 			"        {" +
@@ -48,7 +52,7 @@ public class IRCTResourceIT extends BaseIT {
 			"}";
     //This is a previously created query id, uncertain if this is the best way to go
 	private String testQueryResultId = "231066";
-	private final String targetURL = "https://nhanes.hms.harvard.edu/rest/v1/";
+	private final String targetURL = "http://localhost:8079";
 
 	@Test
 	public void testStatus() throws UnsupportedOperationException, IOException {
@@ -59,6 +63,19 @@ public class IRCTResourceIT extends BaseIT {
 
 	@Test
 	public void testInfo() throws UnsupportedOperationException, IOException {
+		wireMockRule.stubFor(any(urlPathMatching("/resourceService/resources"))
+				.withHeader("Authorization", containing("anIncorrectToken"))
+				.willReturn(aResponse()
+						.withStatus(401)));
+
+		List<QueryFormat> qfs = new ArrayList<>();
+
+		wireMockRule.stubFor(any(urlPathMatching("/resourceService/resources"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(qfs))));
+
 		QueryRequest request = new QueryRequest();
 		request.setTargetURL(targetURL);
 
@@ -110,6 +127,29 @@ public class IRCTResourceIT extends BaseIT {
 
 	@Test
 	public void testSearch() throws UnsupportedOperationException, IOException {
+		HashMap<String, String> anyOldResult = new HashMap<>();
+		anyOldResult.put("results", "aResult");
+
+		HashMap<String, String> emptyResult = new HashMap<>();
+
+		wireMockRule.stubFor(any(urlPathMatching("/resourceService/find"))
+				.withHeader("Authorization", containing("anIncorrectToken"))
+				.willReturn(aResponse()
+						.withStatus(401)));
+
+		wireMockRule.stubFor(any(urlEqualTo("/resourceService/find?term=%25antibody%25"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(anyOldResult))));
+
+		wireMockRule.stubFor(any(urlEqualTo("/resourceService/find?term=thisShouldFindNothing"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(emptyResult))));
+
+
 		QueryRequest queryRequest = new QueryRequest();
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
@@ -192,6 +232,34 @@ public class IRCTResourceIT extends BaseIT {
 
 	@Test
 	public void testQuery() throws UnsupportedOperationException, IOException {
+		Map<String, String> resourceResponse = new HashMap<>();
+		resourceResponse.put("resultId", "230958");
+		resourceResponse.put("status", "AVAILABLE");
+
+		wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+				.withHeader("Authorization", containing("anIncorrectToken"))
+				.willReturn(aResponse()
+						.withStatus(401)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+				.withRequestBody(equalTo("poorlyWordedQueryString"))
+				.willReturn(aResponse()
+						.withStatus(500)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+				.withRequestBody(containing("/i2b2-nhanes/Demo"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+
 		QueryRequest queryRequest = new QueryRequest();
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
@@ -208,7 +276,6 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Error type should be error", "error", errorType);
 		String errorMessage = responseMessage.get("message").asText();
 		assertTrue("Error message should be " + IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE, errorMessage.contains(IRCTResourceRS.MISSING_CREDENTIALS_MESSAGE));
-
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anIncorrectToken");
 		queryRequest.setResourceCredentials(credentials);
@@ -233,7 +300,6 @@ public class IRCTResourceIT extends BaseIT {
 		assertEquals("Error type should be error", "error", errorType);
 		errorMessage = responseMessage.get("message").asText();
 		assertTrue("Error message should be " + ProtocolException.MISSING_DATA, errorMessage.contains(ProtocolException.MISSING_DATA));
-
 
 		//Try a poorly worded queryString
 		queryRequest.setQuery("poorlyWordedQueryString");
@@ -289,6 +355,23 @@ public class IRCTResourceIT extends BaseIT {
 
 	@Test
 	public void testQueryResult() throws UnsupportedOperationException, IOException {
+		String resultResponse = "aResultOfSomeKind";
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/result/.*"))
+				.withHeader("Authorization", containing("anIncorrectToken"))
+				.willReturn(aResponse()
+						.withStatus(401)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/result/111/.*"))
+				.willReturn(aResponse()
+						.withStatus(500)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/result/" + testQueryResultId + "/.*"))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resultResponse))));
+
 		QueryRequest queryRequest = new QueryRequest();
 		queryRequest.setTargetURL(targetURL);
 	    Map<String, String> credentials = new HashMap<String, String>();
@@ -343,6 +426,25 @@ public class IRCTResourceIT extends BaseIT {
 
 	@Test
 	public void testQueryStatus() throws UnsupportedOperationException, IOException {
+		Map<String, String> resourceResponse = new HashMap<>();
+		resourceResponse.put("resultId", "230958");
+		resourceResponse.put("status", "AVAILABLE");
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+				.withHeader("Authorization", containing("anIncorrectToken"))
+				.willReturn(aResponse()
+						.withStatus(401)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/111/.*"))
+				.willReturn(aResponse()
+						.withStatus(500)));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/" + testQueryResultId))
+				.withHeader("Authorization", containing(token))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
+
 		QueryRequest request = new QueryRequest();
 		request.setTargetURL(targetURL);
         Map<String, String>credentials = new HashMap<String, String>();
