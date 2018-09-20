@@ -43,16 +43,16 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient info()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             logger.debug("Calling /info at ResourceURL: {}", rsURL);
             String pathName = "/info";
@@ -71,13 +71,13 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient search()");
         try {
             if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
-                throw new ProtocolException("Missing query request info");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (searchQueryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
 
             if (searchQueryRequest.getResourceCredentials() == null){
@@ -102,13 +102,13 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (dataQueryRequest == null){
-                throw new ProtocolException("Missing query request info");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (dataQueryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (dataQueryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
@@ -130,16 +130,16 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (queryId == null){
                 throw new ProtocolException("Missing query id");
@@ -163,16 +163,16 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (queryId == null){
                 throw new ApplicationException("Missing query id");
