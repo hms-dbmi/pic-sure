@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;

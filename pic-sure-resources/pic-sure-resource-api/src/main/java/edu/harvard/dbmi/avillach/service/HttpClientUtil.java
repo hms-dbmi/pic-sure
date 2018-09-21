@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
@@ -111,9 +112,18 @@ public class HttpClientUtil {
     }
 
 	public static void throwResponseError(HttpResponse response, String baseURL){
+		String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase();
+		try {
+			JsonNode responseNode = json.readTree(response.getEntity().getContent());
+			if (responseNode != null && responseNode.has("message")){
+					errorMessage += "/n" + responseNode.get("message").asText();
+				}
+			} catch (IOException e ){
+			//That's fine, there's no message
+			}
 		if (response.getStatusLine().getStatusCode() == 401) {
-			throw new NotAuthorizedException(baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throw new NotAuthorizedException(errorMessage);
 		}
-		throw new ResourceInterfaceException("Resource returned " + response.getStatusLine().getStatusCode() + ": " + response.getStatusLine().getReasonPhrase());
+		throw new ResourceInterfaceException(errorMessage);
 	}
 }

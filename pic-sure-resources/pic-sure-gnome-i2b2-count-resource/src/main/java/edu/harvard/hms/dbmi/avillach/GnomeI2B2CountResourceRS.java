@@ -18,6 +18,7 @@ import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
@@ -44,8 +45,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	public static final String I2B2_BEARER_TOKEN_KEY = "I2B2_BEARER_TOKEN";
 	public static final String GNOME = "gnome";
 	public static final String I2B2 = "i2b2";
-	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
-	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
+
 	private static final String BEARER_STRING = "Bearer ";
 	public static final String GNOME_LABEL = "Sample ID";
 	public static final String I2B2_LABEL = System.getenv("I2B2_LABEL");
@@ -99,20 +99,20 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Calling Gnome-I2B2-Count Resource query()");
 		if (queryJson == null) {
-			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		Map<String, String> resourceCredentials = queryJson.getResourceCredentials();
 		if (resourceCredentials == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 		String token = resourceCredentials.get(GNOME_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for gNOME");
 		}
 
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
-			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+			throw new ProtocolException((ProtocolException.MISSING_DATA));
 		}
 
 		QueryStatus result = new QueryStatus();
@@ -123,7 +123,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 
 		JsonNode query = queryNode.get(GNOME);
 		if (query == null){
-			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE  + " for gNOME"));
+			throw new ProtocolException((ProtocolException.MISSING_DATA  + " for gNOME"));
 		} else {
 			queryString = query.toString();
 		}
@@ -146,14 +146,14 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 
 		query = queryNode.get(I2B2);
 		if (query == null){
-			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE + " for I2B2"));
+			throw new ProtocolException((ProtocolException.MISSING_DATA + " for I2B2"));
 		} else {
 			queryString = query.toString();
 		}
 
 		token = resourceCredentials.get(I2B2_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for I2B2");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for I2B2");
 		}
 		pathName = "/queryService/runQuery";
 		response = retrievePostResponse(TARGET_I2B2_URL + pathName, createAuthorizationHeader(token), queryString);
@@ -189,15 +189,15 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("calling Gnome-I2B2-Count Resource queryStatus() for query {}", queryId);
 		if (statusRequest == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 		Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		if (resourceCredentials == null){
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 		String token = resourceCredentials.get(GNOME_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for gNOME");
 		}
 
 		QueryStatus statusResponse = new QueryStatus();
@@ -221,7 +221,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 
 			token = resourceCredentials.get(I2B2_BEARER_TOKEN_KEY);
 			if (token == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for I2B2");
+				throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for I2B2");
 			}
 			String i2b2Id = queryIds.get(I2B2);
 			if (i2b2Id == null){
@@ -261,15 +261,15 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Gnome-I2B2-Count Resource queryResult() for query {}", queryId);
 		if (resultRequest == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 		Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
 		if (resourceCredentials == null){
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 		String token = resourceCredentials.get(GNOME_BEARER_TOKEN_KEY);
 		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for gNOME");
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for gNOME");
 		}
 
 		HashMap<String, String> queryIds = getMetadata(queryId);
@@ -305,7 +305,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 
 			token = resourceCredentials.get(I2B2_BEARER_TOKEN_KEY);
 			if (token == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + " for I2B2");
+				throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for I2B2");
 			}
 			String i2b2Id = queryIds.get(I2B2);
 			if (i2b2Id == null){

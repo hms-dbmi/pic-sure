@@ -15,6 +15,7 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -36,9 +37,6 @@ public class AggregateQueryResourceRS implements IResourceRS
 	private static final String PICSURE_2_TOKEN = System.getenv("PICSURE_2_TOKEN");
 
 	private static final String BEARER_STRING = "Bearer ";
-	//TODO Clean up error messages
-	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials for resource with id ";
-
 
 	private Header[] headers = {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN)};
 
@@ -90,7 +88,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 				Map<String, String> resourceCredentials = qr.getResourceCredentials();
 				if (resourceCredentials == null) {
-					throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + qr.getResourceUUID());
+					throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for resource with id: " + qr.getResourceUUID());
 				}
 				try {
 					String queryString = json.writeValueAsString(qr);
@@ -125,7 +123,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setPicsureResultId(UUID.fromString(queryId));
 		if (statusRequest == null || statusRequest.getResourceCredentials() == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 
 		String pathName = "/query/" + queryId + "/metadata";
@@ -165,7 +163,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Aggregate Query Resource queryResult()");
 		if (resultRequest == null || resultRequest.getResourceCredentials() == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 
 		String pathName = "/query/" + queryId + "/metadata";
