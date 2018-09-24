@@ -293,4 +293,101 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         Response result = queryService.queryResult(queryId, resultRequest);
         assertNotNull("Result should not be null", result);
     }
+
+    @Test
+    public void testQuerySync() {
+
+        /* SET UP MOCKS */
+        //Add needed data to results that are returned
+        results.setResourceID(resourceId);
+        results.setStatus(PicSureStatus.AVAILABLE);
+        results.setStartTime(new Date().getTime());
+
+        //Return mocks when needed
+        when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
+        Response resp = mock(Response.class);
+        when(webClient.querySync(any(),any())).thenReturn(resp);
+
+        //Mock persisting the queryentity, so that it has an ID and we can test that the correct information is stored in it
+        doAnswer(new Answer<Void>() {
+            public Void answer(InvocationOnMock invocation) {
+                Query query = invocation.getArgument(0);
+                query.setUuid(queryId);
+                queryEntity = query;
+                return null;
+            }
+        }).when(queryRepo).persist(any(Query.class));
+
+        /* END SET UP */
+
+        //Test missing query data
+        try {
+            Response result = queryService.querySync(null);
+            fail("Missing query request info should throw an error");
+        } catch (ProtocolException e){
+            assertNotNull(e.getContent());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA, e.getContent().toString());
+        }
+
+        QueryRequest dataQueryRequest = new QueryRequest();
+        //At this level we don't check the credentials themselves, just that the map exists
+        Map<String, String> clientCredentials = new HashMap<String, String>();
+        dataQueryRequest.setResourceCredentials(clientCredentials);
+
+        //Test missing resourceId
+        dataQueryRequest.setQuery(queryString);
+        try {
+            Response result = queryService.querySync(dataQueryRequest);
+            fail("Missing resourceId should throw an error");
+        } catch (ProtocolException e){
+            assertNotNull(e.getContent());
+            assertEquals("Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString());
+        }
+
+        //Test nonexistent resourceId
+        dataQueryRequest.setResourceUUID(UUID.randomUUID());
+        try {
+            Response result = queryService.querySync(dataQueryRequest);
+            fail("Nonexistent resourceId should throw an error");
+        } catch (ApplicationException e){
+            assertNotNull(e.getContent());
+            assertTrue("Error message should say '" + ApplicationException.MISSING_RESOURCE + "'", e.getContent().toString().contains(ApplicationException.MISSING_RESOURCE));
+        }
+
+        //Test missing targetURL
+        dataQueryRequest.setResourceUUID(resourceId);
+        try {
+            Response result = queryService.querySync(dataQueryRequest);
+            fail("Missing targetURL should throw an error");
+        } catch (ApplicationException e){
+            assertNotNull(e.getContent());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
+        }
+
+        when(mockResource.getTargetURL()).thenReturn("testUrl");
+
+        //Test missing resourceRS Path
+        dataQueryRequest.setResourceUUID(resourceId);
+        try {
+            Response result = queryService.querySync(dataQueryRequest);
+            fail("Missing resourceRS path should throw an error");
+        } catch (ApplicationException e){
+            assertNotNull(e.getContent());
+            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
+        }
+
+        when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
+
+        //Test correct request
+        dataQueryRequest.setResourceUUID(resourceId);
+        Response result = queryService.querySync(dataQueryRequest);
+        assertNotNull("Result should not be null", result.getStatus());
+
+        //Make sure the query is persisted
+        assertNotNull("Query Entity should have been persisted", queryEntity);
+        assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
+        assertEquals("Query Entity should have query stored", queryEntity.getQuery(), queryString);
+        assertEquals("Resource result id and Picsure result id should match in case of no resource result id", queryEntity.getResourceResultId(), queryEntity.getUuid().toString());
+
+    }
 }

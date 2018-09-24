@@ -189,20 +189,29 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response querySync(QueryRequest queryRequest) {
+		if (queryRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
 		UUID resourceId = queryRequest.getResourceUUID();
 		if (resourceId == null){
-			throw new ProtocolException("Missing resource Id");
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ApplicationException("Missing resource");
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-		if (queryRequest == null || queryRequest.getResourceCredentials() == null){
-			throw new NotAuthorizedException("Missing credentials");
-		}		queryRequest.setTargetURL(resource.getTargetURL());
+		queryRequest.setTargetURL(resource.getTargetURL());
+
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+
+		if (queryRequest.getResourceCredentials() == null){
+			queryRequest.setResourceCredentials(new HashMap<>());
+		}
 
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
