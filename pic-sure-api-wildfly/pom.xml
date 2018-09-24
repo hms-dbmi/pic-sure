@@ -44,6 +44,12 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-hsapi-resource</artifactId>
+			<classifier>classes</classifier>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
@@ -186,6 +192,14 @@
 									<overWrite>true</overWrite>
 									<outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
 								</artifactItem>
+                                <artifactItem>
+                                    <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                                    <artifactId>pic-sure-hsapi-resource</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>war</type>
+                                    <overWrite>true</overWrite>
+                                    <outputDirectory>${jboss.home}/standalone/deployments</outputDirectory>
+                                </artifactItem>
 								<!--<artifactItem>-->
 									<!--<groupId>edu.harvard.hms.dbmi.avillach</groupId>-->
 									<!--<artifactId>pic-sure-api-wildfly</artifactId>-->
@@ -342,8 +356,10 @@
 							</environmentVariables>
 							<systemPropertyVariables>
 								<service.url>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</service.url>
+								<irct.service.url>http://localhost:8080/${project.artifactId}-${project.version}/</irct.service.url>
 								<irct.rs.url>http://localhost:8080/pic-sure-irct-resource-${project.version}/</irct.rs.url>
 								<aggregate.rs.url>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/pic-sure/group</aggregate.rs.url>
+								<hsapi.service.url>http://localhost:8080/pic-sure-hsapi-resource-${project.version}/</hsapi.service.url>
 								<irct.token>eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjg3OTM1NTE5NjI0LCJzdWIiOiJpbnRlZ3JhdGlvbi50ZXN0QGhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiaW50ZWdyYXRpb24udGVzdEBobXMuaGFydmFyZC5lZHUiLCJpc3MiOiJiYXIiLCJqdGkiOiJGb28iLCJpYXQiOjE1MzU2MDYwMjR9.RUKkN5_Bsd5MWHhV_YTnotoMqTtrOLszsBTN9FC4n48</irct.token>
 							</systemPropertyVariables>
 						</configuration>

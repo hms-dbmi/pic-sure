@@ -196,10 +196,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 					}
 
-					// temporarily like this for debug
-					String entityString = EntityUtils.toString(response.getEntity());
-					logger.info("Aggregate queryResult string: " + entityString);
-					responses.add(json.readTree(entityString));
+					responses.add(json.readTree(response.getEntity().getContent()));
 
 				} catch (IOException e) {
 					logger.error("queryResult() queryId is: " + queryId + "throws " + e.getClass().getSimpleName() + ", " + e.getMessage());
@@ -210,6 +207,14 @@ public class AggregateQueryResourceRS implements IResourceRS
 		} catch (IllegalArgumentException e){
 			throw new ApplicationException("Unable to fetch subqueries");
 		}
+	}
+
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling Aggregate Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
 	}
 
 	private PicSureStatus determineStatus(Set statuses){

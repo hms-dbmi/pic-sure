@@ -33,4 +33,8 @@ public interface IResourceRS
 	@Path("/query/{resourceQueryId}/result")
 	public Response queryResult(String queryId, QueryRequest resultRequest);
 
+	@POST
+	@Path("/query/sync")
+	public Response querySync(QueryRequest resultRequest);
+
 }

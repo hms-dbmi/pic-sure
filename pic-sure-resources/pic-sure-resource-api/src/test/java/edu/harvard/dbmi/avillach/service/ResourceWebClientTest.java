@@ -84,7 +84,7 @@ public class ResourceWebClientTest {
             cut.info(testURL, queryRequest);
             fail();
         } catch (Exception e) {
-            assertTrue( e.getMessage().contains("returned 500"));
+            assertTrue( e.getMessage().contains("500 Server Error"));
         }
 
         //What if resource returns the wrong type of object for some reason?
@@ -139,7 +139,7 @@ public class ResourceWebClientTest {
         }
 
         //With credentials but not search term
-        Map<String, String> credentials = new HashMap<>();
+       /* Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         request.setQuery(null);
         request.setResourceCredentials(credentials);
@@ -148,9 +148,12 @@ public class ResourceWebClientTest {
             fail();
         } catch (Exception e) {
             assertEquals("HTTP 500 Internal Server Error", e.getMessage());
-        }
+        }*/
 
         //Should fail with no targetURL
+        Map<String, String> credentials = new HashMap<>();
+        credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
+        request.setResourceCredentials(credentials);
         request.setTargetURL(null);
         request.setQuery("%blood%");
         try {
@@ -173,7 +176,7 @@ public class ResourceWebClientTest {
             cut.search(testURL, request);
             fail();
         } catch (Exception e) {
-            assertTrue( e.getMessage().contains("Resource returned 500"));
+            assertTrue( e.getMessage().contains("500 Server Error"));
         }
 
         //What if resource returns the wrong type of object for some reason?
@@ -253,7 +256,7 @@ public class ResourceWebClientTest {
             cut.query(testURL, request);
             fail();
         } catch (Exception e) {
-            assertTrue( e.getMessage().contains("Resource returned 500"));
+            assertTrue( e.getMessage().contains("500 Server Error"));
         }
 
         //What if resource returns the wrong type of object for some reason?
@@ -330,7 +333,7 @@ public class ResourceWebClientTest {
             cut.queryResult(testURL, testId, queryRequest);
             fail();
         } catch (Exception e) {
-            assertTrue( e.getMessage().contains("Resource returned 500"));
+            assertTrue( e.getMessage().contains("500 Server Error"));
         }
     }
 
@@ -401,7 +404,7 @@ public class ResourceWebClientTest {
             cut.queryStatus(testURL, testId, queryRequest);
             fail();
         } catch (Exception e) {
-            assertTrue( e.getMessage().contains("Resource returned 500"));
+            assertTrue( e.getMessage().contains("500 Server Error"));
         }
 
         //What if resource returns the wrong type of object for some reason?

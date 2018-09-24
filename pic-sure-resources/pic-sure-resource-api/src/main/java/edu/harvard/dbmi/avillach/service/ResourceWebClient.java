@@ -1,11 +1,13 @@
 package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;
@@ -70,7 +72,7 @@ public class ResourceWebClient {
     public SearchResults search(String rsURL, QueryRequest searchQueryRequest){
         logger.debug("Calling ResourceWebClient search()");
         try {
-            if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
+            if (searchQueryRequest == null){
                 throw new ProtocolException("Missing query request info");
             }
             if (searchQueryRequest.getTargetURL() == null){
@@ -192,12 +194,52 @@ public class ResourceWebClient {
         }
     }
 
-    private void throwError(HttpResponse response, String baseURL){
-        logger.error("Resource did not return a 200");
-        if (response.getStatusLine().getStatusCode() == 401) {
-            throw new NotAuthorizedException(baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+    public Response querySync(String rsURL, QueryRequest queryRequest){
+        logger.debug("Calling ResourceWebClient querySync()");
+        try {
+            if (queryRequest == null){
+                throw new ProtocolException("Missing query data");
+            }
+            if (queryRequest.getResourceCredentials() == null){
+                throw new NotAuthorizedException("Missing credentials");
+            }
+            if (queryRequest.getTargetURL() == null){
+                throw new ApplicationException("Missing target URL");
+            }
+            if (rsURL == null){
+                throw new ApplicationException("Missing resource URL");
+            }
+
+            String pathName = "/query/sync";
+            String body = json.writeValueAsString(queryRequest);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                throwError(resourcesResponse, rsURL);
+            }
+            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+        } catch (JsonProcessingException e){
+            logger.error("Unable to encode resource credentials");
+            throw new NotAuthorizedException("Unable to encode resource credentials", e);
+        } catch (IOException e){
+            throw new ResourceInterfaceException("Error getting results", e);
         }
-        throw new ResourceInterfaceException("Resource returned " + response.getStatusLine().getStatusCode() + ": " + response.getStatusLine().getReasonPhrase());
+    }
+
+    private void throwError(HttpResponse response, String baseURL){
+        logger.error("ResourceRS did not return a 200");
+        String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase();
+        try {
+            JsonNode responseNode = json.readTree(response.getEntity().getContent());
+            if (responseNode != null && responseNode.has("message")){
+                errorMessage += "/n" + responseNode.get("message").asText();
+            }
+        } catch (IOException e ){
+        }
+        if (response.getStatusLine().getStatusCode() == 401) {
+            throw new NotAuthorizedException(errorMessage);
+        }
+        throw new ResourceInterfaceException(errorMessage);
+
     }
 
     private Header[] createAuthorizationHeader(Map<String, String> resourceCredentials){

@@ -311,6 +311,14 @@ public class IRCTResourceRS implements IResourceRS
 		}
 	}
 
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling IRCT Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
+	}
+
 	private PicSureStatus mapStatus(String resourceStatus){
 		//TODO what are actually all the options?  What should the default be? What if it's something that doesn't match?
 		switch (resourceStatus) {

@@ -23,21 +23,21 @@ public class BaseIT {
 
 	protected static String endpointUrl;
 	protected static String irctEndpointUrl;
-	protected static String aggregate_url = System.getProperty("aggregate.rs.url");
+	protected static String hsapiEndpointUrl;
+	protected static String aggregate_url;
 
 	protected static List<Header> headers = new ArrayList<>();
-
 	protected static HttpClient client = HttpClientBuilder.create().build();
 	protected final static ObjectMapper objectMapper = new ObjectMapper();
 
 	@BeforeClass
 	public static void beforeClass() {
 		endpointUrl = System.getProperty("service.url");
-		System.out.println("endpointUrl is: " + endpointUrl);
-		irctEndpointUrl = System.getProperty("irct.rs.url");
-		System.out.println("irctEndpointUrl is: " + irctEndpointUrl);
-
+		irctEndpointUrl = System.getProperty("irct.service.url");
+		hsapiEndpointUrl = System.getProperty("hsapi.service.url");
+		aggregate_url = System.getProperty("aggregate.rs.url");
 		headers.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json"));
+
 	}
 
 	/* These users are initialized in the database in the UserTestInitializer class. An instance
