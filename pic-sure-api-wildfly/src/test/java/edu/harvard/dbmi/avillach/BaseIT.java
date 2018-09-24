@@ -36,7 +36,7 @@ public class BaseIT {
 	protected static String endpointUrl;
 	protected static String irctEndpointUrl;
 	protected static String aggregate_url;
-
+	protected static String hsapiEndpointUrl;
 	protected static UUID resourceId;
 
 	//These need to be established here to prevent multiplication of headers
@@ -59,6 +59,7 @@ public class BaseIT {
 		irctEndpointUrl = System.getProperty("irct.rs.url");
 		System.out.println("irctEndpointUrl is: " + irctEndpointUrl);
 		aggregate_url = System.getProperty("aggregate.rs.url");
+		hsapiEndpointUrl = System.getProperty("hsapi.service.url");
 
 		//insert a resource for testing if necessary
 		try {

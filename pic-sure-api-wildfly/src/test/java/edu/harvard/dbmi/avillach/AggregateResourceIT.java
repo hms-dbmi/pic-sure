@@ -17,7 +17,11 @@ import java.io.IOException;
 import java.util.*;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
+import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+
 import static org.junit.Assert.*;
 
 //Need tests executed in order to fill in variables for later tests
@@ -81,7 +85,7 @@ public class AggregateResourceIT extends BaseIT {
         for (JsonNode node : responseBody){
             if (node.get("name").asText().equals("Aggregate Resource RS")){
                 aggregateUUID = UUID.fromString(node.get("uuid").asText());
-            } else if (node.get("name").asText().equals("nhanes.hms.harvard.edu")){
+            } else if (node.get("name").asText().contains("nhanes")) {
                 resourceUUID = UUID.fromString(node.get("uuid").asText());
             }
         }
@@ -227,9 +231,9 @@ public class AggregateResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(resourceResponse))));
 
-
         QueryRequest request = new QueryRequest();
-        request.setResourceCredentials(new HashMap<>());
+        Map<String, String> credentials = new HashMap<String, String>();
+        request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);
 
         //Should get 401 for missing or invalid credentials
@@ -246,8 +250,7 @@ public class AggregateResourceIT extends BaseIT {
         request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "anInvalidToken");
         body = objectMapper.writeValueAsString(request);
 
-
-        response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
+        response = retrievePostResponse(composeURL(endpointUrl,"/query/" + queryId + "/status"), headers, body);
         assertEquals("Invalid credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -302,20 +305,26 @@ public class AggregateResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(resultResponse))));
 
+        QueryRequest resultRequest = new QueryRequest();
+
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
+
         QueryRequest request = new QueryRequest();
         request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);
 
         //Need to make sure result is ready
-        while (!status.equals(PicSureStatus.AVAILABLE.name())){
+        while (!status.equals(PicSureStatus.AVAILABLE.name()) && !status.equals(PicSureStatus.ERROR.name())){
             Thread.sleep(2000);
             HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
             assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
             JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
             assertNotNull("Response message should not be null", responseMessage);
             status = responseMessage.get("status").asText();
+        }
+        if (status.equals(PicSureStatus.ERROR.name())){
+            fail("Query ended with an ERROR");
         }
         request.setResourceCredentials(new HashMap<>());
         body = objectMapper.writeValueAsString(request);
@@ -343,6 +352,7 @@ public class AggregateResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         //Should return an array of results
+
         request.getResourceCredentials().put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         body = objectMapper.writeValueAsString(request);
 

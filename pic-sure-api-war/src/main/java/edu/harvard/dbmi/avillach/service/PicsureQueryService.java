@@ -10,6 +10,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +35,7 @@ public class PicsureQueryService {
 	ResourceWebClient resourceWebClient;
 
 	/**
-	 * Executes a query on a PIC-SURE resource and creates a QueryResults object in the
+	 * Executes a query on a PIC-SURE resource and creates a Query entity in the
 	 * database for the query.
 	 *
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
@@ -92,7 +93,7 @@ public class PicsureQueryService {
 
 	/**
 	 * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource
-	 * from the database and calling the target resource for an updated status. The QueryResults
+	 * from the database and calling the target resource for an updated status. The Query entities
 	 * in the database are updated each time this is called.
 	 *
 	 * @param queryId - id of targeted resource
@@ -177,6 +178,40 @@ public class PicsureQueryService {
 		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+	}
+
+	/**
+	 * Streams the result for a query by looking up the target resource
+	 * from the database and calling the target resource for a result.
+	 *
+	 * @param queryRequest - contains resource specific credentials object
+	 * @return Response
+	 */
+	@Transactional
+	public Response querySync(QueryRequest queryRequest) {
+		UUID resourceId = queryRequest.getResourceUUID();
+		if (resourceId == null){
+			throw new ProtocolException("Missing resource Id");
+		}
+		Resource resource = resourceRepo.getById(resourceId);
+		if (resource == null){
+			throw new ApplicationException("Missing resource");
+		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
+		if (queryRequest == null || queryRequest.getResourceCredentials() == null){
+			throw new NotAuthorizedException("Missing credentials");
+		}		queryRequest.setTargetURL(resource.getTargetURL());
+
+		Query queryEntity = new Query();
+		queryEntity.setResource(resource);
+		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
+		queryEntity.setQuery(queryRequest.getQuery().toString());
+		queryRepo.persist(queryEntity);
+		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
+		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		return Response.ok(resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity()).header("resultId", queryEntity.getResourceResultId()).build();
 	}
 
     /**

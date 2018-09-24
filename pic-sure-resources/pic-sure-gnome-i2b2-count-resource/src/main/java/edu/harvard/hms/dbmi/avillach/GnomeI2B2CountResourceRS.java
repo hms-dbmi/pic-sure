@@ -356,6 +356,14 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 		return Response.ok(responseCount).build();
 	}
 
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling Gnome I2B2 Count Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
+	}
+
 	private PicSureStatus mapStatus(String resourceStatus){
 		switch (resourceStatus) {
 			case "RUNNING":

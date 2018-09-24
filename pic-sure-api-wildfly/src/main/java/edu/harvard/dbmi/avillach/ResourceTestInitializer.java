@@ -46,6 +46,14 @@ public class ResourceTestInitializer
                 .setName("Aggregate Resource RS");
         em.persist(aggregateResource);
 
+        Resource hsapiResource = new Resource()
+                .setTargetURL("https://beta.commonsshare.org/hsapi/")
+                .setResourceRSPath(composeURL(TARGET_PICSURE_URL,"hsapi"))
+                .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM")
+                .setDescription("HSAPI Resource RS")
+                .setName("HSAPI Resource RS");
+        em.persist(hsapiResource);
+
         Resource gnomeI2B2Resource = new Resource()
                 .setTargetURL(TARGET_PICSURE_URL)
                 .setResourceRSPath(GNOME_I2B2_RS_URL)

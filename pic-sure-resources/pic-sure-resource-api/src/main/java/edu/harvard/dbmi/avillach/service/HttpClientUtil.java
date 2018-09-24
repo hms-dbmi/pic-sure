@@ -50,6 +50,10 @@ public class HttpClientUtil {
 	}
 	
 	public static String composeURL(String baseURL, String pathName) {
+	    return composeURL(baseURL, pathName, null);
+	}
+
+	public static String composeURL(String baseURL, String pathName, String query) {
 		URI uri;
 		try {
 			uri = new URI(baseURL);
@@ -61,7 +65,8 @@ public class HttpClientUtil {
 			};
 			allPathComponents.addAll(basePathComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
 			allPathComponents.addAll(pathNameComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
-			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), uri.getQuery(), uri.getFragment()).toString();
+			String queryString = query == null? uri.getQuery() : query;
+			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), queryString, uri.getFragment()).toString();
 		} catch (URISyntaxException e) {
 			throw new ApplicationException("baseURL invalid : " + baseURL, e);
 		}

@@ -183,12 +183,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 						logger.error(TARGET_PICSURE_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 						throwResponseError(response, TARGET_PICSURE_URL);
 					}
-
-					// temporarily like this for debug
-					String entityString = EntityUtils.toString(response.getEntity());
-					logger.debug("Aggregate queryResult string: " + entityString);
-					responses.add(json.readTree(entityString));
-
+					responses.add(json.readTree(response.getEntity().getContent()));
 				} catch (IOException e) {
 					logger.error("queryResult() queryId is: " + queryId + "throws " + e.getClass().getSimpleName() + ", " + e.getMessage());
 					throw new ApplicationException("Unable to encode resource credentials");
@@ -198,6 +193,14 @@ public class AggregateQueryResourceRS implements IResourceRS
 		} catch (IllegalArgumentException e){
 			throw new ApplicationException("Unable to fetch subqueries");
 		}
+	}
+
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling Aggregate Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
 	}
 
 	private PicSureStatus determineStatus(Set statuses){
