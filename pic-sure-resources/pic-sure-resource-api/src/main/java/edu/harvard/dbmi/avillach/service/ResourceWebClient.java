@@ -20,7 +20,7 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.Map;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 
 /**

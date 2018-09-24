@@ -10,7 +10,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.hms.dbmi.avillach.GnomeI2B2CountResourceRS;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 
 @Singleton
 @Startup

@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import edu.harvard.dbmi.avillach.service.HttpClientUtil;
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;

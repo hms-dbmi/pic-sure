@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.service;
+package edu.harvard.dbmi.avillach.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;

@@ -3,7 +3,7 @@ package edu.harvard.dbmi.avillach;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.service.HttpClientUtil;
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 import org.apache.http.HttpResponse;
 import org.junit.Test;
@@ -11,8 +11,8 @@ import org.junit.Test;
 import java.util.*;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
 import static org.junit.Assert.*;
 
 public class PicsureInfoServiceIT extends BaseIT {

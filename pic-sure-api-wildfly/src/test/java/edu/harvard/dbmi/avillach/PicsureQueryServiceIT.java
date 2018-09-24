@@ -14,8 +14,8 @@ import org.junit.runners.MethodSorters;
 import java.util.*;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
 import static org.junit.Assert.*;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)

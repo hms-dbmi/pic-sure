@@ -18,9 +18,9 @@ import java.io.IOException;
 import java.util.*;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrieveGetResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 import static org.junit.Assert.*;
 
 //Need tests executed in order to fill in variables for later tests

@@ -23,9 +23,9 @@ import org.junit.Rule;
 
 import javax.ws.rs.core.HttpHeaders;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrieveGetResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
 import static org.junit.Assert.*;
 
 public class BaseIT {

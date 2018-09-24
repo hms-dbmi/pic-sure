@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import static org.junit.Assert.assertEquals;
 
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.junit.Test;
 
 public class HttpClientUtilTest {

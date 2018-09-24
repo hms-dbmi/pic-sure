@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 import static org.junit.Assert.*;
 
 public class HSAPIResourceIT extends BaseIT {

@@ -12,8 +12,8 @@ import java.util.*;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 

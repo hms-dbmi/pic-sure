@@ -28,7 +28,7 @@ import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 
 @Path("/v1.4")
