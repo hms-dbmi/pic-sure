@@ -3,21 +3,25 @@ package edu.harvard.dbmi.avillach;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.hms.dbmi.avillach.HSAPIResourceRS;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 import static org.junit.Assert.*;
 
 public class HSAPIResourceIT extends BaseIT {
 
-	private final String targetURL = "https://beta.commonsshare.org/hsapi/";
+	private final String targetURL = "http://localhost:8079";
 	private Header[] headers;
 
 	@Test
@@ -86,6 +90,28 @@ public class HSAPIResourceIT extends BaseIT {
 
 	@Test
 	public void testQuerySync() throws UnsupportedOperationException, IOException {
+		Map<String, Object > resourceResponse = new HashMap<>();
+		List<Map<String, String>> results = new ArrayList<>();
+		Map<String, String> firstResult = new HashMap<>();
+		firstResult.put("resource_id", "123abc");
+		firstResult.put("url", "http://aUrl.org/path/contents/file.csv");
+		results.add(firstResult);
+		resourceResponse.put("results", results);
+
+		wireMockRule.stubFor(any(urlPathMatching("/resource"))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resource/.*/files"))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
+
+		wireMockRule.stubFor(any(urlPathMatching("/resource/.*/files/.*"))
+				.willReturn(aResponse()
+						.withStatus(200)
+						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
 		QueryRequest queryRequest = new QueryRequest();
 		queryRequest.setTargetURL(targetURL);
@@ -97,7 +123,7 @@ public class HSAPIResourceIT extends BaseIT {
 		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + HSAPIResourceRS.MISSING_REQUEST_DATA_MESSAGE, errorMessage.contains(HSAPIResourceRS.MISSING_REQUEST_DATA_MESSAGE));
+		assertTrue("Error message should be " + ProtocolException.MISSING_DATA, errorMessage.contains(ProtocolException.MISSING_DATA));
 
 		//Should throw an error if missing targetURL
 		Map<String, String> queryNode = new HashMap<>();
@@ -109,7 +135,7 @@ public class HSAPIResourceIT extends BaseIT {
 		responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + HSAPIResourceRS.MISSING_TARGET_URL, errorMessage.contains(HSAPIResourceRS.MISSING_TARGET_URL));
+		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
 
 		//Should throw error if no 'entity' included
 		queryRequest.setTargetURL(targetURL);
@@ -129,7 +155,7 @@ public class HSAPIResourceIT extends BaseIT {
 		assertNotNull("Response message should not be null", responseMessage);
 		errorMessage = responseMessage.get("message").asText();
 		//TODO Should we do something different instead?
-		assertTrue("Error message should be '404 NOT FOUND'", errorMessage.contains("404 NOT FOUND"));
+		assertTrue("Error message should be '404 NOT FOUND'", errorMessage.toUpperCase().contains("404 NOT FOUND"));
 
 		//Ok this one should work
 		queryNode.put("entity", "resource");

@@ -9,6 +9,7 @@ import javax.ws.rs.core.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.http.Header;
@@ -26,9 +27,6 @@ import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
 @Consumes("application/json")
 public class HSAPIResourceRS implements IResourceRS
 {
-	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
-	public static final String MISSING_TARGET_URL = "Missing target URL";
-
 	private final static ObjectMapper json = new ObjectMapper();
 	private ResourceInfo HSAPIresourceInfo = new ResourceInfo();
 	private Header[] headers;
@@ -159,29 +157,23 @@ public class HSAPIResourceRS implements IResourceRS
 	public Response querySync(QueryRequest resultRequest) {
 		logger.debug("calling HSAPI Resource querySync()");
         if (resultRequest == null){
-            throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
 
         if (resultRequest.getTargetURL() == null){
-            throw new ProtocolException(MISSING_TARGET_URL);
+            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
         }
 		Object queryObject = resultRequest.getQuery();
 		if (queryObject == null) {
-			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 
-		JsonNode queryNode = json.valueToTree(queryObject);
-
 		String path = buildPath(resultRequest);
-
 
 		HttpResponse response = retrieveGetResponse(path, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
 			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			if (response.getStatusLine().getStatusCode() == 401) {
-				throw new NotAuthorizedException(resultRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			}
-				throw new ResourceInterfaceException(resultRequest.getTargetURL() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, resultRequest.getTargetURL());
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
