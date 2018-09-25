@@ -35,6 +35,12 @@ public class ResourceTestInitializer
                 .setToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM");
 		em.persist(fooResource);
 
+        Resource ga4ghResource = new Resource()
+				.setBaseUrl("http://54.174.229.198:8080/ga4gh/dos/v1/")
+                .setDescription("GA4GH DOS Resource Server at DBMI/AvillachLab")
+                .setName("ga4gh-dos-server");
+        em.persist(ga4ghResource);
+
         Resource aggregateResource = new Resource()
 //                .setTargetURL("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/group")
                 .setTargetURL(TARGET_PICSURE_URL)
