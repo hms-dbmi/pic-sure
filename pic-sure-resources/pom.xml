@@ -14,6 +14,8 @@
     <module>pic-sure-ga4gh-dos</module>
     <module>pic-sure-irct-resource</module>
     <module>pic-sure-aggregate-resource</module>
+    <module>pic-sure-hsapi-resource</module>
+    <module>pic-sure-gnome-i2b2-count-resource</module>
   </modules>
   <dependencies>
     <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->

@@ -15,7 +15,7 @@ public interface IResourceRS
 
 	@GET
 	@Path("/info")
-	public ResourceInfo info(Map<String, String> resourceCredentials);
+	public ResourceInfo info(QueryRequest queryRequest);
 
 	@POST
 	@Path("/search")
@@ -27,10 +27,14 @@ public interface IResourceRS
 
 	@POST
 	@Path("/query/{resourceQueryId}/status")
-	public QueryStatus queryStatus(String queryId, Map<String, String> resourceCredentials);
+	public QueryStatus queryStatus(String queryId, QueryRequest statusRequest);
 
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public Response queryResult(String queryId, Map<String, String> resourceCredentials);
+	public Response queryResult(String queryId, QueryRequest resultRequest);
+
+	@POST
+	@Path("/query/sync")
+	public Response querySync(QueryRequest resultRequest);
 
 }

@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -29,6 +30,9 @@ public class HttpClientUtil {
 	private final static Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
 
+	public static HttpResponse retrieveGetResponse(String uri, List<Header> headers) {
+		return retrieveGetResponse(uri, headers.toArray(new Header[headers.size()]));
+	}
 
 	public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
@@ -44,7 +48,11 @@ public class HttpClientUtil {
 		}
 	}
 	
-	static String composeURL(String baseURL, String pathName) {
+	public static String composeURL(String baseURL, String pathName) {
+	    return composeURL(baseURL, pathName, null);
+	}
+
+	public static String composeURL(String baseURL, String pathName, String query) {
 		URI uri;
 		try {
 			uri = new URI(baseURL);
@@ -56,9 +64,10 @@ public class HttpClientUtil {
 			};
 			allPathComponents.addAll(basePathComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
 			allPathComponents.addAll(pathNameComponents.stream().filter(nonEmpty).collect(Collectors.toList()));
-			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), uri.getQuery(), uri.getFragment()).toString();
+			String queryString = query == null? uri.getQuery() : query;
+			return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),"/" + String.join("/", allPathComponents), queryString, uri.getFragment()).toString();
 		} catch (URISyntaxException e) {
-			throw new RuntimeException("baseURL invalid : " + baseURL, e);
+			throw new ApplicationException("baseURL invalid : " + baseURL, e);
 		}
 	}
 
@@ -77,14 +86,18 @@ public class HttpClientUtil {
 		}
 	}
 
+	public static HttpResponse retrievePostResponse(String uri, List<Header> headers, String body) {
+		return retrievePostResponse(uri, headers.toArray(new Header[headers.size()]), body);
+	}
+
 	public static <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readListFromResponse()");
         try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			return json.readValue(responseBody, new TypeReference<List<T>>() {});
 		} catch (IOException e) {
-            logger.error("readListFromResponse() "+e.getMessage());
-        	//TODO: Write custom exception
+      logger.error("readListFromResponse() "+e.getMessage());
+      //TODO: Write custom exception
 			throw new RuntimeException("Incorrect list type returned");
 		}
 	}

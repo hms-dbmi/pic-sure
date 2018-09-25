@@ -46,7 +46,8 @@ CREATE TABLE `query` (
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `resource` (
   `uuid` binary(16) NOT NULL,
-  `baseUrl` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `targetURL` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `resourceRSPath` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `description` varchar(8192) COLLATE utf8_bin DEFAULT NULL,
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `token` varchar(8192) COLLATE utf8_bin DEFAULT NULL,
@@ -65,7 +66,9 @@ CREATE TABLE `user` (
   `roles` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `userId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  PRIMARY KEY (`uuid`)
+  PRIMARY KEY (`uuid`),
+  UNIQUE KEY `subject_UNIQUE` (`subject`),
+  UNIQUE KEY `userId_UNIQUE` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

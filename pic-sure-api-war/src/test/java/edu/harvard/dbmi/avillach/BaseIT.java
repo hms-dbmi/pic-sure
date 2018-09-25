@@ -1,18 +1,13 @@
 package edu.harvard.dbmi.avillach;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.data.entity.User;
-import edu.harvard.dbmi.avillach.service.HttpClientUtil;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import org.apache.http.HttpResponse;
 import org.junit.BeforeClass;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 public class BaseIT {

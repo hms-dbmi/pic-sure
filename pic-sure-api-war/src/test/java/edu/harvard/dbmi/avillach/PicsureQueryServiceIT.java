@@ -25,7 +25,8 @@ import static org.junit.Assert.assertNotNull;
 
 public class PicsureQueryServiceIT extends BaseIT{
 
-    private static String resourceId;
+    private static UUID resourceId;
+    private static UUID syncResourceId;
     private static String jwt;
     private final static String queryString = "{" +
             "    \"select\": [" +
@@ -68,9 +69,19 @@ public class PicsureQueryServiceIT extends BaseIT{
         List<JsonNode> responseBody = json.readValue(response.getEntity().getContent(), new TypeReference<List<JsonNode>>(){});
         assertFalse(responseBody.isEmpty());
 
-        JsonNode firstResource = responseBody.get(0);
-        resourceId = firstResource.get("uuid").asText();
-        assertNotNull("Resource response should have an id", resourceId);
+        for (JsonNode resource : responseBody){
+            if (resource.get("name").asText().contains("nhanes")){
+                String idString = resource.get("uuid").asText();
+                assertNotNull("Resource response should have an id", idString);
+                resourceId = UUID.fromString(idString);
+            }
+            else if (resource.get("name").asText().contains("HSAPI")){
+                String idString = resource.get("uuid").asText();
+                assertNotNull("Resource response should have an id", idString);
+                syncResourceId = UUID.fromString(idString);
+            }
+        }
+
     }
 
     @Test
@@ -78,7 +89,7 @@ public class PicsureQueryServiceIT extends BaseIT{
         HttpClient client = HttpClientBuilder.create().build();
 
         //Test missing info
-        String uri = endpointUrl + "/query/"+resourceId;
+        String uri = endpointUrl + "/query/";
         HttpPost post = new HttpPost(uri);
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
@@ -88,6 +99,7 @@ public class PicsureQueryServiceIT extends BaseIT{
 
         //Test missing query string
         QueryRequest dataQueryRequest = new QueryRequest();
+        dataQueryRequest.setResourceUUID(resourceId);
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
@@ -116,11 +128,12 @@ public class PicsureQueryServiceIT extends BaseIT{
         HttpClient client = HttpClientBuilder.create().build();
 
         //Need to get a query ID first
-        String uri = endpointUrl + "/query/"+resourceId;
+        String uri = endpointUrl + "/query/";
         HttpPost post = new HttpPost(uri);
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         QueryRequest dataQueryRequest = new QueryRequest();
+        dataQueryRequest.setResourceUUID(resourceId);
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
@@ -142,7 +155,9 @@ public class PicsureQueryServiceIT extends BaseIT{
         assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
-        post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));
+        QueryRequest statusRequest = new QueryRequest();
+        statusRequest.setResourceCredentials(clientCredentials);
+        post.setEntity(new StringEntity(json.writeValueAsString(statusRequest)));
         response = client.execute(post);
         assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
         results = json.readValue(response.getEntity().getContent(), QueryStatus.class);
@@ -170,11 +185,12 @@ public class PicsureQueryServiceIT extends BaseIT{
         HttpClient client = HttpClientBuilder.create().build();
 
         //Need to get a query ID first
-        String uri = endpointUrl + "/query/"+resourceId;
+        String uri = endpointUrl + "/query/";
         HttpPost post = new HttpPost(uri);
         post.setHeader("Content-type","application/json");
         post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
         QueryRequest dataQueryRequest = new QueryRequest();
+        dataQueryRequest.setResourceUUID(resourceId);
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCT_BEARER_TOKEN_KEY, token);
         dataQueryRequest.setResourceCredentials(clientCredentials);
@@ -196,7 +212,9 @@ public class PicsureQueryServiceIT extends BaseIT{
         assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
 
-        post.setEntity(new StringEntity(json.writeValueAsString(clientCredentials)));
+        QueryRequest resultRequest = new QueryRequest();
+        resultRequest.setResourceCredentials(clientCredentials);
+        post.setEntity(new StringEntity(json.writeValueAsString(resultRequest)));
         String results = null;
 
         //Need to give it time to complete query
@@ -228,6 +246,42 @@ public class PicsureQueryServiceIT extends BaseIT{
         response = client.execute(post);
         assertEquals("Incorrectly formatted resultId should return 404", 404, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
+    }
+
+    //This will be updated when these tests are converted to unit tests.  Just wanted to make sure a test existed for QuerySync.
+    @Test
+    public void testQuerySync() throws Exception {
+        HttpClient client = HttpClientBuilder.create().build();
+
+        //Test missing info
+        String uri = endpointUrl + "/query/sync";
+        HttpPost post = new HttpPost(uri);
+        post.setHeader("Content-type","application/json");
+        post.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt);
+        HttpResponse response = client.execute(post);
+        assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
+        EntityUtils.consume(response.getEntity());
+
+        //Test missing query string
+        QueryRequest dataQueryRequest = new QueryRequest();
+        dataQueryRequest.setResourceUUID(syncResourceId);
+        Map<String, String> clientCredentials = new HashMap<String, String>();
+        dataQueryRequest.setResourceCredentials(clientCredentials);
+        post.setEntity(new StringEntity(json.writeValueAsString(dataQueryRequest)));
+        response = client.execute(post);
+        assertEquals("Missing query info should return 500", 500, response.getStatusLine().getStatusCode());
+        EntityUtils.consume(response.getEntity());
+
+        //Test correct request
+        Map<String, String> queryNode = new HashMap<>();
+        queryNode.put("entity", "resource");
+
+        dataQueryRequest.setQuery(queryNode);
+        post.setEntity(new StringEntity(json.writeValueAsString(dataQueryRequest)));
+        response = client.execute(post);
+        assertEquals("Response should be 200", 200, response.getStatusLine().getStatusCode());
+        String results = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+        assertNotNull("Results should not be null", results);
     }
 
 }

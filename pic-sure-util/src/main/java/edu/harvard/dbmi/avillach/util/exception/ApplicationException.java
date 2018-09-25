@@ -30,6 +30,11 @@ public class ApplicationException extends WebApplicationException{
         this.content = content;
     }
 
+    public ApplicationException(String message, Exception exception) {
+        super(message, exception);
+    }
+
+
     public Object getContent() {
         return content;
     }

@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
@@ -32,14 +33,20 @@ public class PicsureSearchService {
 		if (resource == null){
 			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
 		}
+		if (resource.getTargetURL() == null){
+			throw new ApplicationException("Resource is missing target URL");
+		}
+
 		if (searchQueryRequest == null){
 			throw new ProtocolException("Missing query request data");
 		}
+		searchQueryRequest.setTargetURL(resource.getTargetURL());
+
 		if (searchQueryRequest.getResourceCredentials() == null){
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 		searchQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return resourceWebClient.search(resource.getBaseUrl(), searchQueryRequest);
+		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
 	}
 
 }

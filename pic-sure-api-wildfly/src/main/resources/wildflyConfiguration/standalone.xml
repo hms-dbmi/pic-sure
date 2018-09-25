@@ -150,30 +150,15 @@
                         <password>sa</password>
                     </security>
                 </datasource>
-                <datasource jndi-name="java:jboss/datasources/PicsureDS" pool-name="PicsureDS" use-java-context="true">
-                    <connection-url>jdbc:mysql://${env.PICSURE2_MYSQLADDRESS}:${env.PICSURE2_DB_PORT}/picsure?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true</connection-url>
-                    <driver>mysql</driver>
-                    <pool>
-                        <min-pool-size>5</min-pool-size>
-                        <max-pool-size>50</max-pool-size>
-                        <prefill>true</prefill>
-                    </pool>
+                <datasource jndi-name="java:/PicsureDS" pool-name="PicsureDS" enabled="true" use-java-context="true">
+                    <connection-url>jdbc:h2:mem:picsure;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url>
+                    <driver>h2</driver>
                     <security>
-                        <user-name>${env.PICSURE2_DB_CONNECTION_USER}</user-name>
-                        <password>${env.PICSURE2_MYSQLPASS}</password>
+                        <user-name>sa</user-name>
+                        <password>sa</password>
                     </security>
-                    <validation>
-                        <valid-connection-checker class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLValidConnectionChecker"/>
-                        <check-valid-connection-sql>SELECT 1</check-valid-connection-sql>
-                        <validate-on-match>true</validate-on-match>
-                        <background-validation>false</background-validation>
-                        <exception-sorter class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLExceptionSorter"/>
-                    </validation>
                 </datasource>
                 <drivers>
-                    <driver name="mysql" module="com.sql.mysql">
-                        <driver-class>com.mysql.jdbc.Driver</driver-class>
-                    </driver>
                     <driver name="h2" module="com.h2database.h2">
                         <xa-datasource-class>org.h2.jdbcx.JdbcDataSource</xa-datasource-class>
                     </driver>
@@ -428,8 +413,11 @@
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:naming:2.0">
             <bindings>
-                <simple name="java:global/client_secret" value="${env.PICSURE2_CLIENT_SECRET}"/>
-                <simple name="java:global/user_id_claim" value="${env.PICSURE2_USER_ID_CLAIM}"/>
+                <simple name="java:global/client_secret" value="${env.PIC_SURE_CLIENT_SECRET}"/>
+                <simple name="java:global/user_id_claim" value="${env.PIC_SURE_USER_ID_CLAIM}"/>
+                <simple name="java:global/verify_user_method" value="${env.VERIFY_USER_METHOD}"/>
+                <simple name="java:global/token_introspection_url" value="${env.TOKEN_INTROSPECTION_URL}"/>
+                <simple name="java:global/token_introspection_token" value="${env.TOKEN_INTROSPECTION_TOKEN}"/>
             </bindings>
             <remote-naming/>
         </subsystem>
