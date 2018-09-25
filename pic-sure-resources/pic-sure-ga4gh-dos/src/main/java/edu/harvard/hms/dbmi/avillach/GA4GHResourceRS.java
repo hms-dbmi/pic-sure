@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
 @Path("/datasource")
 @Produces("application/json")
 @Consumes("application/json")
-public class GenericResourceRS implements IResourceRS
+public class GA4GHResourceRS implements IResourceRS
 {
 	private String TARGET_URL = System.getenv("TARGET_URL");
 	private String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
@@ -46,7 +46,7 @@ public class GenericResourceRS implements IResourceRS
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	public GenericResourceRS() {
+	public GA4GHResourceRS() {
 		if(TARGET_URL == null)
 			throw new RuntimeException("TARGET_URL environment variable must be set.");
 		if(RESULT_FORMAT == null)
@@ -59,7 +59,7 @@ public class GenericResourceRS implements IResourceRS
      * 
      * @param config
      */
-	public GenericResourceRS(Properties config) {
+	public GA4GHResourceRS(Properties config) {
 		if(config.get("TARGET_URL") == null)
 			throw new RuntimeException("TARGET_URL environment variable must be set.");
 
@@ -80,7 +80,7 @@ public class GenericResourceRS implements IResourceRS
 	@GET
 	@Path("/info")
 	@Override
-	public ResourceInfo info(Map<String,String> resourceCredentials) {
+	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Getting information about the datasource");
 
 		// TODO the `service-info` should be dynamically assigned, on a per resource basis, or come from the request
@@ -252,8 +252,11 @@ public class GenericResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, Map<String, String> resourceCredentials) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("Getting status for for queryId {}", queryId);
+
+
+        Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
@@ -293,8 +296,10 @@ public class GenericResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{dataObjectId}/result")
 	@Override
-	public Response queryResult(@PathParam("dataObjectId") String dataObjectId, Map<String, String> resourceCredentials) {
-		logger.debug("queryResult() calling dataobject/{}", dataObjectId);
+	public Response queryResult(@PathParam("dataObjectId") String dataObjectId, QueryRequest statusRequest) {
+        logger.debug("queryResult() calling dataobject/{}", dataObjectId);
+
+        Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		String pathName = TARGET_URL + "dataobjects/"+dataObjectId;
         logger.debug("queryResult() pathName:{}", pathName);
 
@@ -328,6 +333,14 @@ public class GenericResourceRS implements IResourceRS
 			default:
 				return null;
 		}
+	}
+
+	@POST
+	@Path("/query/sync")
+	@Override
+	public Response querySync(QueryRequest resultRequest) {
+		logger.debug("calling IRCT Resource querySync()");
+		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
 	}
 
 	private Header[] createAuthorizationHeader(String token){
