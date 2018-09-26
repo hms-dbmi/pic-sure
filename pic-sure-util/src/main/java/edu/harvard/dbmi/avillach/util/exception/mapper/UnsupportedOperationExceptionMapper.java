@@ -12,7 +12,6 @@ public class UnsupportedOperationExceptionMapper implements ExceptionMapper<Unsu
 
     @Override
     public Response toResponse(UnsupportedOperationException exception) {
-        exception.printStackTrace();
         return PICSUREResponse.error(Response.Status.NOT_IMPLEMENTED, exception.getMessage(), MediaType.APPLICATION_JSON_TYPE);
     }
 }
