@@ -47,10 +47,10 @@ public class GA4GHResourceRS implements IResourceRS
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	public GA4GHResourceRS() {
-		if(TARGET_URL == null)
-			throw new RuntimeException("TARGET_URL environment variable must be set.");
-		if(RESULT_FORMAT == null)
-			throw new RuntimeException("RESULT_FORMAT environment variable must be set.");
+//		if(TARGET_URL == null)
+//			throw new RuntimeException("TARGET_URL environment variable must be set.");
+//		if(RESULT_FORMAT == null)
+//			throw new RuntimeException("RESULT_FORMAT environment variable must be set.");
 	}
 
     /**
@@ -71,6 +71,21 @@ public class GA4GHResourceRS implements IResourceRS
 		this.RESULT_FORMAT = (String) config.get("RESULT_FORMAT");
 	}
 
+	/**
+	 * This method should not be here, temporarily solution.
+	 * The target url shouldn't bother the Resource RS development,
+	 * only the ResourceWebClient method should be dealing with this,
+	 * since target url is already sitting in the database
+	 *
+	 * @deprecated will be removed ASAP
+	 * @param queryRequest
+	 */
+	private void retrieveTargetUrl(QueryRequest queryRequest){
+		TARGET_URL = queryRequest.getTargetURL();
+		if (TARGET_URL == null)
+			throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
+	}
+
 	@GET
 	@Path("/status")
 	public Response status() {
@@ -82,6 +97,7 @@ public class GA4GHResourceRS implements IResourceRS
 	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Getting information about the datasource");
+		retrieveTargetUrl(queryRequest);
 
 		// TODO the `service-info` should be dynamically assigned, on a per resource basis, or come from the request
 		/*String targetURL = TARGET_URL + "service-info";
@@ -114,6 +130,7 @@ public class GA4GHResourceRS implements IResourceRS
 	@Override
 	public SearchResults search(QueryRequest searchJson) {
 		logger.debug("Searching datasource for objects");
+		retrieveTargetUrl(searchJson);
 		String searchTerm = null;
 		try {
 			if (searchJson == null) {
@@ -173,6 +190,7 @@ public class GA4GHResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Query the datasource");
 
+		retrieveTargetUrl(queryJson);
 		if (queryJson == null) {
 			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
 		}
@@ -255,7 +273,7 @@ public class GA4GHResourceRS implements IResourceRS
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("Getting status for for queryId {}", queryId);
 
-
+		retrieveTargetUrl(statusRequest);
         Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
@@ -299,6 +317,7 @@ public class GA4GHResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("dataObjectId") String dataObjectId, QueryRequest statusRequest) {
         logger.debug("queryResult() calling dataobject/{}", dataObjectId);
 
+		retrieveTargetUrl(statusRequest);
         Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		String pathName = TARGET_URL + "dataobjects/"+dataObjectId;
         logger.debug("queryResult() pathName:{}", pathName);
@@ -333,14 +352,6 @@ public class GA4GHResourceRS implements IResourceRS
 			default:
 				return null;
 		}
-	}
-
-	@POST
-	@Path("/query/sync")
-	@Override
-	public Response querySync(QueryRequest resultRequest) {
-		logger.debug("calling IRCT Resource querySync()");
-		throw new UnsupportedOperationException("Query Sync is not implemented in this resource.  Please use query");
 	}
 
 	private Header[] createAuthorizationHeader(String token){
