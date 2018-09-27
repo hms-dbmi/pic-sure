@@ -21,6 +21,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 
 @Path("/")
+@Produces("application/json")
 @Consumes("application/json")
 @Api
 public class PicsureRS {
