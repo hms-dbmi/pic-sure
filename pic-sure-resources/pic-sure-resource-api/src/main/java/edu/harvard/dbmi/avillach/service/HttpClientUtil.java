@@ -40,7 +40,9 @@ public class HttpClientUtil {
 			HttpClient client = HttpClientBuilder.create().build();
 			HttpGet get = new HttpGet(uri);
 			// Make the headers optional
-			if (headers.length>0) { get.setHeaders(headers);}
+			if (headers!=null && headers.length>0) {
+				get.setHeaders(headers);
+			}
 			return client.execute(get);
 		} catch (IOException e) {
 			//TODO: Write custom exception

@@ -150,7 +150,8 @@ public class PicsureQueryService {
 		}
 		if (credentialsQueryRequest == null || credentialsQueryRequest.getResourceCredentials() == null){
 			throw new NotAuthorizedException("Missing credentials");
-		}		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
+		}
+		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 
 		//TODO Do we need to update any information in the query object?
 
@@ -173,14 +174,15 @@ public class PicsureQueryService {
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ApplicationException("Missing resource");
+			throw new ApplicationException("Resource: " + resourceId + " is not found in database");
 		}
 		if (resource.getTargetURL() == null){
 			throw new ApplicationException("Resource is missing target URL");
 		}
 		if (queryRequest == null || queryRequest.getResourceCredentials() == null){
 			throw new NotAuthorizedException("Missing credentials");
-		}		queryRequest.setTargetURL(resource.getTargetURL());
+		}
+		queryRequest.setTargetURL(resource.getTargetURL());
 
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
