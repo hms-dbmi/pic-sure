@@ -72,12 +72,7 @@ public class GA4GHResourceRS implements IResourceRS
 	}
 
 	/**
-	 * This method should not be here, temporarily solution.
-	 * The target url shouldn't bother the Resource RS development,
-	 * only the ResourceWebClient method should be dealing with this,
-	 * since target url is already sitting in the database
 	 *
-	 * @deprecated will be removed ASAP
 	 * @param queryRequest
 	 */
 	private void retrieveTargetUrl(QueryRequest queryRequest){
@@ -92,7 +87,7 @@ public class GA4GHResourceRS implements IResourceRS
 		return Response.ok().build();
 	}
 
-	@GET
+	@POST
 	@Path("/info")
 	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {

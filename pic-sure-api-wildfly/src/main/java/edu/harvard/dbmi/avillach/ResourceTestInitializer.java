@@ -36,7 +36,8 @@ public class ResourceTestInitializer
 		em.persist(fooResource);
 
         Resource ga4ghResource = new Resource()
-				.setBaseUrl("http://54.174.229.198:8080/ga4gh/dos/v1/")
+				.setTargetURL("http://54.174.229.198:8080/ga4gh/dos/v1/")
+                .setResourceRSPath("http://54.174.229.198:8080/ga4gh/dos/v1/")
                 .setDescription("GA4GH DOS Resource Server at DBMI/AvillachLab")
                 .setName("ga4gh-dos-server");
         em.persist(ga4ghResource);
