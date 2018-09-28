@@ -2,12 +2,14 @@ package edu.harvard.hms.dbmi.avillach;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.annotation.Annotation;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.util.*;
 
+import javax.persistence.NoResultException;
 import javax.ws.rs.*;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
+import javax.ws.rs.core.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,16 +78,44 @@ public class GA4GHResourceRS implements IResourceRS
 	 * @param queryRequest
 	 */
 	private void retrieveTargetUrl(QueryRequest queryRequest){
-		TARGET_URL = queryRequest.getTargetURL();
-		if (TARGET_URL == null)
-			throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
+	    try {
+            TARGET_URL = queryRequest.getTargetURL();
+        } catch (Exception e) {
+            throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
+        }
+        if (TARGET_URL == null)
+            throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
+
 	}
 
 	@GET
 	@Path("/status")
 	public Response status() {
-		return Response.ok().build();
+        Map<String, Object> statusResponse = new HashMap<>();
+        statusResponse.put("status", "ok");
+        statusResponse.put("name", "GA4GH-DOS-Server_ResourceInterface");
+		return Response.ok().entity(statusResponse).build();
 	}
+
+    @GET
+    @Path("/info")
+    public ResourceInfo info() {
+        logger.debug("GET /info");
+
+        // TODO: fake it for now, until `service-info` becomes available
+        List<QueryFormat> qformatList = new ArrayList<QueryFormat>();
+
+        qformatList.add(new QueryFormat()
+                .setName("POST /search")
+                .setDescription("Search the datasource for a specific object. If `query` is empty, all objects will be returned."+
+                " If `id` is specified, the server will try to look up the details for the specific object."));
+
+        qformatList.add(new QueryFormat()
+                .setName("POST /query")
+                .setDescription("Retrieve a specific object from the server. The `query` has to specify the `id` of the object."));
+
+        return new ResourceInfo().setName("GA4GH DOS API Server").setQueryFormats(qformatList);
+    }
 
 	@POST
 	@Path("/info")
@@ -124,7 +154,8 @@ public class GA4GHResourceRS implements IResourceRS
 	@Path("/search")
 	@Override
 	public SearchResults search(QueryRequest searchJson) {
-		logger.debug("Searching datasource for objects");
+		logger.debug("POST /search Starting...");
+
 		retrieveTargetUrl(searchJson);
 		String searchTerm = null;
 		try {
@@ -137,14 +168,17 @@ public class GA4GHResourceRS implements IResourceRS
                 } else {
                 	logger.debug("/search search "+searchQuery.toString());
                     JsonNode queryNode = json.valueToTree(searchQuery);
-                    JsonNode searchTermNode = queryNode.get("searchTerm");
+                    JsonNode searchTermNode = queryNode.get("id");
                     if (searchTermNode != null){
-                        searchTerm = searchTermNode.toString().replace("\"","");
+                        searchTerm = searchTermNode.asText();// toString().replace("\"","");
+                    } else {
+                        searchTerm = null;
                     }
                 }
             }
 
 			String targetURL = TARGET_URL + "dataobjects";
+			logger.debug("search() searchTerm is now `"+searchTerm+"`");
 			if (searchTerm != null) {
 			    targetURL = targetURL + "/" + searchTerm;
             }
@@ -161,11 +195,28 @@ public class GA4GHResourceRS implements IResourceRS
 				if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
 					return results;
 				}
-					//TODO Is there a better way to make sure the correct exception type is thrown?
+				//TODO Is there a better way to make sure the correct exception type is thrown?
 				if (response.getStatusLine().getStatusCode() == 401) {
 					throw new NotAuthorizedException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 				}
-				throw new ResourceInterfaceException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+
+				// If 404 is returned, it means that the term could not be found on the server.
+                if (response.getStatusLine().getStatusCode() == 404) {
+				    // logger.error("Search endpoint could not find the requested object. Throwing an application error.");
+				    // throw new NoResultException("Could not find any obect matching that id.");
+
+                    Map<String, Object> statusResponse = new HashMap<>();
+                    statusResponse.put("status", "NOT_FOUND");
+                    statusResponse.put("message", "The server could not find any object with id `"+searchTerm+"`");
+                    results.setResults(statusResponse);
+                    return results;
+                }
+
+				throw new ResourceInterfaceException("Search endpoint exception:" +
+                        response.getStatusLine().getStatusCode() +
+                        " " +
+                        response.getStatusLine().getReasonPhrase()
+                );
 			}
 
 			results.setResults(edu.harvard.hms.dbmi.avillach.HttpClientUtil.readDataObjectsFromResponse(response, Object.class));
@@ -183,7 +234,7 @@ public class GA4GHResourceRS implements IResourceRS
 	@Path("/query")
 	@Override
 	public QueryStatus query(QueryRequest queryJson) {
-		logger.debug("Query the datasource");
+		logger.debug("POST /query Starting...");
 
 		retrieveTargetUrl(queryJson);
 		if (queryJson == null) {
@@ -204,44 +255,38 @@ public class GA4GHResourceRS implements IResourceRS
         status.setStartTime(starttime);
         status.setStatus(PicSureStatus.QUEUED);
 
-		//TODO Do we want/need to do it this way, should we revert query field back to string?
-		Object queryObject = queryJson.getQuery();
+		// Get the objectId from the query being passed to the RS
+        Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
 			throw new ProtocolException((MISSING_REQUEST_DATA_MESSAGE));
-		} else {
-		    logger.debug("query() "+queryObject.toString());
-        }
-
+		}
 		JsonNode queryNode = json.valueToTree(queryObject);
-        logger.debug("query() queryNode (toString):"+queryNode.toString());
-        if (queryNode.isTextual()) {
-            logger.debug("query() queryNode (asText):" + queryNode.asText());
-            logger.debug("query() queryNode (toString):" + queryNode.textValue());
-        }
-		String queryString = null;
-
-		JsonNode query = queryNode.get("queryString");
-		if (query == null){
+		String objectIdString = null;
+		JsonNode objectId = queryNode.get("id");
+		if (objectId == null){
 			//Assume this means the entire string is the query - Object nodes return blank asText but JsonNodes add too many quotes
-			queryString = StringUtils.isBlank(queryNode.asText()) ? queryNode.toString() : queryNode.asText();
+			objectIdString = StringUtils.isBlank(queryNode.asText()) ? queryNode.toString() : queryNode.asText();
 		} else {
-			queryString = query.toString();
+            objectIdString = objectId.asText();
 		}
-		logger.debug("query() queryString: "+queryString);
+		logger.debug("query() objectIdString: "+objectIdString);
 
-		String pathName = TARGET_URL + "dataobjects/"+queryString.replace("\"", "");
-		logger.debug("query() pathName: "+pathName);
-		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(pathName, null);
+		// Generate the endpoint URL
+		String endpointURL = TARGET_URL + "dataobjects/"+objectIdString.replace("\"", "");
+		logger.debug("query() endpointURL: "+endpointURL);
 
+		// Get the response from the endpoint URL, this is (for now) a GET
+		HttpResponse response = edu.harvard.hms.dbmi.avillach.HttpClientUtil.retrieveGetResponse(endpointURL, null);
 		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error(TARGET_URL + pathName + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			//TODO Is there a better way to make sure the correct exception type is thrown?
-			if (response.getStatusLine().getStatusCode() == 401) {
-				throw new NotAuthorizedException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-			}
-			throw new ResourceInterfaceException(TARGET_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+			logger.error("The query endpoint did not return a 200. code:{} reason:{} ",
+                    response.getStatusLine().getStatusCode(),
+                    response.getStatusLine().getReasonPhrase()
+            );
+			// Throw the HTTP error as an RS Exception to the client.
+			throw new ResourceInterfaceException("Query endpoint exception: " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
 		}
-		//Returns an object like so: {"resultId":230464}
+
+		// If the HTTP Response is a success, then returns an object like so: {"resultId":230464}
 		//TODO later Add things like duration and expiration
 		try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
@@ -251,9 +296,7 @@ public class GA4GHResourceRS implements IResourceRS
             status.setDuration(endtime-starttime);
 			status.setPicsureResultId(UUID.fromString(responseNode.get("data_object").get("id").asText()));
 			status.setStatus(PicSureStatus.AVAILABLE);
-
 			status.setResultMetadata(SerializationUtils.serialize(responseBody));
-
 			status.setSizeInBytes(responseBody.length());
 			return status;
 		} catch (IOException e){
