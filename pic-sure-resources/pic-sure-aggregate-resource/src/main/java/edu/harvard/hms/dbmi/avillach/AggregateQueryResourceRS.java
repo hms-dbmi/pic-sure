@@ -15,17 +15,16 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 
 import org.apache.http.message.BasicHeader;
-import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 
 @Path("/group")
@@ -37,9 +36,6 @@ public class AggregateQueryResourceRS implements IResourceRS
 	private static final String PICSURE_2_TOKEN = System.getenv("PICSURE_2_TOKEN");
 
 	private static final String BEARER_STRING = "Bearer ";
-	public static final String MISSING_REQUEST_DATA_MESSAGE = "Missing query request data";
-	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials for resource with id ";
-	public static final String INCORRECTLY_FORMATTED_REQUEST = "Incorrectly formatted query request data";
 
 	private Header[] headers = {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN)};
 
@@ -60,7 +56,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 		return Response.ok().build();
 	}
 
-	@GET
+	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest queryRequest){
 		return new ResourceInfo();
@@ -78,7 +74,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	public QueryStatus query(QueryRequest queryRequest) {
 		logger.debug("Calling Aggregate Query Resource query()");
 		if (queryRequest == null) {
-			throw new ProtocolException(MISSING_REQUEST_DATA_MESSAGE);
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setStartTime(new Date().getTime());
@@ -91,7 +87,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 
 				Map<String, String> resourceCredentials = qr.getResourceCredentials();
 				if (resourceCredentials == null) {
-					throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE + qr.getResourceUUID());
+					throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for resource with id: " + qr.getResourceUUID());
 				}
 				try {
 					String queryString = json.writeValueAsString(qr);
@@ -100,10 +96,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 					HttpResponse response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, queryString);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + pathName + " calling resource with id " + qr.getResourceUUID() + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
 					QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
 					//TODO What other information do we need to keep from this?
@@ -115,7 +108,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 			}
 		} catch (ClassCastException | IllegalArgumentException e){
 			logger.error(e.getMessage());
-			throw new ProtocolException(INCORRECTLY_FORMATTED_REQUEST);
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
         statusResponse.setStatus(determineStatus(presentStatuses));
         statusResponse.setResultMetadata(SerializationUtils.serialize(queryIdList));
@@ -129,7 +122,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setPicsureResultId(UUID.fromString(queryId));
 		if (statusRequest == null || statusRequest.getResourceCredentials() == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 
 		String pathName = "/query/" + queryId + "/metadata";
@@ -147,10 +140,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL , pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
 					status = readObjectFromResponse(response, QueryStatus.class);
 
@@ -172,7 +162,7 @@ public class AggregateQueryResourceRS implements IResourceRS
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling Aggregate Query Resource queryResult()");
 		if (resultRequest == null || resultRequest.getResourceCredentials() == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
 		}
 
 		String pathName = "/query/" + queryId + "/metadata";
@@ -190,14 +180,9 @@ public class AggregateQueryResourceRS implements IResourceRS
 					response = retrievePostResponse(composeURL(TARGET_PICSURE_URL, pathName), headers, body);
 					if (response.getStatusLine().getStatusCode() != 200) {
 						logger.error(TARGET_PICSURE_URL + pathName + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-						if (response.getStatusLine().getStatusCode() == 401) {
-							throw new NotAuthorizedException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
-						}
-						throw new ResourceInterfaceException(TARGET_PICSURE_URL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase());
+						throwResponseError(response, TARGET_PICSURE_URL);
 					}
-
 					responses.add(json.readTree(response.getEntity().getContent()));
-
 				} catch (IOException e) {
 					logger.error("queryResult() queryId is: " + queryId + "throws " + e.getClass().getSimpleName() + ", " + e.getMessage());
 					throw new ApplicationException("Unable to encode resource credentials");

@@ -4,12 +4,22 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.apache.commons.io.IOUtils;
+import org.glassfish.jersey.internal.RuntimeDelegateImpl;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.ws.rs.core.Response;
+import javax.ws.rs.ext.RuntimeDelegate;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -18,6 +28,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
 import static org.junit.Assert.*;
 
+@RunWith(MockitoJUnitRunner.class)
 public class ResourceWebClientTest {
 
     private final static ObjectMapper json = new ObjectMapper();
@@ -28,6 +39,14 @@ public class ResourceWebClientTest {
 
     @Rule
     public WireMockClassRule wireMockRule = new WireMockClassRule(port);
+
+    @BeforeClass
+    public static void beforeClass() {
+
+        //Need to be able to throw exceptions without container so we can verify correct errors are being thrown
+        RuntimeDelegate runtimeDelegate = new RuntimeDelegateImpl();
+        RuntimeDelegate.setInstance(runtimeDelegate);
+    }
 
     @Test
     public void testInfo() throws JsonProcessingException{
@@ -44,8 +63,8 @@ public class ResourceWebClientTest {
         try {
             cut.info(testURL, null);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
         QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
@@ -56,8 +75,8 @@ public class ResourceWebClientTest {
         try {
             cut.info(null, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
         }
 
         //Should fail without a targetURL
@@ -66,8 +85,8 @@ public class ResourceWebClientTest {
         try {
             cut.info(testURL, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
         //Assuming everything goes right
@@ -115,18 +134,36 @@ public class ResourceWebClientTest {
         try {
             cut.search(testURL, null);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
+
         QueryRequest request = new QueryRequest();
         try {
-            cut.search(null, request);
+            cut.search(testURL, request);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
+        }
+
+        request.setQuery("query");
+
+        try {
+            cut.search(testURL, request);
+            fail();
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
         String targetURL = "/search";
+        request.setTargetURL(targetURL);
+
+        try {
+            cut.search(null, request);
+            fail();
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
+        }
 
 //        //Should fail if no credentials given
 //        request.setQuery("query");
@@ -146,8 +183,8 @@ public class ResourceWebClientTest {
         try {
             cut.search(testURL, request);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }*/
 
         //Should fail with no targetURL
@@ -159,8 +196,8 @@ public class ResourceWebClientTest {
         try {
             cut.search(testURL, request);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
         request.setTargetURL(targetURL);
@@ -209,8 +246,8 @@ public class ResourceWebClientTest {
         try {
             cut.query(testURL, null);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
         QueryRequest request = new QueryRequest();
         request.setTargetURL("/query");
@@ -218,8 +255,8 @@ public class ResourceWebClientTest {
         try {
             cut.query(null, request);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
         }
 
         //Should fail if no credentials given
@@ -237,8 +274,8 @@ public class ResourceWebClientTest {
         try {
             cut.query(testURL, request);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
         request.setTargetURL("/query");
@@ -279,50 +316,63 @@ public class ResourceWebClientTest {
     @Test
     public void testQueryResult() throws JsonProcessingException{
         String testId = "230048";
+        String mockResult = "Any old response will work";
+
+
 
         wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
                 .willReturn(aResponse()
                         .withStatus(200)
-                        .withBody("Any old response will work")));
+                        .withBody(mockResult)));
 
         //Should fail if missing any parameters
         try {
             cut.queryResult(testURL, testId, null);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
         QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
+        String targetURL = "/query/13452134/result";
+        queryRequest.setTargetURL(targetURL);
+
         try {
             cut.queryResult(testURL, null, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_QUERY_ID, e.getContent());
         }
         try {
             cut.queryResult(null, testId, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
         }
 
-        //Should fail without a testURL
+        queryRequest.setTargetURL(null);
+        //Should fail without a targetURL
         try {
             cut.queryResult(testURL, testId, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
-        String targetURL = "/query/13452134/result";
         queryRequest.setTargetURL(targetURL);
+
 
         //Everything should work here
         Response result = cut.queryResult(testURL,testId, queryRequest);
         assertNotNull("Result should not be null", result);
+        try {
+            String resultContent = IOUtils.toString((InputStream) result.getEntity(), "UTF-8");
+            assertEquals("Result should match " + mockResult, mockResult, resultContent);
+        } catch (IOException e ){
+            fail("Result content was unreadable");
+        }
 
         //What if the resource has a problem?
         wireMockRule.stubFor(any(urlMatching("/query/.*/result"))
@@ -354,37 +404,42 @@ public class ResourceWebClientTest {
         try {
             cut.queryStatus(testURL, testId, null);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
         QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
+        String targetURL = "/query/13452134/result";
+        queryRequest.setTargetURL(targetURL);
+
         try {
             cut.queryStatus(testURL, null, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ProtocolException e) {
+            assertEquals(ProtocolException.MISSING_QUERY_ID, e.getContent());
         }
         try {
             cut.queryStatus(null, testId, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
         }
+
+        queryRequest.setTargetURL(null);
 
         //Should fail without a targetURL
         try {
             cut.queryStatus(testURL, testId, queryRequest);
             fail();
-        } catch (Exception e) {
-            assertEquals("HTTP 500 Internal Server Error", e.getMessage());
+        } catch (ApplicationException e) {
+            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
         }
 
-        String targetURL = "/query/13452134/result";
-        queryRequest.setTargetURL(targetURL);
 
+
+        queryRequest.setTargetURL(targetURL);
 
         //Everything should work here
         QueryStatus result = cut.queryStatus(testURL,testId, queryRequest);

@@ -13,7 +13,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 public interface IResourceRS
 {
 
-	@GET
+	@POST
 	@Path("/info")
 	default ResourceInfo info(QueryRequest queryRequest) {
 		throw new NotSupportedException();

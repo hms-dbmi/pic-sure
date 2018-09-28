@@ -7,7 +7,7 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
-import org.apache.commons.io.IOUtils;
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;
@@ -15,13 +15,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.Map;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 
 /**
@@ -45,23 +44,24 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient info()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
-                throw new NotAuthorizedException("Missing credentials");
+                throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             logger.debug("Calling /info at ResourceURL: {}", rsURL);
             String pathName = "/info";
             String body = json.writeValueAsString(queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
@@ -72,25 +72,26 @@ public class ResourceWebClient {
     public SearchResults search(String rsURL, QueryRequest searchQueryRequest){
         logger.debug("Calling ResourceWebClient search()");
         try {
-            if (searchQueryRequest == null){
-                throw new ProtocolException("Missing query request info");
+            if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (searchQueryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
 
             if (searchQueryRequest.getResourceCredentials() == null){
-                throw new NotAuthorizedException("Missing credentials");
+                throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
             }
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
 
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, SearchResults.class);
         } catch (JsonProcessingException e){
@@ -104,13 +105,13 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (dataQueryRequest == null){
-                throw new ProtocolException("Missing query request info");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (dataQueryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (dataQueryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
@@ -119,7 +120,8 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(dataQueryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -132,16 +134,16 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (queryId == null){
                 throw new ProtocolException("Missing query id");
@@ -152,7 +154,8 @@ public class ResourceWebClient {
             logger.debug(body);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
             }
             return readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
@@ -165,25 +168,26 @@ public class ResourceWebClient {
         logger.debug("Calling ResourceWebClient query()");
         try {
             if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
             if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
+                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
             if (queryId == null){
-                throw new ApplicationException("Missing query id");
+                throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){

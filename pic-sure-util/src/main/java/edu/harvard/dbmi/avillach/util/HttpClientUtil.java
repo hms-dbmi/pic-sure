@@ -1,6 +1,7 @@
-package edu.harvard.dbmi.avillach.service;
+package edu.harvard.dbmi.avillach.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+import javax.ws.rs.NotAuthorizedException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -116,4 +118,20 @@ public class HttpClientUtil {
             throw new RuntimeException("Incorrect object type returned", e);
         }
     }
+
+	public static void throwResponseError(HttpResponse response, String baseURL){
+		String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase();
+		try {
+			JsonNode responseNode = json.readTree(response.getEntity().getContent());
+			if (responseNode != null && responseNode.has("message")){
+					errorMessage += "/n" + responseNode.get("message").asText();
+				}
+			} catch (IOException e ){
+			//That's fine, there's no message
+			}
+		if (response.getStatusLine().getStatusCode() == 401) {
+			throw new NotAuthorizedException(errorMessage);
+		}
+		throw new ResourceInterfaceException(errorMessage);
+	}
 }

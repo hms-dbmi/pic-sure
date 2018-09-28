@@ -9,14 +9,12 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
-import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
 
 /**
@@ -45,17 +43,22 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
+		if (dataQueryRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
 		UUID resourceId = dataQueryRequest.getResourceUUID();
+		if (resourceId == null){
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			//TODO Create custom exception
-			throw new PicsureQueryException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-		if (dataQueryRequest == null){
-			throw new ProtocolException("Missing query request data");
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (dataQueryRequest.getResourceCredentials() == null){
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
@@ -98,21 +101,31 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
+		if (queryId == null){
+			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+		}
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
 		}
 		Resource resource = query.getResource();
 		if (resource == null){
-			throw new ApplicationException("Missing resource");
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-		if (credentialsQueryRequest == null || credentialsQueryRequest.getResourceCredentials() == null){
-			throw new NotAuthorizedException("Missing credentials");
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+
+		if (credentialsQueryRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
+		if (credentialsQueryRequest.getResourceCredentials() == null){
+			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
+		}
 		if(resource.getToken()!=null) {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
@@ -137,24 +150,33 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
+		if (queryId == null){
+			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+		}
 		Query query = queryRepo.getById(queryId);
 		if (query == null){
-			throw new ProtocolException("No query with id " + queryId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
 		}
 		Resource resource = query.getResource();
 		if (resource == null){
-			throw new ApplicationException("Missing resource");
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-		if (credentialsQueryRequest == null || credentialsQueryRequest.getResourceCredentials() == null){
-			throw new NotAuthorizedException("Missing credentials");
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+		if (credentialsQueryRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
+		if (credentialsQueryRequest.getResourceCredentials() == null){
+			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 
 		//TODO Do we need to update any information in the query object?
-
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 	}
@@ -168,22 +190,29 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response querySync(QueryRequest queryRequest) {
+		if (queryRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
 		UUID resourceId = queryRequest.getResourceUUID();
 		if (resourceId == null){
-			throw new ProtocolException("Missing resource Id");
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ApplicationException("Resource: " + resourceId + " is not found in database");
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
-		}
-		if (queryRequest == null || queryRequest.getResourceCredentials() == null){
-			throw new NotAuthorizedException("Missing credentials");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		queryRequest.setTargetURL(resource.getTargetURL());
 
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+
+		if (queryRequest.getResourceCredentials() == null){
+			queryRequest.setResourceCredentials(new HashMap<>());
+		}
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
 		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
@@ -202,7 +231,7 @@ public class PicsureQueryService {
 	public QueryStatus queryMetadata(UUID queryId){
         Query query = queryRepo.getById(queryId);
         if (query == null){
-            throw new ProtocolException("No query with id " + queryId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
         QueryStatus response = new QueryStatus();
         response.setStartTime(query.getStartTime().getTime());

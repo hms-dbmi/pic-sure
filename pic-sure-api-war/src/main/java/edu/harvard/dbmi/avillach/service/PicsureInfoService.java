@@ -17,8 +17,6 @@ import java.util.UUID;
 
 public class PicsureInfoService {
 
-	Logger logger = LoggerFactory.getLogger(PicsureInfoService.class);
-
 	@Inject
 	ResourceRepository resourceRepo;
 
@@ -35,13 +33,13 @@ public class PicsureInfoService {
 	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException("Resource is missing RS path");
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (credentialsQueryRequest == null){
 			credentialsQueryRequest = new QueryRequest();

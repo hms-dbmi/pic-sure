@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.GnomeI2B2CountResourceRS;
-import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.message.BasicHeader;
@@ -18,16 +17,17 @@ import javax.ws.rs.core.HttpHeaders;
 import java.io.IOException;
 import java.util.*;
 
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrieveGetResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.retrievePostResponse;
-import static edu.harvard.dbmi.avillach.service.HttpClientUtil.composeURL;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrieveGetResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 import static org.junit.Assert.*;
 
 //Need tests executed in order to fill in variables for later tests
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class GnomeI2B2ResourceIT extends BaseIT {
 
-    private final static String token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6MTU0NDQ0MjM0NCwiaWF0IjoxNTM0NDQyMzQ0LCJqdGkiOiJGb28iLCJlbWFpbCI6ImZvb0BiYXIuY29tIn0.u4VVxoGVrxvb8s6QWALqs_BRZnwZ5BX58ZVJS1v6Yls";
+    private final static String token ="a.supposedly-Valid.token";
     private final static String i2b2queryString = "{" +
             "    \"select\": [" +
             "        {" +
@@ -71,7 +71,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
             "        {" +
             "            \"predicate\": \"CONTAINS\"," +
             "            \"field\": {" +
-            "                \"pui\": \"/i2b2-wildfly-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/nonexistentpath\"," +
+            "                \"pui\": \"/i2b2-grin-patient-mapping/Demo/GRIN/GRIN/DEMOGRAPHIC/nonexistentpath\"," +
             "                \"dataType\": \"STRING\"" +
             "            }," +
             "            \"fields\": {" +
@@ -90,6 +90,9 @@ public class GnomeI2B2ResourceIT extends BaseIT {
     private static String queryId;
     private static String errorQueryId;
     private static String status;
+    private static String gnomeResultId = "239057";
+    private static String i2b2ResultId = "2355911";
+    private static String errorResultId = "2003913";
 
     @BeforeClass
     public static void setUp() throws IOException{
@@ -114,6 +117,48 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
     @Test
     public void testQuery() throws IOException {
+        //Set up responses
+        Map<String, String> gnomeResponse = new HashMap<>();
+        gnomeResponse.put("resultId", gnomeResultId);
+
+        Map<String, String> i2b2Response = new HashMap<>();
+        i2b2Response.put("resultId", i2b2ResultId);
+        i2b2Response.put("status", "AVAILABLE");
+
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("resultId", errorResultId);
+        errorResponse.put("status", "ERROR");
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(containing("nonexistentpath"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(errorResponse))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(containing("poorly worded query"))
+                .willReturn(aResponse()
+                        .withStatus(500)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(containing("/i2b2-wildfly-grin-patient-mapping"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(i2b2Response))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/queryService/runQuery"))
+                .withRequestBody(containing("/gnome/query_rest.cgi"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(gnomeResponse))));
+
         //Create a query
         QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
@@ -201,8 +246,46 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
     @Test
     public void testQueryStatus() throws IOException {
+        Map<String, String> gnomeResponse = new HashMap<>();
+        gnomeResponse.put("resultId", "230958");
+        gnomeResponse.put("status", "AVAILABLE");
+
+        Map<String, String> i2b2Response = new HashMap<>();
+        i2b2Response.put("resultId", "230958");
+        i2b2Response.put("status", "AVAILABLE");
+
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("resultId", "230999");
+        errorResponse.put("status", "ERROR");
+
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/.*"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/"+gnomeResultId))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(gnomeResponse))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/"+i2b2ResultId))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(i2b2Response))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/resultStatus/"+errorResultId))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(errorResponse))));
+
+        QueryRequest statusQuery = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
-        String body = objectMapper.writeValueAsString(credentials);
+        statusQuery.setResourceCredentials(credentials);
+        String body = objectMapper.writeValueAsString(statusQuery);
 
         //Should get 401 for missing or invalid credentials
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
@@ -216,7 +299,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(statusQuery);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -229,7 +312,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //This should retrieve the status of the query successfully
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(statusQuery);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/status"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());
@@ -253,10 +336,68 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
     @Test
     public void testResult() throws IOException, InterruptedException {
+        //Prepare responses
+        Map<String, Object> gnomeResponse = new HashMap<>();
+        ArrayList<Object> data = new ArrayList<>();
+        ArrayList<Map<String, String>> innerArray = new ArrayList<>();
+        Map<String, String> value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.GNOME_LABEL, "abc-123");
+        innerArray.add(value);
+        data.add(innerArray);
+        innerArray = new ArrayList<>();
+        value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.GNOME_LABEL, "def-456");
+        innerArray.add(value);
+        data.add(innerArray);
+        innerArray = new ArrayList<>();
+        value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.GNOME_LABEL, "ghi-789");
+        innerArray.add(value);
+        data.add(innerArray);
+        gnomeResponse.put("data", data);
+
+        Map<String, Object> i2b2Response = new HashMap<>();
+        data = new ArrayList<>();
+        innerArray = new ArrayList<>();
+        value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.I2B2_LABEL, "abc_123");
+        innerArray.add(value);
+        data.add(innerArray);
+        innerArray = new ArrayList<>();
+        value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.I2B2_LABEL, "jfk_010");
+        innerArray.add(value);
+        data.add(innerArray);
+        innerArray = new ArrayList<>();
+        value = new HashMap<>();
+        value.put(GnomeI2B2CountResourceRS.I2B2_LABEL, "ghi_789");
+        innerArray.add(value);
+        data.add(innerArray);
+        i2b2Response.put("data", data);
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/result/.*"))
+                .withHeader("Authorization", containing("anInvalidToken"))
+                .willReturn(aResponse()
+                        .withStatus(401)));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/result/"+gnomeResultId+"/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(gnomeResponse))));
+
+        wireMockRule.stubFor(any(urlPathMatching("/resultService/result/"+i2b2ResultId+"/.*"))
+                .withHeader("Authorization", containing(token))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(objectMapper.writeValueAsString(i2b2Response))));
+
+        QueryRequest resultRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);
-        String body = objectMapper.writeValueAsString(credentials);
+        resultRequest.setResourceCredentials(credentials);
+        String body = objectMapper.writeValueAsString(resultRequest);
 
         //Need to make sure result is ready
         while (!status.equals(PicSureStatus.AVAILABLE.name())){
@@ -269,7 +410,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         }
 
         credentials.remove(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
 
         //Missing or invalid credentials should return 401
         HttpResponse response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
@@ -282,7 +423,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
         assertTrue("Error message should be Unauthorized", errorMessage.contains("Unauthorized"));
 
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, "anInvalidToken");
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
 
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
@@ -295,7 +436,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
 
         //Should return an array of results
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
-        body = objectMapper.writeValueAsString(credentials);
+        body = objectMapper.writeValueAsString(resultRequest);
         response = retrievePostResponse(composeURL(endpointUrl,"/query/"+queryId+"/result"), headers, body);
         assertEquals("Should return a 200", 200, response.getStatusLine().getStatusCode());
         responseMessage = objectMapper.readTree(response.getEntity().getContent());

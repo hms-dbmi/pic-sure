@@ -29,16 +29,21 @@ public class PicsureSearchService {
 	 * @return {@link SearchResults}
 	 */
 	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
+		if (resourceId == null){
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException("No resource with id " + resourceId.toString() + " exists");
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
 		if (resource.getTargetURL() == null){
-			throw new ApplicationException("Resource is missing target URL");
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
 		if (searchQueryRequest == null){
-			throw new ProtocolException("Missing query request data");
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		searchQueryRequest.setTargetURL(resource.getTargetURL());
 

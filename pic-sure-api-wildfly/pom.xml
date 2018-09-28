@@ -90,7 +90,17 @@
 			<groupId>org.hibernate.javax.persistence</groupId>
 			<artifactId>hibernate-jpa-2.1-api</artifactId>
 		</dependency>
-	</dependencies>
+        <dependency>
+            <groupId>com.github.tomakehurst</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>2.19.0</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 	<build>
 		<finalName>${project.artifactId}-${project.version}</finalName>
 		<plugins>
@@ -309,10 +319,14 @@
 							<!-- Notices: these envs is for something that needs to be read from env in pre-integration-test -->
 							<!-- These are for normal system config (not includes integration tests usage) -->
 							<env>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<TARGET_IRCT_URL>http://localhost:8079</TARGET_IRCT_URL>
+								<TARGET_GNOME_URL>http://localhost:8079</TARGET_GNOME_URL>
+								<TARGET_I2B2_URL>http://localhost:8079</TARGET_I2B2_URL>
+								<I2B2_LABEL>Patient Id</I2B2_LABEL>
 								<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN>
 								<IRCT_RS_URL>http://localhost:8080/pic-sure-irct-resource-${project.version}/pic-sure/v1.4</IRCT_RS_URL>
 								<AGGREGATE_RS_URL>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/pic-sure/group</AGGREGATE_RS_URL>
+                                <GNOME_I2B2_RS_URL>http://localhost:8080/pic-sure-gnome-i2b2-count-resource-${project.version}/pic-sure/gnome-i2b2-count</GNOME_I2B2_RS_URL>
 								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>
 								<RESULT_FORMAT>JSON</RESULT_FORMAT>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
@@ -349,7 +363,10 @@
 							<environmentVariables>
 								<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>
 								<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM>
-								<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL>
+								<TARGET_IRCT_URL>http://localhost:8079</TARGET_IRCT_URL>
+								<TARGET_GNOME_URL>http://localhost:8079</TARGET_GNOME_URL>
+								<TARGET_I2B2_URL>http://localhost:8079</TARGET_I2B2_URL>
+								<I2B2_LABEL>Patient Id</I2B2_LABEL>
 								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>
 								<!--<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN>-->
 								<!--<RESULT_FORMAT>CSV</RESULT_FORMAT>-->
