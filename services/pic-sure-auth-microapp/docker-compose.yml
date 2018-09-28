@@ -25,6 +25,8 @@ services:
       - AUTH_CLIENT_SECRET=secret
       - AUTH_USER_ID_CLAIM = sub
       - AUTH_MYSQLADDRESS=picsureauthdb
+      - AUTH0TOKEN=some.thing.here
+      - AUTH0HOST=https://avillachlab.auth0.com
     ports:
       - 8080:8080
     expose:
