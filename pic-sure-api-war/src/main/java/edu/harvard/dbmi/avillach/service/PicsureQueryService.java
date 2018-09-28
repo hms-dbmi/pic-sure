@@ -10,7 +10,6 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -175,6 +174,8 @@ public class PicsureQueryService {
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
+		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
+
 		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -212,7 +213,6 @@ public class PicsureQueryService {
 		if (queryRequest.getResourceCredentials() == null){
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
-
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
 		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));

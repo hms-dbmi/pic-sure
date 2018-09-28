@@ -1,17 +1,19 @@
 package edu.harvard.dbmi.avillach.util.exception.mapper;
 
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 
+import javax.ws.rs.NotSupportedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 
 @Provider
-public class UnsupportedOperationExceptionMapper implements ExceptionMapper<UnsupportedOperationException>{
+public class NotSupportedExceptionMapper implements ExceptionMapper<NotSupportedException>{
 
     @Override
-    public Response toResponse(UnsupportedOperationException exception) {
+    public Response toResponse(NotSupportedException exception) {
         return PICSUREResponse.error(Response.Status.NOT_IMPLEMENTED, exception.getMessage(), MediaType.APPLICATION_JSON_TYPE);
     }
 }

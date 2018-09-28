@@ -15,26 +15,38 @@ public interface IResourceRS
 
 	@POST
 	@Path("/info")
-	public ResourceInfo info(QueryRequest queryRequest);
+	default ResourceInfo info(QueryRequest queryRequest) {
+		throw new NotSupportedException();
+	}
 
 	@POST
 	@Path("/search")
-	public SearchResults search(QueryRequest searchJson);
+	default SearchResults search(QueryRequest searchJson) {
+		throw new NotSupportedException();
+	}
 
 	@POST
 	@Path("/query")
-	public QueryStatus query(QueryRequest queryJson);
+	default QueryStatus query(QueryRequest queryJson) {
+		throw new NotSupportedException();
+	}
 
 	@POST
 	@Path("/query/{resourceQueryId}/status")
-	public QueryStatus queryStatus(String queryId, QueryRequest statusRequest);
+	default QueryStatus queryStatus(String queryId, QueryRequest statusRequest) {
+		throw new NotSupportedException();
+	}
 
 	@POST
 	@Path("/query/{resourceQueryId}/result")
-	public Response queryResult(String queryId, QueryRequest resultRequest);
+	default Response queryResult(String queryId, QueryRequest resultRequest) {
+		throw new NotSupportedException();
+	}
 
 	@POST
 	@Path("/query/sync")
-	public Response querySync(QueryRequest resultRequest);
+	default Response querySync(QueryRequest resultRequest) {
+		throw new NotSupportedException("Query Sync is not implemented in this resource.  Please use query");
+	}
 
 }

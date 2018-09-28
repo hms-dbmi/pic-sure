@@ -11,6 +11,7 @@
   <name>pic-sure-resources</name>
   <modules>
     <module>pic-sure-resource-api</module>
+    <module>pic-sure-ga4gh-dos</module>
     <module>pic-sure-irct-resource</module>
     <module>pic-sure-aggregate-resource</module>
     <module>pic-sure-hsapi-resource</module>
@@ -36,4 +37,25 @@
       <artifactId>log4j</artifactId>
     </dependency>
   </dependencies>
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-war-plugin</artifactId>
+          <configuration>
+            <attachClasses>true</attachClasses>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <configuration>
+            <source>9</source>
+            <target>9</target>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
 </project>

@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -9,7 +10,7 @@ import io.swagger.annotations.ApiModel;
 		" token for the resource.  The query is a string or object that contains a search term or query")
 public class QueryRequest {
 
-	private Map<String, String> resourceCredentials;
+	private Map<String, String> resourceCredentials = new HashMap<>();
 
 	//instead of string
 	private Object query;

@@ -41,7 +41,10 @@ public class HttpClientUtil {
             logger.debug("HttpClientUtil retrieveGetResponse()");
 			HttpClient client = HttpClientBuilder.create().build();
 			HttpGet get = new HttpGet(uri);
-			get.setHeaders(headers);
+			// Make the headers optional
+			if (headers!=null && headers.length>0) {
+				get.setHeaders(headers);
+			}
 			return client.execute(get);
 		} catch (IOException e) {
 			//TODO: Write custom exception
@@ -93,13 +96,13 @@ public class HttpClientUtil {
 
 	public static <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readListFromResponse()");
-
         try {
 			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
 			return json.readValue(responseBody, new TypeReference<List<T>>() {});
 		} catch (IOException e) {
-        	//TODO: Write custom exception
-			throw new ApplicationException("Incorrect object type returned");
+      logger.error("readListFromResponse() "+e.getMessage());
+      //TODO: Write custom exception
+			throw new RuntimeException("Incorrect list type returned");
 		}
 	}
 
@@ -107,13 +110,13 @@ public class HttpClientUtil {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
             String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
-            logger.debug("Response body is: " + responseBody);
+            logger.debug("readObjectFromResponse() responseBody "+responseBody);
             return json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
-			//TODO: Write custom exception
-			throw new ApplicationException("Incorrect object type returned", e);
-
-		}
+            logger.error("readObjectFromResponse() "+e.getMessage());
+            //TODO: Write custom exception
+            throw new RuntimeException("Incorrect object type returned", e);
+        }
     }
 
 	public static void throwResponseError(HttpResponse response, String baseURL){
