@@ -25,6 +25,9 @@ CREATE TABLE `user` (
   `roles` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `userId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
+  `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `subject_UNIQUE` (`subject`),
   UNIQUE KEY `userId_UNIQUE` (`userId`)

@@ -1,9 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
+import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
-
-import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 @Entity(name = "user")
 public class User extends BaseEntity {
@@ -15,6 +15,14 @@ public class User extends BaseEntity {
 	private String subject;
 
 	private String roles;
+
+	private String email;
+
+	@Column(name = "auth0_metadata")
+	private String auth0metadata;
+
+	@Column(name = "general_metadata")
+	private String generalMetadata;
 
 	public String getUserId() {
 		return userId;
@@ -41,5 +49,29 @@ public class User extends BaseEntity {
 	public User setRoles(String roles) {
 		this.roles = roles;
 		return this;
+	}
+
+	public String getAuth0metadata() {
+		return auth0metadata;
+	}
+
+	public void setAuth0metadata(String auth0metadata) {
+		this.auth0metadata = auth0metadata;
+	}
+
+	public String getGeneralMetadata() {
+		return generalMetadata;
+	}
+
+	public void setGeneralMetadata(String generalMetadata) {
+		this.generalMetadata = generalMetadata;
+	}
+
+	public String getEmail() {
+		return email;
+	}
+
+	public void setEmail(String email) {
+		this.email = email;
 	}
 }
