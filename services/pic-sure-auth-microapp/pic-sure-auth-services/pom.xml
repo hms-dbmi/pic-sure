@@ -11,11 +11,18 @@
 	<artifactId>pic-sure-auth-services</artifactId>
 	<packaging>war</packaging>
 	<properties>
-		<!--<jackson.version>1.8.6</jackson.version>-->
+		<!--<jackson.version>1.8.6</jackson.version> -->
 		<jackson.version>2.9.4</jackson.version>
 		<xml.bind.version>2.3.0</xml.bind.version>
 	</properties>
 	<dependencies>
+		<!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5.6</version>
+		</dependency>
+
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-util</artifactId>
@@ -56,21 +63,26 @@
 			</exclusions>
 		</dependency>
 		<dependency>
+			<groupId>com.auth0</groupId>
+			<artifactId>auth0</artifactId>
+			<version>1.8.0</version>
+		</dependency>
+		<dependency>
 			<groupId>org.hibernate</groupId>
 			<artifactId>hibernate-core</artifactId>
 			<version>3.5.6-Final</version>
 			<scope>provided</scope>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>org.apache.cxf</groupId>-->
-			<!--<artifactId>cxf-rt-frontend-jaxrs</artifactId>-->
-			<!--<version>3.2.6</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>org.apache.cxf</groupId>-->
-			<!--<artifactId>cxf-rt-rs-client</artifactId>-->
-			<!--<version>3.2.6</version>-->
-		<!--</dependency>-->
+		<!--<dependency> -->
+		<!--<groupId>org.apache.cxf</groupId> -->
+		<!--<artifactId>cxf-rt-frontend-jaxrs</artifactId> -->
+		<!--<version>3.2.6</version> -->
+		<!--</dependency> -->
+		<!--<dependency> -->
+		<!--<groupId>org.apache.cxf</groupId> -->
+		<!--<artifactId>cxf-rt-rs-client</artifactId> -->
+		<!--<version>3.2.6</version> -->
+		<!--</dependency> -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-core</artifactId>
@@ -81,21 +93,21 @@
 			<artifactId>jackson-databind</artifactId>
 			<version>${jackson.version}</version>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>org.codehaus.jackson</groupId>-->
-			<!--<artifactId>jackson-core-asl</artifactId>-->
-			<!--<version>${jackson.version}</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>org.codehaus.jackson</groupId>-->
-			<!--<artifactId>jackson-mapper-asl</artifactId>-->
-			<!--<version>${jackson.version}</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>org.codehaus.jackson</groupId>-->
-			<!--<artifactId>jackson-jaxrs</artifactId>-->
-			<!--<version>${jackson.version}</version>-->
-		<!--</dependency>-->
+		<!--<dependency> -->
+		<!--<groupId>org.codehaus.jackson</groupId> -->
+		<!--<artifactId>jackson-core-asl</artifactId> -->
+		<!--<version>${jackson.version}</version> -->
+		<!--</dependency> -->
+		<!--<dependency> -->
+		<!--<groupId>org.codehaus.jackson</groupId> -->
+		<!--<artifactId>jackson-mapper-asl</artifactId> -->
+		<!--<version>${jackson.version}</version> -->
+		<!--</dependency> -->
+		<!--<dependency> -->
+		<!--<groupId>org.codehaus.jackson</groupId> -->
+		<!--<artifactId>jackson-jaxrs</artifactId> -->
+		<!--<version>${jackson.version}</version> -->
+		<!--</dependency> -->
 		<dependency>
 			<groupId>org.springframework</groupId>
 			<artifactId>spring-web</artifactId>
@@ -125,25 +137,27 @@
 		</dependency>
 
 		<!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
-		<!--&lt;!&ndash; https://mvnrepository.com/artifact/com.sun.jersey/jersey-servlet &ndash;&gt;-->
-		<!--<dependency>-->
-			<!--<groupId>com.sun.jersey</groupId>-->
-			<!--<artifactId>jersey-servlet</artifactId>-->
-			<!--<version>1.19.4</version>-->
-		<!--</dependency>-->
+		<!--&lt;!&ndash; https://mvnrepository.com/artifact/com.sun.jersey/jersey-servlet 
+			&ndash;&gt; -->
+		<!--<dependency> -->
+		<!--<groupId>com.sun.jersey</groupId> -->
+		<!--<artifactId>jersey-servlet</artifactId> -->
+		<!--<version>1.19.4</version> -->
+		<!--</dependency> -->
 
 		<!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
-		<!--<dependency>-->
-			<!--<groupId>org.glassfish.jersey.containers</groupId>-->
-			<!--<artifactId>jersey-container-servlet</artifactId>-->
-			<!--<version>2.26</version>-->
-		<!--</dependency>-->
-		<!--&lt;!&ndash; https://mvnrepository.com/artifact/org.glassfish.jersey.ext/jersey-bean-validation &ndash;&gt;-->
-		<!--<dependency>-->
-			<!--<groupId>org.glassfish.jersey.ext</groupId>-->
-			<!--<artifactId>jersey-bean-validation</artifactId>-->
-			<!--<version>2.26</version>-->
-		<!--</dependency>-->
+		<!--<dependency> -->
+		<!--<groupId>org.glassfish.jersey.containers</groupId> -->
+		<!--<artifactId>jersey-container-servlet</artifactId> -->
+		<!--<version>2.26</version> -->
+		<!--</dependency> -->
+		<!--&lt;!&ndash; https://mvnrepository.com/artifact/org.glassfish.jersey.ext/jersey-bean-validation 
+			&ndash;&gt; -->
+		<!--<dependency> -->
+		<!--<groupId>org.glassfish.jersey.ext</groupId> -->
+		<!--<artifactId>jersey-bean-validation</artifactId> -->
+		<!--<version>2.26</version> -->
+		<!--</dependency> -->
 
 	</dependencies>
 	<build>
@@ -165,34 +179,34 @@
 						<failOnMissingWebXml>false</failOnMissingWebXml>
 					</configuration>
 				</plugin>
-				<!--<plugin>-->
-					<!--<groupId>org.apache.tomcat.maven</groupId>-->
-					<!--<artifactId>tomcat7-maven-plugin</artifactId>-->
-					<!--<version>2.0</version>-->
-					<!--<executions>-->
-						<!--<execution>-->
-							<!--<id>default-cli</id>-->
-							<!--<goals>-->
-								<!--<goal>run</goal>-->
-							<!--</goals>-->
-							<!--<configuration>-->
-								<!--<port>13000</port>-->
-								<!--<path>/jaxrs-service</path>-->
-								<!--<useSeparateTomcatClassLoader>true</useSeparateTomcatClassLoader>-->
-							<!--</configuration>-->
-						<!--</execution>-->
-					<!--</executions>-->
-				<!--</plugin>-->
-				<!--<plugin>-->
-					<!--<groupId>org.apache.maven.plugins</groupId>-->
-					<!--<artifactId>maven-eclipse-plugin</artifactId>-->
-					<!--<configuration>-->
-						<!--<projectNameTemplate>[artifactId]-[version]</projectNameTemplate>-->
-						<!--<wtpmanifest>true</wtpmanifest>-->
-						<!--<wtpapplicationxml>true</wtpapplicationxml>-->
-						<!--<wtpversion>2.0</wtpversion>-->
-					<!--</configuration>-->
-				<!--</plugin>-->
+				<!--<plugin> -->
+				<!--<groupId>org.apache.tomcat.maven</groupId> -->
+				<!--<artifactId>tomcat7-maven-plugin</artifactId> -->
+				<!--<version>2.0</version> -->
+				<!--<executions> -->
+				<!--<execution> -->
+				<!--<id>default-cli</id> -->
+				<!--<goals> -->
+				<!--<goal>run</goal> -->
+				<!--</goals> -->
+				<!--<configuration> -->
+				<!--<port>13000</port> -->
+				<!--<path>/jaxrs-service</path> -->
+				<!--<useSeparateTomcatClassLoader>true</useSeparateTomcatClassLoader> -->
+				<!--</configuration> -->
+				<!--</execution> -->
+				<!--</executions> -->
+				<!--</plugin> -->
+				<!--<plugin> -->
+				<!--<groupId>org.apache.maven.plugins</groupId> -->
+				<!--<artifactId>maven-eclipse-plugin</artifactId> -->
+				<!--<configuration> -->
+				<!--<projectNameTemplate>[artifactId]-[version]</projectNameTemplate> -->
+				<!--<wtpmanifest>true</wtpmanifest> -->
+				<!--<wtpapplicationxml>true</wtpapplicationxml> -->
+				<!--<wtpversion>2.0</wtpversion> -->
+				<!--</configuration> -->
+				<!--</plugin> -->
 			</plugins>
 		</pluginManagement>
 		<plugins>
@@ -241,59 +255,59 @@
 					</execution>
 				</executions>
 			</plugin>
-			<!--<plugin>-->
-				<!--<groupId>org.apache.tomcat.maven</groupId>-->
-				<!--<artifactId>tomcat7-maven-plugin</artifactId>-->
-				<!--<executions>-->
-					<!--<execution>-->
-						<!--<id>start-tomcat</id>-->
-						<!--<goals>-->
-							<!--<goal>run-war</goal>-->
-						<!--</goals>-->
-						<!--<phase>pre-integration-test</phase>-->
-						<!--<configuration>-->
-							<!--<port>${test.server.port}</port>-->
-							<!--<path>/jaxrs-service</path>-->
-							<!--<fork>true</fork>-->
-							<!--<useSeparateTomcatClassLoader>true</useSeparateTomcatClassLoader>-->
-						<!--</configuration>-->
-					<!--</execution>-->
-					<!--<execution>-->
-						<!--<id>stop-tomcat</id>-->
-						<!--<goals>-->
-							<!--<goal>shutdown</goal>-->
-						<!--</goals>-->
-						<!--<phase>post-integration-test</phase>-->
-						<!--<configuration>-->
-							<!--<path>/jaxrs-service</path>-->
-						<!--</configuration>-->
-					<!--</execution>-->
-				<!--</executions>-->
-			<!--</plugin>-->
-			<!--<plugin>-->
-				<!--<groupId>org.apache.maven.plugins</groupId>-->
-				<!--<artifactId>maven-failsafe-plugin</artifactId>-->
-				<!--<version>2.8.1</version>-->
-				<!--<executions>-->
-					<!--<execution>-->
-						<!--<id>integration-test</id>-->
-						<!--<goals>-->
-							<!--<goal>integration-test</goal>-->
-						<!--</goals>-->
-						<!--<configuration>-->
-							<!--<systemPropertyVariables>-->
-								<!--<service.url>http://localhost:${test.server.port}/jaxrs-service</service.url>-->
-							<!--</systemPropertyVariables>-->
-						<!--</configuration>-->
-					<!--</execution>-->
-					<!--<execution>-->
-						<!--<id>verify</id>-->
-						<!--<goals>-->
-							<!--<goal>verify</goal>-->
-						<!--</goals>-->
-					<!--</execution>-->
-				<!--</executions>-->
-			<!--</plugin>-->
+			<!--<plugin> -->
+			<!--<groupId>org.apache.tomcat.maven</groupId> -->
+			<!--<artifactId>tomcat7-maven-plugin</artifactId> -->
+			<!--<executions> -->
+			<!--<execution> -->
+			<!--<id>start-tomcat</id> -->
+			<!--<goals> -->
+			<!--<goal>run-war</goal> -->
+			<!--</goals> -->
+			<!--<phase>pre-integration-test</phase> -->
+			<!--<configuration> -->
+			<!--<port>${test.server.port}</port> -->
+			<!--<path>/jaxrs-service</path> -->
+			<!--<fork>true</fork> -->
+			<!--<useSeparateTomcatClassLoader>true</useSeparateTomcatClassLoader> -->
+			<!--</configuration> -->
+			<!--</execution> -->
+			<!--<execution> -->
+			<!--<id>stop-tomcat</id> -->
+			<!--<goals> -->
+			<!--<goal>shutdown</goal> -->
+			<!--</goals> -->
+			<!--<phase>post-integration-test</phase> -->
+			<!--<configuration> -->
+			<!--<path>/jaxrs-service</path> -->
+			<!--</configuration> -->
+			<!--</execution> -->
+			<!--</executions> -->
+			<!--</plugin> -->
+			<!--<plugin> -->
+			<!--<groupId>org.apache.maven.plugins</groupId> -->
+			<!--<artifactId>maven-failsafe-plugin</artifactId> -->
+			<!--<version>2.8.1</version> -->
+			<!--<executions> -->
+			<!--<execution> -->
+			<!--<id>integration-test</id> -->
+			<!--<goals> -->
+			<!--<goal>integration-test</goal> -->
+			<!--</goals> -->
+			<!--<configuration> -->
+			<!--<systemPropertyVariables> -->
+			<!--<service.url>http://localhost:${test.server.port}/jaxrs-service</service.url> -->
+			<!--</systemPropertyVariables> -->
+			<!--</configuration> -->
+			<!--</execution> -->
+			<!--<execution> -->
+			<!--<id>verify</id> -->
+			<!--<goals> -->
+			<!--<goal>verify</goal> -->
+			<!--</goals> -->
+			<!--</execution> -->
+			<!--</executions> -->
+			<!--</plugin> -->
 		</plugins>
 	</build>
 </project>

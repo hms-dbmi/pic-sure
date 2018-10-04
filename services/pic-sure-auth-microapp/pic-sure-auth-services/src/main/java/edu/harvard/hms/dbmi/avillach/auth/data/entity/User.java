@@ -4,11 +4,13 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.Id;
 
 @Entity(name = "user")
 public class User extends BaseEntity {
 
 	@Column(unique = true)
+	@Id
 	private String userId;
 
 	@Column(unique = true)

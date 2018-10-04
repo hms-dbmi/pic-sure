@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +32,7 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		CriteriaBuilder cb = cb();
 		return em.createQuery(query
 				.where(
-						or(cb,
+						cb.or(
 								eq(cb, queryRoot, "subject", subject),
 								eq(cb, queryRoot, "userId", userId))))
 				.getSingleResult();

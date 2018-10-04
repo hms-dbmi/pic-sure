@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import org.apache.http.HttpResponse;
@@ -14,6 +13,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import javax.ws.rs.core.Response;
+
 public class HttpClientUtil {
 
 	public static HttpResponse retrieveGetResponse(String uri, String token) {
@@ -25,7 +26,7 @@ public class HttpClientUtil {
             }
 			return client.execute(get);
 		} catch (IOException e) {
-			throw new ApplicationException(uri, e);
+			throw new ApplicationException(Response.Status.fromStatusCode(500), e);
 		}
 	}
 
@@ -41,7 +42,7 @@ public class HttpClientUtil {
 			post.setHeader("Content-type","application/json");
 			return client.execute(post);
 		} catch (IOException e) {
-			throw new ApplicationException(uri, e);
+			throw new ApplicationException(Response.Status.fromStatusCode(500), e);
 		}
 	}
 
