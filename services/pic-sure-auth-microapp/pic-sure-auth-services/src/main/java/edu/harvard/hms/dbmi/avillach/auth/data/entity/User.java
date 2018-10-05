@@ -21,6 +21,10 @@ public class User extends BaseEntity implements Serializable{
 
 	private String email;
 
+	private String connectionId;
+
+	private boolean matched;
+
 	@Column(name = "auth0_metadata")
 	private String auth0metadata;
 
@@ -76,5 +80,21 @@ public class User extends BaseEntity implements Serializable{
 
 	public void setEmail(String email) {
 		this.email = email;
+	}
+
+	public String getConnectionId() {
+		return connectionId;
+	}
+
+	public void setConnectionId(String connectionId) {
+		this.connectionId = connectionId;
+	}
+
+	public boolean isMatched() {
+		return matched;
+	}
+
+	public void setMatched(boolean matched) {
+		this.matched = matched;
 	}
 }
