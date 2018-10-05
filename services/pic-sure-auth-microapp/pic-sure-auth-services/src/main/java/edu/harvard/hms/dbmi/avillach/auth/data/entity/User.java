@@ -2,12 +2,14 @@ package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
+import java.io.Serializable;
+
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 
 @Entity(name = "user")
-public class User extends BaseEntity {
+public class User extends BaseEntity implements Serializable{
 
 	@Column(unique = true)
 	@Id
