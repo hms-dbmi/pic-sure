@@ -25,6 +25,17 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		super(User.class);
 	}
 
+	public User findBySubject(String subject) {
+		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+		return em.createQuery(query
+				.where(
+						eq(cb, queryRoot, "subject", subject)))
+				.getSingleResult();
+	}
+	
 	public User findBySubjectOrUserId(String subject, String userId) {
 		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
 		Root<User> queryRoot = query.from(User.class);
@@ -46,7 +57,7 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		User user = null;
 		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
 		try{
-			user = findBySubjectOrUserId(subject, userId);
+			user = findBySubject(subject);
 			logger.info("findOrCreate(), trying to find user: {subject: " + subject+
 					", userId: " + userId +
 					"}, and found a user with uuid: " + user.getUuid()

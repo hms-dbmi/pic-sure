@@ -12,7 +12,6 @@ import javax.persistence.Id;
 public class User extends BaseEntity implements Serializable{
 
 	@Column(unique = true)
-	@Id
 	private String userId;
 
 	@Column(unique = true)
