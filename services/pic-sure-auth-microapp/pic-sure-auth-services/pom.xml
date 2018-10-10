@@ -135,8 +135,19 @@
 			<artifactId>jaxb-impl</artifactId>
 			<version>${xml.bind.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>com.jayway.jsonpath</groupId>
+			<artifactId>json-path</artifactId>
+			<version>2.4.0</version>
+		</dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>2.13.0</version>
+            <scope>test</scope>
+        </dependency>
 
-		<!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
+        <!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
 		<!--&lt;!&ndash; https://mvnrepository.com/artifact/com.sun.jersey/jersey-servlet 
 			&ndash;&gt; -->
 		<!--<dependency> -->

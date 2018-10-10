@@ -1,30 +1,46 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
-import java.util.Map;
-
+import com.auth0.exception.Auth0Exception;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.Option;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.auth0.client.auth.AuthAPI;
-import com.auth0.exception.Auth0Exception;
-import com.auth0.json.auth.UserInfo;
-
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import java.util.List;
+import java.util.Map;
 
 public class Auth0UserMatchingService {
 
 	@Autowired
 	UserRepository userRepo;
-	
-	private UserMetadataMappingService mappingService = new UserMetadataMappingService();
-	
+
+	@Autowired
+	UserMetadataMappingService mappingService;
+
+	private Logger logger = LoggerFactory.getLogger(Auth0UserMatchingService.class);
+
+	private ObjectMapper mapper = new ObjectMapper();
+
 	public String mockAuthAPIUserInfo(String accessToken) {
-		Map<String, String> map = Map.of("ldap-connector-access-token", "  {\\r\\n    \\\"name\\\": \\\"Guy,Some\\\",\\r\\n    \\\"family_name\\\": \\\"Guy\\\",\\r\\n    \\\"given_name\\\": \\\"Some\\\",\\r\\n    \\\"nickname\\\": \\\"CH000000000\\\",\\r\\n    \\\"groups\\\": [],\\r\\n    \\\"emails\\\": [\\r\\n        \\\"foo@childrens.harvard.edu\\\"\\r\\n    ],\\r\\n    \\\"dn\\\": \\\"CN=CH0000000,OU=users,DC=chbdir,DC=org\\\",\\r\\n    \\\"distinguishedName\\\": \\\"CN=CH0000000,OU=users,DC=chbdir,DC=org\\\",\\r\\n    \\\"organizationUnits\\\": \\\"CN=CH0000000,OU=users,DC=chbdir,DC=org\\\",\\r\\n    \\\"email\\\": \\\"foo@childrens.harvard.edu\\\",\\r\\n    \\\"updated_at\\\": \\\"2018-10-04T18:28:23.371Z\\\",\\r\\n    \\\"picture\\\": \\\"https://s.gravatar.com/avatar/blablablablablablablablablablablabla?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fsp.png\\\",\\r\\n    \\\"user_id\\\": \\\"ad|ldap-connector|blablablablablablablablablablablabla\\\",\\r\\n    \\\"identities\\\": [\\r\\n        {\\r\\n            \\\"user_id\\\": \\\"ldap-connector|blablablablablablablablablablablabla\\\",\\r\\n            \\\"provider\\\": \\\"ad\\\",\\r\\n            \\\"connection\\\": \\\"ldap-connector\\\",\\r\\n            \\\"isSocial\\\": false\\r\\n        }\\r\\n    ],\\r\\n    \\\"created_at\\\": \\\"2018-01-26T14:06:50.413Z\\\",\\r\\n    \\\"username\\\": \\\"CH0000000\\\",\\r\\n    \\\"app_metadata\\\": {\\r\\n        \\\"roles\\\": [\\r\\n            \\\"ROLE_CITI_USER\\\"\\r\\n        ]\\r\\n    },\\r\\n    \\\"last_ip\\\": \\\"134.174.140.32\\\",\\r\\n    \\\"last_login\\\": \\\"2018-10-04T18:28:23.091Z\\\",\\r\\n    \\\"logins_count\\\": 399,\\r\\n    \\\"blocked_for\\\": [],\\r\\n    \\\"guardian_authenticators\\\": []\\r\\n}",
-				"github-access-token", "  {\\r\\n    \\\"email\\\": \\\"blablabla@gmail.com\\\",\\r\\n    \\\"name\\\": \\\"Some Girl\\\",\\r\\n    \\\"picture\\\": \\\"https://avatars3.githubusercontent.com/u/0000000000?v=4\\\",\\r\\n    \\\"nickname\\\": \\\"blablabla\\\",\\r\\n    \\\"gravatar_id\\\": \\\"\\\",\\r\\n    \\\"url\\\": \\\"https://api.github.com/users/blablabla\\\",\\r\\n    \\\"html_url\\\": \\\"https://github.com/blablabla\\\",\\r\\n    \\\"followers_url\\\": \\\"https://api.github.com/users/blablabla/followers\\\",\\r\\n    \\\"following_url\\\": \\\"https://api.github.com/users/blablabla/following{/other_user}\\\",\\r\\n    \\\"gists_url\\\": \\\"https://api.github.com/users/blablabla/gists{/gist_id}\\\",\\r\\n    \\\"starred_url\\\": \\\"https://api.github.com/users/blablabla/starred{/owner}{/repo}\\\",\\r\\n    \\\"subscriptions_url\\\": \\\"https://api.github.com/users/blablabla/subscriptions\\\",\\r\\n    \\\"organizations_url\\\": \\\"https://api.github.com/users/blablabla/orgs\\\",\\r\\n    \\\"repos_url\\\": \\\"https://api.github.com/users/blablabla/repos\\\",\\r\\n    \\\"events_url\\\": \\\"https://api.github.com/users/blablabla/events{/privacy}\\\",\\r\\n    \\\"received_events_url\\\": \\\"https://api.github.com/users/blablabla/received_events\\\",\\r\\n    \\\"type\\\": \\\"User\\\",\\r\\n    \\\"site_admin\\\": false,\\r\\n    \\\"location\\\": \\\"Nowhere, USA\\\",\\r\\n    \\\"hireable\\\": true,\\r\\n    \\\"public_repos\\\": 8,\\r\\n    \\\"public_gists\\\": 0,\\r\\n    \\\"followers\\\": 3,\\r\\n    \\\"following\\\": 1,\\r\\n    \\\"updated_at\\\": \\\"2018-09-20T18:47:43.703Z\\\",\\r\\n    \\\"emails\\\": [\\r\\n        {\\r\\n            \\\"email\\\": \\\"blablabla@gmail.com\\\",\\r\\n            \\\"primary\\\": true,\\r\\n            \\\"verified\\\": true,\\r\\n            \\\"visibility\\\": \\\"public\\\"\\r\\n        },\\r\\n        {\\r\\n            \\\"email\\\": \\\"blablabla@users.noreply.github.com\\\",\\r\\n            \\\"primary\\\": false,\\r\\n            \\\"verified\\\": true,\\r\\n            \\\"visibility\\\": null\\r\\n        }\\r\\n    ],\\r\\n    \\\"email_verified\\\": true,\\r\\n    \\\"user_id\\\": \\\"github|0000000\\\",\\r\\n    \\\"identities\\\": [\\r\\n        {\\r\\n            \\\"provider\\\": \\\"github\\\",\\r\\n            \\\"user_id\\\": 000000000,\\r\\n            \\\"connection\\\": \\\"github\\\",\\r\\n            \\\"isSocial\\\": true\\r\\n        }\\r\\n    ],\\r\\n    \\\"created_at\\\": \\\"2016-10-22T22:38:20.437Z\\\",\\r\\n    \\\"blog\\\": \\\"\\\",\\r\\n    \\\"node_id\\\": \\\"blablabla=\\\",\\r\\n    \\\"app_metadata\\\": {\\r\\n        \\\"roles\\\": [\\r\\n            \\\"ROLE_CITI_USER\\\"\\r\\n        ]\\r\\n    },\\r\\n    \\\"last_ip\\\": \\\"134.174.140.198\\\",\\r\\n    \\\"last_login\\\": \\\"2018-09-20T18:47:43.491Z\\\",\\r\\n    \\\"logins_count\\\": 71,\\r\\n    \\\"blocked_for\\\": [],\\r\\n    \\\"guardian_authenticators\\\": []\\r\\n}\\r\\n",
-				"nih-gov-prod-access-token","  {\\r\\n    \\\"email\\\": \\\"NOBODY\\\",\\r\\n    \\\"sessionIndex\\\": \\\"blablablabla\\\",\\r\\n    \\\"UserPrincipalName\\\": \\\"\\\",\\r\\n    \\\"Mail\\\": \\\"\\\",\\r\\n    \\\"FirstName\\\": \\\"\\\",\\r\\n    \\\"LastName\\\": \\\"\\\",\\r\\n    \\\"MiddleName\\\": \\\"\\\",\\r\\n    \\\"NEDID\\\": \\\"\\\",\\r\\n    \\\"nameIdAttributes\\\": {\\r\\n        \\\"value\\\": \\\"NOBODY\\\",\\r\\n        \\\"Format\\\": \\\"urn:oasis:names:tc:SAML:2.0:nameid-format:persistent\\\"\\r\\n    },\\r\\n    \\\"authenticationmethod\\\": \\\"urn:oasis:names:tc:SAML:2.0:ac:classes:Password\\\",\\r\\n    \\\"issuer\\\": \\\"https://auth.nih.gov/IDP\\\",\\r\\n    \\\"updated_at\\\": \\\"2018-07-23T19:32:51.505Z\\\",\\r\\n    \\\"name\\\": \\\"\\\",\\r\\n    \\\"picture\\\": \\\"https://cdn.auth0.com/avatars/default.png\\\",\\r\\n    \\\"user_id\\\": \\\"samlp|NOBODY\\\",\\r\\n    \\\"nickname\\\": \\\"\\\",\\r\\n    \\\"identities\\\": [\\r\\n        {\\r\\n            \\\"user_id\\\": \\\"NOBODY\\\",\\r\\n            \\\"provider\\\": \\\"samlp\\\",\\r\\n            \\\"connection\\\": \\\"nih-gov-prod\\\",\\r\\n            \\\"isSocial\\\": false\\r\\n        }\\r\\n    ],\\r\\n    \\\"created_at\\\": \\\"2018-04-02T13:10:25.654Z\\\",\\r\\n    \\\"app_metadata\\\": {\\r\\n        \\\"roles\\\": [\\r\\n            \\\"ROLE_CITI_USER\\\"\\r\\n        ]\\r\\n    },\\r\\n    \\\"last_ip\\\": \\\"134.174.140.195\\\",\\r\\n    \\\"last_login\\\": \\\"2018-07-23T19:32:51.254Z\\\",\\r\\n    \\\"logins_count\\\": 12,\\r\\n    \\\"blocked_for\\\": [],\\r\\n    \\\"guardian_authenticators\\\": []\\r\\n}\\r\\n");
+		Map<String, String> map = Map.of("ldap-connector-access-token",
+				"{    \"name\": \"Guy,Some\",    \"family_name\": \"Guy\",    \"given_name\": \"Some\",    \"nickname\": \"CH000000000\",    \"groups\": [],    \"emails\": [        \"foo@childrens.harvard.edu\"    ],    \"dn\": \"CN=CH0000000,OU=users,DC=chbdir,DC=org\",    \"distinguishedName\": \"CN=CH0000000,OU=users,DC=chbdir,DC=org\",    \"organizationUnits\": \"CN=CH0000000,OU=users,DC=chbdir,DC=org\",    \"email\": \"foo@childrens.harvard.edu\",    \"updated_at\": \"2018-10-04T18:28:23.371Z\",    \"picture\": \"https://s.gravatar.com/avatar/blablablablablablablablablablablabla?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fsp.png\",    \"user_id\": \"ad|ldap-connector|blablablablablablablablablablablabla\",    \"identities\": [        {            \"user_id\": \"ldap-connector|blablablablablablablablablablablabla\",            \"provider\": \"ad\",            \"connection\": \"ldap-connector\",            \"isSocial\": false        }    ],    \"created_at\": \"2018-01-26T14:06:50.413Z\",    \"username\": \"CH0000000\",    \"app_metadata\": {        \"roles\": [            \"ROLE_CITI_USER\"        ]    },    \"last_ip\": \"134.174.140.32\",    \"last_login\": \"2018-10-04T18:28:23.091Z\",    \"logins_count\": 399,    \"blocked_for\": [],    \"guardian_authenticators\": []}",
+				"github-access-token", "  {    \"email\": \"blablabla@gmail.com\",    \"name\": \"Some Girl\",    \"picture\": \"https://avatars3.githubusercontent.com/u/0000000000?v=4\",    \"nickname\": \"blablabla\",    \"gravatar_id\": \"\",    \"url\": \"https://api.github.com/users/blablabla\",    \"html_url\": \"https://github.com/blablabla\",    \"followers_url\": \"https://api.github.com/users/blablabla/followers\",    \"following_url\": \"https://api.github.com/users/blablabla/following{/other_user}\",    \"gists_url\": \"https://api.github.com/users/blablabla/gists{/gist_id}\",    \"starred_url\": \"https://api.github.com/users/blablabla/starred{/owner}{/repo}\",    \"subscriptions_url\": \"https://api.github.com/users/blablabla/subscriptions\",    \"organizations_url\": \"https://api.github.com/users/blablabla/orgs\",    \"repos_url\": \"https://api.github.com/users/blablabla/repos\",    \"events_url\": \"https://api.github.com/users/blablabla/events{/privacy}\",    \"received_events_url\": \"https://api.github.com/users/blablabla/received_events\",    \"type\": \"User\",    \"site_admin\": false,    \"location\": \"Nowhere, USA\",    \"hireable\": true,    \"public_repos\": 8,    \"public_gists\": 0,    \"followers\": 3,    \"following\": 1,    \"updated_at\": \"2018-09-20T18:47:43.703Z\",    \"emails\": [        {            \"email\": \"blablabla@gmail.com\",            \"primary\": true,            \"verified\": true,            \"visibility\": \"public\"        },        {            \"email\": \"blablabla@users.noreply.github.com\",            \"primary\": false,            \"verified\": true,            \"visibility\": null        }    ],    \"email_verified\": true,    \"user_id\": \"github|0000000\",    \"identities\": [        {            \"provider\": \"github\",            \"user_id\": 000000000,            \"connection\": \"github\",            \"isSocial\": true        }    ],    \"created_at\": \"2016-10-22T22:38:20.437Z\",    \"blog\": \"\",    \"node_id\": \"blablabla=\",    \"app_metadata\": {        \"roles\": [            \"ROLE_CITI_USER\"        ]    },    \"last_ip\": \"134.174.140.198\",    \"last_login\": \"2018-09-20T18:47:43.491Z\",    \"logins_count\": 71,    \"blocked_for\": [],    \"guardian_authenticators\": []}",
+				"nih-gov-prod-access-token","  {    \"email\": \"NOBODY\",    \"sessionIndex\": \"blablablabla\",    \"UserPrincipalName\": \"\",    \"Mail\": \"\",    \"FirstName\": \"\",    \"LastName\": \"\",    \"MiddleName\": \"\",    \"NEDID\": \"\",    \"nameIdAttributes\": {        \"value\": \"NOBODY\",        \"Format\": \"urn:oasis:names:tc:SAML:2.0:nameid-format:persistent\"    },    \"authenticationmethod\": \"urn:oasis:names:tc:SAML:2.0:ac:classes:Password\",    \"issuer\": \"https://auth.nih.gov/IDP\",    \"updated_at\": \"2018-07-23T19:32:51.505Z\",    \"name\": \"\",    \"picture\": \"https://cdn.auth0.com/avatars/default.png\",    \"user_id\": \"samlp|NOBODY\",    \"nickname\": \"\",    \"identities\": [        {            \"user_id\": \"NOBODY\",            \"provider\": \"samlp\",            \"connection\": \"nih-gov-prod\",            \"isSocial\": false        }    ],    \"created_at\": \"2018-04-02T13:10:25.654Z\",    \"app_metadata\": {        \"roles\": [            \"ROLE_CITI_USER\"        ]    },    \"last_ip\": \"134.174.140.195\",    \"last_login\": \"2018-07-23T19:32:51.254Z\",    \"logins_count\": 12,    \"blocked_for\": [],    \"guardian_authenticators\": []}",
+				"no-mapping-connection-token","  {    \"email\": \"foo@bar.com\",     \"UserName\": \"foooo\",     \"FirstName\": \"foo\",    \"LastName\": \"oooo\",\"user_id\": \"samlp|fooBar\",    \"identities\": [        {            \"user_id\": \"fooBar\",            \"provider\": \"samlp\",            \"connection\": \"no-mapping-connection\",            \"isSocial\": false        }    ]}",
+				"invalid-path-token","  {    \"email\": \"bar@foo.com\",     \"UserName\": \"bahh\",     \"user_id\": \"samlp|barFoo\",    \"identities\": [        {            \"user_id\": \"barFoo\",            \"provider\": \"samlp\",            \"connection\": \"invalid-path\",            \"isSocial\": true        }    ]}",
+				"no-user-token","  {    \"email\": \"no@user.com\",     \"UserName\": \"nooooooo\",     \"user_id\": \"samlp|noUser\",    \"identities\": [        {            \"user_id\": \"noUser\",            \"provider\": \"samlp\",            \"connection\": \"no-user-connection\",            \"isSocial\": false        }    ]}"
+		);
 		return map.get(accessToken);
 	}
-	
+
+
 	/**
 	 * Retrieve a user profile by access_token and match it to a pre-created user in the database using
 	 * pre-configured matching rules. 
@@ -33,21 +49,83 @@ public class Auth0UserMatchingService {
 	 * @return The user that was matched or null if no match was possible.
 	 * @throws Auth0Exception
 	 */
-	public User matchTokenToUser(String access_token) throws Auth0Exception {
+	public User matchTokenToUser(String access_token) throws Auth0Exception, JsonProcessingException {
 		// This retrieves a map of UserInfo as JSON.
+/*
+		USE THIS FOR REAL TIMES
+
 		UserInfo info = new AuthAPI("avillachlab.auth0.com", "", "").userInfo(access_token).execute();
-		
+
 		// Available as a map, but can always be ObjectMapper'd back to JSON for matching using libraries that do such things
-		Map<String, Object> userInfo = info.getValues();
-		
-		// We will want to be able to go through all the non-previously matched users in the database that
-		// were created for the connection in the userInfo identities section. This probably means addding
-		// a connection id to the user entity as well as a flag for if that user has been matched already.
-		
-		// Here we return the matched user, or null if we can't match. An unmatched user should be logged at
-		// the very least. We will eventually want to provide an interface for the admin to try and match the
-		// user manually potentially resulting in a new matching 
+		Map<String, Object> infoValues = info.getValues();
+		String userInfo = mapper.writeValueAsString(infoValues);
+*/
+		/* Replace this with the above*/
+		String userInfo = mockAuthAPIUserInfo(access_token);
+		/**/
+
+		//Parse this once so it doesn't get re-parsed every time we read from it
+		Configuration conf = Configuration.defaultConfiguration().addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
+		Object parsedInfo = conf.jsonProvider().parse(userInfo);
+		//Return lists or null so that we don't have to worry about whether it's a single object or an array, or catch errors
+		conf = conf.addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
+			List<String> connections = JsonPath.using(conf).parse(parsedInfo).read("$.identities[0].connection");
+			String connection = connections.get(0);
+			List<UserMetadataMapping> mappings = mappingService.getAllMappingsForConnection(connection);
+
+			if (mappings == null || mappings.isEmpty()){
+				logger.info("Unable to find mappings for connectionId " + connection);
+				//We don't have any mappings for this connection yet
+				addNewUser(userInfo);
+				return null;
+			}
+			//We only care about unmatched users
+			List<User> users = userRepo.listUnmatchedByConnectionId(connection);
+			if (users == null || users.isEmpty()){
+				logger.info("No unmatched users exist with connectionId " + connection);
+				addNewUser(userInfo);
+				return null;
+			}
+			for (UserMetadataMapping umm : mappings){
+				List<String> auth0values = JsonPath.using(conf).parse(parsedInfo).read(umm.getAuth0MetadataJsonPath());
+				if (auth0values == null || auth0values.isEmpty()){
+					//Well, nothing found, let's move on.
+					logger.info("Fetched data has no value at " + umm.getAuth0MetadataJsonPath());
+					break;
+				}
+				String auth0value = auth0values.get(0);
+				for (User u : users) {
+					List<String> values = JsonPath.using(conf).parse(u.getGeneralMetadata()).read(umm.getGeneralMetadataJsonPath());
+					if (values == null || values.isEmpty()){
+						logger.info("User " + u.getUuid() + " has no value at " + umm.getGeneralMetadataJsonPath());
+						break;
+					}
+					String generalValue = values.get(0);
+					if (auth0value.equalsIgnoreCase(generalValue)) {
+						//Match found!!
+						String userId = JsonPath.read(parsedInfo, "$.user_id");
+						logger.info("Matching user with user_id " + userId);
+						u.setAuth0metadata(userInfo);
+						u.setMatched(true);
+						u.setUserId(userId);
+						userRepo.persist(u);
+						return u;
+					}
+				}
+			}
+			//No user found; create a new one
+			addNewUser(userInfo);
+
 		return null;
+	}
+
+	private void addNewUser(String userInfo){
+		String userId = JsonPath.read(userInfo, "$.user_id");
+		logger.info("Adding new user with id " + userId);
+		User newUser = new User();
+		newUser.setAuth0metadata(userInfo);
+		newUser.setUserId(userId);
+		userRepo.persist(newUser);
 	}
 	
 }

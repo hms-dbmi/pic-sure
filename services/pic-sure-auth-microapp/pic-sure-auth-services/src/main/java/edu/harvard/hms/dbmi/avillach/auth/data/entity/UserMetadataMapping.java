@@ -1,10 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
-import javax.persistence.Entity;
-
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-@Entity(name = "userMetadataMapping")
+import javax.persistence.Entity;
+
+@Entity(name="userMetadataMapping")
 public class UserMetadataMapping extends BaseEntity {
 	
 	private String connectionId;
