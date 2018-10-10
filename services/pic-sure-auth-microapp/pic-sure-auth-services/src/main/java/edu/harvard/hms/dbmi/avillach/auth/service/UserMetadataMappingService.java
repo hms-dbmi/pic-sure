@@ -38,5 +38,9 @@ public class UserMetadataMappingService extends BaseEntityService<UserMetadataMa
     			return mapping.getConnectionId().equalsIgnoreCase(connectionId);
     		}).collect(Collectors.toList());
     }
+
+	public List<UserMetadataMapping> getAllMappings() {
+		return userMetadataMappingRepo.list();
+	}
     
 }

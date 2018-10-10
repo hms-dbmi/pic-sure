@@ -1,3 +1,26 @@
+{{#each connections}}
+	<h1>{{label}}</h2>
+	<table class="table-users">
+	<thead class="header-color">
+		<tr>
+			{{#each requiredFields}}
+				<th>{{this.label}}</th>
+		    {{/each}}
+		    <th>Roles</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{#each users}}
+        <tr>
+            {{#each ../requiredFields}}
+            <td><div class="user-row" id="{{../uuid}}">{{{fieldHelper ../this this}}}</div></td>
+            {{/each}}
+            <td><div>{{this.roles}}</div></td>
+        </tr>
+		{{/each}}
+	</tbody>
+	</table>
+{{/each}}
 <table class="table-users">
     <thead class="header-color">
         <tr>

@@ -75,10 +75,10 @@ public class UserRepository extends BaseRepository<User, UUID> {
 
 	private User createUser(User inputUser) {
 		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
-		if (subject == null && userId == null){
-			logger.error("createUser() cannot create user when both subject and userId are null");
-			return null;
-		}
+//		if (subject == null && userId == null){
+//			logger.error("createUser() cannot create user when both subject and userId are null");
+//			return null;
+//		}
 		logger.debug("createUser() creating user, subject: " + subject +", userId: " + userId + " ......");
 		em().persist(inputUser);
 

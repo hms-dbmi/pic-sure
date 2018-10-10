@@ -4,7 +4,7 @@ import javax.persistence.Entity;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-@Entity
+@Entity(name = "userMetadataMapping")
 public class UserMetadataMapping extends BaseEntity {
 	
 	private String connectionId;
