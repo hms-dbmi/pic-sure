@@ -1,8 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
-
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +12,7 @@ import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Root;
 import javax.transaction.Transactional;
+import java.util.List;
 import java.util.UUID;
 
 @Transactional
@@ -47,6 +47,19 @@ public class UserRepository extends BaseRepository<User, UUID> {
 								eq(cb, queryRoot, "subject", subject),
 								eq(cb, queryRoot, "userId", userId))))
 				.getSingleResult();
+	}
+
+	public List<User> listUnmatchedByConnectionId(String connectionId) {
+		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+		return em.createQuery(query
+				.where(
+						cb.and(
+								eq(cb, queryRoot, "connectionId", connectionId),
+								eq(cb, queryRoot, "matched", false))))
+				.getResultList();
 	}
 
 	/**
@@ -104,4 +117,5 @@ public class UserRepository extends BaseRepository<User, UUID> {
 	public void persist(User user) {
 		findOrCreate(user);
 	}
+
 }

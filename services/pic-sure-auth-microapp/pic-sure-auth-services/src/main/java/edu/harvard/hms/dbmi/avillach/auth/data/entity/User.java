@@ -2,11 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-import java.io.Serializable;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.Id;
+import java.io.Serializable;
 
 @Entity(name = "user")
 public class User extends BaseEntity implements Serializable{
@@ -62,16 +60,18 @@ public class User extends BaseEntity implements Serializable{
 		return auth0metadata;
 	}
 
-	public void setAuth0metadata(String auth0metadata) {
+	public User setAuth0metadata(String auth0metadata) {
 		this.auth0metadata = auth0metadata;
+		return this;
 	}
 
 	public String getGeneralMetadata() {
 		return generalMetadata;
 	}
 
-	public void setGeneralMetadata(String generalMetadata) {
+	public User setGeneralMetadata(String generalMetadata) {
 		this.generalMetadata = generalMetadata;
+		return this;
 	}
 
 	public String getEmail() {
@@ -86,8 +86,9 @@ public class User extends BaseEntity implements Serializable{
 		return connectionId;
 	}
 
-	public void setConnectionId(String connectionId) {
+	public User setConnectionId(String connectionId) {
 		this.connectionId = connectionId;
+		return this;
 	}
 
 	public boolean isMatched() {
