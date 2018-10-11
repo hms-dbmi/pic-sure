@@ -26,7 +26,7 @@ CREATE TABLE `user` (
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `userId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `matched` bit(3) DEFAULT 0 NOT NULL,
-  `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `connectionId` varchar(255) NOT NULL,
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
   `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
