@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.security;
 
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import io.jsonwebtoken.Claims;
@@ -30,11 +31,6 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
 	ResourceInfo resourceInfo;
-	
-	@Resource(mappedName = "java:global/client_secret")
-	private String clientSecret;
-	@Resource(mappedName = "java:global/user_id_claim")
-	private String userIdClaim;
 	
 	@Inject
 	UserRepository userRepo;
@@ -120,10 +116,10 @@ public class JWTFilter implements ContainerRequestFilter {
 	}
 
 	private User callLocalAuthentication(ContainerRequestContext requestContext, String token) throws JwtException{
-		Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
+		Jws<Claims> jws = Jwts.parser().setSigningKey(JAXRSConfiguration.clientSecret.getBytes()).parseClaimsJws(token);
 
 		String subject = jws.getBody().getSubject();
-		String userId = jws.getBody().get(userIdClaim, String.class);
+		String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
 		return userRepo.findOrCreate(new User().setSubject(subject).setUserId(userId));
 	}

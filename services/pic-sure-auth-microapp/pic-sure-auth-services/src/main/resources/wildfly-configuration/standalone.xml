@@ -429,7 +429,8 @@
         <subsystem xmlns="urn:jboss:domain:naming:2.0">
             <bindings>
                 <simple name="java:global/client_secret" value="${env.AUTH_CLIENT_SECRET}"/>
-                <simple name="java:global/user_id_claim" value="${env.AUTH_USER_ID_CLAIM}"/>
+                <simple name="java:global/client_id" value="${env.AUTH_CLIENT_ID}"/>
+                <simple name="java:global/user_id_claim" value="${env.AUTH_USER_ID_CLAIM:sub}"/>
                 <simple name="java:global/auth0token" value="${env.AUTH0TOKEN}"/>
                 <simple name="java:global/auth0host" value="${env.AUTH0HOST:https://avillachlab.auth0.com}"/>
             </bindings>
