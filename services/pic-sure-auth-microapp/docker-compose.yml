@@ -22,10 +22,10 @@ services:
     depends_on:
       - picsureauthdb
     environment:
-      - AUTH_CLIENT_SECRET=secret
+      - AUTH_CLIENT_SECRET=${AUTH_CLIENT_SECRET:-secret}
       - AUTH_USER_ID_CLAIM = sub
       - AUTH_MYSQLADDRESS=picsureauthdb
-      - AUTH0TOKEN=some.thing.here
+      - AUTH0TOKEN=${AUTH0TOKEN}
       - AUTH0HOST=https://avillachlab.auth0.com
     ports:
       - 8080:8080

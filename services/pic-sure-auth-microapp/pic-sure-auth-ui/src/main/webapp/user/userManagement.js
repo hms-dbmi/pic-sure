@@ -1,31 +1,17 @@
-define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs", "text!user/userMenu.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
-		function(BB, HBS, AddUserView, template, userMenuTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
+define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/userManagement.hbs", "text!user/userMenu.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		function(BB, HBS, connections, AddUserView, template, userMenuTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
 	var userManagementModel = BB.Model.extend({
 	});
 
 	var userManagementView = BB.View.extend({
+		connections : connections, 
+		template : HBS.compile(template),
+		crudUserTemplate : HBS.compile(userMenuTemplate),
+		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
 			HBS.registerHelper('fieldHelper', function(user, connectionField){
 				return JSON.parse(user.generalMetadata)[connectionField.id]
 			});
-			this.template = HBS.compile(template);
-			this.crudUserTemplate = HBS.compile(userMenuTemplate);
-			this.modalTemplate = HBS.compile(modalTemplate);
-			this.connections = 
-				[
-					{
-						label:"BCH", 
-						id: "ldap-connector",
-						subPrefix:"ldap-connector|", 
-						requiredFields:[{label:"BCH Email", id:"BCHEmail"}], 
-						optionalFields:[{label:"BCH ID", id:"BCHID"}]
-					},{
-						label:"HMS", 
-						id: "hms-it",
-						subPrefix:"samlp|", 
-						requiredFields:[{label:"HMS Email", id:"HMSEmail"}]
-					}
-					];
 		},
 		events : {
 			"click .add-user-button":   "addUserMenu",
