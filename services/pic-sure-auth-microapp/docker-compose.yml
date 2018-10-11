@@ -22,7 +22,7 @@ services:
     depends_on:
       - picsureauthdb
     environment:
-      - AUTH_CLIENT_SECRET=secret
+      - AUTH_CLIENT_SECRET=${AUTH_CLIENT_SECRET:-secret}
       - AUTH_USER_ID_CLAIM = sub
       - AUTH_MYSQLADDRESS=picsureauthdb
       - AUTH0TOKEN=${AUTH0TOKEN}
