@@ -23,12 +23,14 @@ services:
       - picsureauthdb
     environment:
       - AUTH_CLIENT_SECRET=${AUTH_CLIENT_SECRET:-secret}
+      - AUTH_CLIENT_ID=${AUTH_CLIENT_ID:-client_id}
       - AUTH_USER_ID_CLAIM = sub
       - AUTH_MYSQLADDRESS=picsureauthdb
-      - AUTH0TOKEN=${AUTH0TOKEN}
+      - AUTH0TOKEN=${AUTH0TOKEN:-nothing}
       - AUTH0HOST=https://avillachlab.auth0.com
     ports:
       - 8080:8080
+      - 8787:8787
     expose:
       - 8080
     networks:
