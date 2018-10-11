@@ -1,0 +1,10 @@
+<div id="new-user-signup-form">
+	<label for='new-user-connection-dropdown'>Adding User For: </label>
+	<select id="new-user-connection-dropdown">
+		{{#each connections}}
+			<option value="{{this.id}}">{{this.label}}</option>
+		{{/each}}
+	</select>
+	<div id="current-connection-form" class="container">
+	</div>
+</div>

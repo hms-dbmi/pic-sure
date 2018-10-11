@@ -11,3 +11,49 @@ services:
       - ./pic-sure-auth-ui/src/main/webapp:/usr/local/apache2/htdocs
       - ./pic-sure-auth-ui/target/webjars/META-INF/resources/webjars:/usr/local/apache2/htdocs/webjars
       - ./pic-sure-auth-ui/src/main/resources:/usr/local/apache2/htdocs/settings
+    networks:
+      - public
+
+  picsureauth:
+    build:
+      context: pic-sure-auth-services
+      dockerfile: Dockerfile
+    command: --debug *:8787
+    depends_on:
+      - picsureauthdb
+    environment:
+      - AUTH_CLIENT_SECRET=${AUTH_CLIENT_SECRET:-secret}
+      - AUTH_CLIENT_ID=${AUTH_CLIENT_ID:-client_id}
+      - AUTH_USER_ID_CLAIM = sub
+      - AUTH_MYSQLADDRESS=picsureauthdb
+      - AUTH0TOKEN=${AUTH0TOKEN:-nothing}
+      - AUTH0HOST=https://avillachlab.auth0.com
+    ports:
+      - 8080:8080
+      - 8787:8787
+    expose:
+      - 8080
+    networks:
+      - public
+
+  picsureauthdb:
+    image: dbmi/auth-db:5.7.22_initial
+    command: --datadir=/mysql/data
+    environment:
+      - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
+      - MYSQL_DATABASE=auth
+    restart: always
+    expose:
+      - 3306
+    volumes:
+      - picsure-auth-data:/mysql/data
+    networks:
+      - public
+
+networks:
+  public:
+
+volumes:
+  picsure-auth-data:
+
+
