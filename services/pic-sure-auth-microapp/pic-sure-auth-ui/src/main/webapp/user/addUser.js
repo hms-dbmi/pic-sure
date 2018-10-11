@@ -1,23 +1,10 @@
-define(["backbone", "handlebars", "picSure/userFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"], function(BB, HBS, userFunctions, template, connectionTemplate){
+define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"], 
+		function(BB, HBS, connections, userFunctions, template, connectionTemplate){
 	var view = BB.View.extend({
 		initialize: function(){
 			this.connectionTemplate = HBS.compile(connectionTemplate);
 			this.template = HBS.compile(template);
-			this.connections = 
-				[
-					{
-						label:"BCH", 
-						id:"ldap-connector",
-						subPrefix:"ldap-connector|", 
-						requiredFields:[{label:"BCH Email", id:"BCHEmail"}], 
-						optionalFields:[{label:"BCH ID", id:"BCHID"}]
-					},{
-						label:"HMS", 
-						id:"hms-it",
-						subPrefix:"samlp|", 
-						requiredFields:[{label:"HMS Email", id:"HMSEmail"}]
-					}
-				];
+			this.connections = connections;
 			this.connection = this.connections[0];
 		},
 		events: {
