@@ -21,21 +21,3 @@
 	</tbody>
 	</table>
 {{/each}}
-<table class="table-users">
-    <thead class="header-color">
-        <tr>
-            <th>User ID</th>
-            <th>Subject</th>
-            <th>Roles</th>
-        </tr>
-    </thead>
-    <tbody>
-        {{#each this}}
-        <tr>
-            <td><div class="user-row" id="{{this.uuid}}">{{this.userId}}</div></td>
-            <td><div>{{this.subject}}</div></td>
-            <td><div>{{this.roles}}</div></td>
-        </tr>
-        {{/each}}
-    </tbody>
-</table>
