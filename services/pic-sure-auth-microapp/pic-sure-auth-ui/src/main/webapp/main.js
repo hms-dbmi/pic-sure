@@ -8,7 +8,9 @@ require.config({
 		backbone: 'webjars/backbonejs/1.3.3/backbone-min',
 		text: 'webjars/requirejs-text/2.0.15/text',
 		'auth0-js': "webjars/auth0.js/9.2.3/build/auth0",
-        Noty: 'webjars/noty/3.1.4/lib/noty'
+        Noty: 'webjars/noty/3.1.4/lib/noty',
+        userManagement: "/userManagement/",
+        common: "/common/"
     },
     shim: {
         "bootstrap": {
@@ -21,5 +23,12 @@ require.config({
     }
 });
 
-require(["common/startup"], function(){
-});
+// require(["common/startup"], function(){
+// });
+
+require(["backbone", "common/session", "common/router", "underscore", "jquery", "bootstrap"],
+    function(Backbone, session, router){
+        Backbone.history.start({pushState:true});
+        document.onmousemove = session.activity;
+        document.onkeyup = session.activity;
+    });
