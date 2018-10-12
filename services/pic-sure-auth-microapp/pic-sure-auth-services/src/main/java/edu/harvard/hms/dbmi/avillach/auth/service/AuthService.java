@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.utils.HttpClientUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
@@ -13,6 +14,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
@@ -35,6 +37,8 @@ public class AuthService {
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
+    @Autowired
+    Auth0UserMatchingService matchingService;
 
     @POST
     @Path("/")
@@ -54,13 +58,20 @@ public class AuthService {
 
         JsonNode userInfo = retrieveUserInfo(accessTokenNode.asText());
         JsonNode userIdNode = userInfo.get("user_id");
+        String userId;
         if (userIdNode == null){
             logger.error("getToken() cannot find user_id by retrieveUserInfo(), return json response: " + userInfo.toString());
-            throw new ApplicationException("cannot get sufficient user information. Please contact admin.");
+            //Try to match
+            User matchedUser = matchingService.matchTokenToUser(userInfo);
+            if (matchedUser == null){
+                throw new ApplicationException("cannot get sufficient user information. Please contact admin.");
+            } else {
+                userId = matchedUser.getUserId();
+            }
         }
-        String userId = userIdNode.asText();
+        userId = userIdNode.asText();
 
-        logger.info("Successfully retrieve userId, " + userId +
+        logger.info("Successfully retrieved userId, " + userId +
                 ", from the provided code and redirectURI");
 
         String token = JWTUtil.createJwtToken(

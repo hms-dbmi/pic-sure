@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service;
 
 import com.auth0.exception.Auth0Exception;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
@@ -45,50 +46,45 @@ public class Auth0UserMatchingService {
 	 * Retrieve a user profile by access_token and match it to a pre-created user in the database using
 	 * pre-configured matching rules. 
 	 * 
-	 * @param access_token An auth0 access_token acquired through the login flow.
+	 * @param userInfo UserInfo returned from auth0
 	 * @return The user that was matched or null if no match was possible.
 	 * @throws Auth0Exception
 	 */
-	public User matchTokenToUser(String access_token) throws Auth0Exception, JsonProcessingException {
+//	public User matchTokenToUser(String access_token) throws Auth0Exception, JsonProcessingException {
+	public User matchTokenToUser(JsonNode userInfo) {
 		// This retrieves a map of UserInfo as JSON.
-/*
-		USE THIS FOR REAL TIMES
+		try {
+			String userInfoString = mapper.writeValueAsString(userInfo);
 
-		UserInfo info = new AuthAPI("avillachlab.auth0.com", "", "").userInfo(access_token).execute();
+			/* Replace this with the above*/
+//		String userInfo = mockAuthAPIUserInfo(access_token);
+			/**/
 
-		// Available as a map, but can always be ObjectMapper'd back to JSON for matching using libraries that do such things
-		Map<String, Object> infoValues = info.getValues();
-		String userInfo = mapper.writeValueAsString(infoValues);
-*/
-		/* Replace this with the above*/
-		String userInfo = mockAuthAPIUserInfo(access_token);
-		/**/
-
-		//Parse this once so it doesn't get re-parsed every time we read from it
-		Configuration conf = Configuration.defaultConfiguration().addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
-		Object parsedInfo = conf.jsonProvider().parse(userInfo);
-		//Return lists or null so that we don't have to worry about whether it's a single object or an array, or catch errors
-		conf = conf.addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
+			//Parse this once so it doesn't get re-parsed every time we read from it
+			Configuration conf = Configuration.defaultConfiguration().addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
+			Object parsedInfo = conf.jsonProvider().parse(userInfoString);
+			//Return lists or null so that we don't have to worry about whether it's a single object or an array, or catch errors
+			conf = conf.addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
 			List<String> connections = JsonPath.using(conf).parse(parsedInfo).read("$.identities[0].connection");
 			String connection = connections.get(0);
 			List<UserMetadataMapping> mappings = mappingService.getAllMappingsForConnection(connection);
 
-			if (mappings == null || mappings.isEmpty()){
+			if (mappings == null || mappings.isEmpty()) {
 				logger.info("Unable to find mappings for connectionId " + connection);
 				//We don't have any mappings for this connection yet
-				addNewUser(userInfo);
+				addNewUser(userInfoString);
 				return null;
 			}
 			//We only care about unmatched users
 			List<User> users = userRepo.listUnmatchedByConnectionId(connection);
-			if (users == null || users.isEmpty()){
+			if (users == null || users.isEmpty()) {
 				logger.info("No unmatched users exist with connectionId " + connection);
-				addNewUser(userInfo);
+				addNewUser(userInfoString);
 				return null;
 			}
-			for (UserMetadataMapping umm : mappings){
+			for (UserMetadataMapping umm : mappings) {
 				List<String> auth0values = JsonPath.using(conf).parse(parsedInfo).read(umm.getAuth0MetadataJsonPath());
-				if (auth0values == null || auth0values.isEmpty()){
+				if (auth0values == null || auth0values.isEmpty()) {
 					//Well, nothing found, let's move on.
 					logger.info("Fetched data has no value at " + umm.getAuth0MetadataJsonPath());
 					break;
@@ -96,7 +92,7 @@ public class Auth0UserMatchingService {
 				String auth0value = auth0values.get(0);
 				for (User u : users) {
 					List<String> values = JsonPath.using(conf).parse(u.getGeneralMetadata()).read(umm.getGeneralMetadataJsonPath());
-					if (values == null || values.isEmpty()){
+					if (values == null || values.isEmpty()) {
 						logger.info("User " + u.getUuid() + " has no value at " + umm.getGeneralMetadataJsonPath());
 						break;
 					}
@@ -105,7 +101,7 @@ public class Auth0UserMatchingService {
 						//Match found!!
 						String userId = JsonPath.read(parsedInfo, "$.user_id");
 						logger.info("Matching user with user_id " + userId);
-						u.setAuth0metadata(userInfo);
+						u.setAuth0metadata(userInfoString);
 						u.setMatched(true);
 						u.setUserId(userId);
 						userRepo.persist(u);
@@ -114,8 +110,10 @@ public class Auth0UserMatchingService {
 				}
 			}
 			//No user found; create a new one
-			addNewUser(userInfo);
-
+			addNewUser(userInfoString);
+		} catch (JsonProcessingException e ){
+			logger.error("Unable to read UserInfo");
+		}
 		return null;
 	}
 
