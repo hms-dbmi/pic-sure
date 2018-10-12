@@ -1,34 +1,33 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
+import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
-import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
-import edu.harvard.hms.dbmi.avillach.auth.utils.HttpClientUtil;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.codec.binary.StringUtils;
 import org.apache.http.HttpResponse;
-import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.RequestParam;
 
 import javax.annotation.Resource;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.persistence.NoResultException;
 import javax.persistence.NonUniqueResultException;
-import javax.ws.rs.*;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.Map;
@@ -203,7 +202,9 @@ public class TokenService {
 		String requestPath = "?fields=email&include_fields=true&q=" + searchString;
 
 		String uri = auth0host + requestPath;
-		HttpResponse response = HttpClientUtil.retrieveGetResponse(uri, token);
+
+		org.apache.http.Header[] headers = new org.apache.http.Header[]{new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token)};
+		HttpResponse response = HttpClientUtil.retrieveGetResponse(uri, headers);
 
 
 		if (response.getStatusLine().getStatusCode() != 200) {
