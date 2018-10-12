@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
-	public static HttpClient client = HttpClientBuilder.create().build();
 
 	private final static Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
@@ -54,6 +53,7 @@ public class HttpClientUtil {
 		try {
             logger.debug("HttpClientUtil retrieveGetResponse()");
 
+			HttpClient client = HttpClientBuilder.create().build();
             return simpleGet(client, uri, headers);
 		} catch (ApplicationException e) {
 			//TODO: Write custom exception
@@ -94,9 +94,13 @@ public class HttpClientUtil {
 		try {
 		    logger.debug("HttpClientUtil retrievePostResponse()");
 
-		    List<Header> headerList = new ArrayList<>(Arrays.asList(headers));
+		    List<Header> headerList = new ArrayList<>();
+
+		    if (headers != null)
+		    	headerList = new ArrayList<>(Arrays.asList(headers));
 		    headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
 
+			HttpClient client = HttpClientBuilder.create().build();
 		    return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
 		} catch (ApplicationException | UnsupportedEncodingException e) {
 			//TODO: Write custom exception
@@ -163,6 +167,9 @@ public class HttpClientUtil {
 	public static HttpResponse simplePost(String uri, HttpClient client, StringEntity requestBody, Header... headers)
 			throws ApplicationException{
 
+		if (client == null)
+			client = HttpClientBuilder.create().build();
+
 		HttpPost post = new HttpPost(uri);
 		post.setHeaders(headers);
 		post.setEntity(requestBody);
@@ -226,6 +233,10 @@ public class HttpClientUtil {
 	 */
 	public static HttpResponse simpleGet(HttpClient client, String uri, Header... headers)
 			throws ApplicationException{
+
+		if (client == null)
+			client = HttpClientBuilder.create().build();
+
 		HttpGet get = new HttpGet(uri);
 		get.setHeaders(headers);
 
