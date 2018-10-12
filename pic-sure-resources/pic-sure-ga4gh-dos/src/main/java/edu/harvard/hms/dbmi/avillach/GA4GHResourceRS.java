@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.util.*;
 
+import javax.lang.model.type.ArrayType;
 import javax.persistence.NoResultException;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
@@ -146,7 +147,7 @@ public class GA4GHResourceRS implements IResourceRS
 		QueryFormat qf = new QueryFormat();
 		qf.setDescription("Sample Description 1");
 		qf.setName("Sample QueryFormat name");
-		List<QueryFormat> queryFormats = Arrays.asList(qf);
+		List<QueryFormat> queryFormats = new ArrayList<>(Arrays.asList(qf));
 		return new ResourceInfo().setName("GA4GH DOS API Server").setQueryFormats(queryFormats);
 	}
 

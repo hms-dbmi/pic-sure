@@ -26,6 +26,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -93,9 +94,8 @@ public class HttpClientUtil {
 		try {
 		    logger.debug("HttpClientUtil retrievePostResponse()");
 
-		    List<Header> headerList = Arrays.asList(headers);
+		    List<Header> headerList = new ArrayList<>(Arrays.asList(headers));
 		    headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
-
 
 		    return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
 		} catch (ApplicationException | UnsupportedEncodingException e) {
