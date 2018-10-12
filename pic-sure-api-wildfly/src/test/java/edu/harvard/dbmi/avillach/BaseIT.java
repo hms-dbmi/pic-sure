@@ -41,7 +41,7 @@ public class BaseIT {
 
 	//These need to be established here to prevent multiplication of headers
 	protected static String jwt = generateJwtForSystemUser();
-	protected static List<Header> headers = Arrays.asList(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt), new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json"));
+	protected static List<Header> headers = new ArrayList<>(Arrays.asList(new BasicHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwt), new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json")));
 
 	protected static HttpClient client = HttpClientBuilder.create().build();
 	protected final static ObjectMapper objectMapper = new ObjectMapper();

@@ -13,14 +13,20 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.client.HttpClient;
+import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
 import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MediaType;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -29,6 +35,7 @@ import java.util.stream.Collectors;
 
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
+
 	private final static Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
 
@@ -36,17 +43,19 @@ public class HttpClientUtil {
 		return retrieveGetResponse(uri, headers.toArray(new Header[headers.size()]));
 	}
 
+	/**
+	 * resource level get, which will throw a <b>ResourceInterfaceException</b> if cannot get response back from the url
+	 * @param uri
+	 * @param headers
+	 * @return
+	 */
 	public static HttpResponse retrieveGetResponse(String uri, Header[] headers) {
 		try {
             logger.debug("HttpClientUtil retrieveGetResponse()");
+
 			HttpClient client = HttpClientBuilder.create().build();
-			HttpGet get = new HttpGet(uri);
-			// Make the headers optional
-			if (headers!=null && headers.length>0) {
-				get.setHeaders(headers);
-			}
-			return client.execute(get);
-		} catch (IOException e) {
+            return simpleGet(client, uri, headers);
+		} catch (ApplicationException e) {
 			//TODO: Write custom exception
 			throw new ResourceInterfaceException(uri, e);
 		}
@@ -75,17 +84,27 @@ public class HttpClientUtil {
 		}
 	}
 
+	/**
+	 * resource level post, which will throw a <b>ResourceInterfaceException</b> if cannot get response back from the url
+	 * @param uri
+	 * @param headers
+	 * @return
+	 */
 	public static HttpResponse retrievePostResponse(String uri, Header[] headers, String body) {
 		try {
 		    logger.debug("HttpClientUtil retrievePostResponse()");
+
+		    List<Header> headerList = new ArrayList<>();
+
+		    if (headers != null)
+		    	headerList = new ArrayList<>(Arrays.asList(headers));
+		    headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
+
 			HttpClient client = HttpClientBuilder.create().build();
-			HttpPost post = new HttpPost(uri);
-            post.setEntity(new StringEntity(body));
-            post.setHeaders(headers);
-			post.addHeader("Content-type","application/json");
-			return client.execute(post);
-		} catch (IOException e) {
+		    return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
+		} catch (ApplicationException | UnsupportedEncodingException e) {
 			//TODO: Write custom exception
+			logger.error("retrievePostResponse() throw resourceInterfaceException: " + e.getClass().getSimpleName() + ": " + e.getMessage());
 			throw new ResourceInterfaceException(uri, e);
 		}
 	}
@@ -102,7 +121,7 @@ public class HttpClientUtil {
 		} catch (IOException e) {
       logger.error("readListFromResponse() "+e.getMessage());
       //TODO: Write custom exception
-			throw new RuntimeException("Incorrect list type returned");
+			throw new ApplicationException("Incorrect list type returned");
 		}
 	}
 
@@ -115,7 +134,7 @@ public class HttpClientUtil {
         } catch (IOException e) {
             logger.error("readObjectFromResponse() "+e.getMessage());
             //TODO: Write custom exception
-            throw new RuntimeException("Incorrect object type returned", e);
+            throw new ApplicationException("Incorrect object type returned", e);
         }
     }
 
@@ -133,5 +152,139 @@ public class HttpClientUtil {
 			throw new NotAuthorizedException(errorMessage);
 		}
 		throw new ResourceInterfaceException(errorMessage);
+	}
+
+	/**
+	 * Basic and general post function using Apache Http Client
+	 *
+	 * @param uri
+	 * @param client
+	 * @param requestBody
+	 * @param headers
+	 * @return HttpResponse
+	 * @throws ApplicationException
+	 */
+	public static HttpResponse simplePost(String uri, HttpClient client, StringEntity requestBody, Header... headers)
+			throws ApplicationException{
+
+		if (client == null)
+			client = HttpClientBuilder.create().build();
+
+		HttpPost post = new HttpPost(uri);
+		post.setHeaders(headers);
+		post.setEntity(requestBody);
+
+		try {
+			return client.execute(post);
+		} catch (IOException ex){
+			logger.error("simplePost() Exception: " + ex.getMessage() +
+					", cannot get response by POST from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	/**
+	 * Basic and general post function using Apache Http Client
+	 *
+	 * @param uri
+	 * @param requestBody
+	 * @param client
+	 * @param headers
+	 * @return InputStream
+	 */
+	public static InputStream simplePost(String uri, StringEntity requestBody, HttpClient client, Header... headers){
+
+		HttpResponse response = simplePost(uri, client, requestBody, headers);
+
+		try {
+			return response.getEntity().getContent();
+		} catch (IOException ex){
+			logger.error("simplePost() cannot get content by POST from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	/**
+	 * only works if the POST method returns a JSON response body
+	 * @param uri
+	 * @param requestBody
+	 * @param client
+	 * @param objectMapper
+	 * @param headers
+	 * @return
+	 */
+	public static JsonNode simplePost(String uri, StringEntity requestBody, HttpClient client, ObjectMapper objectMapper, Header... headers){
+		try {
+			return objectMapper.readTree(simplePost(uri, requestBody, client, headers));
+		} catch (IOException ex){
+			logger.error("simplePost() Exception: " + ex.getMessage()
+					+ ", cannot parse content from by POST from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	/**
+	 * for general and basic use of GET function using Apache Http Client
+	 * @param client
+	 * @param uri
+	 * @param headers
+	 * @return
+	 * @throws ApplicationException
+	 */
+	public static HttpResponse simpleGet(HttpClient client, String uri, Header... headers)
+			throws ApplicationException{
+
+		if (client == null)
+			client = HttpClientBuilder.create().build();
+
+		HttpGet get = new HttpGet(uri);
+		get.setHeaders(headers);
+
+		HttpResponse response;
+
+		try {
+			return client.execute(get);
+		} catch (IOException ex){
+			logger.error("simpleGet() cannot get response by GET from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	public static InputStream simpleGet(String uri, HttpClient client, Header... headers){
+		HttpGet get = new HttpGet(uri);
+		get.setHeaders(headers);
+
+		HttpResponse response;
+
+		try {
+			response = client.execute(get);
+		} catch (IOException ex){
+			logger.error("simpleGet() cannot get response by GET from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+
+		try {
+			return response.getEntity().getContent();
+		} catch (IOException ex){
+			logger.error("simpleGet() cannot get content by GET from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	/**
+	 * only work if the GET method returns a JSON response body
+	 * @param uri
+	 * @param client
+	 * @param objectMapper
+	 * @param headers
+	 * @return
+	 */
+	public static JsonNode simpleGet(String uri, HttpClient client, ObjectMapper objectMapper, Header... headers){
+		try {
+			return objectMapper.readTree(simpleGet(uri, client, headers));
+		} catch (IOException ex){
+			logger.error("simpleGet() cannot parse content from by GET from url: " + uri);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
 	}
 }
