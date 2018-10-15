@@ -1,4 +1,4 @@
-define(["common/searchParser", "backbone", "common/session", "auth/login", 'header/header', 'user/userManagement'],
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement'],
         function(searchParser, Backbone, session, login, header, userManagement){
     var Router = Backbone.Router.extend({
         routes: {

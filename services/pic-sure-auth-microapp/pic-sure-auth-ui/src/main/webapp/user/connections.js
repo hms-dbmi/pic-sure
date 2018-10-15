@@ -8,12 +8,12 @@ define([], function(){
 			requiredFields:[{label:"BCH Email", id:"BCHEmail"}],
 			optionalFields:[{label:"BCH ID", id:"BCHId"}]
 		}
-//		,{
-//			label:"HMS", 
-//			id:"hms-it",
-//			subPrefix:"samlp|", 
-//			requiredFields:[{label:"HMS Email", id:"HMSEmail"}]
-//		}
+		,{
+			label:"HMS",
+			id:"hms-it",
+			subPrefix:"samlp|",
+			requiredFields:[{label:"HMS Email", id:"HMSEmail"}]
+		}
 	];
 	return connections;
 });
