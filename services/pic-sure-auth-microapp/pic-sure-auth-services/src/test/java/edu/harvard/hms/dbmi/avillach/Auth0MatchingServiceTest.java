@@ -48,10 +48,12 @@ public class Auth0MatchingServiceTest {
     @Before
     public void setUp() throws Auth0Exception {
         MockitoAnnotations.initMocks(this);
+        //Instead of calling the database
         doAnswer(invocation -> (listUnmatchedByConnectionIdMock(invocation.getArgument(0)))).
                 when(userRepo).listUnmatchedByConnectionId(any());
         doAnswer(invocation -> (getAllMappingsForConnectionMock(invocation.getArgument(0)))).
                 when(mappingService).getAllMappingsForConnection(any());
+        //So we can check that the user is persisted
         doAnswer(new Answer<Void>() {
             public Void answer(InvocationOnMock invocation) {
                 persistedUser = invocation.getArgument(0);
@@ -67,10 +69,6 @@ public class Auth0MatchingServiceTest {
         String nihToken = "nih-gov-prod-access-token";
 
         try {
-            //NOTE: These string values come from mockAuthAPIUserInfo in Auth0UserMatchingService.  Do not make changes here or there without updating to match or the tests will fail.
-
-            //        return
-
             JsonNode userInfo = mockAuthAPIUserInfo(ldapToken);
 
             //Test when everything works fine
@@ -86,13 +84,11 @@ public class Auth0MatchingServiceTest {
             assertNotNull(persistedUser.getUserId());
             assertEquals("ad|ldap-connector|blablablablablablablablablablablabla", persistedUser.getUserId());
             assertTrue(persistedUser.isMatched());
-
             //Reset
             persistedUser = null;
 
-
-            userInfo = mockAuthAPIUserInfo(githubToken);
             //Test when multiple mappings in database
+            userInfo = mockAuthAPIUserInfo(githubToken);
             result = cut.matchTokenToUser(userInfo);
             assertNotNull(result);
             assertNotNull(result.getAuth0metadata());
@@ -106,11 +102,10 @@ public class Auth0MatchingServiceTest {
             assertEquals("github|0000000", persistedUser.getUserId());
             assertTrue(persistedUser.isMatched());
 
-
-
             persistedUser = null;
-            userInfo = mockAuthAPIUserInfo(nihToken);
+
             //Test when path not found in user generalmetadata
+            userInfo = mockAuthAPIUserInfo(nihToken);
             result = cut.matchTokenToUser(userInfo);
             assertNotNull(result);
             assertNotNull(result.getAuth0metadata());
@@ -126,11 +121,10 @@ public class Auth0MatchingServiceTest {
 
             persistedUser = null;
 
-            userInfo = mockAuthAPIUserInfo("no-user-token");
             //Test when no user matches
+            userInfo = mockAuthAPIUserInfo("no-user-token");
             result = cut.matchTokenToUser(userInfo);
             assertNull(result);
-
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
             assertNotNull(persistedUser.getUserId());
@@ -143,7 +137,6 @@ public class Auth0MatchingServiceTest {
             userInfo = mockAuthAPIUserInfo("invalid-path-token");
             result = cut.matchTokenToUser(userInfo);
             assertNull(result);
-
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
             assertNotNull(persistedUser.getUserId());
@@ -207,12 +200,10 @@ public class Auth0MatchingServiceTest {
                 "invalid-path-token","{    \"email\": \"bar@foo.com\",     \"UserName\": \"bahh\",     \"user_id\": \"samlp|barFoo\",    \"identities\": [        {            \"user_id\": \"barFoo\",            \"provider\": \"samlp\",            \"connection\": \"invalid-path\",            \"isSocial\": true        }    ]}",
                 "no-user-token","{    \"email\": \"no@user.com\",     \"UserName\": \"nooooooo\",     \"user_id\": \"samlp|noUser\",    \"identities\": [        {            \"user_id\": \"noUser\",            \"provider\": \"samlp\",            \"connection\": \"no-user-connection\",            \"isSocial\": false        }    ]}"
         );
-//        return mapper.valueToTree(map);
         String result =  map.get(accessToken);
         Map<String, Object> jsonMap = mapper.readValue(result,
                 new TypeReference<Map<String,Object>>(){});
         return mapper.valueToTree(jsonMap);
-//        return map.get(accessToken);
     }
 
 }
