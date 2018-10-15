@@ -1,20 +1,7 @@
 package edu.harvard.hms.dbmi.avillach;
 
-import edu.harvard.hms.dbmi.avillach.auth.utils.HttpClientUtil;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import com.auth0.client.auth.AuthAPI;
-import com.auth0.exception.Auth0Exception;
-import com.auth0.json.auth.UserInfo;
-
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URLEncoder;
-import java.util.HashMap;
-import java.util.Map;
 
 public class HelloWorldIT {
     private static String endpointUrl;
