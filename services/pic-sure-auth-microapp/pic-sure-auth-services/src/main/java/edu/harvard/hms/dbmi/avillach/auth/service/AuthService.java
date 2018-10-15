@@ -2,12 +2,12 @@ package edu.harvard.hms.dbmi.avillach.auth.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.utils.HttpClientUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.entity.StringEntity;
@@ -109,7 +109,7 @@ public class AuthService {
             throw new ApplicationException("Inner problem, please contact system admin and check the server log");
         }
 
-        return HttpClientUtil.simplePost(auth0ApiUrl,requestBody, JAXRSConfiguration.client, JAXRSConfiguration.objectMapper, header);
+        return HttpClientUtil.simplePost(auth0ApiUrl,requestBody, null, JAXRSConfiguration.objectMapper, header);
     }
 
     private JsonNode retrieveUserInfo(String accessToken){
