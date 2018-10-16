@@ -17,6 +17,7 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -24,6 +25,9 @@ import java.util.Arrays;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
+
+	@Context
+	private UriInfo uriInfo;
 
 	Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
@@ -35,6 +39,14 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
+
+		/**
+		 * skip the filter in certain cases
+		 */
+		if (uriInfo.getPath().endsWith("authentication")) {
+			return;
+		}
+
 		logger.debug("Entered jwtfilter.filter()...");
 
 		String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
