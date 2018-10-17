@@ -10,7 +10,7 @@
 {{/unless}}
 <form>
     Email:<br>
-    <input type="text" name="email" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{user.email}}">
+    <input type="text" name="email" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{displayEmail user}}">
     <br>
     UUID:<br>
     <input type="text" name="uuid" style="width: 100%;" readonly value="{{user.uuid}}">

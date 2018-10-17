@@ -17,6 +17,14 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 					return JSON.parse(user.generalMetadata)[connectionField.id];
 				}
 			});
+            HBS.registerHelper('displayEmail', function(user){
+				var connectionId = user.connectionId;
+                var emailField = _.where(connections, {id: user.connectionId})[0].emailField;
+				if (!user.email) {
+                    return JSON.parse(user.generalMetadata)[emailField];
+				}
+                return user.email;
+            });
 		},
 		events : {
 			"click .add-user-button":   "addUserMenu",
@@ -72,7 +80,16 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
             var connectionId = this.$('input[name=connectionId]').val();
             var roles = _.pluck(this.$('input:checked'), "value").join(',');
 
-            var user;
+            var metadataEmailField = _.where(connections, {id: connectionId})[0].emailField;
+            var generalMetadataJSON = {};
+            if (general_metadata) {
+            	generalMetadataJSON = JSON.parse(general_metadata);
+                generalMetadataJSON[metadataEmailField] = email;
+			}
+			else {
+                generalMetadataJSON[metadataEmailField] = email;
+			}
+			var user;
             var requestType;
             if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
                 requestType = "PUT";
@@ -81,7 +98,7 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
                     userId: userId,
                     email: email,
                     connectionId: connectionId,
-                    generalMetadata: general_metadata,
+                    generalMetadata: JSON.stringify(generalMetadataJSON),
                     auth0metadata: auth0_metadata,
                     subject: subject,
                     roles: roles}];
@@ -93,7 +110,6 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
                     subject: userId,
                     roles: roles}];
             }
-
             userFunctions.createOrUpdateUser(user, requestType, function(result) {
                 console.log(result);
                 this.render();
