@@ -1,8 +1,7 @@
 define([], function(){
     var parseQueryString = function(){
         var queryString = location.search.substring(1).split("&");
-
-        var queryObject = {};
+       var queryObject = {};
 
         _.each(queryString, function(entry){
             var entryComponents = entry.split("=")

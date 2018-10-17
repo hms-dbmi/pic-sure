@@ -10,7 +10,12 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
 			HBS.registerHelper('fieldHelper', function(user, connectionField){
-				return JSON.parse(user.generalMetadata)[connectionField.id]
+				if (user.generalMetadata == null || user.generalMetadata === '') {
+                    return "NO_GENERAL_METADATA";
+                }
+                else {
+					return JSON.parse(user.generalMetadata)[connectionField.id];
+				}
 			});
 		},
 		events : {
@@ -30,7 +35,7 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 		addUserMenu: function (result) {
 			$("#modal-window", this.$el).html(this.modalTemplate({title: "Add user"}));
 			$("#modalDialog", this.$el).show();
-			var addUserView = new AddUserView({el:$('.modal-body')}).render();
+			var addUserView = new AddUserView({el:$('.modal-body'), managementConsole: this}).render();
 		},
 		editUserMenu: function (events) {
 			$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: this.model.get("selectedUser"), availableRoles: this.model.get("availableRoles")}));
@@ -56,43 +61,44 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 				$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: false, user: this.model.get("selectedUser")}));
 			}.bind(this));
 		},
-		saveUserAction: function (e) {
-			e.preventDefault();
-			var userId = this.$('input[name=userId]').val();
-			//var subject = this.$('input[name=subject]').val();
-			var roles = "";
-			var length = this.$('input:checked').length;
-			_.each(this.$('input:checked'), function(role, index){
-				if (index == length - 1) {
-					roles += role.value;
-				} else {
-					roles += (role.value + ", ");
-				}
-			});
+        saveUserAction: function (e) {
+            e.preventDefault();
+            var userId = this.$('input[name=userId]').val();
+            var email = this.$('input[name=email]').val();
+            var uuid = this.$('input[name=uuid]').val();
+            var subject = this.$('input[name=subject]').val();
+            var general_metadata = this.$('input[name=general_metadata]').val();
+            var auth0_metadata = this.$('input[name=auth0_metadata]').val();
+            var connectionId = this.$('input[name=connectionId]').val();
+            var roles = _.pluck(this.$('input:checked'), "value").join(',');
 
-			var user;
-			var requestType;
-			if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
-				requestType = "PUT";
-				user = [{
-					uuid: this.model.get("selectedUser").uuid,
-					userId: userId,
-					subject: userId,
-					roles: roles}];
-			}
-			else {
-				requestType = "POST";
-				user = [{
-					userId: userId,
-					subject: userId,
-					roles: roles}];
-			}
+            var user;
+            var requestType;
+            if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
+                requestType = "PUT";
+                user = [{
+                    uuid: uuid,
+                    userId: userId,
+                    email: email,
+                    connectionId: connectionId,
+                    generalMetadata: general_metadata,
+                    auth0metadata: auth0_metadata,
+                    subject: subject,
+                    roles: roles}];
+            }
+            else {
+                requestType = "POST";
+                user = [{
+                    userId: userId,
+                    subject: userId,
+                    roles: roles}];
+            }
 
-			userFunctions.createOrUpdateUser(user, requestType, function(result) {
-				console.log(result);
-				this.render();
-			}.bind(this));
-		},
+            userFunctions.createOrUpdateUser(user, requestType, function(result) {
+                console.log(result);
+                this.render();
+            }.bind(this));
+        },
 		deleteUser: function (event) {
 			var uuid = this.$('input[name=userId]').val();
 			notification.showConfirmationDialog(function () {

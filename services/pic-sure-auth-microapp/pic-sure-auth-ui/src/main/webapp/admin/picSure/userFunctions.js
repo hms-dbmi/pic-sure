@@ -44,7 +44,7 @@ define(["util/notification"],
                 callback(response);
             }.bind(this),
             error: function(response){
-                notification.showSuccessMessage(failureMessage);
+                notification.showFailureMessage(failureMessage);
             }
         });
     }.bind(userFunctions);

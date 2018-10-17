@@ -9,7 +9,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "*path" : "displayUserManagement"
 
         },
-       
         initialize: function(){
             var pushState = history.pushState;
             history.pushState = function(state, title, path) {
@@ -50,7 +49,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             userMngmt.render();
             $('#user-div').append(userMngmt.$el);
         }
-
     });
     return new Router();
 });

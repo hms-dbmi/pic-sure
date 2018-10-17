@@ -10,7 +10,7 @@ define([], function(){
 		 */
 		authorization : undefined,
 
-        client_id : "APy5rn5baqQDfVDiczmjiuIetEIBBU9P",
+        client_id : undefined,
 		/*
 		 * This allows you to modify the DOM rendered on the login screen.
 		 * 
