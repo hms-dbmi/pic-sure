@@ -1,15 +1,16 @@
 package edu.harvard.dbmi.avillach.data.repository;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
-import org.hibernate.Criteria;
-import org.hibernate.Session;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.persistence.*;
+import javax.persistence.EntityManager;
+import javax.persistence.ParameterMode;
+import javax.persistence.PersistenceContext;
+import javax.persistence.StoredProcedureQuery;
 import javax.persistence.criteria.*;
-import javax.transaction.Transactional;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  *
@@ -17,6 +18,8 @@ import java.util.Map;
  * @param <K> the type of the primary key
  */
 public abstract class BaseRepository<T extends BaseEntity, K> {
+
+	Logger logger = LoggerFactory.getLogger(BaseRepository.class);
 
 	protected final Class<T> type;
 	
@@ -185,5 +188,19 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 	    return em().merge(t);
     }
 
+	public void addObjectToSet(Set<T> set, BaseRepository<T, UUID> baseRepository, T t)
+			throws ProtocolException {
 
+		if (t.getUuid() == null)
+			return;
+
+		T temp = baseRepository.getById(t.getUuid());
+		if (temp == null) {
+			String className = temp.getClass().getSimpleName();
+			logger.error("Cannot find " + className + " instance by uuid: " + t.getUuid().toString());
+			throw new ProtocolException("Cannot find " + className + " instance by uuid: " + t.getUuid().toString());
+		} else {
+			set.add(temp);
+		}
+	}
 }

@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,7 @@ import javax.validation.constraints.NotNull;
 import javax.ws.rs.core.Response;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public abstract class PicsureBaseEntityService <T extends BaseEntity> {
@@ -102,6 +104,7 @@ public abstract class PicsureBaseEntityService <T extends BaseEntity> {
         for (T t : entities){
             boolean dbContacted = false;
             if (forAdd) {
+                t.setUuid(null);
                 baseRepository.persist(t);
                 dbContacted = true;
             }
