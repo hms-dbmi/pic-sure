@@ -30,12 +30,20 @@ CREATE TABLE `user` (
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
   `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
+  `acceptedTOS` timestamp,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `subject_UNIQUE` (`subject`),
   UNIQUE KEY `userId_UNIQUE` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+CREATE TABLE `termsOfService` (
+  `uuid` binary(16) NOT NULL,
+  `dateUpdated` timestamp,
+  `content` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
+  PRIMARY KEY (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
