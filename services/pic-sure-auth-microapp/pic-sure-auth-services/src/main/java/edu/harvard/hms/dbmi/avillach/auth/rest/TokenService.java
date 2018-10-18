@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
@@ -117,7 +117,7 @@ public class TokenService {
 
 		String subject = jws.getBody().getSubject();
 
-		User user = new User().setSubject(subject).setUserId(subject);
+		User user = new User().setSubject(subject).setSubject(subject);
 		user.setEmail(getEmailForSubject(subject));
 
 		try{
@@ -135,7 +135,7 @@ public class TokenService {
 		
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		if (user.getRoles() != null
-				&& user.getRoles().contains(PicsureNaming.RoleNaming.ROLE_INTROSPECTION_USER))
+				&& user.getTotalPrivilege().contains(PicsureNaming.RoleNaming.ROLE_INTROSPECTION_USER))
 			tokenInspection.responseMap.put("active", true);
 
 		tokenInspection.responseMap.putAll(jws.getBody());
