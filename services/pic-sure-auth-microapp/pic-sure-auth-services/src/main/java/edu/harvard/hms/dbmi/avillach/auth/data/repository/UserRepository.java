@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,9 @@ import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Root;
 import javax.transaction.Transactional;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Transactional
 @ApplicationScoped
@@ -33,19 +36,6 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		return em.createQuery(query
 				.where(
 						eq(cb, queryRoot, "subject", subject)))
-				.getSingleResult();
-	}
-	
-	public User findBySubjectOrUserId(String subject, String userId) {
-		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
-		Root<User> queryRoot = query.from(User.class);
-		query.select(queryRoot);
-		CriteriaBuilder cb = cb();
-		return em.createQuery(query
-				.where(
-						cb.or(
-								eq(cb, queryRoot, "subject", subject),
-								eq(cb, queryRoot, "userId", userId))))
 				.getSingleResult();
 	}
 
@@ -68,16 +58,14 @@ public class UserRepository extends BaseRepository<User, UUID> {
 	 */
 	public User findOrCreate(User inputUser) {
 		User user = null;
-		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
+		String subject = inputUser.getSubject();
 		try{
 			user = findBySubject(subject);
 			logger.info("findOrCreate(), trying to find user: {subject: " + subject+
-					", userId: " + userId +
 					"}, and found a user with uuid: " + user.getUuid()
-					+ ", subject: " + user.getSubject()
-					+ ", userId: " + user.getUserId());
+					+ ", subject: " + user.getSubject());
 		} catch (NoResultException e) {
-			logger.debug("findOrCreate() UserId " + userId +
+			logger.debug("findOrCreate() subject " + subject +
 					" could not be found by `entityManager`, going to create a new user.");
 			user = createUser(inputUser);
 		}catch(NonUniqueResultException e){
@@ -87,29 +75,32 @@ public class UserRepository extends BaseRepository<User, UUID> {
 	}
 
 	private User createUser(User inputUser) {
-		String subject = inputUser.getSubject(), userId = inputUser.getUserId();
+		String subject = inputUser.getSubject();
 //		if (subject == null && userId == null){
 //			logger.error("createUser() cannot create user when both subject and userId are null");
 //			return null;
 //		}
-		logger.debug("createUser() creating user, subject: " + subject +", userId: " + userId + " ......");
+		logger.debug("createUser() creating user, subject: " + subject + " ......");
 		em().persist(inputUser);
 
 		User result = getById(inputUser.getUuid());
 		if (result != null)
-			logger.info("createUser() created user: uuid: " + result.getUuid() + ", subject: " + subject +", userId: " + userId + ", role: " + result.getRoles());
+			logger.info("createUser() created user: uuid: " + result.getUuid()
+					+ ", subject: " + subject
+					+ ", role: " + result.getRoleString()
+					+ ", privilege: "+ result.getPrivilegeString());
 
 		return result;
 	}
 
-	public User changeRole(User user, String role){
+	public User changeRole(User user, Set<Role> roles){
 		logger.info("Starting changing the role of user: " + user.getUuid()
-				+ ", with userId: " + user.getUserId() + ", to " + role);
-		user.setRoles(role);
+				+ ", with subject: " + user.getSubject() + ", to " + roles.stream().map(role -> role.getName()).collect(Collectors.joining(",")));
+		user.setRoles(roles);
 		em().merge(user);
 		User updatedUser = getById(user.getUuid());
-		logger.info("User: " + updatedUser.getUuid() + ", with userId: " +
-				updatedUser.getUserId() + ", now has a new role: " + updatedUser.getRoles());
+		logger.info("User: " + updatedUser.getUuid() + ", with subject: " +
+				updatedUser.getSubject() + ", now has a new role: " + updatedUser.getRoleString());
 		return updatedUser;
 	}
 

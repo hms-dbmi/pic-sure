@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,7 +7,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import edu.harvard.hms.dbmi.avillach.jwt.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;

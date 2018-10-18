@@ -4,11 +4,14 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.TermsOfServiceRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 public class TermsOfServiceService {
@@ -20,6 +23,9 @@ public class TermsOfServiceService {
 
     @Inject
     UserRepository userRepo;
+
+    @Inject
+    UserService userService;
 
     public boolean hasUserAcceptedLatest(UUID userId){
         logger.info("Checking Terms Of Service acceptance for user with id " + userId);
@@ -52,7 +58,8 @@ public class TermsOfServiceService {
             throw new RuntimeException("User does not exist");
         }
         user.setAcceptedTOS(new Date());
-        userRepo.persist(user);
+        List<User> users = Arrays.asList(user);
+        userService.updateUser(users);
     }
 
 }

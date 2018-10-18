@@ -146,8 +146,14 @@
             <version>2.13.0</version>
             <scope>test</scope>
         </dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.jwt</groupId>
+			<artifactId>jwt-creator</artifactId>
+			<version>1.0.0-SNAPSHOT</version>
+		</dependency>
 
-        <!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
+
+		<!-- https://mvnrepository.com/artifact/org.glassfish.jersey.containers/jersey-container-servlet -->
 		<!--&lt;!&ndash; https://mvnrepository.com/artifact/com.sun.jersey/jersey-servlet 
 			&ndash;&gt; -->
 		<!--<dependency> -->
