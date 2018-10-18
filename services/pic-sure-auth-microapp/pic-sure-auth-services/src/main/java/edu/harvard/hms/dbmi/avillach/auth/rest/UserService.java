@@ -1,8 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.util.PicsureNaming;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
@@ -87,8 +87,6 @@ public class UserService extends BaseEntityService<User> {
     @Path("/")
     public Response updateUser(List<User> users){
         checkRoleAssociation(users);
-
-
         return updateEntity(users, userRepo);
     }
 
@@ -107,7 +105,7 @@ public class UserService extends BaseEntityService<User> {
      * @param users
      * @return
      */
-    private void checkRoleAssociation(List<User> users){
+    private void checkRoleAssociation(List<User> users) throws ProtocolException{
 
         for (User user: users){
             if (user.getRoles() == null)
@@ -119,8 +117,12 @@ public class UserService extends BaseEntityService<User> {
                     continue;
 
                 Role r = roleRepo.getById(role.getUuid());
-                if (r != null)
+                if (r == null){
+                    logger.error("Cannot find role instance by uuid: " + role.getUuid().toString());
+                    throw new ProtocolException("Cannot find role instance by uuid: " + role.getUuid().toString());
+                } else {
                     roleSet.add(r);
+                }
             }
 
             user.setRoles(roleSet);

@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.util.PicsureNaming;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
@@ -96,8 +97,12 @@ public class RoleService extends BaseEntityService<Role> {
                     continue;
 
                 Privilege p = privilegeRepo.getById(privilege.getUuid());
-                if (p != null)
+                if (p == null){
+                    logger.error("Cannot find privilege instance by uuid: " + role.getUuid().toString());
+                    throw new ProtocolException("Cannot find privilege instance by uuid: " + role.getUuid().toString());
+                } else {
                     privilegeSet.add(p);
+                }
             }
 
             role.setPrivileges(privilegeSet);
