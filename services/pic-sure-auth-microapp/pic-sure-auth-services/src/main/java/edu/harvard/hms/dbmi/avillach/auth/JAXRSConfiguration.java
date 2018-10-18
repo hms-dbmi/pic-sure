@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 
 @Startup
-@Singleton
 @ApplicationPath("auth")
 public class JAXRSConfiguration extends Application {
 
