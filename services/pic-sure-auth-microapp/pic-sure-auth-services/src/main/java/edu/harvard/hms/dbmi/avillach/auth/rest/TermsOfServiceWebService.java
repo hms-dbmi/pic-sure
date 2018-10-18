@@ -33,7 +33,7 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     @Consumes("text/html")
     @Produces("application/json")
     public Response updateTermsOfService(String html){
-        return Response.ok(tosService.updateTermsOfService(html)).build();
+        return Response.status(201).entity(tosService.updateTermsOfService(html)).build();
     }
 
     @Path("/{userId}")
@@ -41,7 +41,7 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Produces("text/plain")
     public Response hasUserAcceptedTOS(@PathParam("userId") UUID userId){
-        return Response.status(201).entity(tosService.hasUserAcceptedLatest(userId)).build();
+        return Response.ok(tosService.hasUserAcceptedLatest(userId)).build();
     }
 
     @Path("/{userId}")

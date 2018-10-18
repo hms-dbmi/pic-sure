@@ -29,15 +29,8 @@ public class TermsOfServiceService {
 
     public boolean hasUserAcceptedLatest(UUID userId){
         logger.info("Checking Terms Of Service acceptance for user with id " + userId);
-        User user = userRepo.getById(userId);
-        if (user == null){
-            throw new RuntimeException("User does not exist");
-        }
-        TermsOfService tos = termsOfServiceRepo.getLatest();
-        if (user.getAcceptedTOS() == null || user.getAcceptedTOS().before(tos.getDateUpdated())){
-            return false;
-        }
-        return true;
+        Date latestTOS = termsOfServiceRepo.getLatest().getDateUpdated();
+        return userRepo.checkAgainstTOSDate(userId, latestTOS);
     }
 
     public TermsOfService updateTermsOfService(String html){

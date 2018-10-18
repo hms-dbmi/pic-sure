@@ -9,10 +9,9 @@ import org.slf4j.LoggerFactory;
 import javax.enterprise.context.ApplicationScoped;
 import javax.persistence.NoResultException;
 import javax.persistence.NonUniqueResultException;
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Root;
+import javax.persistence.criteria.*;
 import javax.transaction.Transactional;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -118,6 +117,23 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.where(
 						eq(cb, queryRoot, "email", email)))
 				.getSingleResult();
+	}
+
+	public boolean checkAgainstTOSDate(UUID userId, Date latestDate){
+		CriteriaQuery<User> query = cb().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+		return !em.createQuery(query
+				.where(
+						cb.and(
+								eq(cb, queryRoot, "uuid", userId),
+								gte(cb, queryRoot, "acceptedTOS", latestDate))))
+				.getResultList().isEmpty();
+	}
+
+	public <V extends Comparable> Predicate gte(CriteriaBuilder cb, Root root, String columnName, V value) {
+		return cb.greaterThanOrEqualTo(root.get(columnName), value);
 	}
 
 }
