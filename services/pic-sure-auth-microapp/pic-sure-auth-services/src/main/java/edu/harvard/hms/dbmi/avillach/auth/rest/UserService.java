@@ -108,26 +108,12 @@ public class UserService extends BaseEntityService<User> {
     private void checkRoleAssociation(List<User> users) throws ProtocolException{
 
         for (User user: users){
-            if (user.getRoles() == null)
-                continue;
-
-            Set<Role> roleSet = new HashSet<>();
-            for (Role role: user.getRoles()) {
-                if (role.getUuid() == null)
-                    continue;
-
-                Role r = roleRepo.getById(role.getUuid());
-                if (r == null){
-                    logger.error("Cannot find role instance by uuid: " + role.getUuid().toString());
-                    throw new ProtocolException("Cannot find role instance by uuid: " + role.getUuid().toString());
-                } else {
-                    roleSet.add(r);
-                }
+            if (user.getRoles() != null){
+                Set<Role> roles = new HashSet<>();
+                user.getRoles().stream().forEach(t -> roleRepo.addObjectToSet(roles, roleRepo, t));
+                user.setRoles(roles);
             }
-
-            user.setRoles(roleSet);
         }
-
     }
 
 }

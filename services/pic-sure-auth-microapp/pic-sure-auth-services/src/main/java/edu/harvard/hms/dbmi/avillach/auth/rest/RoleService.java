@@ -88,24 +88,11 @@ public class RoleService extends BaseEntityService<Role> {
     private void checkPrivilegeAssociation(List<Role> roles){
 
         for (Role role: roles){
-            if (role.getPrivileges() == null)
-                continue;
-
-            Set<Privilege> privilegeSet = new HashSet<>();
-            for (Privilege privilege: role.getPrivileges()) {
-                if (privilege.getUuid() == null)
-                    continue;
-
-                Privilege p = privilegeRepo.getById(privilege.getUuid());
-                if (p == null){
-                    logger.error("Cannot find privilege instance by uuid: " + role.getUuid().toString());
-                    throw new ProtocolException("Cannot find privilege instance by uuid: " + role.getUuid().toString());
-                } else {
-                    privilegeSet.add(p);
-                }
+            if (role.getPrivileges() != null) {
+                Set<Privilege> privileges = new HashSet<>();
+                role.getPrivileges().stream().forEach(p -> privilegeRepo.addObjectToSet(privileges, privilegeRepo, p));
+                role.setPrivileges(privileges);
             }
-
-            role.setPrivileges(privilegeSet);
         }
 
     }
