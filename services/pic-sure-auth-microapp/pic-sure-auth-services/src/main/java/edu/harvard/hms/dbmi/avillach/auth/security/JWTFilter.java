@@ -21,6 +21,7 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
@@ -86,6 +87,9 @@ public class JWTFilter implements ContainerRequestFilter {
 					: new String[]{});
 
 			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+
+			requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
+                    uriInfo.getRequestUri().getScheme()));
 
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
