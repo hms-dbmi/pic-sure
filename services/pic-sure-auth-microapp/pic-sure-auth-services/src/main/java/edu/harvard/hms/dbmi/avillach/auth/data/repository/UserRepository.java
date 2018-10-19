@@ -49,6 +49,19 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.getSingleResult();
 	}
 
+	public User findByUserIdAndConnection(String userId, String connectionId){
+		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+		return em.createQuery(query
+				.where(
+						cb.and(
+								eq(cb, queryRoot, "connectionId", connectionId),
+								eq(cb, queryRoot, "userId", userId))))
+				.getSingleResult();
+	}
+
 	public List<User> listUnmatchedByConnectionId(String connectionId) {
 		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
 		Root<User> queryRoot = query.from(User.class);
