@@ -8,7 +8,9 @@ import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 import java.util.UUID;
 
 @Path("tos")
@@ -38,18 +40,17 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
 
     @Path("/{userId}")
     @GET
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Produces("text/plain")
     public Response hasUserAcceptedTOS(@PathParam("userId") UUID userId){
         return Response.ok(tosService.hasUserAcceptedLatest(userId)).build();
     }
 
-    @Path("/{userId}")
+    @Path("/accept")
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Produces("application/json")
-    public Response acceptTermsOfService(@PathParam("userId") UUID userId){
-        tosService.acceptTermsOfService(userId);
+    public Response acceptTermsOfService(@Context SecurityContext securityContext){
+        String userSubject = securityContext.getUserPrincipal().getName();
+        tosService.acceptTermsOfService(userSubject);
         return Response.ok().build();
     }
 

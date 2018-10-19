@@ -62,10 +62,10 @@ public class JWTFilter implements ContainerRequestFilter {
 		String userForLogging = null;
 
 		try {
-			User authenticatedUser = null;
+//			User authenticatedUser = null;
 
 
-			authenticatedUser = callLocalAuthentication(requestContext, token);
+			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);

@@ -148,17 +148,16 @@ public class User extends BaseEntity implements Serializable, Principal {
 		this.matched = matched;
 	}
 
-<<<<<<< HEAD
 	public Date getAcceptedTOS() {
 		return acceptedTOS;
 	}
 
 	public void setAcceptedTOS(Date acceptedTOS) {
 		this.acceptedTOS = acceptedTOS;
-=======
+	}
+
 	@Override
 	public String getName() {
 		return this.subject;
->>>>>>> picsure-185-auth0-integration
 	}
 }

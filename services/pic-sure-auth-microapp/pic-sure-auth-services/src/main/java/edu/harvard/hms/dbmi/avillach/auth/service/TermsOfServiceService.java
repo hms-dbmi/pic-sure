@@ -43,9 +43,9 @@ public class TermsOfServiceService {
         return termsOfServiceRepo.getLatest().getContent();
     }
 
-    public void acceptTermsOfService(UUID userId){
-        logger.info("User with id " + userId + " accepting TOS");
-        User user = userRepo.getById(userId);
+    public void acceptTermsOfService(String userId){
+        logger.info("User " + userId + " accepting TOS");
+        User user = userRepo.findBySubject(userId);
         if (user == null){
             throw new RuntimeException("User does not exist");
         }
