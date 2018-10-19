@@ -10,7 +10,9 @@ import javax.persistence.Entity;
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
 import javax.validation.constraints.NotNull;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
@@ -25,13 +27,17 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     protected final Class<T> type;
 
+    @Context
+    SecurityContext securityContext;
+
     protected BaseEntityService(Class<T> type){
         this.type = type;
         logger = LoggerFactory.getLogger(type);
     }
 
     public Response getEntityById(String id, BaseRepository baseRepository){
-        logger.info("Looking for " + type.getSimpleName().toLowerCase() +
+        logger.info("User: " + securityContext.getUserPrincipal().getName()
+                + " Looking for " + type.getSimpleName() +
                 " by ID: " + id + "...");
 
         T t = (T) baseRepository.getById(UUID.fromString(id));
@@ -44,7 +50,8 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response getEntityAll(BaseRepository baseRepository){
-        logger.info("Getting all " + type.getSimpleName() +
+        logger.info("User: " + securityContext.getUserPrincipal().getName() +
+                " Getting all " + type.getSimpleName() +
                 "s...");
         List<T> ts = null;
 
@@ -62,6 +69,9 @@ public abstract class BaseEntityService<T extends BaseEntity> {
         if (entities == null || entities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be added.");
+
+        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to add a list of "
+                + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, true, baseRepository);
 
@@ -84,6 +94,9 @@ public abstract class BaseEntityService<T extends BaseEntity> {
         if (entities == null || entities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be updated.");
+
+        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to update a list of "
+                + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, false, baseRepository);
 
@@ -183,6 +196,10 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response removeEntityById(String id, BaseRepository baseRepository) {
+
+        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to REMOVE a entity: "
+                + type.getSimpleName() + ", by uuid: " + id);
+
         UUID uuid = UUID.fromString(id);
         T t = (T) baseRepository.getById(uuid);
         if (t == null)
