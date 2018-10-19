@@ -6,13 +6,14 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 import java.io.Serializable;
+import java.security.Principal;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "user")
-public class User extends BaseEntity implements Serializable{
+public class User extends BaseEntity implements Serializable, Principal {
 
 	@Column(unique = true)
 	private String subject;
@@ -141,5 +142,10 @@ public class User extends BaseEntity implements Serializable{
 
 	public void setMatched(boolean matched) {
 		this.matched = matched;
+	}
+
+	@Override
+	public String getName() {
+		return this.subject;
 	}
 }
