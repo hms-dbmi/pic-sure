@@ -29,8 +29,7 @@ public class TermsOfServiceService {
 
     public boolean hasUserAcceptedLatest(UUID userId){
         logger.info("Checking Terms Of Service acceptance for user with id " + userId);
-        Date latestTOS = termsOfServiceRepo.getLatest().getDateUpdated();
-        return userRepo.checkAgainstTOSDate(userId, latestTOS);
+        return userRepo.checkAgainstTOSDate(userId);
     }
 
     public TermsOfService updateTermsOfService(String html){

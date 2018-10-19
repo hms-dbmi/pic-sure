@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,21 +120,22 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.getSingleResult();
 	}
 
-	public boolean checkAgainstTOSDate(UUID userId, Date latestDate){
+	public boolean checkAgainstTOSDate(UUID userId){
 		CriteriaQuery<User> query = cb().createQuery(User.class);
 		Root<User> queryRoot = query.from(User.class);
 		query.select(queryRoot);
 		CriteriaBuilder cb = cb();
+
+		Subquery<Date> subquery = query.subquery(Date.class);
+		Root<TermsOfService> tosRoot = subquery.from(TermsOfService.class);
+		subquery.select(cb.greatest(tosRoot.<Date>get("dateUpdated")));
+
 		return !em.createQuery(query
 				.where(
 						cb.and(
 								eq(cb, queryRoot, "uuid", userId),
-								gte(cb, queryRoot, "acceptedTOS", latestDate))))
+								cb.greaterThanOrEqualTo(queryRoot.get("acceptedTOS"), subquery))))
 				.getResultList().isEmpty();
-	}
-
-	public <V extends Comparable> Predicate gte(CriteriaBuilder cb, Root root, String columnName, V value) {
-		return cb.greaterThanOrEqualTo(root.get(columnName), value);
 	}
 
 }
