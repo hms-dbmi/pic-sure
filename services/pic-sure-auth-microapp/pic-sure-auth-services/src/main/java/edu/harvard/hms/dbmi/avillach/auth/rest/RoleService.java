@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.util.PicsureNaming;
-import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;

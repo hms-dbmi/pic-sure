@@ -1,13 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.*;

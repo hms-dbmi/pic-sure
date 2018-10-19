@@ -3,15 +3,12 @@ package edu.harvard.hms.dbmi.avillach.auth.security;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationContextException;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -21,7 +18,6 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
@@ -66,10 +62,10 @@ public class JWTFilter implements ContainerRequestFilter {
 		String userForLogging = null;
 
 		try {
-			User authenticatedUser = null;
+//			User authenticatedUser = null;
 
 
-			authenticatedUser = callLocalAuthentication(requestContext, token);
+			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);

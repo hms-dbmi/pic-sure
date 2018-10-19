@@ -6,6 +6,8 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 import java.io.Serializable;
+import java.util.Date;
+
 import java.security.Principal;
 import java.util.HashSet;
 import java.util.Set;
@@ -29,6 +31,8 @@ public class User extends BaseEntity implements Serializable, Principal {
 	private String connectionId;
 
 	private boolean matched;
+
+	private Date acceptedTOS;
 
 	@Column(name = "auth0_metadata")
 	private String auth0metadata;
@@ -142,6 +146,14 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	public void setMatched(boolean matched) {
 		this.matched = matched;
+	}
+
+	public Date getAcceptedTOS() {
+		return acceptedTOS;
+	}
+
+	public void setAcceptedTOS(Date acceptedTOS) {
+		this.acceptedTOS = acceptedTOS;
 	}
 
 	@Override
