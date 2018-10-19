@@ -8,13 +8,14 @@ import javax.persistence.*;
 import java.io.Serializable;
 import java.util.Date;
 
+import java.security.Principal;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "user")
-public class User extends BaseEntity implements Serializable{
+public class User extends BaseEntity implements Serializable, Principal {
 
 	@Column(unique = true)
 	private String subject;
@@ -147,11 +148,17 @@ public class User extends BaseEntity implements Serializable{
 		this.matched = matched;
 	}
 
+<<<<<<< HEAD
 	public Date getAcceptedTOS() {
 		return acceptedTOS;
 	}
 
 	public void setAcceptedTOS(Date acceptedTOS) {
 		this.acceptedTOS = acceptedTOS;
+=======
+	@Override
+	public String getName() {
+		return this.subject;
+>>>>>>> picsure-185-auth0-integration
 	}
 }

@@ -84,6 +84,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
+			requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
+                    uriInfo.getRequestUri().getScheme()));
+
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
 //			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
