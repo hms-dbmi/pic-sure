@@ -10,3 +10,15 @@ buildNumber.properties
 
 # Avoid ignoring Maven wrapper jar file (.jar files are usually ignored)
 !/.mvn/wrapper/maven-wrapper.jar
+
+# Eclipse files
+.classpath
+.project
+.settings/
+
+*.jar
+*.war
+
+war-exec.properties
+war-exec.manifest
+.extract/
