@@ -9,18 +9,23 @@ import com.jayway.jsonpath.Option;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 
+import javax.inject.Inject;
+import java.util.Arrays;
 import java.util.List;
 
 public class Auth0UserMatchingService {
 
-	@Autowired
+	@Inject
 	UserRepository userRepo;
 
-	@Autowired
+	@Inject
+	UserService userService;
+
+	@Inject
 	UserMetadataMappingService mappingService;
 
 	private Logger logger = LoggerFactory.getLogger(Auth0UserMatchingService.class);
@@ -51,6 +56,7 @@ public class Auth0UserMatchingService {
 		// This retrieves a map of UserInfo as JSON.
 		try {
 			String userInfoString = mapper.writeValueAsString(userInfo);
+			logger.info("Attempting to find match for user with info: " + userInfo);
 
 			//Parse this once so it doesn't get re-parsed every time we read from it
 			Configuration conf = Configuration.defaultConfiguration().addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
@@ -62,16 +68,15 @@ public class Auth0UserMatchingService {
 			List<UserMetadataMapping> mappings = mappingService.getAllMappingsForConnection(connection);
 
 			if (mappings == null || mappings.isEmpty()) {
-				logger.info("Unable to find mappings for connectionId " + connection);
 				//We don't have any mappings for this connection yet
-				addNewUser(userInfoString);
+				logger.info("Unable to find mappings for connectionId " + connection);
 				return null;
 			}
+
 			//We only care about unmatched users
 			List<User> users = userRepo.listUnmatchedByConnectionId(connection);
 			if (users == null || users.isEmpty()) {
 				logger.info("No unmatched users exist with connectionId " + connection);
-				addNewUser(userInfoString);
 				return null;
 			}
 			for (UserMetadataMapping umm : mappings) {
@@ -96,26 +101,17 @@ public class Auth0UserMatchingService {
 						u.setAuth0metadata(userInfoString);
 						u.setMatched(true);
 						u.setSubject(userId);
-						userRepo.persist(u);
+						userService.updateUser(Arrays.asList(u));
 						return u;
 					}
 				}
 			}
-			//No user found; create a new one
-			addNewUser(userInfoString);
 		} catch (JsonProcessingException e ){
 			logger.error("Unable to read UserInfo");
 		}
+		//No user found
+		logger.info("No matching user found");
 		return null;
 	}
 
-	private void addNewUser(String userInfo){
-		String userId = JsonPath.read(userInfo, "$.user_id");
-		logger.info("Adding new user with id " + userId);
-		User newUser = new User();
-		newUser.setAuth0metadata(userInfo);
-		newUser.setSubject(userId);
-		userRepo.persist(newUser);
-	}
-	
 }

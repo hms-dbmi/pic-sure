@@ -16,8 +16,8 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 
+import javax.inject.Inject;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -36,10 +36,10 @@ public class AuthService {
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    @Autowired
+    @Inject
     Auth0UserMatchingService matchingService;
 
-    @Autowired
+    @Inject
     UserRepository userRepository;
 
     @POST
@@ -78,7 +78,7 @@ public class AuthService {
         }
 
         //Do we have this user already?
-        User user = userRepository.findByUserIdAndConnection(userId, connectionId);
+        User user = userRepository.findBySubjectAndConnection(userId, connectionId);
         if  (user == null){
             //Try to match
             user = matchingService.matchTokenToUser(userInfo);
