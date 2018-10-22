@@ -28,6 +28,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
+
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
@@ -75,14 +76,14 @@ public class Auth0MatchingServiceTest {
             User result = cut.matchTokenToUser(userInfo);
             assertNotNull(result);
             assertNotNull(result.getAuth0metadata());
-            assertNotNull(result.getUserId());
-            assertEquals("ad|ldap-connector|blablablablablablablablablablablabla", result.getUserId());
+            assertNotNull(result.getSubject());
+            assertEquals("ad|ldap-connector|blablablablablablablablablablablabla", result.getSubject());
             assertTrue(result.isMatched());
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
             assertEquals(persistedUser.getAuth0metadata(), result.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("ad|ldap-connector|blablablablablablablablablablablabla", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("ad|ldap-connector|blablablablablablablablablablablabla", persistedUser.getSubject());
             assertTrue(persistedUser.isMatched());
             //Reset
             persistedUser = null;
@@ -92,14 +93,14 @@ public class Auth0MatchingServiceTest {
             result = cut.matchTokenToUser(userInfo);
             assertNotNull(result);
             assertNotNull(result.getAuth0metadata());
-            assertNotNull(result.getUserId());
-            assertEquals("github|0000000", result.getUserId());
+            assertNotNull(result.getSubject());
+            assertEquals("github|0000000", result.getSubject());
             assertTrue(result.isMatched());
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
             assertEquals(persistedUser.getAuth0metadata(), result.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("github|0000000", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("github|0000000", persistedUser.getSubject());
             assertTrue(persistedUser.isMatched());
 
             persistedUser = null;
@@ -109,14 +110,14 @@ public class Auth0MatchingServiceTest {
             result = cut.matchTokenToUser(userInfo);
             assertNotNull(result);
             assertNotNull(result.getAuth0metadata());
-            assertNotNull(result.getUserId());
-            assertEquals("samlp|NOBODY", result.getUserId());
+            assertNotNull(result.getSubject());
+            assertEquals("samlp|NOBODY", result.getSubject());
             assertTrue(result.isMatched());
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
             assertEquals(persistedUser.getAuth0metadata(), result.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("samlp|NOBODY", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("samlp|NOBODY", persistedUser.getSubject());
             assertTrue(persistedUser.isMatched());
 
             persistedUser = null;
@@ -127,8 +128,8 @@ public class Auth0MatchingServiceTest {
             assertNull(result);
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("samlp|noUser", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("samlp|noUser", persistedUser.getSubject());
             assertFalse(persistedUser.isMatched());
 
             persistedUser = null;
@@ -139,8 +140,8 @@ public class Auth0MatchingServiceTest {
             assertNull(result);
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("samlp|barFoo", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("samlp|barFoo", persistedUser.getSubject());
             assertFalse(persistedUser.isMatched());
 
             persistedUser = null;
@@ -151,8 +152,8 @@ public class Auth0MatchingServiceTest {
             assertNull(result);
             assertNotNull(persistedUser);
             assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getUserId());
-            assertEquals("samlp|fooBar", persistedUser.getUserId());
+            assertNotNull(persistedUser.getSubject());
+            assertEquals("samlp|fooBar", persistedUser.getSubject());
             assertFalse(persistedUser.isMatched());
 
             persistedUser = null;

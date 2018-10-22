@@ -95,7 +95,7 @@ public class Auth0UserMatchingService {
 						logger.info("Matching user with user_id " + userId);
 						u.setAuth0metadata(userInfoString);
 						u.setMatched(true);
-						u.setUserId(userId);
+						u.setSubject(userId);
 						userRepo.persist(u);
 						return u;
 					}
@@ -114,7 +114,7 @@ public class Auth0UserMatchingService {
 		logger.info("Adding new user with id " + userId);
 		User newUser = new User();
 		newUser.setAuth0metadata(userInfo);
-		newUser.setUserId(userId);
+		newUser.setSubject(userId);
 		userRepo.persist(newUser);
 	}
 	

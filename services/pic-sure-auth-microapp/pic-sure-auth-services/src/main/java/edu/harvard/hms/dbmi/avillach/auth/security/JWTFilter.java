@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.security;
 
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
@@ -22,6 +23,7 @@ import javax.ws.rs.ext.Provider;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
+import java.util.Set;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
@@ -43,7 +45,9 @@ public class JWTFilter implements ContainerRequestFilter {
 		/**
 		 * skip the filter in certain cases
 		 */
-		if (uriInfo.getPath().endsWith("authentication")) {
+		if (uriInfo.getPath().endsWith("authentication")
+				|| uriInfo.getPath().contains("role")
+				|| uriInfo.getPath().contains("privilege")) {
 			return;
 		}
 
@@ -58,10 +62,10 @@ public class JWTFilter implements ContainerRequestFilter {
 		String userForLogging = null;
 
 		try {
-			User authenticatedUser = null;
+//			User authenticatedUser = null;
 
 
-			authenticatedUser = callLocalAuthentication(requestContext, token);
+			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);
@@ -70,7 +74,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			// currently only user id will be logged, in the future, it might contain roles and other information,
 			// like xxxuser|roles|otherInfo
-			userForLogging = authenticatedUser.getUserId();
+			userForLogging = authenticatedUser.getSubject();
 
 			// check authorization of the authenticated user
 			checkRoles(authenticatedUser, resourceInfo
@@ -79,6 +83,9 @@ public class JWTFilter implements ContainerRequestFilter {
 					: new String[]{});
 
 			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+
+			requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
+                    uriInfo.getRequestUri().getScheme()));
 
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
@@ -101,21 +108,28 @@ public class JWTFilter implements ContainerRequestFilter {
 	 */
 	private boolean checkRoles(User authenticatedUser, String[] rolesAllowed) throws NotAuthorizedException{
 
-		String logMsg = "The roles of the user - id: " + authenticatedUser.getUserId() + " - "; //doesn't match the required restrictions";
+		String logMsg = "The roles of the user - id: " + authenticatedUser.getSubject() + " - "; //doesn't match the required restrictions";
 		boolean b = true;
 		if (rolesAllowed.length < 1) {
 			return true;
 		}
 
+
 		if (authenticatedUser.getRoles() == null) {
-			logger.error(logMsg + "user doesn't have a role.");
-			throw new NotAuthorizedException("user doesn't have a role.");
+			logger.error(logMsg + "is null.");
+			throw new NotAuthorizedException("user doesn't have an assigned role.");
+		}
+
+		Set<String> privilegeNameSet = authenticatedUser.getPrivilegeNameSet();
+		if (privilegeNameSet.isEmpty()){
+			logger.error(logMsg + "doesn't have privileges associated.");
+			throw new ApplicationException("Role configuration error, please contact admin.");
 		}
 
 		for (String role : rolesAllowed) {
-			if(!authenticatedUser.getRoles().contains(role)) {
-				logger.error(logMsg + "doesn't match the required role restrictions, role from user: "
-						+ authenticatedUser.getRoles() + ", role required: " + Arrays.toString(rolesAllowed));
+			if(!privilegeNameSet.contains(role)) {
+				logger.error(logMsg + "doesn't match the required role/privilege restrictions, privileges from user: "
+						+ authenticatedUser.getPrivilegeString() + ", priviliges required: " + Arrays.toString(rolesAllowed));
 				throw new NotAuthorizedException("doesn't match the required role restrictions.");
 			}
 		}
@@ -161,6 +175,6 @@ public class JWTFilter implements ContainerRequestFilter {
 		String subject = jws.getBody().getSubject();
 		String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
-		return userRepo.findOrCreate(new User().setSubject(subject).setUserId(userId));
+		return userRepo.findOrCreate(new User().setSubject(subject));
 	}
 }
