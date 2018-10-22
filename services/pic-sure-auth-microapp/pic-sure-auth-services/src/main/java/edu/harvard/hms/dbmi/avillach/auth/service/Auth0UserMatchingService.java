@@ -62,7 +62,6 @@ public class Auth0UserMatchingService {
 			Configuration conf = Configuration.defaultConfiguration().addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
 			Object parsedInfo = conf.jsonProvider().parse(userInfoString);
 			//Return lists or null so that we don't have to worry about whether it's a single object or an array, or catch errors
-			conf = conf.addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL).addOptions(Option.ALWAYS_RETURN_LIST);
 			List<String> connections = JsonPath.using(conf).parse(parsedInfo).read("$.identities[0].connection");
 			String connection = connections.get(0);
 			List<UserMetadataMapping> mappings = mappingService.getAllMappingsForConnection(connection);
