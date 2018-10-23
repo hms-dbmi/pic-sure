@@ -4,12 +4,15 @@ define(["backbone","handlebars", "text!header/header.hbs"],
 		initialize : function(){
 			this.template = HBS.compile(template);
 		},
-		events : {
-			"click #logout-btn" : "logout"
-		},
+        events : {
+            "click #logout-btn" : "gotoLogin"
+        },
+        gotoLogin : function(event){
+            this.logout();
+            window.location='/';
+        },
 		logout : function(event){
-			localStorage.clear();
-			window.location = "/"
+            sessionStorage.clear();
 		}, 
 		render : function(){
 			this.$el.html(this.template({}));
