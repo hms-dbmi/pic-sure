@@ -79,7 +79,7 @@ CREATE TABLE `user` (
   `acceptedTOS` timestamp COLLATE utf8_bin DEFAULT NULL,
   `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `matched` bit(1) NOT NULL,
+  `matched` bit(1) NOT NULL DEFAULT FALSE,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `UK_r8xpakluitn685ua7pt8xjy9r` (`subject`)

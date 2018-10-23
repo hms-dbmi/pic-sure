@@ -2,8 +2,8 @@
     position: relative;
     top: 2em;
 }
-.tool-header {
-	font-size: 2.5em;
+.header-tool {
+	font-size: 2.0em;
 }
  .large {
     font-size: 5em;
@@ -258,6 +258,11 @@
 input {
     border: 1px solid #4a90e2;
 }
+
+input:read-only {
+    background-color: #cee2f8;
+}
+
 #current-connection-form {
 	width: inherit;
 }

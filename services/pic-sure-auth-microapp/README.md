@@ -6,6 +6,9 @@ Prerequisites: Maven 3+, Java, Docker and docker-compose
 
 mvn clean install && docker-compose build && docker-compose up -d
 
+You'll need to provide Auth0 client_id in /admin/overrides/login.js and the client_secret of pic-sure-auth-services 
+has to match the one from Auth0 based on client_id.
+
 # login to pic-sure-auth-services endpoint
 after you run the command `docker-compose up -d`, and check everything is fine by `docker-compose logs -f`
 

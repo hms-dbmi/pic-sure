@@ -1,11 +1,12 @@
-define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"], 
-		function(BB, HBS, connections, userFunctions, template, connectionTemplate){
+define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "user/userManagement", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"],
+		function(BB, HBS, connections, userFunctions, userManagement, template, connectionTemplate){
 	var view = BB.View.extend({
-		initialize: function(){
+		initialize: function(opts){
 			this.connectionTemplate = HBS.compile(connectionTemplate);
 			this.template = HBS.compile(template);
 			this.connections = connections;
 			this.connection = this.connections[0];
+			this.managementConsole = opts.managementConsole;
 		},
 		events: {
 			"change #new-user-connection-dropdown":"renderConnectionForm",
@@ -25,7 +26,7 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 				"POST",
 				function(result){
 					console.log(result);
-					this.render();
+                    this.managementConsole.render();
 				}.bind(this)
 			);
 		},

@@ -9,16 +9,20 @@
 </div>
 {{/unless}}
 <form>
-    {{#unless createOrUpdateUser}}
-    UUID:<br>
-    <input type="text" name="userId" style="width: 100%;" readonly value="{{user.uuid}}">
+    Email:<br>
+    <input type="text" name="email" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{displayEmail user}}">
     <br>
-    {{/unless}}
+    UUID:<br>
+    <input type="text" name="uuid" style="width: 100%;" readonly value="{{user.uuid}}">
+    <br>
     User ID:<br>
-    <input type="text" name="userId" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{user.userId}}">
+    <input type="text" name="userId" style="width: 100%;" required readonly value="{{user.userId}}">
+    <br>
+    Connection ID:<br>
+    <input type="text" name="connectionId" style="width: 100%;" required readonly value="{{user.connectionId}}">
     <br>
     Subject:<br>
-    <input type="text" name="subject" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{user.subject}}">
+    <input type="text" name="subject" style="width: 100%;" required readonly value="{{user.subject}}">
     <br>
     Roles:<br>
     {{#unless createOrUpdateUser}}
@@ -48,4 +52,7 @@
         </div>
         </div>
     {{/if}}
+    <input type="text" name="general_metadata" style="width: 100%; display:none;" required readonly value="{{user.generalMetadata}}">
+    <input type="text" name="auth0_metadata" style="width: 100%; display:none;" required readonly value="{{user.auth0metadata}}">
+
 </form>
