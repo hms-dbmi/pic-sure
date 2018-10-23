@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,10 +10,9 @@ import org.slf4j.LoggerFactory;
 import javax.enterprise.context.ApplicationScoped;
 import javax.persistence.NoResultException;
 import javax.persistence.NonUniqueResultException;
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Root;
+import javax.persistence.criteria.*;
 import javax.transaction.Transactional;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +37,23 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.where(
 						eq(cb, queryRoot, "subject", subject)))
 				.getSingleResult();
+	}
+
+	public User findBySubjectAndConnection(String subject, String connectionId){
+		CriteriaQuery<User> query = em.getCriteriaBuilder().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+		try {
+            return em.createQuery(query
+                    .where(
+                            cb.and(
+                                    eq(cb, queryRoot, "connectionId", connectionId),
+                                    eq(cb, queryRoot, "subject", subject))))
+                    .getSingleResult();
+        } catch (NoResultException e){
+		    return null;
+        }
 	}
 
 	public List<User> listUnmatchedByConnectionId(String connectionId) {
@@ -118,6 +135,24 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.where(
 						eq(cb, queryRoot, "email", email)))
 				.getSingleResult();
+	}
+
+	public boolean checkAgainstTOSDate(UUID userId){
+		CriteriaQuery<User> query = cb().createQuery(User.class);
+		Root<User> queryRoot = query.from(User.class);
+		query.select(queryRoot);
+		CriteriaBuilder cb = cb();
+
+		Subquery<Date> subquery = query.subquery(Date.class);
+		Root<TermsOfService> tosRoot = subquery.from(TermsOfService.class);
+		subquery.select(cb.greatest(tosRoot.<Date>get("dateUpdated")));
+
+		return !em.createQuery(query
+				.where(
+						cb.and(
+								eq(cb, queryRoot, "uuid", userId),
+								cb.greaterThanOrEqualTo(queryRoot.get("acceptedTOS"), subquery))))
+				.getResultList().isEmpty();
 	}
 
 }
