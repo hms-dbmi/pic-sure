@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.UserMetadataMappingService;
 import org.junit.Before;
@@ -24,11 +25,8 @@ import java.util.stream.Collectors;
 
 import static junit.framework.TestCase.assertNotNull;
 import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
@@ -39,6 +37,9 @@ public class Auth0MatchingServiceTest {
 
     @Mock
     UserMetadataMappingService mappingService = mock(UserMetadataMappingService.class);
+
+    @Mock
+    UserService userService = mock(UserService.class);
 
     @InjectMocks
     Auth0UserMatchingService cut = new Auth0UserMatchingService();
@@ -57,10 +58,11 @@ public class Auth0MatchingServiceTest {
         //So we can check that the user is persisted
         doAnswer(new Answer<Void>() {
             public Void answer(InvocationOnMock invocation) {
-                persistedUser = invocation.getArgument(0);
+                List<User> userList = invocation.getArgument(0);
+                persistedUser = userList.get(0);
                 return null;
             }
-        }).when(userRepo).persist(any(User.class));
+        }).when(userService).updateUser(any(List.class));
     }
 
     @Test
@@ -126,37 +128,16 @@ public class Auth0MatchingServiceTest {
             userInfo = mockAuthAPIUserInfo("no-user-token");
             result = cut.matchTokenToUser(userInfo);
             assertNull(result);
-            assertNotNull(persistedUser);
-            assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getSubject());
-            assertEquals("samlp|noUser", persistedUser.getSubject());
-            assertFalse(persistedUser.isMatched());
-
-            persistedUser = null;
 
             //Test when path not found in auth0metadata -- This is a problem with the mapping data in the database
             userInfo = mockAuthAPIUserInfo("invalid-path-token");
             result = cut.matchTokenToUser(userInfo);
             assertNull(result);
-            assertNotNull(persistedUser);
-            assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getSubject());
-            assertEquals("samlp|barFoo", persistedUser.getSubject());
-            assertFalse(persistedUser.isMatched());
-
-            persistedUser = null;
 
             //Test when no mappings in database -- We have no mappings set up for this yet
             userInfo = mockAuthAPIUserInfo("no-mapping-connection-token");
             result = cut.matchTokenToUser(userInfo);
             assertNull(result);
-            assertNotNull(persistedUser);
-            assertNotNull(persistedUser.getAuth0metadata());
-            assertNotNull(persistedUser.getSubject());
-            assertEquals("samlp|fooBar", persistedUser.getSubject());
-            assertFalse(persistedUser.isMatched());
-
-            persistedUser = null;
 
         } catch (Exception e) {
             e.printStackTrace();
