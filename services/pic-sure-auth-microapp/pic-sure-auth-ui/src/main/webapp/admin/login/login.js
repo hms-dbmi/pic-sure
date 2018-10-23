@@ -1,5 +1,5 @@
-define(['common/session', 'text!settings/settings.json', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'overrides/login', 'util/notification'],
-		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, overrides, notification){
+define(['common/session', 'text!../../settings/settings.json', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
+		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
 
@@ -24,7 +24,7 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     }),
                     contentType: 'application/json',
                     success: function(data){
-                        session.authenticated(data.userId, data.token, data.email, data.permissions);
+                        session.authenticated(data.userId, data.token, data.email, data.permissions, this.handleNotAuthorizedResponse);
                         if (sessionStorage.redirection_url)
                             window.location = sessionStorage.redirection_url;
                         else
@@ -51,7 +51,18 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     }
                 });
             }
-		}
+		},
+        handleNotAuthorizedResponse : function () {
+            if (JSON.parse(sessionStorage.session).token) {
+                if (sessionStorage.not_authorized_url)
+                    window.location = sessionStorage.not_authorized_url;
+                else
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)(JSON.parse(settings)));
+            }
+            else {
+                window.location = "/logout";
+            }
+        }
 	};
 	return login;
 });

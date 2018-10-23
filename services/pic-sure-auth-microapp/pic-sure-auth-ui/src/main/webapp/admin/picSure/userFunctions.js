@@ -4,6 +4,7 @@ define(["util/notification"],
         init: function () {}
     };
     userFunctions.fetchUsers = function (object, callback) {
+        var failureMessage = "Failed to load users.";
         $.ajax({
             url: window.location.origin + "/auth/user",
             type: 'GET',
@@ -12,12 +13,13 @@ define(["util/notification"],
                 callback(response, object);
             }.bind(object),
             error: function(response){
-                notification.showFailureMessage("Failed to load users.");
+                handleAjaxError(response, failureMessage);
             }
         });
     }.bind(userFunctions);
 
     userFunctions.showUserDetails = function (uuid, callback) {
+        var failureMessage = "Failed to load user details.";
         $.ajax({
             url: window.location.origin + "/auth/user/" + uuid,
             type: 'GET',
@@ -26,7 +28,7 @@ define(["util/notification"],
                 callback(response);
             },
             error: function(response){
-                notification.showFailureMessage("Failed to load user details.");
+                handleAjaxError(response, failureMessage);
             }
         });
     }.bind(userFunctions);
@@ -44,12 +46,13 @@ define(["util/notification"],
                 callback(response);
             }.bind(this),
             error: function(response){
-                notification.showFailureMessage(failureMessage);
+                handleAjaxError(response, failureMessage);
             }
         });
     }.bind(userFunctions);
 
     userFunctions.deleteUser = function (uuid, callback) {
+        var failureMessage = 'Failed to delete user';
         $.ajax({
             url: window.location.origin + '/auth/user/' + uuid,
             type: 'DELETE',
@@ -59,12 +62,13 @@ define(["util/notification"],
                 callback(response);
             },
             error: function(response){
-                notification.showFailureMessage('Failed to delete user');
+                handleAjaxError(response, failureMessage);
             }
         });
     }.bind(userFunctions);
 
     userFunctions.getAvailableRoles = function (callback) {
+        var failureMessage = 'Failed to load roles';
         $.ajax({
             url: window.location.origin + "/auth/user/availableRoles",
             type: 'GET',
@@ -73,9 +77,16 @@ define(["util/notification"],
                 callback(response);
             },
             error: function(response){
-                console.log('Failed to load roles');
+                console.log(failureMessage);
+                handleAjaxError(response, failureMessage);
             }
         });
+    }.bind(userFunctions);
+
+    var handleAjaxError = function (response, message) {
+        if (response.status !== 401) {
+            notification.showFailureMessage(message);
+        }
     }.bind(userFunctions);
 
 	return userFunctions;
