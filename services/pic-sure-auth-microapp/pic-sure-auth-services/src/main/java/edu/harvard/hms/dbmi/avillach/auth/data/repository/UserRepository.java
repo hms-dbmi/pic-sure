@@ -102,7 +102,7 @@ public class UserRepository extends BaseRepository<User, UUID> {
 
 		User result = getById(inputUser.getUuid());
 		if (result != null)
-			logger.info("createUser() created user: uuid: " + result.getUuid()
+			logger.info("createUser() created user, uuid: " + result.getUuid()
 					+ ", subject: " + subject
 					+ ", role: " + result.getRoleString()
 					+ ", privilege: "+ result.getPrivilegeString());
