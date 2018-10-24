@@ -22,7 +22,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
        
         execute: function(callback, args, name){
-            if( ! session.isValid()){
+            if( ! session.isValid(login.handleNotAuthorizedResponse)){
                 this.login();
                 return false;
             }

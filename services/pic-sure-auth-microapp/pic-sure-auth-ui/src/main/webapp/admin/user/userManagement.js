@@ -142,19 +142,17 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 				this.model.set("availableRoles", roles);
 			}.bind(this));
 			userFunctions.fetchUsers(this, function(users){
-				this.displayUsers.bind(this)(
-						{
-							connections: 
-								_.map(this.connections, function(connection){
-									return _.extend(connection, 
-											{
-										users: users.filter(
-												function(user){
-													return user.connectionId === connection.id;
-												})
-								})})
-						}
-				);
+				this.displayUsers.bind(this)({
+					connections:
+						_.map(this.connections, function(connection){
+							return _.extend(connection, {
+								users: users.filter(
+									function(user){
+										return user.connectionId === connection.id;
+								})
+							})
+						})
+				});
 			}.bind(this));
 		}
 	});
