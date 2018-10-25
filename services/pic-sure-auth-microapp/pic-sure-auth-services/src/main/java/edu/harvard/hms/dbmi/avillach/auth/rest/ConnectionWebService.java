@@ -42,6 +42,13 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
         return addEntity(connections, connectionRepo);
     }
 
+    @PUT
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Path("/")
+    public Response updateConnection(List<Connection> connections){
+        return updateEntity(connections, connectionRepo);
+    }
+
     @Transactional
     @DELETE
     @Path("/{connectionId}")

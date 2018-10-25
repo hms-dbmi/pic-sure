@@ -47,6 +47,13 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 		return mappingService.addMappings(mappings);
 	}
 
+	@PUT
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Path("/")
+	public Response updateMapping(List<UserMetadataMapping> mappings) {
+		return updateEntity(mappings, mappingRepo);
+	}
+
 	@Transactional
 	@DELETE
 	@Path("/{mappingId}")

@@ -76,7 +76,7 @@ CREATE TABLE `user` (
   `uuid` binary(16) NOT NULL,
   `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
   `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
-  `acceptedTOS` timestamp COLLATE utf8_bin DEFAULT NULL,
+  `acceptedTOS` datetime COLLATE utf8_bin DEFAULT NULL,
   `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `matched` bit(1) NOT NULL DEFAULT FALSE,
