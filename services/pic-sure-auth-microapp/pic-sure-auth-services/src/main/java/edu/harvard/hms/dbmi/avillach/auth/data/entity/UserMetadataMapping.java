@@ -2,25 +2,21 @@ package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-import javax.persistence.Entity;
+import javax.persistence.*;
 
 @Entity(name="userMetadataMapping")
 public class UserMetadataMapping extends BaseEntity {
-	
-	private String connectionId;
-	
+
+	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(
+			name = "connectionId",
+			referencedColumnName = "id"
+	)
+	private Connection connection;
+
 	private String generalMetadataJsonPath;
 	
 	private String auth0MetadataJsonPath;
-
-	public String getConnectionId() {
-		return connectionId;
-	}
-
-	public UserMetadataMapping setConnectionId(String connectionId) {
-		this.connectionId = connectionId;
-		return this;
-	}
 
 	public String getGeneralMetadataJsonPath() {
 		return generalMetadataJsonPath;
@@ -39,5 +35,13 @@ public class UserMetadataMapping extends BaseEntity {
 		this.auth0MetadataJsonPath = auth0MetadataJsonPath;
 		return this;
 	}
-	
+
+	public Connection getConnection() {
+		return connection;
+	}
+
+	public UserMetadataMapping setConnection(Connection connection) {
+		this.connection = connection;
+		return this;
+	}
 }
