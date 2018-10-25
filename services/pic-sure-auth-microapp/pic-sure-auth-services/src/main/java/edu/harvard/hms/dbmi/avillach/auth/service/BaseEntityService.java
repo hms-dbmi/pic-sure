@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +37,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response getEntityById(String id, BaseRepository baseRepository){
-        logger.info("User: " + securityContext.getUserPrincipal().getName()
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext)
                 + " Looking for " + type.getSimpleName() +
                 " by ID: " + id + "...");
 
@@ -50,7 +51,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response getEntityAll(BaseRepository baseRepository){
-        logger.info("User: " + securityContext.getUserPrincipal().getName() +
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) +
                 " Getting all " + type.getSimpleName() +
                 "s...");
         List<T> ts = null;
@@ -70,7 +71,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be added.");
 
-        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to add a list of "
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to add a list of "
                 + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, true, baseRepository);
@@ -95,7 +96,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be updated.");
 
-        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to update a list of "
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to update a list of "
                 + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, false, baseRepository);
@@ -197,7 +198,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     public Response removeEntityById(String id, BaseRepository baseRepository) {
 
-        logger.info("User: " + securityContext.getUserPrincipal().getName() + " is trying to REMOVE a entity: "
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to REMOVE a entity: "
                 + type.getSimpleName() + ", by uuid: " + id);
 
         UUID uuid = UUID.fromString(id);
