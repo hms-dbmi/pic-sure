@@ -18,6 +18,7 @@ import javax.ejb.Startup;
 import javax.inject.Inject;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
+import javax.ws.rs.core.SecurityContext;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -105,6 +106,13 @@ public class JAXRSConfiguration extends Application {
         }
 
         return false;
+    }
+
+    public static String getPrincipalName(SecurityContext securityContext){
+        if (securityContext.getUserPrincipal() == null)
+            return null;
+
+        return securityContext.getUserPrincipal().getName();
     }
 
 }

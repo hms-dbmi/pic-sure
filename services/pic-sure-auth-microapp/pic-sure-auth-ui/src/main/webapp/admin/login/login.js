@@ -11,18 +11,24 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
 	var login = {
 		showLoginPage : function(){
             var queryObject = parseQueryString();
+            if (queryObject.redirection_url) sessionStorage.redirection_url = queryObject.redirection_url.trim();
+            if (queryObject.not_authorized_url) sessionStorage.not_authorized_url = queryObject.not_authorized_url.trim();
+            var redirectURI = window.location.protocol + "//"+ window.location.hostname + (window.location.port ? ":"+window.location.port : "") +"/login";
             if(typeof queryObject.code === "string"){
                 $.ajax({
                     url: "/auth/authentication",
                     type: 'post',
                     data: JSON.stringify({
                         code : queryObject.code,
-                        redirectURI: window.location.protocol + "//"+ window.location.hostname + (window.location.port ? ":"+window.location.port : "") +"/login"
+                        redirectURI: redirectURI
                     }),
                     contentType: 'application/json',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions);
-                        history.pushState({}, "", "userManagement");
+                        if (sessionStorage.redirection_url)
+                            window.location = sessionStorage.redirection_url;
+                        else
+                            history.pushState({}, "", "userManagement");
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
@@ -39,7 +45,7 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                             buttonScript : scriptResponse,
                             clientId : clientId,
                             auth0Subdomain : "avillachlab",
-                            callbackURL : window.location.protocol + "//"+ window.location.hostname + (window.location.port ? ":"+window.location.port : "") +"/login"
+                            callbackURL : redirectURI
                         }));
                         $('#main-content').append(loginCss);
                     }
