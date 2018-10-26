@@ -1,15 +1,16 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import javax.inject.Inject;
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Response;
-
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserMetadataMappingRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.UserMetadataMappingService;
+
+import javax.inject.Inject;
+import javax.transaction.Transactional;
+import javax.ws.rs.*;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import java.util.List;
 
 @Path("mapping")
 public class UserMetadataMappingWebService  extends BaseEntityService<UserMetadataMapping>{
@@ -20,6 +21,10 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 
 	@Inject
 	UserMetadataMappingService mappingService;
+
+	@Inject
+	UserMetadataMappingRepository mappingRepo;
+
 	
 	@Path("{connectionId}")
 	@GET
@@ -33,6 +38,26 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 	public Response getAllMappings() {
 		return Response.ok(mappingService.getAllMappings()).build();
 	}
-	
-	
+
+	@Transactional
+	@POST
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Path("/")
+	public Response addMapping(List<UserMetadataMapping> mappings) {
+		return mappingService.addMappings(mappings);
+	}
+
+	@PUT
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Path("/")
+	public Response updateMapping(List<UserMetadataMapping> mappings) {
+		return updateEntity(mappings, mappingRepo);
+	}
+
+	@Transactional
+	@DELETE
+	@Path("/{mappingId}")
+	public Response removeById(@PathParam("mappingId") final String mappingId) {
+		return removeEntityById(mappingId, mappingRepo);
+	}
 }
