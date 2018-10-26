@@ -70,7 +70,7 @@ define(["util/notification"],
     userFunctions.getAvailableRoles = function (callback) {
         var failureMessage = 'Failed to load roles';
         $.ajax({
-            url: window.location.origin + "/auth/user/availableRoles",
+            url: window.location.origin + "/auth/role",
             type: 'GET',
             contentType: 'application/json',
             success: function(response){

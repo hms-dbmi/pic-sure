@@ -14,12 +14,17 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 		},
 		createUser: function(event){
 			var metadata = {};
+			var roles = [];
+			_.each(this.$('input:checked'), function (checkbox) {
+                roles.push({uuid: checkbox.value});
+            })
+            //var roles = this.$('input:checked').each;
 			_.each($('#current-connection-form input[type=text]'), function(entry){
 			metadata[entry.name] = entry.value});
 			var user = {
 				connectionId: $('#new-user-connection-dropdown').val(),
 				generalMetadata:JSON.stringify(metadata),
-				roles: _.pluck(this.$('input:checked'),'value').join(',')
+				roles: roles
 			};
 			userFunctions.createOrUpdateUser(
 				[user],

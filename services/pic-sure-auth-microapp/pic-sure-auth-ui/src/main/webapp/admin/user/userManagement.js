@@ -1,12 +1,12 @@
-define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/userManagement.hbs", "text!user/userMenu.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
-		function(BB, HBS, connections, AddUserView, template, userMenuTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
+define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/userManagement.hbs", "text!user/userDetails.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		function(BB, HBS, connections, AddUserView, template, userDetailsTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
 	var userManagementModel = BB.Model.extend({
 	});
 
 	var userManagementView = BB.View.extend({
-		connections : connections, 
+		connections : connections,
 		template : HBS.compile(template),
-		crudUserTemplate : HBS.compile(userMenuTemplate),
+		crudUserTemplate : HBS.compile(userDetailsTemplate),
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
 			HBS.registerHelper('fieldHelper', function(user, connectionField){
@@ -24,6 +24,9 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
                     return JSON.parse(user.generalMetadata)[emailField];
 				}
                 return user.email;
+            });
+            HBS.registerHelper('displayUserRoles', function(roles){
+                return _.pluck(roles, "name").join(", ");
             });
 		},
 		events : {
@@ -53,9 +56,11 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 			var checkBoxes = $(":checkbox", this.$el);
 			var userRoles = this.model.get("selectedUser").roles;
 			_.each(checkBoxes, function (roleCheckbox) {
-				if (userRoles.includes(roleCheckbox.value)){
-					roleCheckbox.checked = true;
-				}
+                _.each(userRoles, function (userRole) {
+                    if (userRole.uuid == roleCheckbox.value) {
+                        roleCheckbox.checked = true;
+                    }
+                })
 			})
 		},
 		showUserAction: function (event) {
@@ -63,7 +68,7 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 
 			userFunctions.showUserDetails(uuid, function(result) {
 				this.model.set("selectedUser", result);
-				this.getUserRoles(result.roles);
+				//this.getUserRoles(result.roles);
 				$("#modal-window", this.$el).html(this.modalTemplate({title: "User info"}));
 				$("#modalDialog", this.$el).show();
 				$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: false, user: this.model.get("selectedUser")}));
@@ -78,7 +83,10 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
             var general_metadata = this.$('input[name=general_metadata]').val();
             var auth0_metadata = this.$('input[name=auth0_metadata]').val();
             var connectionId = this.$('input[name=connectionId]').val();
-            var roles = _.pluck(this.$('input:checked'), "value").join(',');
+            var roles = [];
+            _.each(this.$('input:checked'), function (checkbox) {
+                roles.push({uuid: checkbox.value});
+            })
 
             var metadataEmailField = _.where(connections, {id: connectionId})[0].emailField;
             var generalMetadataJSON = {};
@@ -95,7 +103,6 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
                 requestType = "PUT";
                 user = [{
                     uuid: uuid,
-                    userId: userId,
                     email: email,
                     connectionId: connectionId,
                     generalMetadata: JSON.stringify(generalMetadataJSON),
@@ -106,7 +113,6 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
             else {
                 requestType = "POST";
                 user = [{
-                    userId: userId,
                     subject: userId,
                     roles: roles}];
             }

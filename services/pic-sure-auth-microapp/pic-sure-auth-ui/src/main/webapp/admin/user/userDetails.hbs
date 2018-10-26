@@ -28,7 +28,7 @@
     {{#unless createOrUpdateUser}}
         <ul>
         {{#each user.roles}}
-            <li>{{this}}</li>
+            <li>{{this.name}}</li>
         {{/each}}
         </ul>
     {{/unless}}
@@ -37,7 +37,7 @@
     {{#if createOrUpdateUser}}
         <div class="checkbox-group required">
             {{#each availableRoles}}
-                <input type="checkbox" name="{{this}}" value="{{this}}"> {{this}}<br>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}"> {{this.name}}<br>
             {{/each}}
         </div>
     {{/if}}
