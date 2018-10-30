@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.pheno;
 
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -22,18 +25,29 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 
-@SuppressWarnings({"unchecked", "rawtypes"})
-public class Loader {
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+public class SQLLoader {
+	
+	static JdbcTemplate template;
+	
+	public SQLLoader() {
+		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
+	}
+
 
 	private static Logger log = Logger.getLogger(Loader.class);
 
-	private static final int PATIENT_NUM = 0;
+	private static final int PATIENT_NUM = 1;
 
-	private static final int CONCEPT_PATH = 1;
+	private static final int CONCEPT_PATH = 2;
 
-	private static final int NUMERIC_VALUE = 2;
+	private static final int NUMERIC_VALUE = 3;
 
-	private static final int TEXT_VALUE = 3;
+	private static final int TEXT_VALUE = 4;
 
 	private static HashMap<String, byte[]> compressedPhenoCubes = new HashMap<>();
 
@@ -127,7 +141,8 @@ public class Loader {
 					});
 
 	public static void main(String[] args) throws IOException {
-		allObservationsStore = new RandomAccessFile("/opt/local/phenocube/allObservationsStore.javabin", "rw");
+		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
+		allObservationsStore = new RandomAccessFile("/tmp/allObservationsStore.javabin", "rw");
 		initialLoad();
 		saveStore();
 	}
@@ -137,7 +152,7 @@ public class Loader {
 			metadataMap.put(key, new ColumnMeta().setName(key).setWidthInBytes(value.getColumnWidth()).setCategorical(value.isStringType()));
 		});
 		store.invalidateAll();
-		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File("/opt/local/phenocube/columnMeta.javabin")));
+		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File("/tmp/columnMeta.javabin")));
 		metaOut.writeObject(metadataMap);
 		metaOut.flush();
 		metaOut.close();
@@ -145,32 +160,46 @@ public class Loader {
 	}
 
 	private static void initialLoad() throws IOException {
-		Reader in = new FileReader("/opt/local/phenocube/allConcepts.csv");
-		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(in);
-
 		final PhenoCube[] currentConcept = new PhenoCube[1];
-		for (CSVRecord record : records) {
-			processRecord(currentConcept, record);
-		}
+		template.query("select psc.PATIENT_NUM, CONCEPT_PATH, NVAL_NUM, TVAL_CHAR "
+				+ "FROM i2b2demodata.QT_PATIENT_SET_COLLECTION psc "
+				+ "LEFT JOIN i2b2demodata.OBSERVATION_FACT ofact "
+				+ "ON ofact.PATIENT_NUM=psc.PATIENT_NUM "
+				+ "JOIN i2b2demodata.CONCEPT_DIMENSION cd "
+				+ "ON cd.CONCEPT_CD=ofact.CONCEPT_CD "
+				+ "WHERE RESULT_INSTANCE_ID=41 ORDER BY CONCEPT_PATH, psc.PATIENT_NUM", new RowCallbackHandler() {
+
+			@Override
+			public void processRow(ResultSet arg0) throws SQLException {
+				int row = arg0.getRow();
+				if(row%100000==0) {
+					System.out.println(row);
+				}
+				processRecord(currentConcept, arg0);
+			}
+
+		});
 	}
 
-	private static void processRecord(final PhenoCube[] currentConcept, CSVRecord record) {
-		if(record.size()<4) {
-			log.info("Record number " + record.getRecordNumber() 
-			+ " had less records than we expected so we are skipping it.");
-			return;
-		}
-
+	private static void processRecord(final PhenoCube[] currentConcept, ResultSet arg0) {
 		try {
-			String conceptPath = record.get(CONCEPT_PATH).endsWith("\\" +record.get(TEXT_VALUE).trim()+"\\") ? record.get(CONCEPT_PATH).replaceAll("\\\\[\\w\\.-]*\\\\$", "\\\\") : record.get(CONCEPT_PATH);
-			String numericValue = record.get(NUMERIC_VALUE);
+			String conceptPathFromRow = arg0.getString(CONCEPT_PATH);
+			String textValueFromRow = arg0.getString(TEXT_VALUE) == null ? null : arg0.getString(TEXT_VALUE).trim();
+			String conceptPath = conceptPathFromRow.endsWith("\\" +textValueFromRow+"\\") ? conceptPathFromRow.replaceAll("\\\\[\\w\\.-]*\\\\$", "\\\\") : conceptPathFromRow;
+			// This is not getDouble because we need to handle null values, not coerce them into 0s
+			String numericValue = arg0.getString(NUMERIC_VALUE);
 			if(numericValue==null || numericValue.isEmpty()) {
 				try {
-					numericValue = Float.parseFloat(record.get(TEXT_VALUE).trim()) + "";
+					numericValue = Float.parseFloat(textValueFromRow) + "";
 				}catch(NumberFormatException e) {
-					log.info("Record number " + record.getRecordNumber() 
-					+ " had an alpha value where we expected a number in the alpha column... "
-					+ "which sounds weirder than it really is.");
+					try {
+						log.info("Record number " + arg0.getRow() 
+						+ " had an alpha value where we expected a number in the alpha column... "
+						+ "which sounds weirder than it really is.");
+					} catch (SQLException e1) {
+						// TODO Auto-generated catch block
+						e1.printStackTrace();
+					}
 
 				}
 			}
@@ -183,15 +212,18 @@ public class Loader {
 					store.put(conceptPath, currentConcept[0]);
 				}
 			}
-			String value = isAlpha ? record.get(TEXT_VALUE) : numericValue;
+			String value = isAlpha ? arg0.getString(TEXT_VALUE) : numericValue;
 
 			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Float.class))) {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Float.BYTES);
-				currentConcept[0].add(Integer.parseInt(record.get(PATIENT_NUM).trim()), isAlpha ? value : Float.parseFloat(value));
+				currentConcept[0].add(arg0.getInt(PATIENT_NUM), isAlpha ? value : Float.parseFloat(value));
 			}
 		} catch (ExecutionException e) {
 			e.printStackTrace();
+		} catch (SQLException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
 		}
 	}
 }

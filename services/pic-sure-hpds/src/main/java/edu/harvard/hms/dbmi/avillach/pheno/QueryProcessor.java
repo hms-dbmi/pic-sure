@@ -29,9 +29,9 @@ import edu.harvard.hms.dbmi.avillach.pheno.store.NotEnoughMemoryException;
 import edu.harvard.hms.dbmi.avillach.pheno.store.ResultStore;
 
 public class QueryProcessor {
-	
+
 	private Logger log = Logger.getLogger(QueryProcessor.class);
-	
+
 	private final int ID_BATCH_SIZE;
 
 	private final int CACHE_SIZE;
@@ -47,8 +47,8 @@ public class QueryProcessor {
 		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE"));
 		store = initializeCache();
 		metaStore = loadMetaStore();
-		loadAllDataFiles();
-		initAllIds();
+//		loadAllDataFiles();
+//		initAllIds();
 	}
 
 	private TreeMap<String, ColumnMeta> loadMetaStore() {
@@ -152,9 +152,9 @@ public class QueryProcessor {
 			Integer x) {
 		try{
 			PhenoCube<?> cube = getCube(paths.get(x-1));
-			
+
 			KeyAndValue<?>[] cubeValues = cube.sortedByKey();
-			
+
 			int idPointer = 0;
 
 			ByteBuffer floatBuffer = ByteBuffer.allocate(Float.BYTES);
@@ -165,9 +165,9 @@ public class QueryProcessor {
 					if(key < id) {
 						idPointer++;	
 					} else if(key == id){
-							idPointer = writeResultField(results, x, cube, cubeValues, idPointer, floatBuffer,
-									idInSubsetPointer);
-							break;
+						idPointer = writeResultField(results, x, cube, cubeValues, idPointer, floatBuffer,
+								idInSubsetPointer);
+						break;
 					} else {
 						writeNullResultField(results, x, cube, floatBuffer, idInSubsetPointer);
 						break;
@@ -179,7 +179,7 @@ public class QueryProcessor {
 			e.printStackTrace();
 			return;
 		}
-		
+
 	}
 
 	private int writeResultField(ResultStore results, Integer x, PhenoCube<?> cube, KeyAndValue<?>[] cubeValues,
@@ -238,30 +238,34 @@ public class QueryProcessor {
 						});
 	}
 
-	private void loadAllDataFiles() {
-		List<String> cubes = new ArrayList<String>(metaStore.keySet());
-		for(int x = 0;x<Math.min(metaStore.size(), CACHE_SIZE);x++){
-			try {
-				if(metaStore.get(cubes.get(x)).getObservationCount() == 0){
-					log.info("Rejecting : " + cubes.get(x) + " because it has no entries.");
-				}else {
-					store.get(cubes.get(x));
-					log.info("loaded: " + cubes.get(x));					
+	void loadAllDataFiles() {
+		if(Crypto.hasKey()) {
+			List<String> cubes = new ArrayList<String>(metaStore.keySet());
+			for(int x = 0;x<Math.min(metaStore.size(), CACHE_SIZE);x++){
+				try {
+					if(metaStore.get(cubes.get(x)).getObservationCount() == 0){
+						log.info("Rejecting : " + cubes.get(x) + " because it has no entries.");
+					}else {
+						store.get(cubes.get(x));
+						log.info("loaded: " + cubes.get(x));					
+					}
+				} catch (ExecutionException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-			} catch (ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
 
+			}
 		}
 	}
 
-	@SuppressWarnings("unchecked")
-	private void initAllIds() {
-		// NHANES
-		allIds = new TreeSet<Integer>(getCube("\\demographics\\AGE\\").keyBasedIndex());
-		// COPDgene
-		//		allIds = new TreeSet<Integer>(getCube("\\01 Demographics\\Age at enrollment\\").keyBasedIndex());
+	@SuppressWarnings("unchecked") 
+	void initAllIds() {
+		if(Crypto.hasKey()) {
+			// NHANES
+			allIds = new TreeSet<Integer>(getCube("\\demographics\\AGE\\").keyBasedIndex());
+			// COPDgene
+			//		allIds = new TreeSet<Integer>(getCube("\\01 Demographics\\Age at enrollment\\").keyBasedIndex());
+		}
 	}
 
 	public TreeMap<String, ColumnMeta> getDictionary() {

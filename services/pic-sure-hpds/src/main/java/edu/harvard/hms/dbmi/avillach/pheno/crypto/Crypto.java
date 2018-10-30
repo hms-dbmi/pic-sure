@@ -29,12 +29,11 @@ public class Crypto {
 
 	static {
 		try {
-			key = IOUtils.toString(new FileInputStream("/opt/local/hpds/encryption_key"), "UTF-8").trim().getBytes();
+			setKey(IOUtils.toString(new FileInputStream("/opt/local/hpds/encryption_key"), "UTF-8").trim().getBytes());
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			LOGGER.debug("****LOADED CRYPTO KEY NOT FOUND****");
-			System.exit(-1);
+			LOGGER.debug("****CRYPTO KEY NOT FOUND, SOMEONE WILL HAVE TO UNLOCK THE SERVICE REMOTELY****");
 		}
 		LOGGER.debug("****LOADED CRYPTO KEY****");	
 	}
@@ -82,6 +81,14 @@ public class Crypto {
 			e.printStackTrace();
 			throw new RuntimeException("Exception caught trying to decrypt data : " + e);
 		}
+	}
+
+	public static void setKey(byte[] key) {
+		Crypto.key = key;
+	}
+
+	public static boolean hasKey() {
+		return key != null;
 	}
 
 }

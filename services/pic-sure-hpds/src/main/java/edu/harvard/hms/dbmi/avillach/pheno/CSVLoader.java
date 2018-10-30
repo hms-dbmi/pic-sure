@@ -23,9 +23,9 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class Loader {
+public class CSVLoader {
 
-	private static Logger log = Logger.getLogger(Loader.class);
+	private static Logger log = Logger.getLogger(CSVLoader.class);
 
 	private static final int PATIENT_NUM = 0;
 

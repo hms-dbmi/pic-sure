@@ -86,6 +86,16 @@
 			<version>4.12</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>oracle</groupId>
+			<artifactId>ojdbc6</artifactId>
+			<version>11.2.0.3</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-jdbc</artifactId>
+			<version>5.1.1.RELEASE</version>
+		</dependency>
 	</dependencies>
 	<build>
 		<pluginManagement>
@@ -139,24 +149,47 @@
 				<artifactId>maven-assembly-plugin</artifactId>
 				<executions>
 					<execution>
+						<id>buildCSVLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.pheno.Loader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>CSVLoader</classifier>
+							<finalName>${project.artifactId}-CSVLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>buildSQLLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.pheno.SQLLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>SQLLoader</classifier>
+							<finalName>${project.artifactId}-SQLLoader</finalName>
+						</configuration>
 						<phase>package</phase>
 						<goals>
 							<goal>single</goal>
 						</goals>
 					</execution>
 				</executions>
-				<configuration>
-					<archive>
-						<manifest>
-							<mainClass>edu.harvard.hms.dbmi.avillach.pheno.Loader</mainClass>
-						</manifest>
-					</archive>
-					<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
-					<descriptorRefs>
-						<descriptorRef>jar-with-dependencies</descriptorRef>
-					</descriptorRefs>
-					<attach>false</attach>
-				</configuration>
+
 			</plugin>
 
 			<plugin>
@@ -214,9 +247,14 @@
 						<configuration>
 							<artifacts>
 								<artifact>
-									<file>pic-sure-hpds-loader/pic-sure-hpds-1.0-SNAPSHOT-jar-with-dependencies.jar</file>
+									<file>pic-sure-hpds-loader/pic-sure-hpds-SQLLoader-jar-with-dependencies.jar</file>
 									<type>jar</type>
-									<classifier>loader</classifier>
+									<classifier>SQLLoader</classifier>
+								</artifact>
+								<artifact>
+									<file>pic-sure-hpds-loader/pic-sure-hpds-CSVLoader-jar-with-dependencies.jar</file>
+									<type>jar</type>
+									<classifier>CSVLoader</classifier>
 								</artifact>
 							</artifacts>
 						</configuration>
@@ -288,4 +326,10 @@
 			</plugin>
 		</plugins>
 	</build>
+	<repositories>
+		<repository>
+			<id>data-nucleus</id>
+			<url>http://www.datanucleus.org/downloads/maven2/</url>
+		</repository>
+	</repositories>
 </project>

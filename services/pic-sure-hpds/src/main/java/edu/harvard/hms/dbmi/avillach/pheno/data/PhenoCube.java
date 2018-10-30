@@ -146,13 +146,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 
 	public KeyAndValue<V>[] sortedByValue() {
 		KeyAndValue<V>[] sortedByValue = Arrays.copyOf(sortedByKey(), sortedByKey().length);
-		Arrays.sort(sortedByValue, new Comparator<KeyAndValue<V>>() {
-
-			@Override
-			public int compare(KeyAndValue<V> o1, KeyAndValue<V> o2) {
-				return o1.value.compareTo(o2.value);
-			}
-			
+		Arrays.sort(sortedByValue, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
+			return o1.value.compareTo(o2.value);
 		});
 		return sortedByValue;
 	}
