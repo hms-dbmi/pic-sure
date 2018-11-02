@@ -196,7 +196,7 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 
 		T temp = baseRepository.getById(t.getUuid());
 		if (temp == null) {
-			String className = temp.getClass().getSimpleName();
+			String className = type.getSimpleName();
 			logger.error("Cannot find " + className + " instance by uuid: " + t.getUuid().toString());
 			throw new ProtocolException("Cannot find " + className + " instance by uuid: " + t.getUuid().toString());
 		} else {
