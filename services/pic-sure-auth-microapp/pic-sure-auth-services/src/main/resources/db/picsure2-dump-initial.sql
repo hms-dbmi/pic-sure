@@ -127,14 +127,19 @@ CREATE TABLE `termsOfService` (
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
+DROP TABLE IF EXISTS `connection`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `connection` (
   `uuid` binary(16) NOT NULL,
-  `label` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `id` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `subPrefix` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `requiredFields` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
-  PRIMARY KEY (`uuid`)
+  `label` varchar(255) COLLATE utf8_bin NOT NULL,
+  `id` varchar(255) COLLATE utf8_bin NOT NULL,
+  `subprefix` varchar(255) COLLATE utf8_bin NOT NULL,
+  `requiredFields` varchar(9000) COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`uuid`),
+  UNIQUE KEY `id` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

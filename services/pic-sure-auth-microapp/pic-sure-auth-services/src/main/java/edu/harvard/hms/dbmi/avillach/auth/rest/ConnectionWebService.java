@@ -24,8 +24,8 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
     @Path("{connectionId}")
     @GET
     @Produces("application/json")
-    public Response getConnectionById(@PathParam("connectionId") String connection) {
-        return Response.ok(connectionRepo.findConnectionById(connection)).build();
+    public Response getConnectionById(@PathParam("connectionId") String connectionId) {
+        return getEntityById(connectionId,connectionRepo);
     }
 
     @GET
