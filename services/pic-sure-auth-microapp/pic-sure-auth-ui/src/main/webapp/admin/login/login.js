@@ -27,8 +27,11 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                         session.authenticated(data.userId, data.token, data.email, data.permissions, this.handleNotAuthorizedResponse);
                         if (sessionStorage.redirection_url)
                             window.location = sessionStorage.redirection_url;
-                        else
-                            history.pushState({}, "", "userManagement");
+                        else {
+                            session.loadSessionVariables(function () {
+                                history.pushState({}, "", "userManagement");
+                            });
+                        }
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")

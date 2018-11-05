@@ -15,7 +15,7 @@
             <td><div class="selection-row" id="{{this.id}}">{{this.label}}</div></td>
             <td><div>{{this.id}}</div></td>
             <td><div>{{this.subPrefix}}</div></td>
-            <td><div>{{this.requiredFields}}</div></td>
+            <td><div>{{{displayField this.requiredFields}}}</div></td>
         </tr>
 		{{/each}}
     </tbody>

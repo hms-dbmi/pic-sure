@@ -1,0 +1,63 @@
+{{#unless createOrUpdateConnection}}
+<div class="col-md-12">
+    <button id="edit-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form>
+    <div class="row">
+        <input type="text" name="uuid" style="width: 100%;" value="{{connection.uuid}}" hidden>
+        <div class="col-md-12">
+            Label:<br>
+            <input type="text" name="label" style="width: 100%;" value="{{connection.label}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+        </div>
+        <div class="col-md-12">
+            ID:<br>
+            <input type="text" name="id" style="width: 100%;" value="{{connection.id}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+        </div>
+        <div class="col-md-12">
+            Sub prefix:<br>
+            <input type="text" name="subPrefix" style="width: 100%;" value="{{connection.subPrefix}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+        </div>
+        <br>
+        <div class="col-md-12">
+            Required fields:<br>
+            <!--input type="text" name="requiredFields" style="width: 100%;" value="{{connection.requiredFields}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}-->
+            <div id="required-fields">
+            {{#each connection.requiredFields}}
+                <div class="col-md-12" id="required-field-{{@index}}" style="margin-bottom: 10px;">
+                    <div class="col-md-5">
+                        Label: <input type="text" name="required-field-label-{{@index}}" value="{{this.label}}" required {{#unless ../createOrUpdateConnection}}readonly{{/unless}}>
+                    </div>
+                    <div class="col-md-5">
+                        ID: <input type="text" name="required-field-id-{{@index}}" value="{{this.id}}" required {{#unless ../createOrUpdateConnection}}readonly{{/unless}}>
+                    </div>
+                    {{#if ../createOrUpdateConnection}}
+                        <div class="col-md-1">
+                            {{{requiredFieldButton ../connection.requiredFields @index}}}
+                            <!--div id="add-field-button" class="btn btn-info" style="float: right; padding: 4px;">
+                                    <span class="glyphicon glyphicon-plus" style="top: 0px;"></span>
+                            </div-->
+                        </div>
+                    {{/if}}
+                </div>
+            {{/each}}
+            </div>
+        </div>
+        <br>
+        {{#if createOrUpdateConnection}}
+        <div class="col-md-12">
+            <button id="save-connection-button" type="submit" class="btn btn-info">
+                <span class="glyphicon glyphicon-ok"></span> Save connection
+            </button>
+            <div id="cancel-button" class="btn btn-outline" style="float: right">
+                <span class="glyphicon glyphicon-remove"></span> Cancel
+            </div>
+        </div>
+        {{/if}}
+    </div>
+</form>

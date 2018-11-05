@@ -20,7 +20,8 @@ define(["util/notification", "text!picsure/connections.json", "util/notification
         });
     }.bind(picsureFunctions);
     picsureFunctions.createOrUpdateConnection = function (connections, requestType, callback) {
-        var successMessage = "Successfully added connection."
+        var successMessage = "Successfully added a connection.";
+        var failureMessage = "Failed to add a connection.";
         $.ajax({
             url: window.location.origin + "/auth/connection",
             type: requestType,
@@ -31,6 +32,7 @@ define(["util/notification", "text!picsure/connections.json", "util/notification
                 callback(response);
             }.bind(this),
             error: function(response){
+                notification.showSuccessMessage(failureMessage);
                 console.log(response.message);
 
             }

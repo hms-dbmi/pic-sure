@@ -32,7 +32,13 @@
     border-color: #4a90e2;
 }
 
-.btn:hover {
+.btn-outline:hover {
+    color: #ffffff;
+    background-color: #76a6de;
+    border-color: #76a6de;
+}
+
+.btn-info:hover {
     color: #ffffff;
     background-color: #76a6de;
     border-color: #76a6de;

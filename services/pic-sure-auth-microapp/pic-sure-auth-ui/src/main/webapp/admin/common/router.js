@@ -28,19 +28,23 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 return false;
             }
             if (callback) {
-                callback.apply(this, args);
+                if (!sessionStorage.connections) {
+                    session.loadSessionVariables(function (){
+                        callback.apply(this, args);
+                    });
+                }
+                else {
+                    callback.apply(this, args);
+                }
             }
         },
-       
         login : function(){
             login.showLoginPage();
         },
-
         logout : function(){
             sessionStorage.clear();
             window.location = "/logout";
         },
-
         displayUserManagement : function(){
             var headerView = header.View;
             headerView.render();

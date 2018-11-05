@@ -1,4 +1,4 @@
-define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "text!connection/connectionTable.hbs", "text!options/modal.hbs", "picSure/picsureFunctions", "text!connection/addConnection.hbs", "common/session", "util/notification"],
+define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "text!connection/connectionTable.hbs", "text!options/modal.hbs", "picSure/picsureFunctions", "text!connection/crudConnection.hbs", "common/session", "util/notification"],
 		function(BB, HBS,  template, connectionTableTemplate, modalTemplate, picsureFunctions, crudConnectionTemplate, session, notification){
 	var connectionManagementModel = BB.Model.extend({
 	});
@@ -18,14 +18,32 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		modalTemplate : HBS.compile(modalTemplate),
         theConnectionTemplate: HBS.compile(crudConnectionTemplate),
 		initialize : function(opts){
-			this.connections = JSON.parse(sessionStorage.connections);
-            this.connections.forEach(function (connection) {
-               // connection.requiredFields = JSON.parse(connection.requiredFields);
-			})
+            HBS.registerHelper('displayField', function(jsonFields){
+                var fields = JSON.parse(jsonFields);
+                var html = "";
+                fields.forEach(function(field){
+                    html += "<div>Label: " + field.label + ", ID: " + field.id + "</div>";
+                });
+                return html;
+            });
+            HBS.registerHelper('requiredFieldButton', function(list, index){
+                var plusButton = 	'<div id="add-' + index + '" class="btn btn-info add-field-button" style="float: right; padding: 4px;">' +
+									'	<span class="glyphicon glyphicon-plus" style="top: 0px;"></span>' +
+									'</div>';
+                var removeButton = 	'<div id="remove-' + index + '" class="btn btn-danger remove-field-button" style="float: right; padding: 4px;">' +
+									'	<span class="glyphicon glyphicon-remove" style="top: 0px;"></span>' +
+									'</div>';
+				if (list.length - 1 == index){
+                    return plusButton;
+				} else {
+                    return removeButton;
+				}
+            });
 		},
 		events : {
 			"click .add-connection-button":   	"addConnectionMenu",
-            "click #add-field-button":			"addConnectionField",
+            "click .add-field-button":			"addConnectionField",
+            "click .remove-field-button":		"removeConnectionField",
 			"click #edit-button":  				"editConnectionMenu",
             "click #delete-button":				"deleteConnection",
 			"click .close":             		"closeDialog",
@@ -46,9 +64,18 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
             $(".modal-body", this.$el).html(this.theConnectionTemplate({connection: newConnection.attributes, createOrUpdateConnection: true}));
 		},
         addConnectionField: function (events) {
-        	var connField = this.model.get("selectedConnection").get("requiredFields");
-            this.model.get("selectedConnection").get("requiredFields").push({});
+            this.updateConnectionModel();
+        	//var connField = this.model.get("selectedConnection").get("requiredFields");
+            this.model.get("selectedConnection").get("requiredFields").push({label: null, id: null});
             $(".modal-body", this.$el).html(this.theConnectionTemplate({connection: this.model.get("selectedConnection").attributes, createOrUpdateConnection: true}));
+        },
+        removeConnectionField: function (events) {
+            var idComponents = event.target.parentNode.id.split("-");
+            var elementIndex = idComponents[idComponents.length - 1];
+
+            this.updateConnectionModel();
+            this.model.get("selectedConnection").get("requiredFields").splice(elementIndex, 1);
+			$(".modal-body", this.$el).html(this.theConnectionTemplate({connection: this.model.get("selectedConnection").attributes, createOrUpdateConnection: true}));
         },
 		editConnectionMenu: function (events) {
 			$(".modal-body", this.$el).html(this.theConnectionTemplate({createOrUpdateConnection: true, connection: this.model.get("selectedConnection").attributes}));
@@ -65,23 +92,28 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 				$(".modal-body", this.$el).html(this.theConnectionTemplate({createOrUpdateConnection: false, connection: connection.attributes}));
 			}.bind(this));
 		},
+		updateConnectionModel: function () {
+            var theConnection = this.model.get("selectedConnection");
+            theConnection.set("uuid", this.$('input[name=uuid]').val());
+            theConnection.set("label", this.$('input[name=label]').val());
+            theConnection.set("id", this.$('input[name=id]').val());
+            theConnection.set("subPrefix", this.$('input[name=subPrefix]').val());
+            var requiredFields = theConnection.get("requiredFields");
+            _.each(requiredFields, function (requiredField, index, list) {
+                requiredField.label = this.$('input[name=required-field-label-' + index + ']').val();
+                requiredField.id = this.$('input[name=required-field-id-' + index + ']').val();
+            }.bind(this));
+        },
         saveConnectionAction: function (e) {
             e.preventDefault();
-            var uuid = this.$('input[name=uuid]').val();
-            var label = this.$('input[name=label]').val();
-			var id = this.$('input[name=id]').val();
-			var subPrefix = this.$('input[name=subPrefix]').val();
-			var requiredFields = this.$('input[name=requiredFields]').val();
-			var connections = [{
-				label: label,
-				id: id,
-				subPrefix: subPrefix,
-                requiredFields: requiredFields
-			}];
             var requestType = "POST";
-			if (uuid) {
+            this.updateConnectionModel();
+            var theConnection = this.model.get("selectedConnection");
+            theConnection.set("requiredFields", JSON.stringify(theConnection.get("requiredFields")));
+
+            var connections = [theConnection];
+			if (theConnection.get("uuid")) {
                 requestType = "PUT";
-                connections[0].uuid = uuid;
 			}
             picsureFunctions.createOrUpdateConnection(connections, requestType, function(result) {
                 session.loadSessionVariables();
@@ -92,14 +124,15 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 			var uuid = this.$('input[name=uuid]').val();
 			notification.showConfirmationDialog(function () {
 				picsureFunctions.deleteConnection(uuid, function (response) {
+                    session.loadSessionVariables();
 					this.render()
 				}.bind(this));
 
 			}.bind(this));
 		},
 		closeDialog: function () {
-			// cleanup
-			this.model.unset("selectedConnection");
+            var theConnection = this.model.get("selectedConnection");
+            this.model.set("selectedConnection", null);
 			$("#modalDialog").hide();
 		},
 		render : function(){
