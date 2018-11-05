@@ -14,9 +14,10 @@ define(["Noty", "handlebars", "text!options/confirmationDialog.hbs",],
     }.bind(notification);
 
     notification.showFailureMessage = function (message) {
+        var defaultMessage = "Failed to perform action.";
         new Noty({
             type: "error",
-            text: message,
+            text: message ? message : defaultMessage,
             timeout: 3000
         }).show();
     }.bind(notification);

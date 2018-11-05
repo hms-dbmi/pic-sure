@@ -61,6 +61,21 @@ define(["jquery", "underscore"], function($, _){
 				dataType: "json",
 				contentType: "application/json"
 			});
-		}, 10000)
+		}, 10000),
+        loadSessionVariables : function(){
+			$.ajax({
+				url: window.location.origin + "/auth/connection",
+				type: 'GET',
+				contentType: 'application/json',
+				success: function(response){
+                    sessionStorage.setItem("connections", JSON.stringify(response));
+					return response;
+                }.bind(this),
+				error: function(response){
+					console.log("Failed to load connections from the server. Using defaults instead.");
+                    return response;
+				}
+			});
+        }
 	}
 });

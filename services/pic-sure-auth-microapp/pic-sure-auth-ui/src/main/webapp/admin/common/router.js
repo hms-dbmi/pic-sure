@@ -1,8 +1,9 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement'],
-        function(searchParser, Backbone, session, login, header, userManagement){
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'connection/connectionManagement'],
+        function(searchParser, Backbone, session, login, header, userManagement, connectionManagement){
     var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
+            "connectionManagement(/)" : "displayConnectionManagement",
             "login(/)" : "login",
             "logout(/)" : "logout",
 
@@ -48,6 +49,15 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             var userMngmt = new userManagement.View({model: new userManagement.Model()});
             userMngmt.render();
             $('#user-div').append(userMngmt.$el);
+        },
+        displayConnectionManagement : function(){
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+
+            var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
+            connectionMngmt.render();
+            $('#user-div').append(connectionMngmt.$el);
         }
     });
     return new Router();

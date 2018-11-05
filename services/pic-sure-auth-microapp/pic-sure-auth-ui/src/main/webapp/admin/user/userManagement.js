@@ -1,11 +1,10 @@
-define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/userManagement.hbs", "text!user/userDetails.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
-		function(BB, HBS, connections, AddUserView, template, userDetailsTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
+define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs", "text!user/userDetails.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		function(BB, HBS,  AddUserView, template, userDetailsTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
 	var userManagementModel = BB.Model.extend({
 	});
 
 	var userManagementView = BB.View.extend({
-		connections : connections,
-		template : HBS.compile(template),
+        template : HBS.compile(template),
 		crudUserTemplate : HBS.compile(userDetailsTemplate),
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
@@ -19,7 +18,7 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 			});
             HBS.registerHelper('displayEmail', function(user){
 				var connectionId = user.connectionId;
-                var emailField = _.where(connections, {id: user.connectionId})[0].emailField;
+                var emailField = _.where(this.connections, {id: user.connectionId})[0].emailField;
 				if (!user.email) {
                     return JSON.parse(user.generalMetadata)[emailField];
 				}
@@ -28,6 +27,10 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
             HBS.registerHelper('displayUserRoles', function(roles){
                 return _.pluck(roles, "name").join(", ");
             });
+            this.connections = JSON.parse(sessionStorage.connections);
+            this.connections.forEach(function (connection) {
+                connection.requiredFields = JSON.parse(connection.requiredFields);
+			})
 		},
 		events : {
 			"click .add-user-button":   "addUserMenu",
@@ -87,16 +90,15 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
             _.each(this.$('input:checked'), function (checkbox) {
                 roles.push({uuid: checkbox.value});
             })
-
-            var metadataEmailField = _.where(connections, {id: connectionId})[0].emailField;
-            var generalMetadataJSON = {};
-            if (general_metadata) {
-            	generalMetadataJSON = JSON.parse(general_metadata);
-                generalMetadataJSON[metadataEmailField] = email;
-			}
-			else {
-                generalMetadataJSON[metadataEmailField] = email;
-			}
+            var generalMetadataJSON = JSON.parse(general_metadata);
+            // var metadataEmailField = _.where(connections, {id: connectionId})[0].emailField;
+            // if (general_metadata) {
+            	// generalMetadataJSON = JSON.parse(general_metadata);
+             //    generalMetadataJSON[metadataEmailField] = email;
+			// }
+			// else {
+             //    generalMetadataJSON[metadataEmailField] = email;
+			// }
 			var user;
             var requestType;
             if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
@@ -151,6 +153,9 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 				this.displayUsers.bind(this)({
 					connections:
 						_.map(this.connections, function(connection){
+							var localCon = connection;
+						    // This will parse requiredFields otherwise stored as a string
+							//connection.requiredFields = JSON.parse(connection.requiredFields);
 							return _.extend(connection, {
 								users: users.filter(
 									function(user){
