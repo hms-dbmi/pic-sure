@@ -71,7 +71,7 @@ define(["backbone","handlebars", "user/connections", "user/addUser", "text!user/
 		},
         saveUserAction: function (e) {
             e.preventDefault();
-            var userId = this.$('input[name=userId]').val();
+            var userId = this.$('input[name=z]').val();
             var email = this.$('input[name=email]').val();
             var uuid = this.$('input[name=uuid]').val();
             var subject = this.$('input[name=subject]').val();

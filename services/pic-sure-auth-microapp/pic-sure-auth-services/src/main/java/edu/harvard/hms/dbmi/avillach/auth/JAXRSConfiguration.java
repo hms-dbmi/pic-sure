@@ -94,18 +94,22 @@ public class JAXRSConfiguration extends Application {
             return false;
         }
 
+        boolean b = false;
+
         for (Role role : roles) {
             Set<Privilege> privileges = role.getPrivileges();
             if (privileges == null || privileges.isEmpty())
-                return false;
+                continue;
 
             for (Privilege privilege : privileges) {
-                if (PicsureNaming.RoleNaming.ROLE_SYSTEM.equals(privilege.getName()))
-                    return true;
+                if (PicsureNaming.RoleNaming.ROLE_SYSTEM.equals(privilege.getName())) {
+                    b = true;
+                    break;
+                }
             }
         }
 
-        return false;
+        return b;
     }
 
     public static String getPrincipalName(SecurityContext securityContext){

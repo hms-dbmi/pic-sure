@@ -1,0 +1,17 @@
+<div id="new-privilege-form">
+    <div>
+        <label for="privilege_name">name (required)</label>
+        <input uuid="{{this.uuid}}" type="text" required name="privilege_name" style="width: 100%;" required>
+
+        <label for="privilege_description">description (required)</label>
+        <input type="text" required name="privilege_description" style="width: 100%;" required>
+    </div>
+    <div style="padding-top: 4px">
+        <button id="save-privilege-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Privilege
+        </button>
+        <div id="cancel-privilege-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+    </div>
+</div>
