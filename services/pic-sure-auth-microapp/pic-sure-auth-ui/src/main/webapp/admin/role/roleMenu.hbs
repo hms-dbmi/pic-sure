@@ -15,6 +15,14 @@
     Description:<br>
     <input type="text" name="role_description" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly{{/unless}} value="{{role.description}}">
     <br>
+    <div class="checkbox-group privilege-checkbox">
+        Privileges:<br>
+        {{#each privileges}}
+            <div>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}" {{#unless ../createOrUpdateRole}}disabled{{/unless}}>{{this.name}}: {{this.description}}</input>
+            </div>
+        {{/each}}
+    </div>
     {{#if createOrUpdateRole}}
         <div style="padding-top: 4px">
         <button id="save-role-button" type="submit" class="btn btn-info">

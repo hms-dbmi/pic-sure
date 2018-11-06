@@ -5,24 +5,25 @@ define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement"
 			this.privileges = opts.privileges;
 			this.template = HBS.compile(template);
 			this.managementConsole = opts.managementConsole;
-
-
 		},
 		events: {
 			// "change #new-role-connection-dropdown":"renderConnectionForm",
 			"click #save-role-button": "createRole"
 		},
 		createRole: function(event){
+            var privileges = [];
+            _.each(this.$('input:checked'), function(element) {
+                privileges.push({uuid: element.value});
+            });
+
 			var metadata = {};
 			// _.each($('#current-connection-form input[type=text]'), function(entry){
 			// metadata[entry.name] = entry.value});
 			var role = {
 				uuid : $('#new-role-form input[name=role_name]').attr('uuid'),
 				name : $('#new-role-form input[name=role_name]').val(),
-				description : $('#new-role-form input[name=role_description]').val()
-				// connectionId: $('#new-role-connection-dropdown').val(),
-				// generalMetadata:JSON.stringify(metadata),
-				// roles: _.pluck(this.$('input:checked'),'value').join(',')
+				description : $('#new-role-form input[name=role_description]').val(),
+				privileges: privileges
 			};
 			roleFunctions.createOrUpdateRole(
 				[role],

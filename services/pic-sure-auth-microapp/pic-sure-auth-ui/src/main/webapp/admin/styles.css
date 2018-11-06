@@ -266,3 +266,10 @@ input:read-only {
 #current-connection-form {
 	width: inherit;
 }
+
+.privilege-checkbox {
+    margin-top: 3px;
+    margin-bottom: 3px;
+    padding: 6px;
+    border: 1px solid #4a90e2;
+}

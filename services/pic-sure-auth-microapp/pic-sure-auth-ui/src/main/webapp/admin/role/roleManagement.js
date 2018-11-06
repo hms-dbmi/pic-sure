@@ -42,7 +42,7 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
 		},
 		addRoleMenu: function (result) {
 			privilegeFunctions.fetchPrivileges(this, function(privileges,view){
-				view.showAddRoleMenu({privileges : privileges}, view);
+				view.showAddRoleMenu(privileges, view);
 			});
 		},
 		showAddRoleMenu: function(result, view) {
@@ -51,33 +51,57 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
             var addRoleView = new AddRoleView({el:$('.modal-body'), managementConsole: this, privileges:result}).render();
 		},
 		editRoleMenu: function (events) {
-			$(".modal-body", this.$el).html(this.crudRoleTemplate({createOrUpdateRole: true, role: this.model.get("selectedRole")}));
-			// this.applyCheckboxes();
+            privilegeFunctions.fetchPrivileges(this, function(privileges,view){
+                view.showEditRoleMenu(privileges, view);
+            });
 		},
-		// applyCheckboxes: function () {
-		// 	var checkBoxes = $(":checkbox", this.$el);
-		// 	var roleRoles = this.model.get("selectedRole").roles;
-		// 	_.each(checkBoxes, function (roleCheckbox) {
-		// 		if (roleRoles.includes(roleCheckbox.value)){
-		// 			roleCheckbox.checked = true;
-		// 		}
-		// 	})
-		// },
+		showEditRoleMenu: function(result, view){
+            $(".modal-body", this.$el).html(this.crudRoleTemplate({
+				createOrUpdateRole: true,
+				role: this.model.get("selectedRole"),
+				privileges:result
+			}));
+            this.applyCheckboxes();
+		},
 		showRoleAction: function (event) {
 			var uuid = event.target.id;
 
 			roleFunctions.showRoleDetails(uuid, function(result) {
 				this.model.set("selectedRole", result);
-				$("#modal-window", this.$el).html(this.modalTemplate({title: "Role Info"}));
-				$("#modalDialog", this.$el).show();
-				$(".modal-body", this.$el).html(this.crudRoleTemplate({createOrUpdateRole: false, role: this.model.get("selectedRole")}));
+                privilegeFunctions.fetchPrivileges(this, function(privileges){
+                    $("#modal-window", this.$el).html(this.modalTemplate({title: "Role Info"}));
+                    $("#modalDialog", this.$el).show();
+                    $(".modal-body", this.$el).html(this.crudRoleTemplate({
+						createOrUpdateRole: false,
+						role: this.model.get("selectedRole"),
+						privileges:privileges
+                    }));
+                    this.applyCheckboxes();
+                }.bind(this));
 			}.bind(this));
 		},
+        applyCheckboxes: function () {
+            var checkBoxes = $(":checkbox", this.$el);
+            var rolePrivileges = this.model.get("selectedRole").privileges;
+            _.each(checkBoxes, function (privilegeCheckbox) {
+                _.each(rolePrivileges, function(privilege){
+                    if (privilege.name === privilegeCheckbox.name){
+                        privilegeCheckbox.checked = true;
+                    }
+                });
+            })
+        },
         saveRoleAction: function (e) {
             e.preventDefault();
             var uuid = this.$('input[name=role_name]').attr('uuid');
             var name = this.$('input[name=role_name]').val();
             var description = this.$('input[name=role_description]').val();
+
+            var privileges = [];
+            _.each(this.$('input:checked'), function(element) {
+            	privileges.push({uuid: element.value});
+			});
+
 
             var role;
             var requestType;
@@ -91,7 +115,8 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
             role = [{
                 uuid: uuid,
                 name: name,
-                description: description
+                description: description,
+				privileges: privileges
             }];
 
             roleFunctions.createOrUpdateRole(role, requestType, function(result) {

@@ -36,7 +36,7 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     }
                 });
             }else{
-                var clientId = overrides.client_id ? overrides.client_id : "ywAq4Xu4Kl3uYNdm3m05Cc5ow0OibvXt";
+                var clientId = overrides.client_id ? overrides.client_id : "APy5rn5baqQDfVDiczmjiuIetEIBBU9P";
                 $.ajax("https://avillachlab.us.webtask.io/connection_details_base64/?webtask_no_cache=1&client_id=" + clientId,
                 {
                     dataType: "text",
