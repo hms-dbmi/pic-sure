@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
@@ -37,6 +38,8 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/user_id_claim")
     public static String userIdClaim;
+
+    public static String defaultAdminRoleName = "PIC-SURE Admin";
 
     @Inject
     RoleRepository roleRepo;
@@ -73,12 +76,12 @@ public class JAXRSConfiguration extends Application {
 
         logger.info("Didn't find any admin role exists in database, start to create one.");
         Privilege privilege = new Privilege();
-        privilege.setName(PicsureNaming.RoleNaming.ROLE_SYSTEM);
+        privilege.setName(AuthNaming.AuthRoleNaming.ROLE_SYSTEM);
         privilege.setDescription("PIC-SURE admin role for modify users and resources.");
         privilegeRepo.persist(privilege);
 
         Role role = new Role();
-        role.setName("PIC-SURE Admin");
+        role.setName(defaultAdminRoleName);
         role.setDescription("PIC-SURE admin role across PIC-SURE and PIC-SURE Auth Micro App");
         Set<Privilege> privileges = new HashSet<>();
         privileges.add(privilege);
@@ -102,7 +105,7 @@ public class JAXRSConfiguration extends Application {
                 continue;
 
             for (Privilege privilege : privileges) {
-                if (PicsureNaming.RoleNaming.ROLE_SYSTEM.equals(privilege.getName())) {
+                if (AuthNaming.AuthRoleNaming.ROLE_SYSTEM.equals(privilege.getName())) {
                     b = true;
                     break;
                 }

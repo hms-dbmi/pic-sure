@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpResponse;
@@ -52,7 +53,7 @@ public class TokenService {
 	UserRepository userRepo;
 
 	@POST
-	@RolesAllowed(PicsureNaming.RoleNaming.ROLE_TOKEN_INTROSPECTION)
+	@RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_TOKEN_INTROSPECTION)
 	@Path("/inspect")
 	@Consumes("application/json")
 	public Response inspectToken(Map<String, String> tokenMap,
@@ -135,7 +136,7 @@ public class TokenService {
 		
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		if (user.getRoles() != null
-				&& user.getTotalPrivilege().contains(PicsureNaming.RoleNaming.ROLE_INTROSPECTION_USER))
+				&& user.getTotalPrivilege().contains(AuthNaming.AuthRoleNaming.ROLE_INTROSPECTION_USER))
 			tokenInspection.responseMap.put("active", true);
 
 		tokenInspection.responseMap.putAll(jws.getBody());
