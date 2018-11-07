@@ -95,7 +95,8 @@ public class AuthService {
         return PICSUREResponse.success(of(
                 "token", token,
                 "name", userInfo.has("name")?userInfo.get("name"):null,
-                "email", userInfo.has("email")?userInfo.get("email"):null));
+                "email", userInfo.has("email")?userInfo.get("email"):null,
+                "userId", user.getUuid()));
     }
 
     private JsonNode tradeCode(String code, String redirectURI){

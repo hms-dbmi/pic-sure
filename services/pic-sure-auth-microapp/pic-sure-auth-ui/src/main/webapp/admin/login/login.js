@@ -25,10 +25,28 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     contentType: 'application/json',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions);
-                        if (sessionStorage.redirection_url)
+                        //Find out if user has accepted terms of service
+                        $.ajax({
+                            url: "/auth/tos",
+                            type: 'get',
+                            success: function(accepted){
+                                if (accepted === 'true'){
+                                    if (sessionStorage.redirection_url) {
+                                        window.location = sessionStorage.redirection_url;
+                                    }
+                                    else {
+                                        history.pushState({}, "", "userManagement");
+                                    }
+                                } else {
+                                    //Send to tos
+                                    window.location = "/tos";
+                                }
+                            }
+                        });
+/*                        if (sessionStorage.redirection_url)
                             window.location = sessionStorage.redirection_url;
                         else
-                            history.pushState({}, "", "userManagement");
+                            history.pushState({}, "", "userManagement");*/
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")

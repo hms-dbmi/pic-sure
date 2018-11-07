@@ -10,7 +10,8 @@ require.config({
 		'auth0-js': "/webjars/auth0.js/9.2.3/build/auth0",
         Noty: '/webjars/noty/3.1.4/lib/noty',
         userManagement: "userManagement/",
-        common: "common/"
+        common: "common/",
+        tos: "tos/"
     },
     shim: {
         "bootstrap": {
