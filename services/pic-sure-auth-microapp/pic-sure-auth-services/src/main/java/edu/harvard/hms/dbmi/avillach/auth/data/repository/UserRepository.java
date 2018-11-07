@@ -137,7 +137,7 @@ public class UserRepository extends BaseRepository<User, UUID> {
 				.getSingleResult();
 	}
 
-	public boolean checkAgainstTOSDate(UUID userId){
+	public boolean checkAgainstTOSDate(String userId){
 		CriteriaQuery<User> query = cb().createQuery(User.class);
 		Root<User> queryRoot = query.from(User.class);
 		query.select(queryRoot);
@@ -150,7 +150,7 @@ public class UserRepository extends BaseRepository<User, UUID> {
 		return !em.createQuery(query
 				.where(
 						cb.and(
-								eq(cb, queryRoot, "uuid", userId),
+								eq(cb, queryRoot, "subject", userId),
 								cb.greaterThanOrEqualTo(queryRoot.get("acceptedTOS"), subquery))))
 				.getResultList().isEmpty();
 	}
