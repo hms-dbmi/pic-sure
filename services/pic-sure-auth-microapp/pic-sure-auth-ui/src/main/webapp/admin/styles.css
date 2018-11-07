@@ -273,3 +273,7 @@ input:read-only {
     padding: 6px;
     border: 1px solid #4a90e2;
 }
+
+.table-hover tbody tr:hover td, .table-hover tbody tr:hover th{
+    background-color: #cddfeb;
+}

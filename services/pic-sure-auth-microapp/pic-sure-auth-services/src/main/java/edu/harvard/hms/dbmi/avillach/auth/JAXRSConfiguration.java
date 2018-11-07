@@ -114,7 +114,7 @@ public class JAXRSConfiguration extends Application {
 
     public static String getPrincipalName(SecurityContext securityContext){
         if (securityContext.getUserPrincipal() == null)
-            return null;
+            return "No security context set, ";
 
         return securityContext.getUserPrincipal().getName();
     }

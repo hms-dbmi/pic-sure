@@ -45,9 +45,7 @@ public class JWTFilter implements ContainerRequestFilter {
 		/**
 		 * skip the filter in certain cases
 		 */
-		if (uriInfo.getPath().endsWith("authentication")
-				|| uriInfo.getPath().contains("role")
-				|| uriInfo.getPath().contains("privilege")) {
+		if (uriInfo.getPath().endsWith("authentication")) {
 			return;
 		}
 
