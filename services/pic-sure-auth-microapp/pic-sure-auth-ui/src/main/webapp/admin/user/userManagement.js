@@ -16,14 +16,9 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 					return JSON.parse(user.generalMetadata)[connectionField.id];
 				}
 			});
-            HBS.registerHelper('displayEmail', function(user){
-				var connectionId = user.connectionId;
-                var emailField = _.where(this.connections, {id: user.connectionId})[0].emailField;
-				if (!user.email) {
-                    return JSON.parse(user.generalMetadata)[emailField];
-				}
-                return user.email;
-            });
+            HBS.registerHelper('requiredFieldValue', function(userMetadata, metadataId){
+            	return userMetadata[metadataId];
+			});
             HBS.registerHelper('displayUserRoles', function(roles){
                 return _.pluck(roles, "name").join(", ");
             });
@@ -51,55 +46,54 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			$("#modalDialog", this.$el).show();
 			var addUserView = new AddUserView({el:$('.modal-body'), managementConsole: this}).render();
 		},
-		editUserMenu: function (events) {
-			$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: this.model.get("selectedUser"), availableRoles: this.model.get("availableRoles")}));
-			this.applyCheckboxes();
+		showUserAction: function (event) {
+			var uuid = event.target.id;
+            userFunctions.showUserDetails(uuid, function(result) {
+                var requiredFields = _.where(this.connections, {id: result.connectionId})[0].requiredFields;
+                result.generalMetadata = JSON.parse(result.generalMetadata);
+				this.model.set("selectedUser", result);
+                $("#modal-window", this.$el).html(this.modalTemplate({title: "User info"}));
+				$("#modalDialog", this.$el).show();
+				$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: false, user: this.model.get("selectedUser"), requiredFields: requiredFields}));
+			}.bind(this));
 		},
-		applyCheckboxes: function () {
-			var checkBoxes = $(":checkbox", this.$el);
-			var userRoles = this.model.get("selectedUser").roles;
-			_.each(checkBoxes, function (roleCheckbox) {
+        editUserMenu: function (events) {
+            var user = this.model.get("selectedUser");
+            var requiredFields = _.where(this.connections, {id: user.connectionId})[0].requiredFields;
+            $(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: user, availableRoles: this.model.get("availableRoles"), requiredFields: requiredFields}));
+            this.applyCheckboxes();
+        },
+        applyCheckboxes: function () {
+            var checkBoxes = $(":checkbox", this.$el);
+            var userRoles = this.model.get("selectedUser").roles;
+            _.each(checkBoxes, function (roleCheckbox) {
                 _.each(userRoles, function (userRole) {
                     if (userRole.uuid == roleCheckbox.value) {
                         roleCheckbox.checked = true;
                     }
                 })
-			})
-		},
-		showUserAction: function (event) {
-			var uuid = event.target.id;
-
-			userFunctions.showUserDetails(uuid, function(result) {
-				this.model.set("selectedUser", result);
-				//this.getUserRoles(result.roles);
-				$("#modal-window", this.$el).html(this.modalTemplate({title: "User info"}));
-				$("#modalDialog", this.$el).show();
-				$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: false, user: this.model.get("selectedUser")}));
-			}.bind(this));
-		},
+            })
+        },
         saveUserAction: function (e) {
             e.preventDefault();
+            // hidden fields
             var userId = this.$('input[name=userId]').val();
             var email = this.$('input[name=email]').val();
+            var auth0_metadata = this.$('input[name=auth0_metadata]').val();
+
             var uuid = this.$('input[name=uuid]').val();
             var subject = this.$('input[name=subject]').val();
-            var general_metadata = this.$('input[name=general_metadata]').val();
-            var auth0_metadata = this.$('input[name=auth0_metadata]').val();
             var connectionId = this.$('input[name=connectionId]').val();
+            var general_metadata = {};
+            _.each($('#required-fields input[type=text]'), function(entry){
+                general_metadata[entry.name] = entry.value
+            });
+            var email = general_metadata["email"] ? general_metadata["email"] : email; // synchronize email with metadata
             var roles = [];
             _.each(this.$('input:checked'), function (checkbox) {
                 roles.push({uuid: checkbox.value});
             })
-            var generalMetadataJSON = JSON.parse(general_metadata);
-            // var metadataEmailField = _.where(connections, {id: connectionId})[0].emailField;
-            // if (general_metadata) {
-            	// generalMetadataJSON = JSON.parse(general_metadata);
-             //    generalMetadataJSON[metadataEmailField] = email;
-			// }
-			// else {
-             //    generalMetadataJSON[metadataEmailField] = email;
-			// }
-			var user;
+            var user;
             var requestType;
             if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
                 requestType = "PUT";
@@ -107,7 +101,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
                     uuid: uuid,
                     email: email,
                     connectionId: connectionId,
-                    generalMetadata: JSON.stringify(generalMetadataJSON),
+                    generalMetadata:JSON.stringify(general_metadata),
                     auth0metadata: auth0_metadata,
                     subject: subject,
                     roles: roles}];
@@ -118,6 +112,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
                     subject: userId,
                     roles: roles}];
             }
+
             userFunctions.createOrUpdateUser(user, requestType, function(result) {
                 console.log(result);
                 this.render();
@@ -154,9 +149,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 					connections:
 						_.map(this.connections, function(connection){
 							var localCon = connection;
-						    // This will parse requiredFields otherwise stored as a string
-							//connection.requiredFields = JSON.parse(connection.requiredFields);
-							return _.extend(connection, {
+						    return _.extend(connection, {
 								users: users.filter(
 									function(user){
 										return user.connectionId === connection.id;

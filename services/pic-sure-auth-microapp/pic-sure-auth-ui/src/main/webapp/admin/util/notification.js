@@ -22,6 +22,15 @@ define(["Noty", "handlebars", "text!options/confirmationDialog.hbs",],
         }).show();
     }.bind(notification);
 
+    notification.showWarningMessage = function (message) {
+        var defaultMessage = "Sorry, can't perform this action.";
+        new Noty({
+            type: "warning",
+            text: message ? message : defaultMessage,
+            timeout: 3000
+        }).show();
+    }.bind(notification);
+
     notification.showConfirmationDialog = function (callback) {
         var n = new Noty({
             text: 'Do you want to continue?',

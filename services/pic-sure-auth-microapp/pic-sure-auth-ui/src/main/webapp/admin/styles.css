@@ -56,6 +56,14 @@
     float: right;
 }
 
+.btn-picsure-xs {
+    padding: 2px;
+}
+
+.btn-picsure-sm {
+    padding: 4px;
+}
+
  .search-box-spinner {
      position: absolute !important;
      right: 1.5em;
@@ -225,6 +233,12 @@
     background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
 }
 
+.modal .modal-body {
+    height: auto;
+    max-height: 75%;
+    overflow-y: scroll;
+}
+
 .table-users {
     border-collapse: collapse;
     width: 100%;
@@ -271,4 +285,8 @@ input:read-only {
 
 #current-connection-form {
 	width: inherit;
+}
+
+.margin-top-ten {
+    margin-top: 10px;
 }
