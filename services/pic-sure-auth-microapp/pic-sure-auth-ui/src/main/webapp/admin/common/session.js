@@ -7,12 +7,12 @@ define(["jquery", "underscore"], function($, _){
 		permissions : []
 	};
 	
-	var configureAjax = function(){
+	var configureAjax = function(callback){
 		$.ajaxSetup({
 			headers: {"Authorization": "Bearer " + session.token},
 			statusCode: {
 				401: function(){
-					window.location = "/logout";
+                    callback();
 				}
 			}
 		});
@@ -23,17 +23,17 @@ define(["jquery", "underscore"], function($, _){
 		may : function(permission){
 			return _.contains(permission, session.permissions);
 		},
-		authenticated : function(userId, token, username, permissions){
+		authenticated : function(userId, token, username, permissions, callback){
 			session.userId = userId;
 			session.token = token;
 			session.username = username;
 			session.permissions = permissions;
 			sessionStorage.setItem("session", JSON.stringify(session));
-			configureAjax();
+			configureAjax(callback);
 		},
-		isValid : function(){
+		isValid : function(callback){
 			if(session.username){
-				configureAjax();
+				configureAjax(callback);
 				return session.username;
 			}else{
 				return false;
@@ -61,6 +61,21 @@ define(["jquery", "underscore"], function($, _){
 				dataType: "json",
 				contentType: "application/json"
 			});
-		}, 10000)
+		}, 10000),
+        loadSessionVariables : function(callback){
+			$.ajax({
+				url: window.location.origin + "/auth/connection",
+				type: 'GET',
+				contentType: 'application/json',
+				success: function(response){
+                    sessionStorage.setItem("connections", JSON.stringify(response));
+                    callback();
+                }.bind(this),
+				error: function(response){
+					console.log("Failed to load connections from the server. Using defaults instead.");
+                    callback();
+				}
+			});
+        }
 	}
 });

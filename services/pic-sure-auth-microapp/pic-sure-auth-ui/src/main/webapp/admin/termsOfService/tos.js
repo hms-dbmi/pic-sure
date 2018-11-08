@@ -1,5 +1,5 @@
-define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/tosFunctions", "util/notification"],
-    function(BB, HBS, template, tosFunctions, notification){
+define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsureFunctions"],
+    function(BB, HBS, template, picsureFunctions){
         var tosModel = BB.Model.extend({
         });
 
@@ -9,7 +9,7 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/tosFunc
                 "click .accept-tos-button":   "acceptTOS",
             },
             acceptTOS: function () {
-                tosFunctions.acceptTOS(function(){
+                picsureFunctions.acceptTOS(function(){
                     if (sessionStorage.redirection_url) {
                         window.location = sessionStorage.redirection_url;
                     }
@@ -19,7 +19,7 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/tosFunc
                 })
             },
             render : function(){
-                tosFunctions.getLatestTOS(function (content) {
+                picsureFunctions.getLatestTOS(function (content) {
                     this.model.set("content", content);
                     this.$el.html(this.template({content: content}));
                 }.bind(this));
