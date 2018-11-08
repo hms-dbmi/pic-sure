@@ -4,6 +4,7 @@ import com.auth0.exception.Auth0Exception;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
@@ -25,7 +26,8 @@ import java.util.stream.Collectors;
 
 import static junit.framework.TestCase.assertNotNull;
 import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -161,15 +163,16 @@ public class Auth0MatchingServiceTest {
 
     private List<UserMetadataMapping> getAllMappingsForConnectionMock(String connectionId) {
         List<UserMetadataMapping> allMappings = List.of(
-                new UserMetadataMapping().setConnectionId("ldap-connector").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.email"),
-                new UserMetadataMapping().setConnectionId("nih-gov-prod").setGeneralMetadataJsonPath("$.nih-userid").setAuth0MetadataJsonPath("$.identities[0].user_id"),
-                new UserMetadataMapping().setConnectionId("github").setGeneralMetadataJsonPath("$.full_name").setAuth0MetadataJsonPath("$.name"),
-                new UserMetadataMapping().setConnectionId("github").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.emails[?(@.primary == true)].email"),
-                new UserMetadataMapping().setConnectionId("no-user-connection").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.email"),
-                new UserMetadataMapping().setConnectionId("invalid-path").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.noPath")
+                new UserMetadataMapping().setConnection(new Connection().setId("ldap-connector")).setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.email"),
+                new UserMetadataMapping().setConnection(new Connection().setId("nih-gov-prod")).setGeneralMetadataJsonPath("$.nih-userid").setAuth0MetadataJsonPath("$.identities[0].user_id"),
+                new UserMetadataMapping().setConnection(new Connection().setId("github")).setGeneralMetadataJsonPath("$.full_name").setAuth0MetadataJsonPath("$.name"),
+                new UserMetadataMapping().setConnection(new Connection().setId("github")).setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.emails[?(@.primary == true)].email"),
+                new UserMetadataMapping().setConnection(new Connection().setId("no-user-connection")).setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.email"),
+                new UserMetadataMapping().setConnection(new Connection().setId("invalid-path")).setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.noPath")
+
                 );
         return allMappings.stream().filter((UserMetadataMapping mapping) -> {
-            return mapping.getConnectionId().equalsIgnoreCase(connectionId);
+            return mapping.getConnection().getId().equalsIgnoreCase(connectionId);
         }).collect(Collectors.toList());
     }
 

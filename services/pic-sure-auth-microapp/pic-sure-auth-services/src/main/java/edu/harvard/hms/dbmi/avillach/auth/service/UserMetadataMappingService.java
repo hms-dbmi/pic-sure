@@ -1,13 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserMetadataMappingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.Response;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Service handling business logic for UserMetadataMappings.
@@ -19,6 +21,9 @@ public class UserMetadataMappingService extends BaseEntityService<UserMetadataMa
     @Inject
     UserMetadataMappingRepository userMetadataMappingRepo;
 
+    @Inject
+    ConnectionRepository connectionRepo;
+
     public UserMetadataMappingService() {
         super(UserMetadataMapping.class);
     }
@@ -27,16 +32,22 @@ public class UserMetadataMappingService extends BaseEntityService<UserMetadataMa
     		return userMetadataMappingRepo.findByConnection(connectionId);
     }
    
-    public List<UserMetadataMapping> getAllMappingsForConnectionMock(String connectionId){
-    		List<UserMetadataMapping> allMappings = List.of(
-    				new UserMetadataMapping().setConnectionId("ldap-connector").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.email"),
-    				new UserMetadataMapping().setConnectionId("nih-gov-prod").setGeneralMetadataJsonPath("$.nih-userid").setAuth0MetadataJsonPath("$.identities.userid"),
-    				new UserMetadataMapping().setConnectionId("github").setGeneralMetadataJsonPath("$.full_name").setAuth0MetadataJsonPath("$.name"),
-    				new UserMetadataMapping().setConnectionId("github").setGeneralMetadataJsonPath("$.email").setAuth0MetadataJsonPath("$.emails[?(@.primary == true].email")
-    				);
-    		return allMappings.stream().filter((UserMetadataMapping mapping)->{
-    			return mapping.getConnectionId().equalsIgnoreCase(connectionId);
-    		}).collect(Collectors.toList());
+    public Response addMappings(List<UserMetadataMapping> mappings){
+        String errorMessage = "The following connectionIds do not exist:\n";
+        boolean error = false;
+        for (UserMetadataMapping umm : mappings){
+            Connection c = connectionRepo.findConnectionById(umm.getConnection().getId());
+            if (c == null){
+                error = true;
+                errorMessage += umm.getConnection().getId() + "\n";
+            } else {
+                umm.setConnection(c);
+            }
+        }
+        if (error){
+            return Response.ok(errorMessage).build();
+        }
+		return addEntity(mappings, userMetadataMappingRepo);
     }
 
 	public List<UserMetadataMapping> getAllMappings() {
