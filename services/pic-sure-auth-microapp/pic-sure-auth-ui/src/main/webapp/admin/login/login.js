@@ -25,13 +25,28 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                     contentType: 'application/json',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions, this.handleNotAuthorizedResponse);
-                        if (sessionStorage.redirection_url)
-                            window.location = sessionStorage.redirection_url;
-                        else {
-                            session.loadSessionVariables(function () {
-                                history.pushState({}, "", "userManagement");
-                            });
-                        }
+                        //Find out if user has accepted terms of service
+                        $.ajax({
+                            url: "/auth/tos",
+                            type: 'get',
+                            success: function(accepted){
+                                if (accepted === 'true'){
+                                    if (sessionStorage.redirection_url) {
+                                        window.location = sessionStorage.redirection_url;
+                                    }
+                                    else {
+                                        session.loadSessionVariables(function () {
+                                            history.pushState({}, "", "userManagement");
+                                        });
+                                    }
+                                } else {
+                                    //Send to tos
+                                    session.loadSessionVariables(function () {
+                                        history.pushState({}, "", "tos");
+                                    });
+                                }
+                            }
+                        });
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
