@@ -1,17 +1,19 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'connection/connectionManagement'],
-        function(searchParser, Backbone, session, login, header, userManagement, connectionManagement){
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'connection/connectionManagement', 'termsOfService/tos'],
+        function(searchParser, Backbone, session, login, header, userManagement, connectionManagement, tos){
     var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
             "connectionManagement(/)" : "displayConnectionManagement",
+            "tos(/)" : "displayTOS",
             "login(/)" : "login",
             "logout(/)" : "logout",
-
             "*path" : "displayUserManagement"
 
         },
         initialize: function(){
             var pushState = history.pushState;
+            //TODO: Why
+            this.tos = tos;
             history.pushState = function(state, title, path) {
             		if(state.trigger){
             			this.router.navigate(path, state);
@@ -52,16 +54,26 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
 
             var userMngmt = new userManagement.View({model: new userManagement.Model()});
             userMngmt.render();
-            $('#user-div').append(userMngmt.$el);
+            $('#main-content').html(userMngmt.$el);
         },
-        displayConnectionManagement : function(){
+
+        displayTOS : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
 
+            var termsOfService = new this.tos.View({model: new this.tos.Model()});
+            termsOfService.render();
+            $('#main-content').html(termsOfService.$el);
+        },
+
+        displayConnectionManagement : function(){
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
             var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
             connectionMngmt.render();
-            $('#user-div').append(connectionMngmt.$el);
+            $('#main-content').append(connectionMngmt.$el);
         }
     });
     return new Router();

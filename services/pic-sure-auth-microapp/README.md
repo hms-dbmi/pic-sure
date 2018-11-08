@@ -25,3 +25,24 @@ This was changed from the much shorter maven based deployment to resolve a certi
 Then open your browser at http://<your docker-machine ip>
 
 
+#### Terms of Service
+
+If a user logging in has not accepted the latest terms of service, they will be directed to the 'Accept Terms of Service' page.
+The content of the terms of service is stored in the termsOfService table in the database.  This is html that is rendered on the page.  
+To trigger the acceptance of the terms of service, this html must include a button with class 'accept-tos-button'.  Anything with this class,
+upon clicking, will register the logged in user as accepting terms of service.  This button can be disabled until criteria are met.  Some example termsOfService content would be:
+
+```aidl
+These are the terms of service.
+<br>
+<input type="checkbox" id="checkMe">This box must be checked</input>
+<br>
+<button type="button" disabled id="acceptBtn" class="btn btn-info accept-tos-button">
+  <span>Accept</span> 
+</button>
+<script>
+ $('#checkMe').on('change', function(){
+	$('#acceptBtn').prop("disabled", !this.checked);
+	});
+</script>
+```

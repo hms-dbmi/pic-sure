@@ -55,5 +55,33 @@ define(["util/notification", "text!picsure/connections.json", "util/notification
         });
     }.bind(picsureFunctions);
 
+    picsureFunctions.getLatestTOS = function (callback) {
+        $.ajax({
+            url: window.location.origin + "/auth/tos/latest",
+            type: 'GET',
+            contentType: 'application/json',
+            success: function(response){
+                callback(response);
+            },
+            error: function(response){
+                notification.showFailureMessage("Failed to load Terms of Service.");
+            }
+        });
+    }.bind(picsureFunctions);
+
+    picsureFunctions.acceptTOS = function (callback) {
+        $.ajax({
+            url: window.location.origin + "/auth/tos/accept",
+            type: 'POST',
+            contentType: 'application/json',
+            success: function(response){
+                callback(response);
+            },
+            error: function(response){
+                notification.showFailureMessage("Failed to accept Terms of Service.");
+            }
+        });
+    }.bind(picsureFunctions);
+
     return picsureFunctions;
 });
