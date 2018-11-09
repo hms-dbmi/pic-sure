@@ -7,7 +7,12 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 			this.connections = connections;
 			this.connection = this.connections[0];
 			this.managementConsole = opts.managementConsole;
-		},
+            this.connections = JSON.parse(sessionStorage.connections);
+            this.connections.forEach(function (connection) {
+                connection.requiredFields = JSON.parse(connection.requiredFields);
+            })
+            this.connection = this.connections[0];
+        },
 		events: {
 			"change #new-user-connection-dropdown":"renderConnectionForm",
 			"click #save-user-button": "createUser"
