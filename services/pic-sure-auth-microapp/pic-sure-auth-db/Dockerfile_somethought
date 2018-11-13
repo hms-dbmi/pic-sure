@@ -1,0 +1,15 @@
+FROM mysql:5.7.24
+
+ENV MYSQL_ROOT_PASSWORD password
+ENV MYSQL_DATABASE auth
+
+RUN mkdir /tempsql/
+COPY db/picsure-auth-dump-initial.sql /tempsql/picsure-auth-dump-initial.sql
+
+RUN /bin/bash -c "/usr/bin/mysqld_safe --skip-grant-tables &" && \
+  sleep 5 && \
+  mysql -u root -e "CREATE DATABASE auth" && \
+  mysql -u root auth < /tempsql/picsure-auth-dump-initial.sql && \
+  killall mysqld mysqld_safe && sleep 5
+
+EXPOSE 3306
