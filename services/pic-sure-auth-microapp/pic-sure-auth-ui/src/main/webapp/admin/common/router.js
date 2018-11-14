@@ -33,7 +33,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 history.pushState({}, "", "tos");
             }
             else if (callback) {
-                if (!sessionStorage.connections) {
+                if (name !== 'displayTOS' && !sessionStorage.connections) {
                     session.loadSessionVariables(function (){
                         callback.apply(this, args);
                     });

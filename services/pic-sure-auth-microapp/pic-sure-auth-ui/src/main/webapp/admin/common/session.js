@@ -13,6 +13,9 @@ define(["jquery", "underscore"], function($, _){
 			statusCode: {
 				401: function(){
                     callback();
+				},
+				307: function(){
+                    history.pushState({}, "", "tos");
 				}
 			}
 		});
