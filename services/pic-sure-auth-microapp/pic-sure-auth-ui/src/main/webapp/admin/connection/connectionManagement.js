@@ -9,7 +9,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
             label : null,
             id : null,
             subPrefix: null,
-			requiredFields: [{label: null, id: null}]
+			requiredFields: [{label: null, id: "email"}]
         }
     });
 
@@ -26,18 +26,11 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
                 });
                 return html;
             });
-            HBS.registerHelper('requiredFieldButton', function(list, index){
-                var plusButton = 	'<div id="add-' + index + '" class="btn btn-info add-field-button" style="float: right; padding: 4px;">' +
-									'	<span class="glyphicon glyphicon-plus" style="top: 0px;"></span>' +
-									'</div>';
-                var removeButton = 	'<div id="remove-' + index + '" class="btn btn-danger remove-field-button" style="float: right; padding: 4px;">' +
-									'	<span class="glyphicon glyphicon-remove" style="top: 0px;"></span>' +
-									'</div>';
-				if (list.length - 1 == index){
-                    return plusButton;
-				} else {
-                    return removeButton;
-				}
+            HBS.registerHelper('ifEquals', function(a, b, options) {
+                if (a === b) {
+                    return options.fn(this);
+                }
+                return options.inverse(this);
             });
 		},
 		events : {
@@ -65,8 +58,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		},
         addConnectionField: function (events) {
             this.updateConnectionModel();
-        	//var connField = this.model.get("selectedConnection").get("requiredFields");
-            this.model.get("selectedConnection").get("requiredFields").push({label: null, id: null});
+        	this.model.get("selectedConnection").get("requiredFields").push({label: null, id: null});
             $(".modal-body", this.$el).html(this.theConnectionTemplate({connection: this.model.get("selectedConnection").attributes, createOrUpdateConnection: true}));
         },
         removeConnectionField: function (events) {
@@ -74,7 +66,11 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
             var elementIndex = idComponents[idComponents.length - 1];
 
             this.updateConnectionModel();
-            this.model.get("selectedConnection").get("requiredFields").splice(elementIndex, 1);
+            if (parseInt(elementIndex) == 0) {
+                notification.showWarningMessage("Can't remove first required field.")
+            } else {
+                this.model.get("selectedConnection").get("requiredFields").splice(elementIndex, 1);
+			}
 			$(".modal-body", this.$el).html(this.theConnectionTemplate({connection: this.model.get("selectedConnection").attributes, createOrUpdateConnection: true}));
         },
 		editConnectionMenu: function (events) {
