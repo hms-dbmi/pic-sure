@@ -23,11 +23,12 @@ define(["jquery", "underscore"], function($, _){
 		may : function(permission){
 			return _.contains(permission, session.permissions);
 		},
-		authenticated : function(userId, token, username, permissions, callback){
+		authenticated : function(userId, token, username, permissions, acceptedTOS, callback){
 			session.userId = userId;
 			session.token = token;
 			session.username = username;
 			session.permissions = permissions;
+			session.acceptedTOS = acceptedTOS;
 			sessionStorage.setItem("session", JSON.stringify(session));
 			configureAjax(callback);
 		},
@@ -48,6 +49,9 @@ define(["jquery", "underscore"], function($, _){
 		userMode : function(){
 			return JSON.parse(sessionStorage.session).currentUserMode;
 		},
+		acceptedTOS : function(){
+			return JSON.parse(sessionStorage.session).acceptedTOS;
+		},
 		activity : _.throttle(function(activity){
 			if(typeof activity !== "string"){
 				activity = window.location.href;
@@ -63,7 +67,7 @@ define(["jquery", "underscore"], function($, _){
 			});
 		}, 10000),
         loadSessionVariables : function(callback){
-			$.ajax({
+            $.ajax({
 				url: window.location.origin + "/auth/connection",
 				type: 'GET',
 				contentType: 'application/json',
@@ -76,6 +80,10 @@ define(["jquery", "underscore"], function($, _){
                     callback();
 				}
 			});
-        }
+        },
+		setAcceptedTOS : function() {
+			session.acceptedTOS = true;
+            sessionStorage.setItem("session", JSON.stringify(session));
+		}
 	}
 });

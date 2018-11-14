@@ -24,13 +24,29 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                     }),
                     contentType: 'application/json',
                     success: function(data){
-                        session.authenticated(data.userId, data.token, data.email, data.permissions, this.handleNotAuthorizedResponse);
+                        session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
+                        if (!data.acceptedTOS){
+                            session.loadSessionVariables(function () {
+                                history.pushState({}, "", "tos");
+                            });
+                        } else {
+                            if (sessionStorage.redirection_url) {
+                                window.location = sessionStorage.redirection_url;
+                            }
+                            else {
+                                session.loadSessionVariables(function () {
+                                    history.pushState({}, "", "userManagement");
+                                });
+                            }
+                        }
+//                        session.authenticated(data.userId, data.token, data.email, data.permissions, this.handleNotAuthorizedResponse);
                         //Find out if user has accepted terms of service
-                        $.ajax({
+                     /*   $.ajax({
                             url: "/auth/tos",
                             type: 'get',
                             success: function(accepted){
                                 if (accepted === 'true'){
+                                    sessionStorage.acceptedTOS = true;
                                     if (sessionStorage.redirection_url) {
                                         window.location = sessionStorage.redirection_url;
                                     }
@@ -46,7 +62,7 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                                     });
                                 }
                             }
-                        });
+                        });*/
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")

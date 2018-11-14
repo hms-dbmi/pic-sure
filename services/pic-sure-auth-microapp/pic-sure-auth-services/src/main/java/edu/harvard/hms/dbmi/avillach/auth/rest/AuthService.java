@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.jwt.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.entity.StringEntity;
@@ -41,6 +42,9 @@ public class AuthService {
 
     @Inject
     UserRepository userRepository;
+
+    @Inject
+    TermsOfServiceService tosService;
 
     @POST
     @Path("/")
@@ -92,11 +96,14 @@ public class AuthService {
                 generateClaims(userInfo, new String[]{"user_id", "email","name" }),
                 userId, -1);
 
+        boolean acceptedTOS = tosService.hasUserAcceptedLatest(user.getSubject());
+
         return PICSUREResponse.success(of(
                 "token", token,
                 "name", userInfo.has("name")?userInfo.get("name"):null,
                 "email", userInfo.has("email")?userInfo.get("email"):null,
-                "userId", user.getUuid()));
+                "userId", user.getUuid(),
+                "acceptedTOS", acceptedTOS));
     }
 
     private JsonNode tradeCode(String code, String redirectURI){

@@ -1,5 +1,5 @@
-define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsureFunctions"],
-    function(BB, HBS, template, picsureFunctions){
+define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsureFunctions", 'common/session'],
+    function(BB, HBS, template, picsureFunctions, session){
         var tosModel = BB.Model.extend({
         });
 
@@ -11,6 +11,7 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsure
             acceptTOS: function () {
                 picsureFunctions.acceptTOS(function(){
                     this.toggleNavigationButtons(false);
+                    session.setAcceptedTOS();
                     if (sessionStorage.redirection_url) {
                         window.location = sessionStorage.redirection_url;
                     }
@@ -20,7 +21,6 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsure
                 }.bind(this))
             },
             toggleNavigationButtons: function(disable) {
-                console.log("toggling buttons");
                 if (disable) {
                     $("#userMgmt-header").removeAttr('href');
                     $("#cnxn-header").removeAttr('href');
