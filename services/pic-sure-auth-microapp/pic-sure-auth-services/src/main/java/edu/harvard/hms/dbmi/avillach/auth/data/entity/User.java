@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
-import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 
 import javax.persistence.*;
 import java.io.Serializable;
@@ -15,17 +14,12 @@ import java.util.stream.Collectors;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "user")
-@EntityListeners(MailService.class)
 public class User extends BaseEntity implements Serializable, Principal {
 
 	@Column(unique = true)
 	private String subject;
 
-/*	@JsonIgnore
-	@Version
-	private int versionNum;
-*/
-	@ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+	@ManyToMany(fetch = FetchType.EAGER)
 	@JoinTable(name = "user_role",
 			joinColumns = {@JoinColumn(name = "user_id", nullable = false, updatable = false)},
 			inverseJoinColumns = {@JoinColumn(name = "role_id", nullable = false, updatable = false)})

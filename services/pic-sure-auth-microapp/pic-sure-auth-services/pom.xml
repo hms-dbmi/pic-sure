@@ -73,6 +73,11 @@
 			<version>5.3.1.Final</version>
 			<scope>provided</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.hibernate</groupId>
+			<artifactId>hibernate-envers</artifactId>
+			<version>5.2.5.Final</version>
+		</dependency>
 		<!--<dependency> -->
 		<!--<groupId>org.apache.cxf</groupId> -->
 		<!--<artifactId>cxf-rt-frontend-jaxrs</artifactId> -->

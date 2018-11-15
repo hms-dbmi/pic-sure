@@ -4,8 +4,10 @@ import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
-import org.hibernate.event.spi.PostCollectionUpdateEvent;
-import org.hibernate.event.spi.PostCollectionUpdateEventListener;
+import org.hibernate.envers.boot.internal.EnversService;
+import org.hibernate.envers.event.spi.BaseEnversCollectionEventListener;
+import org.hibernate.event.spi.*;
+import org.hibernate.persister.entity.EntityPersister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,17 +18,10 @@ import javax.mail.Session;
 import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
-import javax.persistence.PostPersist;
-import javax.ws.rs.ext.Provider;
 import java.io.StringWriter;
 import java.io.Writer;
 
-//public class MailService implements Serializable, PostInsertEventListener, PostUpdateEventListener {
-//public class MailService {
-@Provider
-public class MailService implements PostCollectionUpdateEventListener {
-//public class MailService extends EmptyInterceptor{
-
+public class MailService extends BaseEnversCollectionEventListener implements PostInsertEventListener, PreCollectionUpdateEventListener {
     private Logger logger = LoggerFactory.getLogger(this.getClass());
     MustacheFactory mf = new DefaultMustacheFactory();
 
@@ -39,31 +34,27 @@ public class MailService implements PostCollectionUpdateEventListener {
     @Resource(name = "java:jboss/mail/Default")
     private Session session;
 
+    public MailService(EnversService es){
+        super(es);
+    }
 
-  /*  @Override
-    public boolean onSave(Object entity, Serializable id,
-                          Object[] state, String[] propertyNames, Type[] types){
-
+    public void onPreUpdateCollection(PreCollectionUpdateEvent e){
+        Object entity = e.getAffectedOwnerOrNull();
         if (entity instanceof User){
             sendUsersAccessEmail((User)entity);
         }
-        return super.onSave(entity, id, state, propertyNames, types);
+    }
 
-    }*/
-
-    @Override
-    public void onPostUpdateCollection(PostCollectionUpdateEvent event){
-        Object entity = event.getAffectedOwnerOrNull();
-        if (entity != null && entity instanceof User){
-            sendUsersAccessEmail((User) entity);
+    public void onPostInsert(PostInsertEvent e){
+        Object entity = e.getEntity();
+        if (entity instanceof User){
+            sendUsersAccessEmail((User)entity);
         }
     }
 
-    @PostPersist
-    public void onPostInsert(User u){
-        sendUsersAccessEmail(u);
+    public boolean requiresPostCommitHanding(EntityPersister persister) {
+        return this.getEnversService().getEntitiesConfigurations().isVersioned(persister.getEntityName());
     }
-
 
     public void sendUsersAccessEmail(User user){
         try {
