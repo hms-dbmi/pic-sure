@@ -1,7 +1,10 @@
-# pic-sure
-PIC-SURE API
+# PIC-SURE API
 
 This is the git repository for version 2+ of the PIC-SURE API.
+
+## Pre-requisits
+
+*  Java 9
 
 ## Build
 The build consists of the following top level maven modules:
@@ -12,7 +15,11 @@ The build consists of the following top level maven modules:
 
 To build the entire project, change directory to the projects top level, and execute:
 
-`mvn clean install`
+```mvn clean install
+
+```
+
+This command will run all tests, with the included WildFly server.
 
 ## Deployment
 
