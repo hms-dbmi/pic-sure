@@ -33,6 +33,9 @@ public class UserService extends BaseEntityService<User> {
 
     Logger logger = LoggerFactory.getLogger(UserService.class);
 
+    @Context
+    SecurityContext securityContext;
+
     @Inject
     UserRepository userRepo;
 
@@ -101,6 +104,25 @@ public class UserService extends BaseEntityService<User> {
         return removeEntityById(userId, userRepo);
     }
 
+    @GET
+    @Path("/me")
+    public Response getCurrentUser(){
+        User user = (User) securityContext.getUserPrincipal();
+        if (user == null || user.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        user = userRepo.getById(user.getUuid());
+        if (user == null){
+            logger.error("When retrieving current user, it returned null");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        return PICSUREResponse.success(new User.UserForDisaply()
+                .setEmail(user.getEmail())
+                .setPrivileges(user.getPrivilegeNameSet()));
+    }
     /**
      * check if the roles under user is in the database or not,
      * then retrieve it from database and attach it to user object

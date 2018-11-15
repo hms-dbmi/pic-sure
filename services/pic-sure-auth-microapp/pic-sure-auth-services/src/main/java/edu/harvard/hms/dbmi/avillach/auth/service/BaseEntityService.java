@@ -198,7 +198,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     public Response removeEntityById(String id, BaseRepository baseRepository) {
 
-        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to REMOVE a entity: "
+        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to REMOVE an entity: "
                 + type.getSimpleName() + ", by uuid: " + id);
 
         UUID uuid = UUID.fromString(id);

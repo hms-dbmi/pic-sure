@@ -160,4 +160,31 @@ public class User extends BaseEntity implements Serializable, Principal {
 	public String getName() {
 		return this.subject;
 	}
+
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
+	public static class UserForDisaply {
+		String email;
+		Set<String> privileges;
+
+		public UserForDisaply() {
+		}
+
+		public String getEmail() {
+			return email;
+		}
+
+		public UserForDisaply setEmail(String email) {
+			this.email = email;
+			return this;
+		}
+
+		public Set<String> getPrivileges() {
+			return privileges;
+		}
+
+		public UserForDisaply setPrivileges(Set<String> privileges) {
+			this.privileges = privileges;
+			return this;
+		}
+	}
 }

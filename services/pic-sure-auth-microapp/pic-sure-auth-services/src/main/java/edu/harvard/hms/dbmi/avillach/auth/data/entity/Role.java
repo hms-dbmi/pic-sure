@@ -21,6 +21,11 @@ public class Role extends BaseEntity {
             inverseJoinColumns = {@JoinColumn(name = "privilege_id")})
     Set<Privilege> privileges;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "application_id")
+    Application application;
+
     public String getName() {
         return name;
     }
@@ -43,5 +48,13 @@ public class Role extends BaseEntity {
 
     public void setPrivileges(Set<Privilege> privileges) {
         this.privileges = privileges;
+    }
+
+    public Application getApplication() {
+        return application;
+    }
+
+    public void setApplication(Application application) {
+        this.application = application;
     }
 }
