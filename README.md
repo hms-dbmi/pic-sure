@@ -3,18 +3,18 @@ PIC-SURE API
 
 This is the git repository for version 2+ of the PIC-SURE API.
 
+## Build
 The build consists of the following top level maven modules:
+*  pic-sure-api-data - for anything database related
+*  pic-sure-api-war - the actual packaged web application
+*  pic-sure-api-wildfly - a fully configured wildfly environment which serves as an example configuration as well as an integration testing environment.
+*  pic-sure-resources - the API that resources must implement to become PIC-SURE compatible as well as any resources we choose to develop(HAIL, i2b2, gNOME, etc)
 
-pic-sure-api-data - for anything database related
+To build the entire project, change directory to the projects top level, and execute:
 
-pic-sure-api-war - the actual packaged web application
+`mvn clean install`
 
-pic-sure-api-wildfly - a fully configured wildfly environment which serves
-   as an example configuration as well as an integration testing environment.
-
-pic-sure-resources - the API that resources must implement to become PIC-SURE
-   compatible as well as any resources we choose to develop(HAIL, i2b2, gNOME, etc)
-
+## Deployment
 
 In order to run the app for development you need to set the following environment variables:
 
