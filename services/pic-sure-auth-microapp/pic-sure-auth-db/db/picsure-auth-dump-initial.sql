@@ -21,7 +21,7 @@ USE `auth`;
 -- Table structure for table `privilege`
 --
 
-DROP TABLE IF EXISTS `privilege`;
+-- DROP TABLE IF EXISTS `privilege`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `privilege` (
@@ -37,7 +37,7 @@ CREATE TABLE `privilege` (
 -- Table structure for table `role`
 --
 
-DROP TABLE IF EXISTS `role`;
+-- DROP TABLE IF EXISTS `role`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `role` (
@@ -52,7 +52,7 @@ CREATE TABLE `role` (
 -- Table structure for table `role_privilege`
 --
 
-DROP TABLE IF EXISTS `role_privilege`;
+-- DROP TABLE IF EXISTS `role_privilege`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `role_privilege` (
@@ -69,7 +69,7 @@ CREATE TABLE `role_privilege` (
 -- Table structure for table `user`
 --
 
-DROP TABLE IF EXISTS `user`;
+-- DROP TABLE IF EXISTS `user`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `user` (
@@ -90,7 +90,7 @@ CREATE TABLE `user` (
 -- Table structure for table `userMetadataMapping`
 --
 
-DROP TABLE IF EXISTS `userMetadataMapping`;
+-- DROP TABLE IF EXISTS `userMetadataMapping`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `userMetadataMapping` (
@@ -106,7 +106,7 @@ CREATE TABLE `userMetadataMapping` (
 -- Table structure for table `user_role`
 --
 
-DROP TABLE IF EXISTS `user_role`;
+-- DROP TABLE IF EXISTS `user_role`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `user_role` (
@@ -127,7 +127,6 @@ CREATE TABLE `termsOfService` (
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
-DROP TABLE IF EXISTS `connection`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `connection` (

@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +44,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("/{userId}")
     public Response getUserById(
             @PathParam("userId") String userId) {
@@ -51,7 +52,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getUserAll() {
         return getEntityAll(userRepo);
@@ -59,7 +60,7 @@ public class UserService extends BaseEntityService<User> {
 
     @Transactional
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
@@ -68,7 +69,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{uuid}/role/{role}")
     public Response changeRole(
@@ -84,7 +85,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @PUT
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
@@ -94,7 +95,7 @@ public class UserService extends BaseEntityService<User> {
 
     @Transactional
     @DELETE
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("/{userId}")
     public Response removeById(@PathParam("userId") final String userId) {
         return removeEntityById(userId, userRepo);
