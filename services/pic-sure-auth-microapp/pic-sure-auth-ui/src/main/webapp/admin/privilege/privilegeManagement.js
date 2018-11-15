@@ -9,22 +9,7 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 		crudPrivilegeTemplate : HBS.compile(privilegeMenuTemplate),
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
-			HBS.registerHelper('fieldHelper', function(privilege, connectionField){
-				if (privilege.generalMetadata == null || privilege.generalMetadata === '') {
-                    return "NO_GENERAL_METADATA";
-                }
-                else {
-					return JSON.parse(privilege.generalMetadata)[connectionField.id];
-				}
-			});
-            HBS.registerHelper('displayEmail', function(privilege){
-				var c = privilege.connectionId;
-                var emailField = _.where(connections, {id: privilege.connectionId})[0].emailField;
-				if (!privilege.email) {
-                    return JSON.parse(privilege.generalMetadata)[emailField];
-				}
-                return privilege.email;
-            });
+
 		},
 		events : {
 			"click .add-privilege-button":   "addPrivilegeMenu",
@@ -52,17 +37,7 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 		},
 		editPrivilegeMenu: function (events) {
 			$(".modal-body", this.$el).html(this.crudPrivilegeTemplate({createOrUpdatePrivilege: true, privilege: this.model.get("selectedPrivilege")}));
-			// this.applyCheckboxes();
 		},
-		// applyCheckboxes: function () {
-		// 	var checkBoxes = $(":checkbox", this.$el);
-		// 	var privilegePrivileges = this.model.get("selectedPrivilege").privileges;
-		// 	_.each(checkBoxes, function (privilegeCheckbox) {
-		// 		if (privilegePrivileges.includes(privilegeCheckbox.value)){
-		// 			privilegeCheckbox.checked = true;
-		// 		}
-		// 	})
-		// },
 		showPrivilegeAction: function (event) {
 			var uuid = event.target.id;
 
@@ -109,12 +84,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 
 			}.bind(this));
 		},
-		// getPrivilegePrivileges: function (stringPrivileges) {
-		// 	var privileges = stringPrivileges.split(",").map(function(item) {
-		// 		return item.trim();
-		// 	});
-		// 	this.model.get("selectedPrivilege").privileges = privileges;
-		// },
 		closeDialog: function () {
 			// cleanup
 			this.model.unset("selectedPrivilege");
@@ -122,9 +91,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 		},
 		render : function(){
 			this.$el.html(this.template({}));
-			// privilegeFunctions.getAvailablePrivileges(function (privileges) {
-			// 	this.model.set("availablePrivileges", privileges);
-			// }.bind(this));
 			privilegeFunctions.fetchPrivileges(this, function(privileges){
 				this.displayPrivileges.bind(this)
 				(

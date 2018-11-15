@@ -9,22 +9,7 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
 		crudRoleTemplate : HBS.compile(roleMenuTemplate),
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
-			HBS.registerHelper('fieldHelper', function(role, connectionField){
-				if (role.generalMetadata == null || role.generalMetadata === '') {
-                    return "NO_GENERAL_METADATA";
-                }
-                else {
-					return JSON.parse(role.generalMetadata)[connectionField.id];
-				}
-			});
-            HBS.registerHelper('displayEmail', function(role){
-				var c = role.connectionId;
-                var emailField = _.where(connections, {id: role.connectionId})[0].emailField;
-				if (!role.email) {
-                    return JSON.parse(role.generalMetadata)[emailField];
-				}
-                return role.email;
-            });
+
 		},
 		events : {
 			"click .add-role-button":   "addRoleMenu",
@@ -134,12 +119,6 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
 
 			}.bind(this));
 		},
-		// getRoleRoles: function (stringRoles) {
-		// 	var roles = stringRoles.split(",").map(function(item) {
-		// 		return item.trim();
-		// 	});
-		// 	this.model.get("selectedRole").roles = roles;
-		// },
 		closeDialog: function () {
 			// cleanup
 			this.model.unset("selectedRole");
@@ -147,9 +126,6 @@ define(["backbone","handlebars",  "role/addRole", "text!role/roleManagement.hbs"
 		},
 		render : function(){
 			this.$el.html(this.template({}));
-			// roleFunctions.getAvailableRoles(function (roles) {
-			// 	this.model.set("availableRoles", roles);
-			// }.bind(this));
 			roleFunctions.fetchRoles(this, function(roles){
 				this.displayRoles.bind(this)
 				(
