@@ -4,7 +4,7 @@ Instructions to launch in dev mode:
 
 Prerequisites: Maven 3+, Java, Docker and docker-compose
 
-mvn clean install && docker-compose build && docker-compose up -d
+`mvn clean install && docker-compose build && docker-compose up -d`
 
 If you make source code changes, just re-run the same command and it will redeploy the stack for you.
 
