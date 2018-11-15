@@ -4,7 +4,12 @@ Instructions to launch in dev mode:
 
 Prerequisites: Maven 3+, Java, Docker and docker-compose
 
-`mvn clean install && docker-compose build && docker-compose up -d`
+```
+git clone https://github.com/hms-dbmi/pic-sure-auth-microapp.git
+cd pic-sure-auth-microapp
+mvn clean install && docker-compose build && docker-compose up -d
+
+```
 
 If you make source code changes, just re-run the same command and it will redeploy the stack for you.
 
