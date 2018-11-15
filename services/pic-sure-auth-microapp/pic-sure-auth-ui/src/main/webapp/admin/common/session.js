@@ -14,7 +14,7 @@ define(["jquery", "underscore"], function($, _){
 				401: function(){
                     callback();
 				},
-				307: function(){
+				403: function(){
                     history.pushState({}, "", "tos");
 				}
 			}
