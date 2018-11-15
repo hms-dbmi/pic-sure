@@ -15,7 +15,8 @@ The build consists of the following top level maven modules:
 
 To build the entire project, change directory to the projects top level, and execute:
 
-```mvn clean install
+```
+mvn clean install
 
 ```
 
