@@ -29,8 +29,11 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 this.login();
                 return false;
             }
-            if (callback) {
-                if (!sessionStorage.connections) {
+            if (!session.acceptedTOS() && name !== 'displayTOS'){
+                history.pushState({}, "", "tos");
+            }
+            else if (callback) {
+                if (name !== 'displayTOS' && !sessionStorage.connections) {
                     session.loadSessionVariables(function (){
                         callback.apply(this, args);
                     });
