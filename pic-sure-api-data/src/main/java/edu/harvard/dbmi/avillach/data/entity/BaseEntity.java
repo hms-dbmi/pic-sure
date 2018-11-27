@@ -36,8 +36,11 @@ public abstract class BaseEntity {
 		if (!(obj instanceof BaseEntity)) {
 			return false;
 		}
+		if (this.uuid == null){
+			return false;
+		}
 		BaseEntity entity = (BaseEntity) obj;
-		return this.uuid == entity.uuid;
+		return this.uuid.equals(entity.uuid);
 	}
 
 	@Override
