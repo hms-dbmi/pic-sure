@@ -50,7 +50,7 @@ public class MailService extends BaseEnversCollectionEventListener implements Po
                 logger.info("No session");
             }
         }
-
+        session.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
     }
 
     public void onPreUpdateCollection(PreCollectionUpdateEvent e){
@@ -74,7 +74,6 @@ public class MailService extends BaseEnversCollectionEventListener implements Po
     public void sendUsersAccessEmail(User user){
         try {
             Message message = new MimeMessage(session);
-//            session.getProperties();
             //TODO What if there's no email
             if (user.getEmail() != null){
                 message.setRecipient(Message.RecipientType.TO, new InternetAddress(user.getEmail()));
