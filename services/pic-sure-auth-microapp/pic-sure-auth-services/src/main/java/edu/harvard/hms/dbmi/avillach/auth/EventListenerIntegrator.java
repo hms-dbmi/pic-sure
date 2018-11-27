@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth;
 
-import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.UpdateUserListener;
 import org.hibernate.boot.Metadata;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.envers.boot.internal.EnversService;
@@ -22,8 +22,8 @@ public class EventListenerIntegrator implements Integrator
 
         final EnversService enversService = serviceRegistry.getService( EnversService.class );
 
-        eventListenerRegistry.appendListeners(EventType.PRE_COLLECTION_UPDATE, new MailService((enversService)));
-        eventListenerRegistry.appendListeners(EventType.POST_INSERT, new MailService((enversService)));
+        eventListenerRegistry.appendListeners(EventType.PRE_COLLECTION_UPDATE, new UpdateUserListener((enversService)));
+        eventListenerRegistry.appendListeners(EventType.POST_INSERT, new UpdateUserListener((enversService)));
 
     }
 

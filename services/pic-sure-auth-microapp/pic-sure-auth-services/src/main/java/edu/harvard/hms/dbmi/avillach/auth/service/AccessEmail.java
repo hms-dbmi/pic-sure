@@ -7,9 +7,9 @@ import java.util.Set;
 
 public class AccessEmail {
 
-    //Or will this be in the database?
-    private String systemInfo = System.getProperty("systemInfo");
-    private String documentation = System.getProperty("documentation");
+    //TODO: Where to actually store this?
+    private String systemInfo = System.getenv("systemName");
+    private String documentation = System.getenv("documentation");
 
     private String username;
     private Set<Role> roles;

@@ -28,6 +28,8 @@ services:
       - AUTH_MYSQLADDRESS=picsureauthdb
       - AUTH0TOKEN=${AUTH0TOKEN:-nothing}
       - AUTH0HOST=https://avillachlab.auth0.com
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-password}
+      - systemName=${systemName:-PICSURE}
     ports:
       - 8080:8080
       - 8787:8787

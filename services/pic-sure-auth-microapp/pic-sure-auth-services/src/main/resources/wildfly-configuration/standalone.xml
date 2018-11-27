@@ -425,7 +425,7 @@
 <!--            <mail-session name="default" jndi-name="java:jboss/mail/Default">-->
             <mail-session name="java:jboss/mail/gmail" from="hms.dbmi.data.infrastructure@gmail.com" jndi-name="java:jboss/mail/gmail" debug="true">
 <!--                <smtp-server outbound-socket-binding-ref="mail-smtp"/>-->
-                <smtp-server outbound-socket-binding-ref="mail-smtp-gmail" tls="true" username="hms.dbmi.data.infrastructure@gmail.com" password=""/>
+                <smtp-server outbound-socket-binding-ref="mail-smtp-gmail" tls="true" username="hms.dbmi.data.infrastructure@gmail.com" password="${env.MAIL_PASSWORD}"/>
             </mail-session>
         </subsystem>
         <subsystem xmlns="urn:jboss:domain:naming:2.0">
@@ -435,6 +435,7 @@
                 <simple name="java:global/user_id_claim" value="${env.AUTH_USER_ID_CLAIM:sub}"/>
                 <simple name="java:global/auth0token" value="${env.AUTH0TOKEN}"/>
                 <simple name="java:global/auth0host" value="${env.AUTH0HOST:https://avillachlab.auth0.com}"/>
+                <simple name="systemName" value="${env.systemName}"/>
             </bindings>
             <remote-naming/>
         </subsystem>
