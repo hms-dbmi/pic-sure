@@ -89,6 +89,31 @@ public class User extends BaseEntity implements Serializable, Principal {
 		return nameSet;
 	}
 
+	/**
+	 * return privilege names in each role as a set based on Application given.
+	 *
+	 * @return
+	 */
+	@JsonIgnore
+	public Set<String> getPrivilegeNameSetByApplication(Application application){
+		Set<Privilege> totalPrivilegeSet = getTotalPrivilege();
+
+		if (totalPrivilegeSet == null)
+			return null;
+
+		Set<String> nameSet = new HashSet<>();
+		if (application == null)
+			return nameSet;
+
+		totalPrivilegeSet.stream().forEach(
+				p -> {
+					if (application.equals(p.getApplication()))
+						nameSet.add(p.getName());
+				}
+		);
+		return nameSet;
+	}
+
 	@JsonIgnore
 	public String getPrivilegeString(){
 		Set<Privilege> totalPrivilegeSet = getTotalPrivilege();

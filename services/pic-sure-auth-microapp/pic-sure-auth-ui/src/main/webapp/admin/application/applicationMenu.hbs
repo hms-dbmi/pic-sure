@@ -1,0 +1,37 @@
+{{#unless createOrUpdateApplication}}
+<div class="col-md-12">
+    <button id="edit-application-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-application-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form>
+    Name:<br>
+    <input uuid="{{application.uuid}}" type="text" name="application_name" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.name}}">
+    <br>
+    Description:<br>
+    <input type="text" name="application_description" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.description}}">
+    <br>
+    <div class="checkbox-group role-checkbox">
+        Privileges:<br>
+        {{#each roles}}
+            <div>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}" {{#unless ../createOrUpdateApplication}}disabled{{/unless}}>{{this.name}}: {{this.description}}</input>
+            </div>
+        {{/each}}
+    </div>
+    {{#if createOrUpdateApplication}}
+        <div style="padding-top: 4px">
+        <button id="save-application-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Application
+        </button>
+        <div id="cancel-application-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

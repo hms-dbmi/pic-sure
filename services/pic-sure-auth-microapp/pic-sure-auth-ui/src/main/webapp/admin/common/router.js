@@ -1,5 +1,6 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'role/roleManagement', 'privilege/privilegeManagement'],
-        function(searchParser, Backbone, session, login, header, userManagement, roleManagement, privilegeManagement){
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
+        'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement"],
+        function(searchParser, Backbone, session, login, header, userManagement, roleManagement, privilegeManagement, applicationManagement){
     var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
@@ -7,6 +8,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "logout(/)" : "logout",
             "roleManagement(/)" : "displayRoleManagement",
             "privilegeManagement(/)" : "displayPrivilegeManagement",
+            "applicationManagement(/)" : "displayApplicationManagement",
 
             "*path" : "displayUserManagement"
 
@@ -51,6 +53,16 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             var userMngmt = new userManagement.View({model: new userManagement.Model()});
             userMngmt.render();
             $('#user-div').append(userMngmt.$el);
+        },
+
+        displayApplicationManagement : function(){
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+
+            var appliMngmt = new applicationManagement.View({model: new applicationManagement.Model()});
+            appliMngmt.render();
+            $('#user-div').append(appliMngmt.$el);
         },
 
         displayRoleManagement : function(){

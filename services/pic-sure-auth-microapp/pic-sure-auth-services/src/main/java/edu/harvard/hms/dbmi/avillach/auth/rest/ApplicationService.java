@@ -4,9 +4,8 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming;
 import org.slf4j.Logger;
@@ -34,7 +33,7 @@ public class ApplicationService extends BaseEntityService<Application> {
     ApplicationRepository applicationRepo;
 
     @Inject
-    RoleRepository roleRepo;
+    PrivilegeRepository privilegeRepo;
 
     @Context
     SecurityContext securityContext;
@@ -95,16 +94,19 @@ public class ApplicationService extends BaseEntityService<Application> {
 
     private void checkAssociation(List<Application> applications){
         for (Application application: applications){
-            if (application.getRoles() != null) {
-                Set<Role> roles = new HashSet<>();
-                application.getRoles().stream().forEach(r -> {
-                    Role role = roleRepo.getById(r.getUuid());
-                    if (role != null){
-                        role.setApplication(application);
-                        roles.add(role);
+            if (application.getPrivileges() != null) {
+                Set<Privilege> privileges = new HashSet<>();
+                application.getPrivileges().stream().forEach(p -> {
+                    Privilege privilege = privilegeRepo.getById(p.getUuid());
+                    if (privilege != null){
+                        privilege.setApplication(application);
+                        privileges.add(privilege);
+                    } else {
+                        logger.error("Didn't find privilege by uuid: " + p.getUuid());
                     }
                 });
-                application.setRoles(roles);
+                application.setPrivileges(privileges);
+
             }
         }
 

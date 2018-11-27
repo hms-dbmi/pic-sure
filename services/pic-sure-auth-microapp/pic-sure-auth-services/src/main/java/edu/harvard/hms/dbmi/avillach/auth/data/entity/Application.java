@@ -19,7 +19,7 @@ public class Application extends BaseEntity {
             fetch = FetchType.EAGER,
             cascade = CascadeType.ALL,
             orphanRemoval = true)
-    private Set<Role> roles;
+    private Set<Privilege> privileges;
 
     public String getName() {
         return name;
@@ -45,11 +45,11 @@ public class Application extends BaseEntity {
         this.enable = enable;
     }
 
-    public Set<Role> getRoles() {
-        return roles;
+    public Set<Privilege> getPrivileges() {
+        return privileges;
     }
 
-    public void setRoles(Set<Role> roles) {
-        this.roles = roles;
+    public void setPrivileges(Set<Privilege> privileges) {
+        this.privileges = privileges;
     }
 }
