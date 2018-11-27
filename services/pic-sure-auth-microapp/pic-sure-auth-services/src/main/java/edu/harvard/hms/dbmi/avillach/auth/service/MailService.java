@@ -6,7 +6,10 @@ import com.github.mustachejava.MustacheFactory;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.hibernate.envers.boot.internal.EnversService;
 import org.hibernate.envers.event.spi.BaseEnversCollectionEventListener;
-import org.hibernate.event.spi.*;
+import org.hibernate.event.spi.PostInsertEvent;
+import org.hibernate.event.spi.PostInsertEventListener;
+import org.hibernate.event.spi.PreCollectionUpdateEvent;
+import org.hibernate.event.spi.PreCollectionUpdateEventListener;
 import org.hibernate.persister.entity.EntityPersister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +21,8 @@ import javax.mail.Session;
 import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
 import java.io.StringWriter;
 import java.io.Writer;
 
@@ -30,12 +35,22 @@ public class MailService extends BaseEnversCollectionEventListener implements Po
 //    private String systemName = System.getProperty("systemName");
     private String systemName = "systemName";
 
-    //TODO: Update?
-    @Resource(name = "java:jboss/mail/Default")
+
+    //TODO: Update? Get this to work actually
+    @Resource(mappedName = "java:jboss/mail/gmail")
     private Session session;
 
     public MailService(EnversService es){
         super(es);
+        if (session ==null){
+            try{
+                InitialContext ic = new InitialContext();
+                session = (Session) ic.lookup("java:jboss/mail/gmail");
+            } catch (NamingException e){
+                logger.info("No session");
+            }
+        }
+
     }
 
     public void onPreUpdateCollection(PreCollectionUpdateEvent e){
@@ -59,16 +74,21 @@ public class MailService extends BaseEnversCollectionEventListener implements Po
     public void sendUsersAccessEmail(User user){
         try {
             Message message = new MimeMessage(session);
+//            session.getProperties();
             //TODO What if there's no email
-            message.setRecipient(Message.RecipientType.TO, new InternetAddress(user.getEmail()));
-            //TODO Is the subject configurable as well?  What should it say?
-            message.setSubject("Your Access To " + systemName);
-            String body = generateBody(user);
-            message.setText(body);
-            logger.info(body);
-            Transport.send(message);
-            } catch (MessagingException e){
+            if (user.getEmail() != null){
+                message.setRecipient(Message.RecipientType.TO, new InternetAddress(user.getEmail()));
+                //TODO Is the subject configurable as well?  What should it say?
+                message.setSubject("Your Access To " + systemName);
+                String body = generateBody(user);
+                message.setText(body);
+                logger.info(body);
+                Transport.send(message);
+            }
+        } catch (MessagingException e){
             //TODO: Freak out
+        } catch (Exception e){
+            logger.error(e.getMessage());
         }
     }
 
