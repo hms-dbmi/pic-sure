@@ -9,20 +9,15 @@ define(["backbone", "handlebars", "picSure/privilegeFunctions", "privilege/privi
 
 		},
 		events: {
-			// "change #new-privilege-connection-dropdown":"renderConnectionForm",
 			"click #save-privilege-button": "createPrivilege"
 		},
 		createPrivilege: function(event){
 			var metadata = {};
-			// _.each($('#current-connection-form input[type=text]'), function(entry){
-			// metadata[entry.name] = entry.value});
+
 			var privilege = {
 				uuid : $('#new-privilege-form input[name=privilege_name]').attr('uuid'),
 				name : $('#new-privilege-form input[name=privilege_name]').val(),
 				description : $('#new-privilege-form input[name=privilege_description]').val()
-				// connectionId: $('#new-privilege-connection-dropdown').val(),
-				// generalMetadata:JSON.stringify(metadata),
-				// privileges: _.pluck(this.$('input:checked'),'value').join(',')
 			};
 			privilegeFunctions.createOrUpdatePrivilege(
 				[privilege],
@@ -33,17 +28,6 @@ define(["backbone", "handlebars", "picSure/privilegeFunctions", "privilege/privi
 				}.bind(this)
 			);
 		},
-		// renderConnectionForm: function(event){
-		// 	this.connection = _.find(this.connections, {id:event.target.value});
-		// 	privilegeFunctions.getAvailablePrivileges(function (privileges) {
-		// 		$('#current-connection-form', this.$el).html(
-		// 				this.connectionTemplate({
-		// 						connection: this.connection,
-		// 						createOrUpdatePrivilege: true,
-		// 						availablePrivileges: privileges
-		// 				}));
-         //    }.bind(this));
-		// },
 		render: function(){
 			this.$el.html(this.template({privileges:this.privileges}));
 			// this.renderConnectionForm({target:{value:this.connections[0].id}})

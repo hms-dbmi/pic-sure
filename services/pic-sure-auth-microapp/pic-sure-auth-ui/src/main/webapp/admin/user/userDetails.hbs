@@ -9,14 +9,18 @@
 </div>
 {{/unless}}
 <form>
-    Email:<br>
-    <input type="text" name="email" style="width: 100%;" required {{#unless createOrUpdateUser}}readonly{{/unless}} value="{{displayEmail user}}">
-    <br>
+    <input type="text" name="email" required readonly value="{{user.email}}" hidden>
+    <input type="text" name="userId" required readonly value="{{user.userId}}" hidden>
+    <input type="text" name="auth0_metadata" style="display:none;" required readonly value="{{user.auth0metadata}}">
+    <div id="required-fields">
+        {{#each requiredFields}}
+         {{this.label}}:<br>
+            <input type="text" name="{{this.id}}" style="width: 100%;" required {{#unless ../createOrUpdateUser}}readonly{{/unless}} value="{{requiredFieldValue ../user.generalMetadata this.id}}">
+            <br>
+        {{/each}}
+    </div>
     UUID:<br>
     <input type="text" name="uuid" style="width: 100%;" readonly value="{{user.uuid}}">
-    <br>
-    User ID:<br>
-    <input type="text" name="userId" style="width: 100%;" required readonly value="{{user.userId}}">
     <br>
     Connection ID:<br>
     <input type="text" name="connectionId" style="width: 100%;" required readonly value="{{user.connectionId}}">
@@ -28,16 +32,14 @@
     {{#unless createOrUpdateUser}}
         <ul>
         {{#each user.roles}}
-            <li>{{this}}</li>
+            <li>{{this.name}}</li>
         {{/each}}
         </ul>
     {{/unless}}
-
-
     {{#if createOrUpdateUser}}
         <div class="checkbox-group required">
             {{#each availableRoles}}
-                <input type="checkbox" name="{{this}}" value="{{this}}"> {{this}}<br>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}"> {{this.name}}<br>
             {{/each}}
         </div>
     {{/if}}
@@ -52,7 +54,5 @@
         </div>
         </div>
     {{/if}}
-    <input type="text" name="general_metadata" style="width: 100%; display:none;" required readonly value="{{user.generalMetadata}}">
-    <input type="text" name="auth0_metadata" style="width: 100%; display:none;" required readonly value="{{user.auth0metadata}}">
 
 </form>

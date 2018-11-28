@@ -1,5 +1,5 @@
-define(['common/session', 'text!settings/settings.json', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'overrides/login', 'util/notification'],
-		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, overrides, notification){
+define(['common/session', 'text!../../settings/settings.json', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
+		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
 
@@ -24,11 +24,21 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     }),
                     contentType: 'application/json',
                     success: function(data){
-                        session.authenticated(data.userId, data.token, data.email, data.permissions);
-                        if (sessionStorage.redirection_url)
-                            window.location = sessionStorage.redirection_url;
-                        else
-                            history.pushState({}, "", "userManagement");
+                        session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
+                        if (!data.acceptedTOS){
+                            session.loadSessionVariables(function () {
+                                history.pushState({}, "", "tos");
+                            });
+                        } else {
+                            if (sessionStorage.redirection_url) {
+                                window.location = sessionStorage.redirection_url;
+                            }
+                            else {
+                                session.loadSessionVariables(function () {
+                                    history.pushState({}, "", "userManagement");
+                                });
+                            }
+                        }
                     },
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
@@ -51,7 +61,18 @@ define(['common/session', 'text!settings/settings.json', 'common/searchParser', 
                     }
                 });
             }
-		}
+		},
+        handleNotAuthorizedResponse : function () {
+            if (JSON.parse(sessionStorage.session).token) {
+                if (sessionStorage.not_authorized_url)
+                    window.location = sessionStorage.not_authorized_url;
+                else
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)(JSON.parse(settings)));
+            }
+            else {
+                window.location = "/logout";
+            }
+        }
 	};
 	return login;
 });

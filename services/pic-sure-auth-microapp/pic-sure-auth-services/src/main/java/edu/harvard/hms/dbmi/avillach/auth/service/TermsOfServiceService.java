@@ -27,7 +27,7 @@ public class TermsOfServiceService {
     @Inject
     UserService userService;
 
-    public boolean hasUserAcceptedLatest(UUID userId){
+    public boolean hasUserAcceptedLatest(String userId){
         logger.info("Checking Terms Of Service acceptance for user with id " + userId);
         return userRepo.checkAgainstTOSDate(userId);
     }

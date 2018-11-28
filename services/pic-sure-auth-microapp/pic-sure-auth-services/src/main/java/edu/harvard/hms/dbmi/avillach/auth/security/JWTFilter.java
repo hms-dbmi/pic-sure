@@ -5,9 +5,10 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
-import io.jsonwebtoken.*;
-import org.apache.commons.codec.binary.Base64;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,10 +20,10 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -39,6 +40,9 @@ public class JWTFilter implements ContainerRequestFilter {
 	
 	@Inject
 	UserRepository userRepo;
+
+	@Inject
+	TermsOfServiceService tosService;
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
@@ -65,8 +69,15 @@ public class JWTFilter implements ContainerRequestFilter {
 //			User authenticatedUser = null;
 
 
-			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 
+			final User authenticatedUser = callLocalAuthentication(requestContext, token);
+			if (!uriInfo.getPath().contains("/tos")){
+				if (!tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+					//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
+					requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
+					return;
+				}
+			}
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);
 				throw new NotAuthorizedException("Cannot find or create a user");

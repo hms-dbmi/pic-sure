@@ -7,7 +7,6 @@ define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement"
 			this.managementConsole = opts.managementConsole;
 		},
 		events: {
-			// "change #new-role-connection-dropdown":"renderConnectionForm",
 			"click #save-role-button": "createRole"
 		},
 		createRole: function(event){
@@ -17,8 +16,6 @@ define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement"
             });
 
 			var metadata = {};
-			// _.each($('#current-connection-form input[type=text]'), function(entry){
-			// metadata[entry.name] = entry.value});
 			var role = {
 				uuid : $('#new-role-form input[name=role_name]').attr('uuid'),
 				name : $('#new-role-form input[name=role_name]').val(),
@@ -34,20 +31,8 @@ define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement"
 				}.bind(this)
 			);
 		},
-		// renderConnectionForm: function(event){
-		// 	this.connection = _.find(this.connections, {id:event.target.value});
-		// 	roleFunctions.getAvailableRoles(function (roles) {
-		// 		$('#current-connection-form', this.$el).html(
-		// 				this.connectionTemplate({
-		// 						connection: this.connection,
-		// 						createOrUpdateRole: true,
-		// 						availableRoles: roles
-		// 				}));
-         //    }.bind(this));
-		// },
 		render: function(){
 			this.$el.html(this.template({privileges:this.privileges}));
-			// this.renderConnectionForm({target:{value:this.connections[0].id}})
 		}
 	});
 	return view;

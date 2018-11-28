@@ -13,22 +13,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 		crudPrivilegeTemplate : HBS.compile(privilegeMenuTemplate),
 		modalTemplate : HBS.compile(modalTemplate),
 		initialize : function(opts){
-			HBS.registerHelper('fieldHelper', function(privilege, connectionField){
-				if (privilege.generalMetadata == null || privilege.generalMetadata === '') {
-                    return "NO_GENERAL_METADATA";
-                }
-                else {
-					return JSON.parse(privilege.generalMetadata)[connectionField.id];
-				}
-			});
-            HBS.registerHelper('displayEmail', function(privilege){
-				var c = privilege.connectionId;
-                var emailField = _.where(connections, {id: privilege.connectionId})[0].emailField;
-				if (!privilege.email) {
-                    return JSON.parse(privilege.generalMetadata)[emailField];
-				}
-                return privilege.email;
-            });
 		},
 		events : {
 			"click .add-privilege-button":   "addPrivilegeMenu",
@@ -76,8 +60,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
                 }));
                 this.applyOptions(this.model.get("selectedPrivilege"));
             }.bind(this));
-
-
 		},
 		showPrivilegeAction: function (event) {
 			var uuid = event.target.id;
@@ -159,9 +141,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 		},
 		render : function(){
 			this.$el.html(this.template({}));
-			// privilegeFunctions.getAvailablePrivileges(function (privileges) {
-			// 	this.model.set("availablePrivileges", privileges);
-			// }.bind(this));
 			privilegeFunctions.fetchPrivileges(this, function(privileges){
 				this.displayPrivileges.bind(this)
 				(
