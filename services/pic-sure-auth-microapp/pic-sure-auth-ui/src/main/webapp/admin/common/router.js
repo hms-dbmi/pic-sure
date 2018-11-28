@@ -1,5 +1,5 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'connection/connectionManagement', 'termsOfService/tos'],
-        function(searchParser, Backbone, session, login, header, userManagement, connectionManagement, tos){
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'role/roleManagement', 'privilege/privilegeManagement', 'connection/connectionManagement', 'termsOfService/tos'],
+        function(searchParser, Backbone, session, login, header, userManagement, roleManagement, privilegeManagement, connectionManagement, tos){
     var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
@@ -7,6 +7,8 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "tos(/)" : "displayTOS",
             "login(/)" : "login",
             "logout(/)" : "logout",
+            "roleManagement(/)" : "displayRoleManagement",
+            "privilegeManagement(/)" : "displayPrivilegeManagement",
             "*path" : "displayUserManagement"
 
         },
@@ -61,16 +63,30 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
 
         displayTOS : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
-
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
         },
 
-        displayConnectionManagement : function(){
+        displayRoleManagement : function(){
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+            var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
+            roleMngmt.render();
+            $('#main-content').append(roleMngmt.$el);
+        },
+
+        displayPrivilegeManagement : function() {
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+            var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
+            privMngmt.render();
+            $('#main-content').append(privMngmt.$el);
+        },
+
+        displayConnectionManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);

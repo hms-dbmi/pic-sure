@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -31,7 +32,7 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     }
 
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Consumes("text/html")
     @Produces("application/json")
     public Response updateTermsOfService(String html){

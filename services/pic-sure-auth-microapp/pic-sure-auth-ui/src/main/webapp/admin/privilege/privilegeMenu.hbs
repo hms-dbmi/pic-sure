@@ -1,0 +1,29 @@
+{{#unless createOrUpdatePrivilege}}
+<div class="col-md-12">
+    <button id="edit-privilege-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-privilege-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form>
+    Name:<br>
+    <input uuid="{{privilege.uuid}}" type="text" name="privilege_name" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly{{/unless}} value="{{privilege.name}}">
+    <br>
+    Description:<br>
+    <input type="text" name="privilege_description" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly{{/unless}} value="{{privilege.description}}">
+    <br>
+    {{#if createOrUpdatePrivilege}}
+        <div style="padding-top: 4px">
+        <button id="save-privilege-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Privilege
+        </button>
+        <div id="cancel-privilege-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

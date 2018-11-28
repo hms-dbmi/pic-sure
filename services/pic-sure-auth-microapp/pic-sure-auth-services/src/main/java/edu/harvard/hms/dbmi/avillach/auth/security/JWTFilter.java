@@ -50,23 +50,22 @@ public class JWTFilter implements ContainerRequestFilter {
 		/**
 		 * skip the filter in certain cases
 		 */
-		if (uriInfo.getPath().endsWith("authentication")
-				|| uriInfo.getPath().contains("role")
-				|| uriInfo.getPath().contains("privilege")) {
+		if (uriInfo.getPath().endsWith("authentication")) {
 			return;
 		}
 
 		logger.debug("Entered jwtfilter.filter()...");
 
-		String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
-		if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-			throw new NotAuthorizedException("No authorization header found.");
-		}
-		String token = authorizationHeader.substring(6).trim();
-
-		String userForLogging = null;
-
 		try {
+			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+				throw new NotAuthorizedException("No authorization header found.");
+			}
+			String token = authorizationHeader.substring(6).trim();
+
+			String userForLogging = null;
+
+
 //			User authenticatedUser = null;
 
 

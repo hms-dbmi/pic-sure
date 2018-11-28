@@ -36,17 +36,36 @@ services:
     networks:
       - public
 
+#  picsureauthdb:
+#    image: dbmi/auth-db:5.7.22_initial
+#    command: --datadir=/mysql/data
+#    environment:
+#      - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
+#      - MYSQL_DATABASE=auth
+#    restart: always
+#    expose:
+#      - 3306
+#    volumes:
+#      - picsure-auth-data:/mysql/data
+#    networks:
+#      - public
+
   picsureauthdb:
-    image: dbmi/auth-db:5.7.22_initial
-    command: --datadir=/mysql/data
+#    image: dbmi/auth-db:5.7.22_initial
+    build:
+      context: pic-sure-auth-db
+      dockerfile: Dockerfile
+#    command: --datadir=/mysql/data
     environment:
       - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
       - MYSQL_DATABASE=auth
     restart: always
     expose:
       - 3306
+    ports:
+      - 3306:3306
     volumes:
-      - picsure-auth-data:/mysql/data
+      - picsure-auth-data:/var/lib/mysql
     networks:
       - public
 
@@ -55,5 +74,4 @@ networks:
 
 volumes:
   picsure-auth-data:
-
 
