@@ -39,11 +39,12 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
         return Response.status(201).entity(tosService.updateTermsOfService(html)).build();
     }
 
-    @Path("/{userId}")
+    @Path("/")
     @GET
     @Produces("text/plain")
-    public Response hasUserAcceptedTOS(@PathParam("userId") UUID userId){
-        return Response.ok(tosService.hasUserAcceptedLatest(userId)).build();
+    public Response hasUserAcceptedTOS(@Context SecurityContext securityContext){
+        String userSubject = securityContext.getUserPrincipal().getName();
+        return Response.ok(tosService.hasUserAcceptedLatest(userSubject)).build();
     }
 
     @Path("/accept")

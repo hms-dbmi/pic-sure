@@ -7,19 +7,29 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 			this.connections = connections;
 			this.connection = this.connections[0];
 			this.managementConsole = opts.managementConsole;
-		},
+            this.connections = JSON.parse(sessionStorage.connections);
+            this.connections.forEach(function (connection) {
+                connection.requiredFields = JSON.parse(connection.requiredFields);
+            })
+            this.connection = this.connections[0];
+        },
 		events: {
 			"change #new-user-connection-dropdown":"renderConnectionForm",
 			"click #save-user-button": "createUser"
 		},
 		createUser: function(event){
 			var metadata = {};
+			var roles = [];
+			_.each(this.$('input:checked'), function (checkbox) {
+                roles.push({uuid: checkbox.value});
+            })
+            //var roles = this.$('input:checked').each;
 			_.each($('#current-connection-form input[type=text]'), function(entry){
 			metadata[entry.name] = entry.value});
 			var user = {
 				connectionId: $('#new-user-connection-dropdown').val(),
 				generalMetadata:JSON.stringify(metadata),
-				roles: _.pluck(this.$('input:checked'),'value').join(',')
+				roles: roles
 			};
 			userFunctions.createOrUpdateUser(
 				[user],
