@@ -188,6 +188,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	public static class UserForDisaply {
+		String uuid;
 		String email;
 		Set<String> privileges;
 
@@ -209,6 +210,15 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 		public UserForDisaply setPrivileges(Set<String> privileges) {
 			this.privileges = privileges;
+			return this;
+		}
+
+		public String getUuid() {
+			return uuid;
+		}
+
+		public UserForDisaply setUuid(String uuid) {
+			this.uuid = uuid;
 			return this;
 		}
 	}

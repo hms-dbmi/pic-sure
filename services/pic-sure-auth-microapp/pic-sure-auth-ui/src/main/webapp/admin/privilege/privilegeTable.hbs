@@ -7,6 +7,8 @@
 			<th>Name</th>
 
 		    <th>Description</th>
+
+            <th>Application Name</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -15,6 +17,8 @@
                 <td><div class="privilege-row" id="{{this.uuid}}">{{this.name}}</div></td>
 
                 <td><div class="privilege-row" id="{{this.uuid}}">{{this.description}}</div></td>
+
+                <td><div class="privilege-row" id="{{this.uuid}}">{{this.application.name}}</div></td>
 
         </tr>
         {{/each}}

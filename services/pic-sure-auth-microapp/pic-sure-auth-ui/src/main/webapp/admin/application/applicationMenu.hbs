@@ -9,6 +9,9 @@
 </div>
 {{/unless}}
 <form>
+    UUID:<br>
+    <input uuid="{{application.uuid}}" type="text" name="role_name" style="width: 100%;" required readonly disabled value="{{application.uuid}}">
+    <br>
     Name:<br>
     <input uuid="{{application.uuid}}" type="text" name="application_name" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.name}}">
     <br>

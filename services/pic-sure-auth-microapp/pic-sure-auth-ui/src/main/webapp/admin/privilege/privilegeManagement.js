@@ -1,5 +1,9 @@
-define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/privilegeManagement.hbs", "text!privilege/privilegeMenu.hbs", "text!privilege/privilegeTable.hbs", "text!options/modal.hbs", "picSure/privilegeFunctions", "util/notification","picSure/privilegeFunctions"],
-		function(BB, HBS, AddPrivilegeView, template, privilegeMenuTemplate, privilegeTableTemplate, modalTemplate, privilegeFunctions, notification, privilegeFunctions){
+define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/privilegeManagement.hbs",
+		"text!privilege/privilegeMenu.hbs", "text!privilege/privilegeTable.hbs", "text!options/modal.hbs",
+		"picSure/privilegeFunctions", "util/notification","picSure/applicationFunctions"],
+		function(BB, HBS, AddPrivilegeView, template, privilegeMenuTemplate,
+				 privilegeTableTemplate, modalTemplate, privilegeFunctions,
+				 notification, applicationFunctions){
 	var privilegeManagementModel = BB.Model.extend({
 	});
 
@@ -33,11 +37,24 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 			"click #cancel-privilege-button":"closeDialog",
 			"click .privilege-row":          "showPrivilegeAction",
 			"click #delete-privilege-button":"deletePrivilege",
-			"submit":                   "savePrivilegeAction",
+			"change #application-dropdown":"dropdownChange",
+			"submit":                   "savePrivilegeAction"
 		},
 		displayPrivileges: function (result, view) {
 			this.privilegeTableTemplate = HBS.compile(privilegeTableTemplate);
 			$('.privilege-data', this.$el).html(this.privilegeTableTemplate({privileges:result}));
+
+		},
+		dropdownChange: function(event){
+			var selects = $('#application-dropdown option:selected', this.$el);
+			$('.application-block #uuid').text(selects[0].value);
+			if (selects[0].value){
+                $('.application-block #name').text(selects[0].innerText);
+                $('.application-block #description').text(selects[0].attributes.description.value);
+			} else {
+                $('.application-block #name').text("");
+                $('.application-block #description').text("");
+			}
 
 		},
 		addPrivilegeMenu: function (result) {
@@ -51,18 +68,17 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
             var addPrivilegeView = new AddPrivilegeView({el:$('.modal-body'), managementConsole: this, privileges:result}).render();
 		},
 		editPrivilegeMenu: function (events) {
-			$(".modal-body", this.$el).html(this.crudPrivilegeTemplate({createOrUpdatePrivilege: true, privilege: this.model.get("selectedPrivilege")}));
-			// this.applyCheckboxes();
+			applicationFunctions.fetchApplications(this, function(applications){
+                $(".modal-body", this.$el).html(this.crudPrivilegeTemplate({
+                    createOrUpdatePrivilege: true,
+                    privilege: this.model.get("selectedPrivilege"),
+					applications: applications
+                }));
+                this.applyOptions(this.model.get("selectedPrivilege"));
+            }.bind(this));
+
+
 		},
-		// applyCheckboxes: function () {
-		// 	var checkBoxes = $(":checkbox", this.$el);
-		// 	var privilegePrivileges = this.model.get("selectedPrivilege").privileges;
-		// 	_.each(checkBoxes, function (privilegeCheckbox) {
-		// 		if (privilegePrivileges.includes(privilegeCheckbox.value)){
-		// 			privilegeCheckbox.checked = true;
-		// 		}
-		// 	})
-		// },
 		showPrivilegeAction: function (event) {
 			var uuid = event.target.id;
 
@@ -70,14 +86,38 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 				this.model.set("selectedPrivilege", result);
 				$("#modal-window", this.$el).html(this.modalTemplate({title: "Privilege Info"}));
 				$("#modalDialog", this.$el).show();
-				$(".modal-body", this.$el).html(this.crudPrivilegeTemplate({createOrUpdatePrivilege: false, privilege: this.model.get("selectedPrivilege")}));
+                applicationFunctions.fetchApplications(this, function(applications){
+                    $(".modal-body", this.$el).html(this.crudPrivilegeTemplate({
+                        createOrUpdatePrivilege: false,
+                        privilege: this.model.get("selectedPrivilege"),
+                        applications: applications
+                    }));
+                    this.applyOptions(this.model.get("selectedPrivilege"));
+                }.bind(this));
 			}.bind(this));
+		},
+		applyOptions: function (privilege) {
+			var options = $("#application-dropdown", this.$el);
+			var anyOptionSelected = false;
+			_.each(options[0].options, function(option) {
+                if (option.value === privilege.application.uuid) {
+                    option.selected = true;
+                    anyOptionSelected = true;
+                } else {
+                    option.selected = false;
+                }
+			});
+			if (!anyOptionSelected) {
+				options[0].options[0].selected = true;
+			}
 		},
         savePrivilegeAction: function (e) {
             e.preventDefault();
             var uuid = this.$('input[name=privilege_name]').attr('uuid');
             var name = this.$('input[name=privilege_name]').val();
             var description = this.$('input[name=privilege_description]').val();
+
+            var applicationUUID = $('.application-block #uuid')[0].innerHTML;
 
             var privilege;
             var requestType;
@@ -91,7 +131,10 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
             privilege = [{
                 uuid: uuid,
                 name: name,
-                description: description
+                description: description,
+				application:{
+                	uuid: applicationUUID
+				}
             }];
 
             privilegeFunctions.createOrUpdatePrivilege(privilege, requestType, function(result) {
@@ -109,12 +152,6 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 
 			}.bind(this));
 		},
-		// getPrivilegePrivileges: function (stringPrivileges) {
-		// 	var privileges = stringPrivileges.split(",").map(function(item) {
-		// 		return item.trim();
-		// 	});
-		// 	this.model.get("selectedPrivilege").privileges = privileges;
-		// },
 		closeDialog: function () {
 			// cleanup
 			this.model.unset("selectedPrivilege");

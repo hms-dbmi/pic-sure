@@ -16,7 +16,7 @@ public class Application extends BaseEntity {
     private boolean enable = true;
 
     @OneToMany(mappedBy = "application",
-            fetch = FetchType.EAGER,
+            fetch = FetchType.LAZY,
             cascade = CascadeType.ALL,
             orphanRemoval = true)
     private Set<Privilege> privileges;
@@ -51,5 +51,49 @@ public class Application extends BaseEntity {
 
     public void setPrivileges(Set<Privilege> privileges) {
         this.privileges = privileges;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public static class ApplicationForDisplay {
+        String uuid;
+        String name;
+        String description;
+        boolean enable;
+
+        public String getName() {
+            return name;
+        }
+
+        public ApplicationForDisplay setName(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public ApplicationForDisplay setDescription(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public boolean isEnable() {
+            return enable;
+        }
+
+        public ApplicationForDisplay setEnable(boolean enable) {
+            this.enable = enable;
+            return this;
+        }
+
+        public String getUuid() {
+            return uuid;
+        }
+
+        public ApplicationForDisplay setUuid(String uuid) {
+            this.uuid = uuid;
+            return this;
+        }
     }
 }

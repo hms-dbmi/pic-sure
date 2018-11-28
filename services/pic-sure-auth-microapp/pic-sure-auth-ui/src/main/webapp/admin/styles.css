@@ -267,7 +267,7 @@ input:read-only {
 	width: inherit;
 }
 
-.privilege-checkbox {
+.bordered-block {
     margin-top: 3px;
     margin-bottom: 3px;
     padding: 6px;
@@ -277,3 +277,5 @@ input:read-only {
 .table-hover tbody tr:hover td, .table-hover tbody tr:hover th{
     background-color: #cddfeb;
 }
+
+
