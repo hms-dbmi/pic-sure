@@ -18,14 +18,21 @@
     Description:<br>
     <input type="text" name="application_description" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.description}}">
     <br>
-    <div class="checkbox-group role-checkbox">
+    <div class="bordered-block">
         Privileges:<br>
-        {{#each roles}}
-            <div>
-                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}" {{#unless ../createOrUpdateApplication}}disabled{{/unless}}>{{this.name}}: {{this.description}}</input>
+        {{#each application.privileges}}
+            <div class="bordered-block">
+                <span uuid="{{this.uuid}}">Name: <strong>{{this.name}}</strong></span><br>
+                <span uuid="{{this.uuid}}">Description: {{this.description}}</span><br>
             </div>
         {{/each}}
     </div>
+
+    <!--<div class="bordered-block">-->
+        <!--<Strong>Privileges</Strong>-->
+        <!---->
+    <!--</div>-->
+
     {{#if createOrUpdateApplication}}
         <div style="padding-top: 4px">
         <button id="save-application-button" type="submit" class="btn btn-info">
