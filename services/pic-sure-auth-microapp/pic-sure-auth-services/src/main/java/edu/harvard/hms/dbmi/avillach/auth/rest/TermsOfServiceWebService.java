@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -31,18 +32,19 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     }
 
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Consumes("text/html")
     @Produces("application/json")
     public Response updateTermsOfService(String html){
         return Response.status(201).entity(tosService.updateTermsOfService(html)).build();
     }
 
-    @Path("/{userId}")
+    @Path("/")
     @GET
     @Produces("text/plain")
-    public Response hasUserAcceptedTOS(@PathParam("userId") UUID userId){
-        return Response.ok(tosService.hasUserAcceptedLatest(userId)).build();
+    public Response hasUserAcceptedTOS(@Context SecurityContext securityContext){
+        String userSubject = securityContext.getUserPrincipal().getName();
+        return Response.ok(tosService.hasUserAcceptedLatest(userSubject)).build();
     }
 
     @Path("/accept")

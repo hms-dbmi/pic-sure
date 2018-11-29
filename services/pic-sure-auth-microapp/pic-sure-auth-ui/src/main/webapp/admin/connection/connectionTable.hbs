@@ -1,0 +1,22 @@
+
+<h2></h2>
+<table class="table-picsure">
+	<thead class="header-color">
+		<tr>
+			<th>Label</th>
+		    <th>ID</th>
+		    <th>Sub prefix</th>
+            <th>Required fields</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{#each connections}}
+        <tr>
+            <td><div class="selection-row" id="{{this.uuid}}">{{this.label}}</div></td>
+            <td><div>{{this.id}}</div></td>
+            <td><div>{{this.subPrefix}}</div></td>
+            <td><div>{{{displayField this.requiredFields}}}</div></td>
+        </tr>
+		{{/each}}
+    </tbody>
+</table>

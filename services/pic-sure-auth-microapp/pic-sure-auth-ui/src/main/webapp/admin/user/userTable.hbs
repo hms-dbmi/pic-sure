@@ -1,6 +1,6 @@
 {{#each connections}}
-	<h1>{{label}}</h2>
-	<table class="table-users">
+	<h2>{{label}}</h2>
+	<table class="table-picsure">
 	<thead class="header-color">
 		<tr>
 			{{#each requiredFields}}
@@ -15,7 +15,7 @@
             {{#each ../requiredFields}}
             <td><div class="user-row" id="{{../uuid}}">{{{fieldHelper ../this this}}}</div></td>
             {{/each}}
-            <td><div>{{this.roles}}</div></td>
+            <td><div>{{displayUserRoles this.roles}}</div></td>
         </tr>
 		{{/each}}
 	</tbody>

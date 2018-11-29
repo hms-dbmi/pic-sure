@@ -32,7 +32,13 @@
     border-color: #4a90e2;
 }
 
-.btn:hover {
+.btn-outline:hover {
+    color: #ffffff;
+    background-color: #76a6de;
+    border-color: #76a6de;
+}
+
+.btn-info:hover {
     color: #ffffff;
     background-color: #76a6de;
     border-color: #76a6de;
@@ -48,6 +54,14 @@
 
 .btn-right {
     float: right;
+}
+
+.btn-picsure-xs {
+    padding: 2px;
+}
+
+.btn-picsure-sm {
+    padding: 4px;
 }
 
  .search-box-spinner {
@@ -219,35 +233,41 @@
     background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
 }
 
-.table-users {
+.modal .modal-body {
+    height: auto;
+    max-height: 75%;
+    overflow-y: scroll;
+}
+
+.table-picsure {
     border-collapse: collapse;
     width: 100%;
 }
 
-.table-users thead {
+.table-picsure thead {
     border: 1px solid rgb(74, 144, 226);
     border-bottom: 0px;
 }
 
-.table-users th {
+.table-picsure th {
     color: white;
     padding: 10px;
 }
 
-.table-users td {
+.table-picsure td {
     border: 1px solid #b2cfeb;
     border-top: 0px;
     text-align: left;
     padding: 10px;
 }
 
-.table-users tbody td:nth-child(1) {
+.table-picsure tbody td:nth-child(1) {
     font-weight: bold;
     color: #007eff;
     cursor: pointer;
 }
 
-.table-users tbody tr:nth-child(odd) {
+.table-picsure tbody tr:nth-child(odd) {
     background-color: #deeaf6;
 }
 
@@ -265,4 +285,19 @@ input:read-only {
 
 #current-connection-form {
 	width: inherit;
+}
+
+.margin-top-ten {
+    margin-top: 10px;
+}
+
+.privilege-checkbox {
+    margin-top: 3px;
+    margin-bottom: 3px;
+    padding: 6px;
+    border: 1px solid #4a90e2;
+}
+
+.table-hover tbody tr:hover td, .table-hover tbody tr:hover th{
+    background-color: #cddfeb;
 }

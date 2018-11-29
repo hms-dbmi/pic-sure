@@ -10,4 +10,11 @@
     <module>pic-sure-auth-ui</module>
     <module>pic-sure-auth-services</module>
   </modules>
+  <repositories>
+    <repository>
+      <id>i2b2transmart-snapshots</id>
+      <name>i2b2/tranSMART Foundation Snapshots</name>
+      <url>http://ec2-35-170-59-132.compute-1.amazonaws.com:8080/artifactory/libs-snapshots</url>
+    </repository>
+  </repositories>
 </project>

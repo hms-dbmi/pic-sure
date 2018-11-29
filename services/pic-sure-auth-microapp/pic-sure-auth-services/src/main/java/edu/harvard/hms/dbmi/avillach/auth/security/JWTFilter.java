@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
@@ -18,6 +19,7 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
@@ -39,34 +41,43 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Inject
 	UserRepository userRepo;
 
+	@Inject
+	TermsOfServiceService tosService;
+
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 
 		/**
 		 * skip the filter in certain cases
 		 */
-		if (uriInfo.getPath().endsWith("authentication")
-				|| uriInfo.getPath().contains("role")
-				|| uriInfo.getPath().contains("privilege")) {
+		if (uriInfo.getPath().endsWith("authentication")) {
 			return;
 		}
 
 		logger.debug("Entered jwtfilter.filter()...");
 
-		String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
-		if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-			throw new NotAuthorizedException("No authorization header found.");
-		}
-		String token = authorizationHeader.substring(6).trim();
-
-		String userForLogging = null;
-
 		try {
+			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+				throw new NotAuthorizedException("No authorization header found.");
+			}
+			String token = authorizationHeader.substring(6).trim();
+
+			String userForLogging = null;
+
+
 //			User authenticatedUser = null;
 
 
-			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 
+			final User authenticatedUser = callLocalAuthentication(requestContext, token);
+			if (!uriInfo.getPath().contains("/tos")){
+				if (!tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+					//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
+					requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
+					return;
+				}
+			}
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);
 				throw new NotAuthorizedException("Cannot find or create a user");
