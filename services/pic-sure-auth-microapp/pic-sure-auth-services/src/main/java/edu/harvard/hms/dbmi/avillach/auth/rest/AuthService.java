@@ -96,7 +96,7 @@ public class AuthService {
                 generateClaims(userInfo, new String[]{"user_id", "email","name" }),
                 userId, -1);
 
-        boolean acceptedTOS = tosService.hasUserAcceptedLatest(user.getSubject());
+        boolean acceptedTOS = tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject());
 
         return PICSUREResponse.success(of(
                 "token", token,

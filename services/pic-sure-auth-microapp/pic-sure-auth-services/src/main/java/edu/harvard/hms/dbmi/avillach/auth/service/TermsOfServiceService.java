@@ -9,10 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import javax.persistence.NoResultException;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 
 public class TermsOfServiceService {
 
@@ -40,7 +40,12 @@ public class TermsOfServiceService {
     }
 
     public String getLatest(){
-        return termsOfServiceRepo.getLatest().getContent();
+        try {
+            return termsOfServiceRepo.getLatest().getContent();
+        } catch (NoResultException e){
+            logger.info("Terms Of Service disabled: No Terms of Service found in database");
+            return null;
+        }
     }
 
     public void acceptTermsOfService(String userId){
