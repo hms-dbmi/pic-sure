@@ -8,7 +8,7 @@ import java.util.Set;
 public class AccessEmail {
 
     //TODO: Where to actually store this?
-    private String systemInfo = System.getenv("systemName");
+    private String systemName = System.getenv("systemName");
     private String documentation = System.getenv("documentation");
 
     private String username;
@@ -41,5 +41,13 @@ public class AccessEmail {
 
     public void setDocumentation(String documentation) {
         this.documentation = documentation;
+    }
+
+    public String getSystemName() {
+        return systemName;
+    }
+
+    public void setSystemName(String systemName) {
+        this.systemName = systemName;
     }
 }

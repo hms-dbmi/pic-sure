@@ -423,7 +423,7 @@
         <subsystem xmlns="urn:jboss:domain:jsf:1.1"/>
         <subsystem xmlns="urn:jboss:domain:mail:3.0">
 <!--            <mail-session name="default" jndi-name="java:jboss/mail/Default">-->
-            <mail-session name="java:jboss/mail/gmail" from="hms.dbmi.data.infrastructure@gmail.com" jndi-name="java:jboss/mail/gmail" debug="true">
+            <mail-session name="java:jboss/mail/gmail" from="hms.dbmi.data.infrastructure@gmail.com" jndi-name="java:jboss/mail/gmail" debug="false">
 <!--                <smtp-server outbound-socket-binding-ref="mail-smtp"/>-->
                 <smtp-server outbound-socket-binding-ref="mail-smtp-gmail" tls="true" username="hms.dbmi.data.infrastructure@gmail.com" password="${env.MAIL_PASSWORD}"/>
             </mail-session>

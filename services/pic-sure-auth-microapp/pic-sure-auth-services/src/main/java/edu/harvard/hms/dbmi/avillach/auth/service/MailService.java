@@ -51,7 +51,6 @@ public class MailService {
                 message.setSubject("Your Access To " + systemName);
                 String body = generateBody(user);
                 message.setText(body);
-                logger.info(body);
                 Transport.send(message);
             } else {
                 logger.error("User " + user.getSubject() + " has no email");
