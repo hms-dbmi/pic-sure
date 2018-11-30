@@ -72,10 +72,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 } else {
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
-
             });
-
-
         },
 
         displayTOS : function() {
@@ -89,36 +86,71 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             headerView.render();
             $('#header-content').append(headerView.$el);
 
-            var appliMngmt = new applicationManagement.View({model: new applicationManagement.Model()});
-            appliMngmt.render();
-            $('#main-content').append(appliMngmt.$el);
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var appliMngmt = new applicationManagement.View({model: new applicationManagement.Model()});
+                    appliMngmt.render();
+                    $('#main-content').append(appliMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayRoleManagement : function(){
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
-            roleMngmt.render();
-            $('#main-content').append(roleMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
+                    roleMngmt.render();
+                    $('#main-content').append(roleMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayPrivilegeManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
-            privMngmt.render();
-            $('#main-content').append(privMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
+                    privMngmt.render();
+                    $('#main-content').append(privMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayConnectionManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
-            connectionMngmt.render();
-            $('#main-content').append(connectionMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SYSTEM')
+                })) {
+                    var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
+                    connectionMngmt.render();
+                    $('#main-content').append(connectionMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         }
     });
     return new Router();
