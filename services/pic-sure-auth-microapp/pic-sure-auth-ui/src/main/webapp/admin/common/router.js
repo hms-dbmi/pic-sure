@@ -142,7 +142,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SYSTEM')
+                    return (element === 'ROLE_SUPER_ADMIN')
                 })) {
                     var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
                     connectionMngmt.render();

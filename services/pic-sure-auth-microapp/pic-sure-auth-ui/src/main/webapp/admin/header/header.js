@@ -22,7 +22,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         },
 		logout : function(event){
             sessionStorage.clear();
-		}, 
+        },
 		render : function(){
             userFunctions.me(this, function(user){
                 this.$el.html(this.template({

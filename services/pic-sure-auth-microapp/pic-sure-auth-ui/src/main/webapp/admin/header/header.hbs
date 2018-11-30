@@ -2,18 +2,22 @@
 	<div class="logo-img col-md-3" style="font-size: x-large;
                                               color: white;
                                               top: 20px;">Management console</div>
-    <span class="col-md-1"></span>
+    <span class="col-md-2"></span>
     <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/roleManagement"
        {{#not_contains privileges 'ROLE_SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
-        Admin Console
+        Super Admin Console
     </a>
-    <a class="col-md-1 btn btn-default header-btn" id="userMgmt-header" href="/userManagement"
-       {{#not_contains privileges 'ROLE_SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Users</a>
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/userManagement"
+       {{#not_contains privileges 'ROLE_SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Users
+    </a>
+    <!--
     <a class="col-md-2 btn btn-default header-btn" id="cnxn-header" href="/connectionManagement"
-       {{#not_contains privileges 'ROLE_SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Connections</a>
+       {{#not_contains privileges 'ROLE_SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Connections
+    </a>
+    -->
+    <span class="col-md-1"></span>
     <span class="col-md-1 header-btn">
 		<a class="btn btn-default help-btn">Help</a>
 	</span>
-    <a id="me-btn" class="col-md-1 btn btn-default header-btn">Profile</a>
 	<a id="logout-btn" class="col-md-1 btn btn-default header-btn">Log Out</a>
 </div>
