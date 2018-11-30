@@ -44,7 +44,6 @@ public class RoleService extends BaseEntityService<Role> {
     }
 
     @GET
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("/{roleId}")
     public Response getRoleById(
             @PathParam("roleId") String roleId) {
@@ -52,7 +51,6 @@ public class RoleService extends BaseEntityService<Role> {
     }
 
     @GET
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getRoleAll() {
         return getEntityAll(roleRepo);
@@ -60,7 +58,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @Transactional
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addRole(List<Role> roles){
@@ -70,7 +68,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @Transactional
     @PUT
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateRole(List<Role> roles){
@@ -80,7 +78,7 @@ public class RoleService extends BaseEntityService<Role> {
     
     @Transactional
     @DELETE
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Path("/{roleId}")
     public Response removeById(@PathParam("roleId") final String roleId) {
         Role role = roleRepo.getById(UUID.fromString(roleId));

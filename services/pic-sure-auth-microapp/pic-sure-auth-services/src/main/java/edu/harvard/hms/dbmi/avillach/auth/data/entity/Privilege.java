@@ -48,10 +48,13 @@ public class Privilege extends BaseEntity {
 
     @JsonProperty("application")
     public Application.ApplicationForDisplay getApplicationForDisplay(){
-        return new Application.ApplicationForDisplay()
+        if (application != null)
+            return new Application.ApplicationForDisplay()
                 .setDescription(application.getDescription())
                 .setName(application.getName())
                 .setEnable(application.isEnable())
                 .setUuid(application.getUuid().toString());
+
+        return null;
     }
 }

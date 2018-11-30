@@ -10,13 +10,13 @@
 {{/unless}}
 <form>
     UUID:<br>
-    <input uuid="{{application.uuid}}" type="text" name="role_name" style="width: 100%;" required readonly disabled value="{{application.uuid}}">
+    <input uuid="{{application.uuid}}" type="text" name="application_uuid" style="width: 100%;" required readonly disabled value="{{application.uuid}}">
     <br>
     Name:<br>
-    <input uuid="{{application.uuid}}" type="text" name="application_name" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.name}}">
+    <input uuid="{{application.uuid}}" type="text" name="application_name" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly disabled{{/unless}} value="{{application.name}}">
     <br>
     Description:<br>
-    <input type="text" name="application_description" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly{{/unless}} value="{{application.description}}">
+    <input type="text" name="application_description" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly disabled{{/unless}} value="{{application.description}}">
     <br>
     <div class="bordered-block">
         Privileges:<br>

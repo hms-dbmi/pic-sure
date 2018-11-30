@@ -1,10 +1,12 @@
-define(["jquery", "underscore"], function($, _){
+define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFunctions){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));
 	
 	var session = storedSession ? storedSession : {
 		username : null,
-		permissions : []
+		permissions : [],
+		privileges : [],
+		email : null
 	};
 	
 	var configureAjax = function(callback){
@@ -43,17 +45,23 @@ define(["jquery", "underscore"], function($, _){
 				return false;
 			}
 		},
-		userEmail : function(){
+		username : function(){
 			return JSON.parse(sessionStorage.session).username;
 		},
+        email : function(){
+            return JSON.parse(sessionStorage.session).email;
+        },
 		userId : function(){
 			return JSON.parse(sessionStorage.session).userId;
 		},
-		userMode : function(){
-			return JSON.parse(sessionStorage.session).currentUserMode;
-		},
+		// userMode : function(){
+		// 	return JSON.parse(sessionStorage.session).currentUserMode;
+		// },
 		acceptedTOS : function(){
 			return JSON.parse(sessionStorage.session).acceptedTOS;
+		},
+		privileges: function(){
+			return JSON.parse(sessionStorage.session).privileges;
 		},
 		activity : _.throttle(function(activity){
 			if(typeof activity !== "string"){

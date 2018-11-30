@@ -10,13 +10,13 @@
 {{/unless}}
 <form class="privilege-detail-form">
     UUID:<br>
-    <input uuid="{{privilege.uuid}}" type="text" name="role_name" style="width: 100%;" required readonly disabled value="{{privilege.uuid}}">
+    <input uuid="{{privilege.uuid}}" type="text" name="privilege_uuid" style="width: 100%;" required readonly disabled value="{{privilege.uuid}}">
     <br>
     Name:<br>
-    <input uuid="{{privilege.uuid}}" type="text" name="privilege_name" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly{{/unless}} value="{{privilege.name}}">
+    <input uuid="{{privilege.uuid}}" type="text" name="privilege_name" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly disabled{{/unless}} value="{{privilege.name}}">
     <br>
     Description:<br>
-    <input type="text" name="privilege_description" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly{{/unless}} value="{{privilege.description}}">
+    <input type="text" name="privilege_description" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly disabled{{/unless}} value="{{privilege.description}}">
     <br>
 
     <div class="bordered-block application-block">

@@ -43,7 +43,6 @@ public class ApplicationService extends BaseEntityService<Application> {
     }
 
     @GET
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
     @Path("/{applicationId}")
     public Response getApplicationById(
             @PathParam("applicationId") String applicationId) {
@@ -51,7 +50,6 @@ public class ApplicationService extends BaseEntityService<Application> {
     }
 
     @GET
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getApplicationAll() {
         return getEntityAll(applicationRepo);
@@ -59,7 +57,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 
     @Transactional
     @POST
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addApplication(List<Application> applications){
@@ -68,7 +66,7 @@ public class ApplicationService extends BaseEntityService<Application> {
     }
 
     @PUT
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateApplication(List<Application> applications){
@@ -78,7 +76,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 
     @Transactional
     @DELETE
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
     @Path("/{applicationId}")
     public Response removeById(@PathParam("applicationId") final String applicationId) {
         Application application = applicationRepo.getById(UUID.fromString(applicationId));

@@ -1,5 +1,8 @@
-define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs", "text!user/userDetails.hbs", "text!user/userTable.hbs", "text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
-		function(BB, HBS,  AddUserView, template, userDetailsTemplate, userTableTemplate, modalTemplate, userFunctions, notification){
+define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
+		"text!user/userDetails.hbs", "text!user/userTable.hbs",
+		"text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		function(BB, HBS,  AddUserView, template, userDetailsTemplate,
+				 userTableTemplate, modalTemplate, userFunctions, notification){
 	var userManagementModel = BB.Model.extend({
 	});
 
@@ -17,7 +20,10 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 				}
 			});
             HBS.registerHelper('requiredFieldValue', function(userMetadata, metadataId){
-            	return userMetadata[metadataId];
+            	if (userMetadata)
+            		return userMetadata[metadataId];
+            	else
+            		return "";
 			});
             HBS.registerHelper('displayUserRoles', function(roles){
                 return _.pluck(roles, "name").join(", ");

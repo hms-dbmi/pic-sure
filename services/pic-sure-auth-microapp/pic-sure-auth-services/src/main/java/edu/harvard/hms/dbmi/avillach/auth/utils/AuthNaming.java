@@ -8,6 +8,7 @@ public class AuthNaming {
 
     public static class AuthRoleNaming {
         public static final String ROLE_SYSTEM = "ROLE_SYSTEM";
+        public static final String ROLE_SUPER_ADMIN = "ROLE_SUPER_ADMIN";
         public static final String ROLE_TOKEN_INTROSPECTION = "ROLE_TOKEN_INTROSPECTION";
         public static final String ROLE_INTROSPECTION_USER = "ROLE_INTROSPECTION_USER";
 

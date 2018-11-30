@@ -6,6 +6,9 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import javax.persistence.*;
 import java.util.Set;
 
+/**
+ * The purpose of this class is to provide an application level privileges management
+ */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "application")
 public class Application extends BaseEntity {
