@@ -1,6 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
-        'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement", 'connection/connectionManagement', 'termsOfService/tos'],
-        function(searchParser, Backbone, session, login, header, userManagement, roleManagement, privilegeManagement, applicationManagement, connectionManagement, tos){
+        'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
+        'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
+        'text!../../settings/settings.json', 'text!login/not_authorized.hbs', 'handlebars'],
+        function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
+                 privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
+                 settings, notAuthorizedTemplate, HBS){
         var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
@@ -58,9 +62,20 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             headerView.render();
             $('#header-content').append(headerView.$el);
 
-            var userMngmt = new userManagement.View({model: new userManagement.Model()});
-            userMngmt.render();
-            $('#main-content').html(userMngmt.$el);
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SYSTEM')
+                })) {
+                    var userMngmt = new userManagement.View({model: new userManagement.Model()});
+                    userMngmt.render();
+                    $('#main-content').html(userMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+
+            });
+
+
         },
 
         displayTOS : function() {

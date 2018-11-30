@@ -84,16 +84,30 @@ public class JAXRSConfiguration extends Application {
         Privilege systemAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SYSTEM).get(0);
         Privilege superAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN).get(0);
 
-
         Role role = new Role();
-        role.setName(defaultAdminRoleName);
+        List<Role> roles = roleRepo.getByColumn("name", defaultAdminRoleName);
+        boolean isAdminRole = false;
+        if (roles != null && !roles.isEmpty()) {
+            logger.info("Found a role with default admin name " + defaultAdminRoleName + ", but without proper privileges associated with");
+            role = roles.get(0);
+            isAdminRole = true;
+        }
         role.setDescription("PIC-SURE admin role across PIC-SURE and PIC-SURE Auth Micro App");
         Set<Privilege> privileges = new HashSet<>();
         privileges.add(systemAdmin);
         privileges.add(superAdmin);
         role.setPrivileges(privileges);
-        roleRepo.persist(role);
-        logger.info("Finished creating an admin role, roleId: " + role.getUuid());
+
+        if(isAdminRole){
+            roleRepo.merge(role);
+            logger.info("Finished updating the admin role, roleId: " + role.getUuid());
+        } else {
+            role.setName(defaultAdminRoleName);
+            roleRepo.persist(role);
+            logger.info("Finished creating an admin role, roleId: " + role.getUuid());
+        }
+
+
     }
 
     private void checkAndAddAdminPrivileges(){
