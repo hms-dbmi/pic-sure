@@ -63,6 +63,10 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
 
         displayTOS : function() {
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+            
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
