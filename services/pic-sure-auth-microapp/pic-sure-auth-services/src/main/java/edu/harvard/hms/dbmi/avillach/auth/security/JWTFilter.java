@@ -72,7 +72,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 			if (!uriInfo.getPath().contains("/tos")){
-				if (!tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+				if (tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
 					//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
 					requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
 					return;

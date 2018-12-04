@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
@@ -17,6 +16,7 @@ import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.ejb.Startup;
 import javax.inject.Inject;
+import javax.mail.Session;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
@@ -39,6 +39,9 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/user_id_claim")
     public static String userIdClaim;
+
+    @Resource(lookup = "java:jboss/mail/gmail")
+    public static Session mailSession;
 
     public static String defaultAdminRoleName = "PIC-SURE Admin";
 
@@ -66,6 +69,9 @@ public class JAXRSConfiguration extends Application {
 
 
         logger.info("Auth micro app has been successfully started");
+
+        mailSession.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
+
     }
 
     private void initializeDefaultAdminRole(){

@@ -24,9 +24,13 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsure
                 if (disable) {
                     $("#userMgmt-header").removeAttr('href');
                     $("#cnxn-header").removeAttr('href');
+                    $("#userMgmt-header").attr('title', 'You must accept the terms of service before using other pages.');
+                    $("#cnxn-header").attr('title', 'You must accept the terms of service before using other pages.');
                 } else {
                     $("#userMgmt-header").attr("href","/userManagement");
                     $("#cnxn-header").attr("href","/connectionManagement");
+                    $("#userMgmt-header").removeAttr('title');
+                    $("#cnxn-header").removeAttr('title');
                 }
             },
             render : function(){
