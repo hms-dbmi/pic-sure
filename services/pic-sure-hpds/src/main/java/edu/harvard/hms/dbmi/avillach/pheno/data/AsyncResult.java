@@ -8,7 +8,9 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import edu.harvard.hms.dbmi.avillach.pheno.CountProcessor;
 import edu.harvard.hms.dbmi.avillach.pheno.QueryProcessor;
+import edu.harvard.hms.dbmi.avillach.pheno.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.pheno.store.NotEnoughMemoryException;
 
 public class AsyncResult implements Runnable, Comparable<AsyncResult>{
@@ -83,7 +85,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	public ExecutorService jobQueue;
 
 	@JsonIgnore
-	public QueryProcessor processor;
+	public AbstractProcessor processor;
 
 	public AsyncResult(Query query) {
 		this.query = query;
@@ -128,10 +130,17 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	}
 
 	private String[] createHeaderRow() {
-		String[] header = new String[query.fields.size()+1];
-		header[0] = "Patient ID";
-		System.arraycopy(query.fields.toArray(), 0, header, 1, query.fields.size());
-		return header;
+		switch(query.expectedResultType) {
+		case DATAFRAME :
+			String[] header = new String[query.fields.size()+1];
+			header[0] = "Patient ID";
+			System.arraycopy(query.fields.toArray(), 0, header, 1, query.fields.size());
+			return header;
+		case COUNT :
+			return new String[] {"Patient ID", "Count"};
+		default : 
+			throw new RuntimeException("UNSUPPORTED RESULT TYPE");
+		}
 	}
 
 	public void enqueue() {

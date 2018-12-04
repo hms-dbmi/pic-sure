@@ -11,12 +11,12 @@ import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
 import edu.harvard.hms.dbmi.avillach.pheno.data.PhenoCube;
 
-import static edu.harvard.hms.dbmi.avillach.pheno.LoadingStore.*;
-
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CSVLoader {
+	
+	private static LoadingStore store = new LoadingStore();
 
-	private static Logger log = Logger.getLogger(CSVLoader.class);
+	private static Logger log = Logger.getLogger(CSVLoader.class); 
 
 	private static final int PATIENT_NUM = 0;
 
@@ -27,14 +27,14 @@ public class CSVLoader {
 	private static final int TEXT_VALUE = 3;
 
 	public static void main(String[] args) throws IOException {
-		allObservationsStore = new RandomAccessFile("/opt/local/phenocube/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile("/opt/local/phenocube/allObservationsStore.javabin", "rw");
 		initialLoad();
-		saveStore();
+		store.saveStore();
 	}
 
 	private static void initialLoad() throws IOException {
 		Reader in = new FileReader("/opt/local/phenocube/allConcepts.csv");
-		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(in);
+		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024*1024));
 
 		final PhenoCube[] currentConcept = new PhenoCube[1];
 		for (CSVRecord record : records) {
@@ -50,7 +50,7 @@ public class CSVLoader {
 		}
 
 		try {
-			String conceptPath = record.get(CONCEPT_PATH).endsWith("\\" +record.get(TEXT_VALUE).trim()+"\\") ? record.get(CONCEPT_PATH).replaceAll("\\\\[\\w\\.-]*\\\\$", "\\\\") : record.get(CONCEPT_PATH);
+			String conceptPath = record.get(CONCEPT_PATH).endsWith("\\" +record.get(TEXT_VALUE).trim()+"\\") ? record.get(CONCEPT_PATH).replaceAll("\\\\[\\w\\.\\- ]*\\\\$", "\\\\") : record.get(CONCEPT_PATH);
 			String numericValue = record.get(NUMERIC_VALUE);
 			if(numericValue==null || numericValue.isEmpty()) {
 				try {
@@ -65,10 +65,10 @@ public class CSVLoader {
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
 				try {
-					currentConcept[0] = store.get(conceptPath);
+					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
 					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Float.class);
-					store.put(conceptPath, currentConcept[0]);
+					store.store.put(conceptPath, currentConcept[0]);
 				}
 			}
 			String value = isAlpha ? record.get(TEXT_VALUE) : numericValue;

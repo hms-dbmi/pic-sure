@@ -30,18 +30,18 @@ import edu.harvard.hms.dbmi.avillach.pheno.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.pheno.data.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.pheno.data.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.pheno.data.PhenoCube;
-
+ 
 public class LoadingStore {
 
-	private static HashMap<String, byte[]> compressedPhenoCubes = new HashMap<>();
+	private HashMap<String, byte[]> compressedPhenoCubes = new HashMap<>();
+ 
+	RandomAccessFile allObservationsStore;
 
-	static RandomAccessFile allObservationsStore;
-
-	static TreeMap<String, ColumnMeta> metadataMap = new TreeMap<>();
+	TreeMap<String, ColumnMeta> metadataMap = new TreeMap<>();
 
 	private static Logger log = Logger.getLogger(LoadingStore.class);
 	
-	public static LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
+	public LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
 			.maximumSize(2000)
 			.removalListener(new RemovalListener<String, PhenoCube>() {
 
@@ -126,7 +126,7 @@ public class LoadingStore {
 						}
 					});
 	
-	public static void saveStore() throws FileNotFoundException, IOException {
+	public void saveStore() throws FileNotFoundException, IOException {
 		store.asMap().forEach((String key, PhenoCube value)->{
 			metadataMap.put(key, new ColumnMeta().setName(key).setWidthInBytes(value.getColumnWidth()).setCategorical(value.isStringType()));
 		});

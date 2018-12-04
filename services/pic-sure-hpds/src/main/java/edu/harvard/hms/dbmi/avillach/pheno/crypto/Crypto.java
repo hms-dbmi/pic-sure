@@ -51,7 +51,7 @@ public class Crypto {
 			cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec);
 			cipherText = new byte[cipher.getOutputSize(plaintextBytes.length)];
 			cipher.doFinal(plaintextBytes, 0, plaintextBytes.length, cipherText, 0);
-			System.out.println("Length of cipherText : " + cipherText.length);
+			LOGGER.debug("Length of cipherText : " + cipherText.length);
 			ByteBuffer byteBuffer = ByteBuffer.allocate(4 + iv.length + cipherText.length);
 			byteBuffer.putInt(iv.length);
 			byteBuffer.put(iv);

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.pheno;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -9,18 +11,24 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.core.Response;
+
 import com.google.common.collect.ImmutableMap;
 
+import edu.harvard.hms.dbmi.avillach.pheno.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.pheno.data.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.pheno.data.AsyncResult.Status;
 import edu.harvard.hms.dbmi.avillach.pheno.data.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.pheno.data.Query;
+import edu.harvard.hms.dbmi.avillach.pheno.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.picsure.hpds.exception.ValidationException;
 
 public class QueryService {
@@ -41,7 +49,7 @@ public class QueryService {
 
 	HashMap<String, AsyncResult> results = new HashMap<>();
 
-	public QueryService (){
+	public QueryService () throws ClassNotFoundException, FileNotFoundException, IOException{
 		SMALL_JOB_LIMIT = getIntProp("SMALL_JOB_LIMIT");
 		SMALL_TASK_THREADS = getIntProp("SMALL_TASK_THREADS");
 		LARGE_TASK_THREADS = getIntProp("LARGE_TASK_THREADS");
@@ -77,13 +85,30 @@ public class QueryService {
 
 		return getStatusFor(result.id);
 	}
+	
+	ExecutorService countExecutor = Executors.newSingleThreadExecutor();
+	 
+	public int runCount(Query query) throws ValidationException, InterruptedException, ExecutionException {
+		return new CountProcessor().runCounts(query);
+	}
 
 	private AsyncResult initializeResult(Query query) {
 		AsyncResult result = new AsyncResult(query);
 		result.status = AsyncResult.Status.PENDING;
 		result.queuedTime = System.currentTimeMillis();
 		result.id = UUID.randomUUID().toString();
-		result.processor = processor;
+		AbstractProcessor p;
+		switch(query.expectedResultType) {
+		case DATAFRAME :
+			p = processor;
+			break;
+		case COUNT :
+			p = new CountProcessor();
+			break;
+		default : 
+			throw new RuntimeException("UNSUPPORTED RESULT TYPE");
+		}
+		result.processor = p;
 		query.id = result.id;
 		results.put(result.id, result);
 		return result;

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.pheno;
 
+import java.io.IOException;
+
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -10,6 +12,12 @@ import javax.ws.rs.core.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.pheno.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.pheno.data.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.pheno.data.Query;
 import edu.harvard.hms.dbmi.avillach.picsure.hpds.exception.ValidationException;
@@ -56,5 +64,16 @@ public class QueryRS {
 	@Produces(MediaType.APPLICATION_JSON_VALUE)
 	public Response getDataDictionary() {
 		return Response.ok(queryService.getDataDictionary()).build();
+	}
+	
+
+	@POST
+	@Path("/count")
+	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException {
+		if(Crypto.hasKey()){
+			return Response.ok(new CountProcessor().runCounts(resultRequest)).build();
+		} else {
+			return Response.status(403).entity("Resource is locked").build();
+		}
 	}
 }

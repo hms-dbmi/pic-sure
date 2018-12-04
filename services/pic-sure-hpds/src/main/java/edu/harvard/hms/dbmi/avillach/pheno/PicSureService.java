@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import javax.ws.rs.BadRequestException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -15,7 +14,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.ServerErrorException;
 import javax.ws.rs.core.Response;
 
-import org.apache.commons.codec.binary.Base64;
+import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
@@ -33,6 +32,7 @@ import edu.harvard.hms.dbmi.avillach.pheno.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.pheno.data.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.pheno.data.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.pheno.data.Query;
+import edu.harvard.hms.dbmi.avillach.pheno.data.ResultType;
 import edu.harvard.hms.dbmi.avillach.picsure.hpds.exception.ValidationException;
 
 @Path("PIC-SURE")
@@ -41,12 +41,14 @@ public class PicSureService implements IResourceRS {
 
 	@Autowired
 	private QueryService queryService;
-
+	
 	@Autowired
 	private QueryRS queryRS;
 
 	private final ObjectMapper mapper = new ObjectMapper();
 
+	private Logger log = Logger.getLogger(PicSureService.class);
+	
 	@POST
 	@Path("/info")
 	public ResourceInfo info(Map<String, String> resourceCredentials) {
@@ -108,7 +110,7 @@ public class PicSureService implements IResourceRS {
 					));
 		} catch (JsonParseException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			e.printStackTrace(); 
 		} catch (JsonMappingException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -143,16 +145,20 @@ public class PicSureService implements IResourceRS {
 	public QueryStatus query(QueryRequest queryJson) {
 		Query query;
 		QueryStatus queryStatus = new QueryStatus();
-		if(queryJson.getResourceCredentials().containsKey("key")) {
+		if(queryJson.getResourceCredentials()!=null && queryJson.getResourceCredentials().containsKey("key")) {
 			byte[] keyBytes = queryJson.getResourceCredentials().get("key").trim().getBytes();
 			if(keyBytes.length == 32) {
-				Crypto.setKey(keyBytes);
 				try {
+					Crypto.setKey(keyBytes);
+					log.info("Key is set");
 					queryService.processor.loadAllDataFiles();
+					log.info("Data is loaded");
 					queryService.processor.initAllIds();
+					log.info("All IDs inited");
 					queryStatus.setResourceStatus("Resource unlocked.");
 				} catch(Exception e) {
 					Crypto.setKey(null);
+					e.printStackTrace();
 					queryStatus.setResourceStatus("Resource locked.");
 				}
 				return queryStatus;
@@ -162,8 +168,8 @@ public class PicSureService implements IResourceRS {
 			}
 		} else if(Crypto.hasKey()){
 			try {
-				query = mapper.readValue(mapper.writeValueAsString(queryJson.getQuery()), Query.class);
-				return convertToQueryStatus(queryService.runQuery(query));
+				query = convertIncomingQuery(queryJson);
+				return convertToQueryStatus(queryService.runQuery(query));		
 			} catch (IOException e) {
 				throw new ServerErrorException(500);
 			} catch (ValidationException e) {
@@ -175,12 +181,29 @@ public class PicSureService implements IResourceRS {
 					throw new ServerErrorException(500);
 				}
 				return status;
-			}
+			}  
 		} else {
 			QueryStatus status = new QueryStatus();
 			status.setResourceStatus("Resource is locked.");
 			return status;
 		}
+	}
+
+	private Query convertIncomingQuery(QueryRequest queryJson)
+			throws IOException, JsonParseException, JsonMappingException, JsonProcessingException {
+		return mapper.readValue(mapper.writeValueAsString(queryJson.getQuery()), Query.class);
+	}
+
+	private QueryStatus unknownResultTypeQueryStatus() {
+		QueryStatus status = new QueryStatus();
+		status.setDuration(0);
+		status.setExpiration(-1);
+		status.setPicsureResultId(null);
+		status.setResourceID(null);
+		status.setResourceResultId(null);
+		status.setResourceStatus("Unsupported result type");
+		status.setStatus(PicSureStatus.ERROR);
+		return status;
 	}
 
 	private QueryStatus convertToQueryStatus(AsyncResult entity) {
@@ -190,10 +213,18 @@ public class PicSureService implements IResourceRS {
 		status.setResourceResultId(entity.id);
 		status.setResourceStatus(entity.status.name());
 		if(entity.status==AsyncResult.Status.SUCCESS) {
-			status.setSizeInBytes(entity.stream.estimatedSize());			
+		 	status.setSizeInBytes(entity.stream.estimatedSize());			
 		}
 		status.setStartTime(entity.queuedTime);
 		status.setStatus(entity.status.toPicSureStatus());
+		return status;
+	}
+
+	private QueryStatus convertToQueryStatus(int count) {
+		QueryStatus status = new QueryStatus();
+		status.setResourceStatus("COMPLETE");
+		status.setResultMetadata((""+count).getBytes());
+		status.setStatus(PicSureStatus.AVAILABLE);
 		return status;
 	}
 
@@ -215,4 +246,23 @@ public class PicSureService implements IResourceRS {
 				queryService.getStatusFor(queryId));
 	}
 
+	@POST
+	@Path("/query/sync")
+	@Produces(MediaType.TEXT_PLAIN_VALUE)
+	public Response querySync(QueryRequest resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException {
+		if(Crypto.hasKey()){
+			Query incomingQuery = convertIncomingQuery(resultRequest);
+			if(incomingQuery.expectedResultType==ResultType.DATAFRAME) {
+				QueryStatus status = query(resultRequest);
+				while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
+					status = queryStatus(status.getResourceResultId(), null);
+				}
+				return queryResult(status.getResourceResultId(), null);
+			}else {
+				return Response.ok(new CountProcessor().runCounts(incomingQuery)).build();				
+			}
+		} else {
+			return Response.status(403).entity("Resource is locked").build();
+		}
+	}
 }

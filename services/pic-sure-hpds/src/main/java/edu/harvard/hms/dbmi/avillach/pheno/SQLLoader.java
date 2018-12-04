@@ -36,6 +36,7 @@ public class SQLLoader {
 		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
 	}
 
+	private static LoadingStore store = new LoadingStore();
 
 	private static Logger log = Logger.getLogger(SQLLoader.class);
 
@@ -49,9 +50,9 @@ public class SQLLoader {
 
 	public static void main(String[] args) throws IOException {
 		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
-		allObservationsStore = new RandomAccessFile("/tmp/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile("/tmp/allObservationsStore.javabin", "rw");
 		initialLoad();
-		saveStore();
+		store.saveStore();
 	}
 
 	private static void initialLoad() throws IOException {
@@ -101,10 +102,10 @@ public class SQLLoader {
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
 				try {
-					currentConcept[0] = store.get(conceptPath);
+					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
 					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Float.class);
-					store.put(conceptPath, currentConcept[0]);
+					store.store.put(conceptPath, currentConcept[0]);
 				}
 			}
 			String value = isAlpha ? arg0.getString(TEXT_VALUE) : numericValue;

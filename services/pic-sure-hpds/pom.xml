@@ -149,11 +149,31 @@
 				<artifactId>maven-assembly-plugin</artifactId>
 				<executions>
 					<execution>
+						<id>buildVariantLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.geno.data.VariantLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>VariantLoader</classifier>
+							<finalName>${project.artifactId}-VariantLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
 						<id>buildCSVLoader</id>
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.pheno.Loader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.pheno.CSVLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
@@ -162,6 +182,26 @@
 							</descriptorRefs>
 							<classifier>CSVLoader</classifier>
 							<finalName>${project.artifactId}-CSVLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>buildVariantCounter</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.geno.data.VariantCounter</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/pic-sure-hpds-loader</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>VariantCounter</classifier>
+							<finalName>${project.artifactId}-VariantCounter</finalName>
 						</configuration>
 						<phase>package</phase>
 						<goals>

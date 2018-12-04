@@ -13,7 +13,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 
 	int columnWidth;
 
-	V[] lowDimValues;
+	V[] lowDimValues; 
 	boolean isLowDim = false;
 
 	private KeyAndValue<V>[] sortedByKey;
@@ -131,8 +131,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
-		if(maxSearchIndex==sortedByValue.length) {
-			return sortedByValue.length;
+		if(maxSearchIndex > sortedByValue.length - 1) {
+			return sortedByValue.length - 1;
 		}
 		while(maxSearchIndex > -1 && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])<=0) {
 			maxSearchIndex--;
