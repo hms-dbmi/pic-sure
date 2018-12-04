@@ -20,6 +20,7 @@ import javax.mail.Session;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -63,7 +64,7 @@ public class JAXRSConfiguration extends Application {
             create an admin role if there isn't one
          */
         logger.info("Start initializing admin role in database");
-        initializeTheAdminRole();
+        initializeDefaultAdminRole();
         logger.info("Finished initializing admin role.");
 
 
@@ -73,27 +74,86 @@ public class JAXRSConfiguration extends Application {
 
     }
 
-    private void initializeTheAdminRole(){
+    private void initializeDefaultAdminRole(){
+
+        // make sure system admin and super admin privileges are added in the database
+        checkAndAddAdminPrivileges();
 
         if (checkIfAdminRoleExists()){
             logger.info("Admin role already exists in database, no need for the creation.");
             return;
         }
 
-        logger.info("Didn't find any admin role exists in database, start to create one.");
-        Privilege privilege = new Privilege();
-        privilege.setName(AuthNaming.AuthRoleNaming.ROLE_SYSTEM);
-        privilege.setDescription("PIC-SURE admin role for modify users and resources.");
-        privilegeRepo.persist(privilege);
+        logger.info("Didn't find any role contains both " + AuthNaming.AuthRoleNaming.ROLE_SYSTEM +
+                " and " + AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN +
+                " in database, start to create one.");
+        Privilege systemAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SYSTEM).get(0);
+        Privilege superAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN).get(0);
 
         Role role = new Role();
-        role.setName(defaultAdminRoleName);
+        List<Role> roles = roleRepo.getByColumn("name", defaultAdminRoleName);
+        boolean isAdminRole = false;
+        if (roles != null && !roles.isEmpty()) {
+            logger.info("Found a role with default admin name " + defaultAdminRoleName + ", but without proper privileges associated with");
+            role = roles.get(0);
+            isAdminRole = true;
+        }
         role.setDescription("PIC-SURE admin role across PIC-SURE and PIC-SURE Auth Micro App");
         Set<Privilege> privileges = new HashSet<>();
-        privileges.add(privilege);
+        privileges.add(systemAdmin);
+        privileges.add(superAdmin);
         role.setPrivileges(privileges);
-        roleRepo.persist(role);
-        logger.info("Finished creating an admin role, roleId: " + role.getUuid());
+
+        if(isAdminRole){
+            roleRepo.merge(role);
+            logger.info("Finished updating the admin role, roleId: " + role.getUuid());
+        } else {
+            role.setName(defaultAdminRoleName);
+            roleRepo.persist(role);
+            logger.info("Finished creating an admin role, roleId: " + role.getUuid());
+        }
+
+
+    }
+
+    private void checkAndAddAdminPrivileges(){
+        logger.info("Checking if system admin and super admin privileges are added");
+        List<Privilege> privileges = privilegeRepo.list();
+        if (privileges == null)
+            privileges = new ArrayList<>();
+
+        Privilege superAdmin = null, systemAdmin = null;
+
+        for (Privilege p : privileges) {
+            if (superAdmin != null && systemAdmin != null)
+                break;
+
+            if (AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN.equals(p.getName())){
+                superAdmin = p;
+                continue;
+            }
+
+            if (AuthNaming.AuthRoleNaming.ROLE_SYSTEM.equals(p.getName())){
+                systemAdmin = p;
+                continue;
+            }
+        }
+
+        if (superAdmin == null){
+            logger.info("Adding super admin");
+            superAdmin = new Privilege();
+            superAdmin.setName(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN);
+            superAdmin.setDescription("PIC-SURE Auth super admin for managing roles/privileges/application");
+            privilegeRepo.persist(superAdmin);
+        }
+
+        if (systemAdmin == null) {
+            logger.info("Adding system admin");
+            systemAdmin = new Privilege();
+            systemAdmin.setName(AuthNaming.AuthRoleNaming.ROLE_SYSTEM);
+            systemAdmin.setDescription("PIC-SURE Auth admin for managing users/connections.");
+            privilegeRepo.persist(systemAdmin);
+        }
     }
 
     private boolean checkIfAdminRoleExists(){
@@ -103,7 +163,7 @@ public class JAXRSConfiguration extends Application {
             return false;
         }
 
-        boolean b = false;
+        boolean systemAdmin = false, superAdmin = false;
 
         for (Role role : roles) {
             Set<Privilege> privileges = role.getPrivileges();
@@ -112,13 +172,14 @@ public class JAXRSConfiguration extends Application {
 
             for (Privilege privilege : privileges) {
                 if (AuthNaming.AuthRoleNaming.ROLE_SYSTEM.equals(privilege.getName())) {
-                    b = true;
-                    break;
+                    systemAdmin = true;
+                } else if (AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN.equals(privilege.getName())) {
+                    superAdmin = true;
                 }
             }
         }
 
-        return b;
+        return systemAdmin && superAdmin;
     }
 
     public static String getPrincipalName(SecurityContext securityContext){

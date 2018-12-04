@@ -88,6 +88,31 @@ public class User extends BaseEntity implements Serializable, Principal {
 		return nameSet;
 	}
 
+	/**
+	 * return privilege names in each role as a set based on Application given.
+	 *
+	 * @return
+	 */
+	@JsonIgnore
+	public Set<String> getPrivilegeNameSetByApplication(Application application){
+		Set<Privilege> totalPrivilegeSet = getTotalPrivilege();
+
+		if (totalPrivilegeSet == null)
+			return null;
+
+		Set<String> nameSet = new HashSet<>();
+		if (application == null)
+			return nameSet;
+
+		totalPrivilegeSet.stream().forEach(
+				p -> {
+					if (application.equals(p.getApplication()))
+						nameSet.add(p.getName());
+				}
+		);
+		return nameSet;
+	}
+
 	@JsonIgnore
 	public String getPrivilegeString(){
 		Set<Privilege> totalPrivilegeSet = getTotalPrivilege();
@@ -160,11 +185,40 @@ public class User extends BaseEntity implements Serializable, Principal {
 		return this.subject;
 	}
 
-	/*public int getVersionNum() {
-		return versionNum;
-	}
+	@JsonInclude(JsonInclude.Include.NON_EMPTY)
+	public static class UserForDisaply {
+		String uuid;
+		String email;
+		Set<String> privileges;
 
-	public void setVersionNum(int versionNum) {
-		this.versionNum = versionNum;
-	}*/
+		public UserForDisaply() {
+		}
+
+		public String getEmail() {
+			return email;
+		}
+
+		public UserForDisaply setEmail(String email) {
+			this.email = email;
+			return this;
+		}
+
+		public Set<String> getPrivileges() {
+			return privileges;
+		}
+
+		public UserForDisaply setPrivileges(Set<String> privileges) {
+			this.privileges = privileges;
+			return this;
+		}
+
+		public String getUuid() {
+			return uuid;
+		}
+
+		public UserForDisaply setUuid(String uuid) {
+			this.uuid = uuid;
+			return this;
+		}
+	}
 }

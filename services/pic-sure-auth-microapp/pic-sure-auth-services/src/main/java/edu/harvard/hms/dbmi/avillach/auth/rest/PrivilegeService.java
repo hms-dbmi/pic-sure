@@ -37,7 +37,6 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
     }
 
     @GET
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
     @Path("/{privilegeId}")
     public Response getPrivilegeById(
             @PathParam("privilegeId") String privilegeId) {
@@ -45,7 +44,6 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
     }
 
     @GET
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getPrivilegeAll() {
         return getEntityAll(privilegeRepo);

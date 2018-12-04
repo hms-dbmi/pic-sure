@@ -6,6 +6,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import java.io.Serializable;
 
+/**
+ * This class will eventually reflect the changes in the page of ConnectionManagement in UI
+ */
 @Entity(name = "connection")
 public class Connection extends BaseEntity implements Serializable {
 

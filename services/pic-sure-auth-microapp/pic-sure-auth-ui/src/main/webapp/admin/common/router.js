@@ -1,6 +1,11 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement', 'role/roleManagement', 'privilege/privilegeManagement', 'connection/connectionManagement', 'termsOfService/tos'],
-        function(searchParser, Backbone, session, login, header, userManagement, roleManagement, privilegeManagement, connectionManagement, tos){
-    var Router = Backbone.Router.extend({
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
+        'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
+        'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
+        'text!../../settings/settings.json', 'text!login/not_authorized.hbs', 'handlebars'],
+        function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
+                 privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
+                 settings, notAuthorizedTemplate, HBS){
+        var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",
             "connectionManagement(/)" : "displayConnectionManagement",
@@ -9,8 +14,8 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "logout(/)" : "logout",
             "roleManagement(/)" : "displayRoleManagement",
             "privilegeManagement(/)" : "displayPrivilegeManagement",
+            "applicationManagement(/)" : "displayApplicationManagement",
             "*path" : "displayUserManagement"
-
         },
         initialize: function(){
             var pushState = history.pushState;
@@ -57,9 +62,17 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             headerView.render();
             $('#header-content').append(headerView.$el);
 
-            var userMngmt = new userManagement.View({model: new userManagement.Model()});
-            userMngmt.render();
-            $('#main-content').html(userMngmt.$el);
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SYSTEM')
+                })) {
+                    var userMngmt = new userManagement.View({model: new userManagement.Model()});
+                    userMngmt.render();
+                    $('#main-content').html(userMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayTOS : function() {
@@ -72,31 +85,76 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             $('#main-content').html(termsOfService.$el);
         },
 
+        displayApplicationManagement : function(){
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var appliMngmt = new applicationManagement.View({model: new applicationManagement.Model()});
+                    appliMngmt.render();
+                    $('#main-content').append(appliMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
+        },
+
         displayRoleManagement : function(){
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
-            roleMngmt.render();
-            $('#main-content').append(roleMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
+                    roleMngmt.render();
+                    $('#main-content').append(roleMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayPrivilegeManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
-            privMngmt.render();
-            $('#main-content').append(privMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
+                    privMngmt.render();
+                    $('#main-content').append(privMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         },
 
         displayConnectionManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
-            connectionMngmt.render();
-            $('#main-content').append(connectionMngmt.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.privileges, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
+                    connectionMngmt.render();
+                    $('#main-content').append(connectionMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
         }
     });
     return new Router();

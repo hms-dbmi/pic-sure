@@ -44,4 +44,5 @@ public class Role extends BaseEntity {
     public void setPrivileges(Set<Privilege> privileges) {
         this.privileges = privileges;
     }
+
 }

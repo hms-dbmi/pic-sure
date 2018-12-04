@@ -6,8 +6,9 @@ import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
-import io.jsonwebtoken.*;
-import org.apache.commons.codec.binary.Base64;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +24,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.Set;
 
@@ -155,33 +155,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	 * @throws NotAuthorizedException
 	 */
 	private User callLocalAuthentication(ContainerRequestContext requestContext, String token) throws NotAuthorizedException{
-		Jws<Claims> jws;
-
-		try {
-			jws = Jwts.parser().setSigningKey(JAXRSConfiguration.clientSecret.getBytes()).parseClaimsJws(token);
-		} catch (SignatureException e) {
-			try {
-				jws = Jwts.parser().setSigningKey(Base64.decodeBase64(JAXRSConfiguration.clientSecret
-						.getBytes("UTF-8")))
-						.parseClaimsJws(token);
-			} catch (UnsupportedEncodingException ex){
-				logger.error("callLocalAuthentication() clientSecret encoding UTF-8 is not supported. "
-						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
-				throw new NotAuthorizedException("encoding is not supported");
-			} catch (JwtException | IllegalArgumentException ex) {
-				logger.error("callLocalAuthentication() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
-				throw new NotAuthorizedException(ex.getClass().getSimpleName());
-			}
-		} catch (JwtException | IllegalArgumentException e) {
-			logger.error("callLocalAuthentication() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
-			throw new NotAuthorizedException(e.getClass().getSimpleName());
-		}
-
-		if (jws == null) {
-			logger.error("callLocalAuthentication() get null for jws body by parsing Token - " + token + " - already successfully parsed the token" );
-			throw new NotAuthorizedException("please contact admin to see the log");
-		}
-
+		Jws<Claims> jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret, token);
 
 		String subject = jws.getBody().getSubject();
 		String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);

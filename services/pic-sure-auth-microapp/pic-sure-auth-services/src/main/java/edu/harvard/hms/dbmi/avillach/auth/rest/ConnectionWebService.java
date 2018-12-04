@@ -4,7 +4,9 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
+import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.*;
@@ -38,6 +40,7 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
     @Transactional
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("/")
     public Response addConnection(List<Connection> connections){
         return addEntity(connections);
@@ -45,12 +48,14 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
 
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @Path("/")
     public Response updateConnection(List<Connection> connections){
         return updateEntity(connections, connectionRepo);
     }
 
     @Transactional
+    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @DELETE
     @Path("/{connectionId}")
     public Response removeById(@PathParam("connectionId") final String connectionId) {

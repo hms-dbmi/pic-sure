@@ -13,15 +13,15 @@
         <input type="text" name="uuid"value="{{connection.uuid}}" hidden>
         <div class="col-md-12">
             Label:<br>
-            <input type="text" name="label" style="width: 100%;" value="{{connection.label}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+            <input type="text" name="label" style="width: 100%;" value="{{connection.label}}" required {{#unless createOrUpdateConnection}}readonly disabled{{/unless}}>
         </div>
         <div class="col-md-12 margin-top-ten">
             ID:<br>
-            <input type="text" name="id" style="width: 100%;" value="{{connection.id}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+            <input type="text" name="id" style="width: 100%;" value="{{connection.id}}" required {{#unless createOrUpdateConnection}}readonly disabled{{/unless}}>
         </div>
         <div class="col-md-12 margin-top-ten">
             Sub prefix:<br>
-            <input type="text" name="subPrefix" style="width: 100%;" value="{{connection.subPrefix}}" required {{#unless createOrUpdateConnection}}readonly{{/unless}}>
+            <input type="text" name="subPrefix" style="width: 100%;" value="{{connection.subPrefix}}" required {{#unless createOrUpdateConnection}}readonly disabled{{/unless}}>
         </div>
         <br>
 
@@ -40,12 +40,12 @@
                 <div class="col-md-5">
                   <div class="col-md-3">Label:</div>
                   <div class="col-md-2">
-                    <input type="text" name="required-field-label-{{@index}}" value="{{this.label}}" required {{#unless ../createOrUpdateConnection}}readonly{{/unless}}>
+                    <input type="text" name="required-field-label-{{@index}}" value="{{this.label}}" required {{#unless ../createOrUpdateConnection}}readonly disabled{{/unless}}>
                   </div>
                 </div>
                 <div class="col-md-5">
                   <div class="col-md-3">ID:</div>
-                 <div class="col-md-2"><input type="text" name="required-field-id-{{@index}}" value="{{this.id}}" required {{#ifEquals @index 0}}readonly{{/ifEquals}} {{#unless ../createOrUpdateConnection}}readonly{{/unless}}>
+                 <div class="col-md-2"><input type="text" name="required-field-id-{{@index}}" value="{{this.id}}" required {{#ifEquals @index 0}}readonly disabled{{/ifEquals}} {{#unless ../createOrUpdateConnection}}readonly disabled{{/unless}}>
                  </div>
                  </div>
                 <div class="col-md-1">

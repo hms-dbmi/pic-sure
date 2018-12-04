@@ -9,13 +9,16 @@
 </div>
 {{/unless}}
 <form>
+    UUID:<br>
+    <input uuid="{{role.uuid}}" type="text" name="role_uuid" style="width: 100%;" required readonly disabled value="{{role.uuid}}">
+    <br>
     Name:<br>
-    <input uuid="{{role.uuid}}" type="text" name="role_name" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly{{/unless}} value="{{role.name}}">
+    <input uuid="{{role.uuid}}" type="text" name="role_name" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly disabled{{/unless}} value="{{role.name}}">
     <br>
     Description:<br>
-    <input type="text" name="role_description" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly{{/unless}} value="{{role.description}}">
+    <input type="text" name="role_description" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly disabled{{/unless}} value="{{role.description}}">
     <br>
-    <div class="checkbox-group privilege-checkbox">
+    <div class="checkbox-group privilege-checkbox bordered-block">
         Privileges:<br>
         {{#each privileges}}
             <div>

@@ -1,5 +1,6 @@
 require.config({
 	baseUrl: "/admin/",
+    urlArgs: "version=1.0.0",
 	paths: {
 		jquery: '/webjars/jquery/3.3.1/jquery.min',
 		underscore: '/webjars/underscorejs/1.8.3/underscore-min',

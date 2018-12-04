@@ -83,6 +83,21 @@ define(["util/notification"],
         });
     }.bind(userFunctions);
 
+    userFunctions.me = function (object, callback) {
+        var failureMessage = "Failed to load user.";
+        $.ajax({
+            url: window.location.origin + "/auth/user/me",
+            type: 'GET',
+            contentType: 'application/json',
+            success: function(response){
+                callback(response, object);
+            }.bind(object),
+            error: function(response){
+                handleAjaxError(response, failureMessage);
+            }
+        });
+    }.bind(userFunctions);
+
     var handleAjaxError = function (response, message) {
         if (response.status !== 401) {
             notification.showFailureMessage(message);
