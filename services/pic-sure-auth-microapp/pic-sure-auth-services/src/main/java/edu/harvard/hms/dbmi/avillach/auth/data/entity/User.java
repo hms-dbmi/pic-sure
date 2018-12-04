@@ -6,9 +6,8 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 import java.io.Serializable;
-import java.util.Date;
-
 import java.security.Principal;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -160,4 +159,12 @@ public class User extends BaseEntity implements Serializable, Principal {
 	public String getName() {
 		return this.subject;
 	}
+
+	/*public int getVersionNum() {
+		return versionNum;
+	}
+
+	public void setVersionNum(int versionNum) {
+		this.versionNum = versionNum;
+	}*/
 }
