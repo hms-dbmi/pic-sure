@@ -101,7 +101,9 @@ CREATE TABLE `userMetadataMapping` (
   `auth0MetadataJsonPath` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `generalMetadataJsonPath` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  PRIMARY KEY (`uuid`)
+  PRIMARY KEY (`uuid`),
+  KEY `FKayr8vrvvwpgsdhxdyryt6k590` (`connectionId`),
+  CONSTRAINT `FKayr8vrvvwpgsdhxdyryt6k590` FOREIGN KEY (`connectionId`) REFERENCES `connection` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

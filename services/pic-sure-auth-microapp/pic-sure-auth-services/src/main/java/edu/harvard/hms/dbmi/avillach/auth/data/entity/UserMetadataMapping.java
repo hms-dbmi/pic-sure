@@ -8,10 +8,7 @@ import javax.persistence.*;
 public class UserMetadataMapping extends BaseEntity {
 
 	@ManyToOne(fetch = FetchType.EAGER)
-	@JoinColumn(
-			name = "connectionId",
-			referencedColumnName = "id"
-	)
+	@JoinColumn(name = "connectionId")
 	private Connection connection;
 
 	private String generalMetadataJsonPath;
