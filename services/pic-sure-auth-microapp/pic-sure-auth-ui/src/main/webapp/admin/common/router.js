@@ -1,10 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!../../settings/settings.json', 'text!login/not_authorized.hbs', 'handlebars'],
+        'text!login/not_authorized.hbs', 'handlebars'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
-                 settings, notAuthorizedTemplate, HBS){
+                 notAuthorizedTemplate, HBS){
         var Router = Backbone.Router.extend({
         routes: {
             "userManagement(/)" : "displayUserManagement",

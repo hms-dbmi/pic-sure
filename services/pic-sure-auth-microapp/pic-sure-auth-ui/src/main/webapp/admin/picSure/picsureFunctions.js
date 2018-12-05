@@ -1,6 +1,6 @@
 // Util functions get data to/from picsure
-define(["util/notification", "text!picsure/connections.json", "util/notification"],
-		function(notification, connectionsJSON, notification){
+define(["util/notification", "text!picSure/connections.json"],
+		function(notification, connectionsJSON){
     var picsureFunctions = {
         init: function () {}
     };

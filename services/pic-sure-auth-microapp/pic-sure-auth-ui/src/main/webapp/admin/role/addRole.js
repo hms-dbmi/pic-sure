@@ -1,5 +1,5 @@
-define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement", "text!role/addRole.hbs", "text!role/addRoleConnectionForm.hbs", "picSure/privilegeFunctions"],
-		function(BB, HBS, roleFunctions, roleManagement, template, connectionTemplate, privilegeFunctions){
+define(["backbone", "handlebars", "picSure/roleFunctions", "role/roleManagement", "text!role/addRole.hbs"],
+		function(BB, HBS, roleFunctions, roleManagement, template){
 	var view = BB.View.extend({
 		initialize: function(opts){
 			this.privileges = opts.privileges;
