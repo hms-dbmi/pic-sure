@@ -9,7 +9,8 @@ import org.hibernate.event.spi.EventType;
 import org.hibernate.integrator.spi.Integrator;
 import org.hibernate.service.spi.SessionFactoryServiceRegistry;
 
-public class EventListenerIntegrator implements Integrator
+public class
+EventListenerIntegrator implements Integrator
 
     {
 
@@ -22,7 +23,7 @@ public class EventListenerIntegrator implements Integrator
 
         final EnversService enversService = serviceRegistry.getService( EnversService.class );
 
-        eventListenerRegistry.appendListeners(EventType.PRE_COLLECTION_UPDATE, new UpdateUserListener((enversService)));
+        eventListenerRegistry.appendListeners(EventType.POST_COLLECTION_UPDATE, new UpdateUserListener((enversService)));
         eventListenerRegistry.appendListeners(EventType.POST_INSERT, new UpdateUserListener((enversService)));
 
     }
