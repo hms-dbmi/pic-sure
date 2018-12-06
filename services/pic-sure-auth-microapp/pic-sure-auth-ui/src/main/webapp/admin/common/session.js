@@ -1,3 +1,4 @@
+
 define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFunctions){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));

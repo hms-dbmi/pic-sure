@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.repository;
 
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
@@ -48,7 +49,8 @@ public class UserRepository extends BaseRepository<User, UUID> {
             return em.createQuery(query
                     .where(
                             cb.and(
-                                    eq(cb, queryRoot, "connectionId", connectionId),
+									cb.equal(queryRoot.join("connection")
+											.get("id"), connectionId),
                                     eq(cb, queryRoot, "subject", subject))))
                     .getSingleResult();
         } catch (NoResultException e){
