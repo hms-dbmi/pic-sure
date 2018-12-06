@@ -3,8 +3,10 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
@@ -42,6 +44,9 @@ public class UserService extends BaseEntityService<User> {
     @Inject
     RoleRepository roleRepo;
 
+    @Inject
+    ConnectionRepository connectionRepo;
+
     public UserService() {
         super(User.class);
     }
@@ -67,7 +72,7 @@ public class UserService extends BaseEntityService<User> {
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
-        checkRoleAssociation(users);
+        checkAssociation(users);
         return addEntity(users, userRepo);
     }
 
@@ -92,7 +97,7 @@ public class UserService extends BaseEntityService<User> {
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
-        checkRoleAssociation(users);
+        checkAssociation(users);
         return updateEntity(users, userRepo);
     }
 
@@ -124,19 +129,25 @@ public class UserService extends BaseEntityService<User> {
                 .setPrivileges(user.getPrivilegeNameSet()));
     }
     /**
-     * check if the roles under user is in the database or not,
-     * then retrieve it from database and attach it to user object
+     * check all referenced field if they are already in database. If
+     * they are in database, then retrieve it by id, and attach it to
+     * user object.
      *
      * @param users
      * @return
      */
-    private void checkRoleAssociation(List<User> users) throws ProtocolException{
+    private void checkAssociation(List<User> users) throws ProtocolException{
 
         for (User user: users){
             if (user.getRoles() != null){
                 Set<Role> roles = new HashSet<>();
                 user.getRoles().stream().forEach(t -> roleRepo.addObjectToSet(roles, roleRepo, t));
                 user.setRoles(roles);
+            }
+
+            if (user.getConnection() != null){
+                Connection connection = connectionRepo.getUniqueResultByColumn("id", user.getConnection().getId());
+                user.setConnection(connection);
             }
         }
     }

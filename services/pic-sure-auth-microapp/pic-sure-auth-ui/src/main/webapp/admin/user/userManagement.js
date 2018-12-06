@@ -55,7 +55,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 		showUserAction: function (event) {
 			var uuid = event.target.id;
             userFunctions.showUserDetails(uuid, function(result) {
-                var requiredFields = _.where(this.connections, {id: result.connectionId})[0].requiredFields;
+                var requiredFields = _.where(this.connections, {id: result.connection.id})[0].requiredFields;
                 if (result.generalMetadata){
                     result.generalMetadata = JSON.parse(result.generalMetadata);
             	}
@@ -67,7 +67,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 		},
         editUserMenu: function (events) {
             var user = this.model.get("selectedUser");
-            var requiredFields = _.where(this.connections, {id: user.connectionId})[0].requiredFields;
+            var requiredFields = _.where(this.connections, {id: user.connection.id})[0].requiredFields;
             $(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: user, availableRoles: this.model.get("availableRoles"), requiredFields: requiredFields}));
             this.applyCheckboxes();
         },
@@ -108,7 +108,9 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
                 user = [{
                     uuid: uuid,
                     email: email,
-                    connectionId: connectionId,
+                    connection: {
+                    	id:connectionId
+					},
                     generalMetadata:JSON.stringify(general_metadata),
                     auth0metadata: auth0_metadata,
                     subject: subject,
@@ -123,7 +125,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 
             userFunctions.createOrUpdateUser(user, requestType, function(result) {
                 console.log(result);
-                this.render();
+                window.location.reload();
             }.bind(this));
         },
 		deleteUser: function (event) {
@@ -160,7 +162,10 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 						    return _.extend(connection, {
 								users: users.filter(
 									function(user){
-										return user.connectionId === connection.id;
+										if (user.connection)
+											return user.connection.id === connection.id;
+										else
+											return false;
 								})
 							})
 						})

@@ -85,7 +85,9 @@ CREATE TABLE `user` (
   `matched` bit(1) NOT NULL DEFAULT FALSE,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
-  UNIQUE KEY `UK_r8xpakluitn685ua7pt8xjy9r` (`subject`)
+  UNIQUE KEY `UK_r8xpakluitn685ua7pt8xjy9r` (`subject`),
+  KEY `FKn8bku0vydfcnuwbqwgnbgg8ry` (`connectionId`),
+  CONSTRAINT `FKn8bku0vydfcnuwbqwgnbgg8ry` FOREIGN KEY (`connectionId`) REFERENCES `connection` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
