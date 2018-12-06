@@ -148,16 +148,16 @@ public class Auth0MatchingServiceTest {
 
     private List<User> listUnmatchedByConnectionIdMock(String connectionId) {
         List<User> allMappings = List.of(
-                new User().setConnectionId("ldap-connector").setGeneralMetadata("{ \"email\": \"foo@childrens.harvard.edu\", \"fullName\" : \"Bruce Banner\"}"),
-                new User().setConnectionId("ldap-connector").setGeneralMetadata("{ \"email\": \"foobar@childrens.harvard.edu\", \"fullName\" : \"Scott Lang\"}"),
-                new User().setConnectionId("nih-gov-prod").setGeneralMetadata("{ \"email\": \"foo@nih.gov\", \"fullName\" : \"Piotr Rasputin\"}"),
-                new User().setConnectionId("nih-gov-prod").setGeneralMetadata("{ \"email\": \"foobar@nih.gov\", \"fullName\" : \"Matthew Murdock\", \"nih-userid\" : \"NOBODY\"}"),
-                new User().setConnectionId("github").setGeneralMetadata("{ \"email\": \"blablabla@gmail.com\", \"fullName\" : \"Some Girl\"}"),
-                new User().setConnectionId("github").setGeneralMetadata("{ \"email\": \"blablabla@gmail.com\", \"fullName\" : \"Jean Grey\"}"),
-                new User().setConnectionId("no-mapping-connection").setGeneralMetadata("{ \"email\": \"foo@bar.com\", \"fullName\" : \"Luke Cage\"}")
+                new User().setConnection(new Connection().setId("ldap-connector")).setGeneralMetadata("{ \"email\": \"foo@childrens.harvard.edu\", \"fullName\" : \"Bruce Banner\"}"),
+                new User().setConnection(new Connection().setId("ldap-connector")).setGeneralMetadata("{ \"email\": \"foobar@childrens.harvard.edu\", \"fullName\" : \"Scott Lang\"}"),
+                new User().setConnection(new Connection().setId("nih-gov-prod")).setGeneralMetadata("{ \"email\": \"foo@nih.gov\", \"fullName\" : \"Piotr Rasputin\"}"),
+                new User().setConnection(new Connection().setId("nih-gov-prod")).setGeneralMetadata("{ \"email\": \"foobar@nih.gov\", \"fullName\" : \"Matthew Murdock\", \"nih-userid\" : \"NOBODY\"}"),
+                new User().setConnection(new Connection().setId("github")).setGeneralMetadata("{ \"email\": \"blablabla@gmail.com\", \"fullName\" : \"Some Girl\"}"),
+                new User().setConnection(new Connection().setId("github")).setGeneralMetadata("{ \"email\": \"blablabla@gmail.com\", \"fullName\" : \"Jean Grey\"}"),
+                new User().setConnection(new Connection().setId("no-mapping-connection")).setGeneralMetadata("{ \"email\": \"foo@bar.com\", \"fullName\" : \"Luke Cage\"}")
         );
         return allMappings.stream().filter((User user) -> {
-            return user.getConnectionId().equalsIgnoreCase(connectionId);
+            return user.getConnection().getId().equalsIgnoreCase(connectionId);
         }).collect(Collectors.toList());
     }
 

@@ -27,7 +27,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	private String email;
 
-	private String connectionId;
+	@ManyToOne
+	@JoinColumn(name = "connectionId")
+	private Connection connection;
 
 	private boolean matched;
 
@@ -155,12 +157,12 @@ public class User extends BaseEntity implements Serializable, Principal {
 		this.email = email;
 	}
 
-	public String getConnectionId() {
-		return connectionId;
+	public Connection getConnection() {
+		return connection;
 	}
 
-	public User setConnectionId(String connectionId) {
-		this.connectionId = connectionId;
+	public User setConnection(Connection connection) {
+		this.connection = connection;
 		return this;
 	}
 

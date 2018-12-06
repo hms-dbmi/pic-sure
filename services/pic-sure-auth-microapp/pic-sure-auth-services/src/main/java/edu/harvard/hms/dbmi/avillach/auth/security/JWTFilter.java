@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.security;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
@@ -103,10 +104,13 @@ public class JWTFilter implements ContainerRequestFilter {
 //			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
-		} catch (Exception e){
+		} catch (ApplicationException e){
 			// we should show different response based on role
 			e.printStackTrace();
-			requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
+			requestContext.abortWith(PICSUREResponse.applicationError(e.getContent()));
+		} catch (Exception e) {
+			e.printStackTrace();
+			requestContext.abortWith(PICSUREResponse.applicationError(e.getMessage()));
 		}
 	}
 
@@ -134,7 +138,7 @@ public class JWTFilter implements ContainerRequestFilter {
 		Set<String> privilegeNameSet = authenticatedUser.getPrivilegeNameSet();
 		if (privilegeNameSet.isEmpty()){
 			logger.error(logMsg + "doesn't have privileges associated.");
-			throw new ApplicationException("Role configuration error, please contact admin.");
+			throw new NotAuthorizedException("user doesn't have roles or privileges, please contact admin.");
 		}
 
 		for (String role : rolesAllowed) {
