@@ -12,8 +12,10 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.ServerErrorException;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
+import org.apache.http.entity.ContentType;
 import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -258,7 +260,9 @@ public class PicSureService implements IResourceRS {
 					status = queryStatus(status.getResourceResultId(), null);
 				}
 				return queryResult(status.getResourceResultId(), null);
-			}else {
+			} else if (incomingQuery.expectedResultType == ResultType.CROSS_COUNT) {
+				return Response.ok(new CountProcessor().runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+			} else {
 				return Response.ok(new CountProcessor().runCounts(incomingQuery)).build();				
 			}
 		} else {
