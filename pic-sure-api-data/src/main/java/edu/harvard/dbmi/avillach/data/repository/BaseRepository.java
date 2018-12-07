@@ -5,10 +5,7 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.persistence.EntityManager;
-import javax.persistence.ParameterMode;
-import javax.persistence.PersistenceContext;
-import javax.persistence.StoredProcedureQuery;
+import javax.persistence.*;
 import javax.persistence.criteria.*;
 import java.util.*;
 
@@ -94,6 +91,18 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 
 	/**
 	 * assume the operator is eq
+	 * @param columnName
+	 * @param value
+	 * @return
+	 */
+	public T getUniqueResultByColumn(String columnName, Object value){
+		CriteriaQuery query = query();
+		Root root = root(query);
+		return getUniqueResultByColumns(query, root, eq(cb(),root,columnName,value));
+	}
+
+	/**
+	 * assume the operator is eq
 	 * @param columnNameValueMap
 	 * @return
 	 */
@@ -108,6 +117,21 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 	}
 
 	/**
+	 * assume the operator is eq
+	 * @param columnNameValueMap
+	 * @return
+	 */
+	public T getUniqueResultByColumns(CriteriaQuery query, Map<String, Object> columnNameValueMap){
+		CriteriaBuilder cb = cb();
+		List<Predicate> predicates = new ArrayList<>();
+		Root root = root(query);
+		for (Map.Entry<String, Object> entry : columnNameValueMap.entrySet()){
+			predicates.add(eq(cb,root,entry.getKey(), entry.getValue()));
+		}
+		return getUniqueResultByColumns(query, root, (Predicate[]) predicates.toArray());
+	}
+
+	/**
 	 * given the ability to assign your own predicates like lt, eq, like
 	 * @param root
 	 * @param predicates provide your own predicates
@@ -118,8 +142,36 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 		query.select(root);
 		if (predicates != null && predicates.length > 0)
 			query.where(predicates);
-		return em().createQuery(query)
-				.getResultList();
+		try{
+			return em().createQuery(query)
+					.getResultList();
+		} catch (PersistenceException e) {
+			e.printStackTrace();
+			return null;
+		}
+
+	}
+
+	/**
+	 * given the ability to assign your own predicates like lt, eq, like
+	 * @param root
+	 * @param predicates provide your own predicates
+	 * @return
+	 */
+	public T getUniqueResultByColumns(CriteriaQuery query, Root root, Predicate... predicates){
+
+		query.select(root);
+		if (predicates != null && predicates.length > 0)
+			query.where(predicates);
+		try {
+			return (T) em().createQuery(query)
+				.getSingleResult();
+		} catch (NoResultException e){
+			return null;
+		} catch (PersistenceException e){
+			e.printStackTrace();
+			return null;
+		}
 	}
 
 	public List<T> list(){
