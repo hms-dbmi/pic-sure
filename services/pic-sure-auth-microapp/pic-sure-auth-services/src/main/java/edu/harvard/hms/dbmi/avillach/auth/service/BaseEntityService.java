@@ -19,6 +19,7 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -166,10 +167,43 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                 String setter = "set" + fieldName;
 
                 Object value = detachedT.getClass().getMethod(getter).invoke(detachedT);
-                if (value != null)
+                Object retrievedValue = retrievedT.getClass().getMethod(getter).invoke(retrievedT);
+
+                /**
+                 * so the problem trying to solve here is:
+                 * There is an POST_COLLECTION_UPDATE event will be triggered when
+                 * later merging the entity. Even the performance down to the sql
+                 * statement is not being affected, we still need to take care here
+                 */
+                boolean inputCollectionMatchedDBCollection = true;
+                String simpleName = type.getSimpleName();
+                if (simpleName.contains("Set") || simpleName.contains("List")) {
+
+                    if (retrievedValue != null){
+                        Collection<BaseEntity> retrievedCollection = (Collection<BaseEntity>)retrievedValue;
+                        Collection<BaseEntity> detachedCollection = (Collection<BaseEntity>)value;
+
+                        if (retrievedCollection.size() == detachedCollection.size()){
+                            for (BaseEntity baseEntity : retrievedCollection) {
+                                if (!detachedCollection.contains(baseEntity)) {
+                                    inputCollectionMatchedDBCollection = false;
+                                    break;
+                                }
+                            }
+                        } else {
+                            inputCollectionMatchedDBCollection = false;
+                        }
+                    } else {
+                        inputCollectionMatchedDBCollection = false;
+                    }
+                } else {
+                    inputCollectionMatchedDBCollection = false;
+                }
+
+                if (value != null && !inputCollectionMatchedDBCollection) {
                     detachedT.getClass().getMethod(setter, field.getType())
                             .invoke(retrievedT, value);
-
+                }
                 /**
                  * This PropertyDescriptor is in java.beans package, which is the kind of
                  * standard way of doing getter and setter, but there is one thing

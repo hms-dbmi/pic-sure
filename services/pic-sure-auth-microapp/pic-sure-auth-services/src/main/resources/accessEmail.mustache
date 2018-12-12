@@ -1,8 +1,12 @@
-Access Granted
-
-You have been granted access to {{systemName}} with the following roles and privileges:
+Access Changed:
+{{#roles}}
+You have been granted access to {{systemName}} with the following roles:
+{{/roles}}
 {{#roles}}
 {{name}} : {{#privileges}} {{description}} {{/privileges}}
+{{/roles}}
+{{^roles}}
+Currently NO roles have been granted for you to {{systemName}}.
 {{/roles}}
  {{#documentation}}
 You can find documentation at the following links:
