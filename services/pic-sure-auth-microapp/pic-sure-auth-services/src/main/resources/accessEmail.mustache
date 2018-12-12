@@ -1,7 +1,8 @@
 Access Changed:
-{{#roles}}
+
+{{#rolesExists}}
 You have been granted access to {{systemName}} with the following roles:
-{{/roles}}
+{{/rolesExists}}
 {{#roles}}
 {{name}} : {{#privileges}} {{description}} {{/privileges}}
 {{/roles}}

@@ -13,6 +13,7 @@ public class AccessEmail {
 
     private String username;
     private Set<Role> roles;
+    private boolean rolesExists;
 
     public AccessEmail(User u) {
         this.username = u.getName();
@@ -49,5 +50,9 @@ public class AccessEmail {
 
     public void setSystemName(String systemName) {
         this.systemName = systemName;
+    }
+
+    public boolean isRolesExists() {
+        return (roles != null) && (!roles.isEmpty());
     }
 }
