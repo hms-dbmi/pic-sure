@@ -27,7 +27,9 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 			_.each($('#current-connection-form input[type=text]'), function(entry){
 			metadata[entry.name] = entry.value});
 			var user = {
-				connectionId: $('#new-user-connection-dropdown').val(),
+				connection: {
+					id: $('#new-user-connection-dropdown').val()
+				},
 				generalMetadata:JSON.stringify(metadata),
 				roles: roles
 			};

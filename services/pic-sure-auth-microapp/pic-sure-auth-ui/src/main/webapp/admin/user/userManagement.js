@@ -91,7 +91,9 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 
             var uuid = this.$('input[name=uuid]').val();
             var subject = this.$('input[name=subject]').val();
-            var connectionId = this.$('input[name=connectionId]').val();
+            var connection = {
+            	id: this.$('input[name=connectionId]').val()
+            };
             var general_metadata = {};
             _.each($('#required-fields input[type=text]'), function(entry){
                 general_metadata[entry.name] = entry.value

@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.Option;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import org.slf4j.Logger;
@@ -27,6 +29,9 @@ public class Auth0UserMatchingService {
 
 	@Inject
 	UserMetadataMappingService mappingService;
+
+	@Inject
+	ConnectionRepository connectionRepo;
 
 	private Logger logger = LoggerFactory.getLogger(Auth0UserMatchingService.class);
 
@@ -63,7 +68,10 @@ public class Auth0UserMatchingService {
 			Object parsedInfo = conf.jsonProvider().parse(userInfoString);
 			//Return lists or null so that we don't have to worry about whether it's a single object or an array, or catch errors
 			List<String> connections = JsonPath.using(conf).parse(parsedInfo).read("$.identities[0].connection");
-			String connection = connections.get(0);
+			String connectionId = connections.get(0);
+
+			Connection connection = connectionRepo.getUniqueResultByColumn("id", connectionId);
+
 			List<UserMetadataMapping> mappings = mappingService.getAllMappingsForConnection(connection);
 
 			if (mappings == null || mappings.isEmpty()) {

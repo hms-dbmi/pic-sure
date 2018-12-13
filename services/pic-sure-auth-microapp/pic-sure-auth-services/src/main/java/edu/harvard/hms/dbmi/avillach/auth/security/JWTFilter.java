@@ -70,7 +70,9 @@ public class JWTFilter implements ContainerRequestFilter {
 //			User authenticatedUser = null;
 
 
-
+			/**
+			 * This TOSService code will hit to the database to retrieve a user once again
+			 */
 			final User authenticatedUser = callLocalAuthentication(requestContext, token);
 			if (!uriInfo.getPath().contains("/tos")){
 				if (tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){

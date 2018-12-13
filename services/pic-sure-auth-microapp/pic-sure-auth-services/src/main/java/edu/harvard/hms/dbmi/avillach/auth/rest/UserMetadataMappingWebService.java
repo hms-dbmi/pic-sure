@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserMetadataMappingRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.UserMetadataMappingService;
@@ -25,12 +27,17 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 	@Inject
 	UserMetadataMappingRepository mappingRepo;
 
+	@Inject
+	ConnectionRepository connectionRepo;
 	
 	@Path("{connectionId}")
 	@GET
 	@Produces("application/json")
 	public Response getMappingsForConnection(@PathParam("connectionId") String connection) {
-		return Response.ok(mappingService.getAllMappingsForConnection(connection)).build();
+		return Response.ok(mappingService.
+				getAllMappingsForConnection(connectionRepo
+						.getUniqueResultByColumn("id", connection)))
+				.build();
 	}
 	
 	@GET
