@@ -80,7 +80,7 @@ CREATE TABLE `user` (
   `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
   `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
   `acceptedTOS` datetime COLLATE utf8_bin DEFAULT NULL,
-  `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `connectionId` binary(16) DEFAULT NULL,
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `matched` bit(1) NOT NULL DEFAULT FALSE,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE `user` (
 CREATE TABLE `userMetadataMapping` (
   `uuid` binary(16) NOT NULL,
   `auth0MetadataJsonPath` varchar(255) COLLATE utf8_bin DEFAULT NULL,
-  `connectionId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `connectionId` binary(16) DEFAULT NULL,
   `generalMetadataJsonPath` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   KEY `FKayr8vrvvwpgsdhxdyryt6k590` (`connectionId`),
@@ -155,7 +155,10 @@ CREATE TABLE `application` (
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
-
+GRANT ALL PRIVILEGES
+ON *.*
+TO 'root'@'%'
+IDENTIFIED BY 'password';
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;

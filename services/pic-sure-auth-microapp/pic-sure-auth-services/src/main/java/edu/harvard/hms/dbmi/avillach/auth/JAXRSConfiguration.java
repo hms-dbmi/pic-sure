@@ -43,7 +43,7 @@ public class JAXRSConfiguration extends Application {
     @Resource(lookup = "java:jboss/mail/gmail")
     public static Session mailSession;
 
-    public static String defaultAdminRoleName = "PIC-SURE Admin";
+    public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
     @Inject
     RoleRepository roleRepo;
@@ -98,7 +98,7 @@ public class JAXRSConfiguration extends Application {
             role = roles.get(0);
             isAdminRole = true;
         }
-        role.setDescription("PIC-SURE admin role across PIC-SURE and PIC-SURE Auth Micro App");
+        role.setDescription("PIC-SURE Auth Micro App Top admin including Admin and super Admin");
         Set<Privilege> privileges = new HashSet<>();
         privileges.add(systemAdmin);
         privileges.add(superAdmin);

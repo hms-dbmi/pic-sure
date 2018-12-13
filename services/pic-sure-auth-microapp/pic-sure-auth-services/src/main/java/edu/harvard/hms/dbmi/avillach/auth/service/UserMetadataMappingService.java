@@ -28,8 +28,8 @@ public class UserMetadataMappingService extends BaseEntityService<UserMetadataMa
         super(UserMetadataMapping.class);
     }
 
-    public List<UserMetadataMapping> getAllMappingsForConnection(String connectionId) {
-    		return userMetadataMappingRepo.findByConnection(connectionId);
+    public List<UserMetadataMapping> getAllMappingsForConnection(Connection connection) {
+    		return userMetadataMappingRepo.findByConnection(connection);
     }
    
     public Response addMappings(List<UserMetadataMapping> mappings){
