@@ -64,7 +64,7 @@ There is a sql script in source code for adding the top admin user with some ini
 into your database.
 
 Open the file under /{{root_pic-sure-auth-microapp}}/pic-sure-auth-db/db/tools/first_time_run_the_system_and_insert_admin_user.sql,
-modify the configuration data - user_subject with your own google user
+modify the configuration data - @user_email with your own google email
 
 #### Terms of Service
 
