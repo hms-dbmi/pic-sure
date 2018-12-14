@@ -19,15 +19,15 @@ eval $(docker-machine env <NAME>)
 Ensure that your VirtualBox, named &lt;NAME&gt;, has no container using port 80 and 443. If it does, either shut down the containers using those ports, or create a new VirtualBox, with a different name. ([Follow the instructions to create a new VirtualBox](https://github.com/hms-dbmi/docker-images/wiki/Local-Development-Setup)
 )
 
-## Deployment of Docker containers
+## Deployment using Docker containers
 
-The below command will
+The below commands need Java 9+ and Maven installed. The commands will do
 
 1. download the repository
-1. compile the code with Maven
+1. compile the code with Maven 
 1. build the Docker images in the local registry
 1. start the Docker containers on the configured VirtualBox
-2. open a browser window (on MacOS) for the URL to the MicroApp UI container\
+2. open a browser window (on MacOS) for the URL to the MicroApp UI container
 
 
 ```
@@ -37,8 +37,8 @@ mvn clean install && docker-compose build && docker-compose up -d
 DOCKER_IP=`echo $DOCKER_HOST | cut -d ":" -f 2`
 open http://${DOCKER_IP}/
 
-
 ```
+
 
 After the commands successfully executed, list the three containers, that comprise the PIC-SURE Auth MicroApp.
 
