@@ -3,7 +3,7 @@
 #otherwise you need to modify connection configuration as well
 set @user_uuid='6dc35d47c7c64ca7beb42edac5184e10';
 set @user_email="change_me_to_your_email";
-set @matched=true;
+set @matched=false;
 
 #configuration for connection table
 set @connection_uuid=0x6dc35d47c7c64ca7beb42edac5184e10;
