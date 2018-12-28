@@ -1,20 +1,20 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
+define(["common/searchParser", "backbone", "common/session", "psamaLogin/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!login/not_authorized.hbs', 'handlebars'],
+        'text!psamaLogin/not_authorized.hbs', 'handlebars'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
                  notAuthorizedTemplate, HBS){
         var Router = Backbone.Router.extend({
         routes: {
-            "userManagement(/)" : "displayUserManagement",
-            "connectionManagement(/)" : "displayConnectionManagement",
-            "tos(/)" : "displayTOS",
-            "login(/)" : "login",
-            "logout(/)" : "logout",
-            "roleManagement(/)" : "displayRoleManagement",
-            "privilegeManagement(/)" : "displayPrivilegeManagement",
-            "applicationManagement(/)" : "displayApplicationManagement",
+            "admin/userManagement(/)" : "displayUserManagement",
+            "admin/connectionManagement(/)" : "displayConnectionManagement",
+            "admin/tos(/)" : "displayTOS",
+            "admin/login(/)" : "login",
+            "admin/logout(/)" : "logout",
+            "admin/roleManagement(/)" : "displayRoleManagement",
+            "admin/privilegeManagement(/)" : "displayPrivilegeManagement",
+            "admin/applicationManagement(/)" : "displayApplicationManagement",
             "*path" : "displayUserManagement"
         },
         initialize: function(){

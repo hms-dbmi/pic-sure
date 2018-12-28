@@ -1,5 +1,5 @@
 
-define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFunctions){
+define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], function($, _, userFunctions, settings){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));
 	
@@ -80,7 +80,7 @@ define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFun
 		}, 10000),
         loadSessionVariables : function(callback){
             $.ajax({
-				url: window.location.origin + "/auth/connection",
+				url: window.location.origin + settings.basePath + '/connection',
 				type: 'GET',
 				contentType: 'application/json',
 				success: function(response){
