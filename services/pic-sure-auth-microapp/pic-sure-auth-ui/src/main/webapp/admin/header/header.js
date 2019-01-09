@@ -18,7 +18,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         },
         gotoLogin : function(event){
             this.logout();
-            window.location='/';
+            window.location=window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "/";
         },
 		logout : function(event){
             sessionStorage.clear();
