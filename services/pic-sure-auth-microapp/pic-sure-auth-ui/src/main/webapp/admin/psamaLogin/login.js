@@ -1,4 +1,4 @@
-define(['common/session', 'text!../../settings/settings.json', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
+define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
 		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
@@ -13,10 +13,15 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
             var queryObject = parseQueryString();
             if (queryObject.redirection_url) sessionStorage.redirection_url = queryObject.redirection_url.trim();
             if (queryObject.not_authorized_url) sessionStorage.not_authorized_url = queryObject.not_authorized_url.trim();
-            var redirectURI = window.location.protocol + "//"+ window.location.hostname + (window.location.port ? ":"+window.location.port : "") +"/login";
+            var redirectURI = window.location.protocol
+                            + "//"+ window.location.hostname
+                            + (window.location.port ? ":"+window.location.port : "")
+                            + (window.location.port ? ":"+window.location.port : "")
+                            //+ (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "")
+                            + "/login";
             if(typeof queryObject.code === "string"){
                 $.ajax({
-                    url: "/auth/authentication",
+                    url: settings.basePath + '/authentication',
                     type: 'post',
                     data: JSON.stringify({
                         code : queryObject.code,
@@ -46,7 +51,10 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                     }
                 });
             }else{
-                var clientId = overrides.client_id ? overrides.client_id : "APy5rn5baqQDfVDiczmjiuIetEIBBU9P";
+                if (!overrides.client_id){
+                    notification.showFailureMessage("Client_ID is not provided. Please update overrides/login.js file.");
+                }
+                var clientId = overrides.client_id;
                 $.ajax("https://avillachlab.us.webtask.io/connection_details_base64/?webtask_no_cache=1&client_id=" + clientId,
                 {
                     dataType: "text",
@@ -67,10 +75,10 @@ define(['common/session', 'text!../../settings/settings.json', 'common/searchPar
                 if (sessionStorage.not_authorized_url)
                     window.location = sessionStorage.not_authorized_url;
                 else
-                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)(JSON.parse(settings)));
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)(settings));
             }
             else {
-                window.location = "/logout";
+                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/logout";
             }
         }
 	};

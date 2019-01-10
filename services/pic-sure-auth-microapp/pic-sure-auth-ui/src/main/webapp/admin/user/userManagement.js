@@ -111,7 +111,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
                     uuid: uuid,
                     email: email,
                     connection: {
-                    	id:connectionId
+                    	id:connection.id
 					},
                     generalMetadata:JSON.stringify(general_metadata),
                     auth0metadata: auth0_metadata,
@@ -131,14 +131,18 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
             }.bind(this));
         },
 		deleteUser: function (event) {
-			var uuid = this.$('input[name=userId]').val();
-			notification.showConfirmationDialog(function () {
+        	try {
+        		var uuid = this.$('input[name=uuid]').val();
+                notification.showConfirmationDialog(function () {
+                    userFunctions.deleteUser(uuid, function (response) {
+                        this.render()
+                    }.bind(this));
 
-				userFunctions.deleteUser(uuid, function (response) {
-					this.render()
-				}.bind(this));
-
-			}.bind(this));
+                }.bind(this));
+        	} catch (err) {
+                console.error(err.message);
+                notification.showFailureMessage('Failed to delete user. Contact administrator.')
+			}
 		},
 		getUserRoles: function (stringRoles) {
 			var roles = stringRoles.split(",").map(function(item) {

@@ -1,5 +1,5 @@
 
-define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFunctions){
+define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], function($, _, userFunctions, settings){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));
 	
@@ -68,19 +68,22 @@ define(["jquery", "underscore", "picSure/userFunctions"], function($, _, userFun
 			if(typeof activity !== "string"){
 				activity = window.location.href;
 			}
-			$.ajax({
-				data: JSON.stringify({
-					description : activity
-				}),
-				url: "/rest/interaction",
-				type: 'POST',
-				dataType: "json",
-				contentType: "application/json"
-			});
+            /**
+			 * /interaction end-point cannot be found. Do we still need to call it?
+			 */
+			// $.ajax({
+			// 	data: JSON.stringify({
+			// 		description : activity
+			// 	}),
+			// 	url: "/rest/interaction",
+			// 	type: 'POST',
+			// 	dataType: "json",
+			// 	contentType: "application/json"
+			// });
 		}, 10000),
         loadSessionVariables : function(callback){
             $.ajax({
-				url: window.location.origin + "/auth/connection",
+				url: window.location.origin + settings.basePath + '/connection',
 				type: 'GET',
 				contentType: 'application/json',
 				success: function(response){

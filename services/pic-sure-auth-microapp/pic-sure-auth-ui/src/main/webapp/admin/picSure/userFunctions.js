@@ -1,12 +1,12 @@
-define(["util/notification"],
-		function(notification){
+define(["util/notification", "picSure/settings"],
+		function(notification, settings){
     var userFunctions = {
         init: function () {}
     };
     userFunctions.fetchUsers = function (object, callback) {
         var failureMessage = "Failed to load users.";
         $.ajax({
-            url: window.location.origin + "/auth/user",
+            url: window.location.origin + settings.basePath + '/user',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -19,9 +19,9 @@ define(["util/notification"],
     }.bind(userFunctions);
 
     userFunctions.showUserDetails = function (uuid, callback) {
-        var failureMessage = "Failed to load user details.";
+        var failureMessage = 'Failed to load user details.';
         $.ajax({
-            url: window.location.origin + "/auth/user/" + uuid,
+            url: window.location.origin + settings.basePath + '/user/' + uuid,
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -37,7 +37,7 @@ define(["util/notification"],
         var successMessage = requestType == 'POST' ? 'User created' : 'User updated';
         var failureMessage = requestType == 'POST' ? 'Failed to create user' : 'Failed to update user';
         $.ajax({
-            url: window.location.origin + '/auth/user',
+            url: window.location.origin + settings.basePath + '/user',
             type: requestType,
             contentType: 'application/json',
             data: JSON.stringify(user),
@@ -54,7 +54,7 @@ define(["util/notification"],
     userFunctions.deleteUser = function (uuid, callback) {
         var failureMessage = 'Failed to delete user';
         $.ajax({
-            url: window.location.origin + '/auth/user/' + uuid,
+            url: window.location.origin + settings.basePath + '/user/' + uuid,
             type: 'DELETE',
             contentType: 'application/json',
             success: function(response){
@@ -70,7 +70,7 @@ define(["util/notification"],
     userFunctions.getAvailableRoles = function (callback) {
         var failureMessage = 'Failed to load roles';
         $.ajax({
-            url: window.location.origin + "/auth/role",
+            url: window.location.origin + settings.basePath + '/role',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -86,7 +86,7 @@ define(["util/notification"],
     userFunctions.me = function (object, callback) {
         // var failureMessage = "Failed to load user.";
         $.ajax({
-            url: window.location.origin + "/auth/user/me",
+            url: window.location.origin + settings.basePath + '/user/me',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){

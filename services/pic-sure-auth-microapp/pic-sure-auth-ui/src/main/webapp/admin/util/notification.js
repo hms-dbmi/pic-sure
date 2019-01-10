@@ -1,5 +1,5 @@
-define(["Noty", "handlebars", "text!options/confirmationDialog.hbs",],
-        function(Noty, HBS, confirmationDialog){
+define(["Noty"],
+        function(Noty){
     var notification = {
         init: function () {
 

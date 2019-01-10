@@ -1,5 +1,5 @@
-define(["backbone", "handlebars", "picSure/applicationFunctions", "application/applicationManagement", "text!application/addApplication.hbs", "text!application/addApplicationConnectionForm.hbs", "picSure/applicationFunctions"],
-		function(BB, HBS, applicationFunctions, applicationManagement, template, connectionTemplate, applicationFunctions){
+define(["backbone", "handlebars", "picSure/applicationFunctions", "application/applicationManagement", "text!application/addApplication.hbs"],
+		function(BB, HBS, applicationFunctions, applicationManagement, template){
 	var view = BB.View.extend({
 		initialize: function(opts){
 			this.applications = opts.applications;
