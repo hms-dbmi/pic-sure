@@ -106,12 +106,12 @@ public class User extends BaseEntity implements Serializable, Principal {
 		if (application == null)
 			return nameSet;
 
-		totalPrivilegeSet.stream().forEach(
-				p -> {
-					if (application.equals(p.getApplication()))
-						nameSet.add(p.getName());
-				}
-		);
+		for (Privilege appPrivilege : application.getPrivileges()) {
+			for (Privilege userPrivilege : totalPrivilegeSet) {
+				if (appPrivilege.equals(userPrivilege))
+					nameSet.add(userPrivilege.getName());
+			}
+		}
 		return nameSet;
 	}
 
