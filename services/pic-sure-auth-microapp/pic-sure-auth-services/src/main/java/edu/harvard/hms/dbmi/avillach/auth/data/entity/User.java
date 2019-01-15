@@ -41,6 +41,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Column(name = "general_metadata")
 	private String generalMetadata;
 
+	@Column(name = "is_active")
+	private boolean active;
+
 	public String getSubject() {
 		return subject;
 	}
@@ -185,6 +188,14 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Override
 	public String getName() {
 		return this.subject;
+	}
+
+	public boolean isActive() {
+		return active;
+	}
+
+	public void setActive(boolean active) {
+		this.active = active;
 	}
 
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)

@@ -262,7 +262,6 @@
 
 .table-picsure td {
     border: 1px solid #b2cfeb;
-    border-top: 0px;
     text-align: left;
     padding: 10px;
 }
@@ -275,6 +274,18 @@
 
 .table-picsure tbody tr:nth-child(odd) {
     background-color: #deeaf6;
+}
+
+.table-inactive td {
+    border: 1px solid #cfcfcf !important;
+}
+
+.table-inactive tbody td:nth-child(1) {
+    color: #606060 !important;
+}
+
+.table-inactive tbody tr:nth-child(odd) {
+    background-color: #dddddd !important;
 }
 
 .header-color {
@@ -327,4 +338,12 @@ input:read-only {
 
 .dropdown-content a:hover {
     background-color: #ddd;
+}
+
+.btn-show-inactive {
+    margin: 10px;
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+    float: right;
 }

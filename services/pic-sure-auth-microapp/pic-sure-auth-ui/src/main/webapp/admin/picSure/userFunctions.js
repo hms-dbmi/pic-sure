@@ -51,22 +51,6 @@ define(["util/notification", "picSure/settings"],
         });
     }.bind(userFunctions);
 
-    userFunctions.deleteUser = function (uuid, callback) {
-        var failureMessage = 'Failed to delete user';
-        $.ajax({
-            url: window.location.origin + settings.basePath + '/user/' + uuid,
-            type: 'DELETE',
-            contentType: 'application/json',
-            success: function(response){
-                notification.showSuccessMessage('User deleted');
-                callback(response);
-            },
-            error: function(response){
-                handleAjaxError(response, failureMessage);
-            }
-        });
-    }.bind(userFunctions);
-
     userFunctions.getAvailableRoles = function (callback) {
         var failureMessage = 'Failed to load roles';
         $.ajax({
