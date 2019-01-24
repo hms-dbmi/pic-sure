@@ -1,4 +1,4 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
+define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!psamaLogin/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
 		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
@@ -44,7 +44,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                                 });
                             }
                         }
-                    },
+                    }.bind(this),
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
                         history.pushState({}, "", "logout");
