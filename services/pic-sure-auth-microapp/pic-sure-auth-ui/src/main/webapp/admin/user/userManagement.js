@@ -1,8 +1,8 @@
 define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 		"text!user/userDetails.hbs", "text!user/userTable.hbs",
-		"text!options/modal.hbs", "picSure/userFunctions", "util/notification"],
+		"text!options/modal.hbs", "picSure/userFunctions", "picSure/picsureFunctions", "util/notification"],
 		function(BB, HBS,  AddUserView, template, userDetailsTemplate,
-				 userTableTemplate, modalTemplate, userFunctions, notification){
+				 userTableTemplate, modalTemplate, userFunctions, picsureFunctions, notification){
 	var userManagementModel = BB.Model.extend({
 	});
 
@@ -28,10 +28,13 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
             HBS.registerHelper('displayUserRoles', function(roles){
                 return _.pluck(roles, "name").join(", ");
             });
-            this.connections = JSON.parse(sessionStorage.connections);
-            this.connections.forEach(function (connection) {
-                connection.requiredFields = JSON.parse(connection.requiredFields);
-			})
+
+            picsureFunctions.getConnection('', function (response) {
+                this.connections = response;
+                this.connections.forEach(function (connection) {
+                    connection.requiredFields = JSON.parse(connection.requiredFields);
+                })
+            }.bind(this));
 		},
 		events : {
 			"click .add-user-button":   "addUserMenu",

@@ -5,7 +5,7 @@ define(["util/notification", "picSure/settings"],
     };
     privilegeFunctions.fetchPrivileges = function (object, callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/privilege',
+            url: window.location.origin + settings.servicesPath + '/privilege',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -19,7 +19,7 @@ define(["util/notification", "picSure/settings"],
 
     privilegeFunctions.showPrivilegeDetails = function (uuid, callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/privilege/' + uuid,
+            url: window.location.origin + settings.servicesPath + '/privilege/' + uuid,
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -35,7 +35,7 @@ define(["util/notification", "picSure/settings"],
         var successMessage = requestType == 'POST' ? 'Privilege created' : 'Privilege updated';
         var failureMessage = requestType == 'POST' ? 'Failed to create privilege' : 'Failed to update privilege';
         $.ajax({
-            url: window.location.origin + settings.basePath + '/privilege',
+            url: window.location.origin + settings.servicesPath + '/privilege',
             type: requestType,
             contentType: 'application/json',
             data: JSON.stringify(privilege),
@@ -51,7 +51,7 @@ define(["util/notification", "picSure/settings"],
 
     privilegeFunctions.deletePrivilege = function (uuid, callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/privilege/' + uuid,
+            url: window.location.origin + settings.servicesPath + '/privilege/' + uuid,
             type: 'DELETE',
             contentType: 'application/json',
             success: function(response){

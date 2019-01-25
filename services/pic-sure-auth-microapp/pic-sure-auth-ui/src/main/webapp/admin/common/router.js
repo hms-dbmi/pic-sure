@@ -40,14 +40,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
                 history.pushState({}, "", "tos");
             }
             else if (callback) {
-                if (name !== 'displayTOS' && !sessionStorage.connections) {
-                    session.loadSessionVariables(function (){
-                        callback.apply(this, args);
-                    });
-                }
-                else {
-                    callback.apply(this, args);
-                }
+                callback.apply(this, args);
             }
         },
         login : function(){
