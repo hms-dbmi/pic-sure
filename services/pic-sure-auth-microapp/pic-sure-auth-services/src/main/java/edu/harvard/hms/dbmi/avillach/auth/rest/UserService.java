@@ -101,14 +101,6 @@ public class UserService extends BaseEntityService<User> {
         return updateEntity(users, userRepo);
     }
 
-    @Transactional
-    @DELETE
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
-    @Path("/{userId}")
-    public Response removeById(@PathParam("userId") final String userId) {
-        return removeEntityById(userId, userRepo);
-    }
-
     @GET
     @Path("/me")
     public Response getCurrentUser(){

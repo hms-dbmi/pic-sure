@@ -3,14 +3,22 @@
     <button id="edit-user-button" type="button" class="btn btn-info">
         <span class="glyphicon glyphicon-edit"/> Edit
     </button>
-    <button id="delete-user-button" type="button" class="btn btn-danger" style="float: right">
-        <span class="glyphicon glyphicon-remove"/> Delete
+    {{#if user.active}}
+    <button id="switch-status-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/>   Deactivate
     </button>
+    {{else}}
+    <button id="switch-status-button" type="button" class="btn btn-success" style="float: right">
+            <span class="glyphicon glyphicon-ok"/>   Activate
+    </button>
+    {{/if}}
+
 </div>
 {{/unless}}
 <form>
     <input type="text" name="email" required readonly disabled value="{{user.email}}" hidden>
-    <input type="text" name="auth0_metadata" style="display:none;" required readonly disabled value="{{user.auth0metadata}}">
+    <input type="text" name="active" value="{{user.active}}" hidden>
+    <input type="text" name="auth0metadata" style="display:none;" required readonly disabled value="{{user.auth0metadata}}">
     <div id="required-fields">
         {{#each requiredFields}}
          {{this.label}}:<br>

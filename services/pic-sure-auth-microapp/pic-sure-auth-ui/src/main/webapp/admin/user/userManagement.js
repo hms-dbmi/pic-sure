@@ -39,8 +39,9 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			"click .close":             "closeDialog",
 			"click #cancel-user-button":"closeDialog",
 			"click .user-row":          "showUserAction",
-			"click #delete-user-button":"deleteUser",
+			"click #switch-status-button":"deactivateUser",
 			"submit":                   "saveUserAction",
+			"click .btn-show-inactive":	"toggleInactive"
 		},
 		displayUsers: function (result, view) {
 			this.userTableTemplate = HBS.compile(userTableTemplate);
@@ -84,64 +85,56 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
         },
         saveUserAction: function (e) {
             e.preventDefault();
-            // hidden fields
-            var userId = this.$('input[name=userId]').val();
-            var email = this.$('input[name=email]').val();
-            var auth0_metadata = this.$('input[name=auth0_metadata]').val();
-
-            var uuid = this.$('input[name=uuid]').val();
-            var subject = this.$('input[name=subject]').val();
-            var connection = {
-            	id: this.$('input[name=connectionId]').val()
+            var user
+            if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
+                user = this.model.get("selectedUser");
+			}
+            else {
+            	user = {
+                    subject: "",
+                    roles: []}
+			}
+            user.userId = this.$('input[name=userId]').val();
+			user.auth0metadata = this.$('input[name=auth0metadata]').val();
+            user.subject = this.$('input[name=subject]').val();
+			user.connection = {
+                id: this.$('input[name=connectionId]').val()
             };
             var general_metadata = {};
             _.each($('#required-fields input[type=text]'), function(entry){
                 general_metadata[entry.name] = entry.value
             });
-            var email = general_metadata["email"] ? general_metadata["email"] : email; // synchronize email with metadata
-            var roles = [];
+			user.generalMetadata = JSON.stringify(general_metadata);
+			user.email = general_metadata["email"] ? general_metadata["email"] : email; // synchronize email with metadata
+			var roles = [];
             _.each(this.$('input:checked'), function (checkbox) {
                 roles.push({uuid: checkbox.value});
             })
-            var user;
-            var requestType;
-            if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
-                requestType = "PUT";
-                user = [{
-                    uuid: uuid,
-                    email: email,
-                    connection: {
-                    	id:connection.id
-					},
-                    generalMetadata:JSON.stringify(general_metadata),
-                    auth0metadata: auth0_metadata,
-                    subject: subject,
-                    roles: roles}];
-            }
-            else {
-                requestType = "POST";
-                user = [{
-                    subject: userId,
-                    roles: roles}];
-            }
-
-            userFunctions.createOrUpdateUser(user, requestType, function(result) {
+            user.roles = roles;
+            userFunctions.createOrUpdateUser([user], user.uuid == null ? 'POST' : 'PUT', function(result) {
                 console.log(result);
-                window.location.reload();
+                this.render();
             }.bind(this));
         },
-		deleteUser: function (event) {
+        deactivateUser: function (event) {
         	try {
-        		var uuid = this.$('input[name=uuid]').val();
+                var user = this.model.get('selectedUser');
+                user.active = !user.active;
+                if (!user.subject) {
+                    user.subject = null;
+				}
+				if (!user.roles) {
+                    user.roles = [];
+				}
+                user.generalMetadata = JSON.stringify(user.generalMetadata);
                 notification.showConfirmationDialog(function () {
-                    userFunctions.deleteUser(uuid, function (response) {
+                    userFunctions.createOrUpdateUser([user], 'PUT', function (response) {
                         this.render()
                     }.bind(this));
-
                 }.bind(this));
         	} catch (err) {
                 console.error(err.message);
-                notification.showFailureMessage('Failed to delete user. Contact administrator.')
+                notification.showFailureMessage('Failed to deactivate user. Contact administrator.')
 			}
 		},
 		getUserRoles: function (stringRoles) {
@@ -155,24 +148,49 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			this.model.unset("selectedUser");
 			$("#modalDialog").hide();
 		},
+        toggleInactive: function (event) {
+            var id = event.target.id
+			$('#inactive-' + id, this.$el).toggle();
+			var toggleButton = $('.btn-show-inactive#' + id + ' span', this.$el);
+			if (toggleButton.hasClass('glyphicon-chevron-down'))
+                toggleButton.removeClass('glyphicon-chevron-down').addClass('glyphicon-chevron-up');
+            else
+                toggleButton.removeClass('glyphicon-chevron-up').addClass('glyphicon-chevron-down');
+        },
 		render : function(){
 			this.$el.html(this.template({}));
 			userFunctions.getAvailableRoles(function (roles) {
 				this.model.set("availableRoles", roles);
 			}.bind(this));
-			userFunctions.fetchUsers(this, function(users){
-				this.displayUsers.bind(this)({
+			userFunctions.fetchUsers(this, function(userList){
+				var users = [];
+				var inactiveUsers = [];
+                _.each(userList, function(user){
+                    if (user.active) {
+                        users.push(user);
+					}
+					else {
+                        inactiveUsers.push(user);
+					}
+            	});
+                this.displayUsers.bind(this)({
 					connections:
 						_.map(this.connections, function(connection){
 							var localCon = connection;
-						    return _.extend(connection, {
+							return _.extend(connection, {
 								users: users.filter(
 									function(user){
 										if (user.connection)
 											return user.connection.id === connection.id;
 										else
 											return false;
-								})
+								}),
+                                inactiveUsers: inactiveUsers.filter(function(user){
+                                    if (user.connection)
+                                        return user.connection.id === connection.id;
+                                    else
+                                        return false;
+                                })
 							})
 						})
 				});

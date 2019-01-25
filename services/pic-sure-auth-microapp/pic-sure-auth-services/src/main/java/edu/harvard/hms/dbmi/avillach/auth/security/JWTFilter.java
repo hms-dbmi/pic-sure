@@ -66,10 +66,6 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			String userForLogging = null;
 
-
-//			User authenticatedUser = null;
-
-
 			/**
 			 * This TOSService code will hit to the database to retrieve a user once again
 			 */
@@ -85,7 +81,11 @@ public class JWTFilter implements ContainerRequestFilter {
 				logger.error("Cannot extract a user from token: " + token);
 				throw new NotAuthorizedException("Cannot find or create a user");
 			}
-
+			// Check whether user is active
+			if (!authenticatedUser.isActive()) {
+				logger.warn("User with ID: " + authenticatedUser.getUuid() + " is deactivated.");
+				throw new NotAuthorizedException("User is deactivated");
+			}
 			// currently only user id will be logged, in the future, it might contain roles and other information,
 			// like xxxuser|roles|otherInfo
 			userForLogging = authenticatedUser.getSubject();
