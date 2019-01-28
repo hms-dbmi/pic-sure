@@ -100,6 +100,9 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
             user.userId = this.$('input[name=userId]').val();
 			user.auth0metadata = this.$('input[name=auth0metadata]').val();
             user.subject = this.$('input[name=subject]').val();
+            if (!user.subject) {
+                delete user.subject;
+			}
 			user.connection = {
                 id: this.$('input[name=connectionId]').val()
             };
