@@ -7,7 +7,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
 
     picsureFunctions.getConnection = function (connectionUuid, callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
+            url: window.location.origin + settings.servicesPath + '/connection/' + (connectionUuid ? connectionUuid : ''),
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -23,7 +23,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
         var successMessage = 'Successfully added a connection.';
         var failureMessage = 'Failed to add a connection.';
         $.ajax({
-            url: window.location.origin + settings.basePath + '/connection',
+            url: window.location.origin + settings.servicesPath + '/connection',
             type: requestType,
             contentType: 'application/json',
             data: JSON.stringify(connections),
@@ -42,7 +42,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
         var successMessage = 'Successfully deleted connection.';
         var failureMessage = 'Failed to delete connection.';
         $.ajax({
-            url: window.location.origin + settings.basePath + '/connection/' + uuid,
+            url: window.location.origin + settings.servicesPath + '/connection/' + uuid,
             type: 'DELETE',
             contentType: 'application/json',
             success: function(response){
@@ -57,7 +57,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
 
     picsureFunctions.getLatestTOS = function (callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/tos/latest',
+            url: window.location.origin + settings.servicesPath + '/tos/latest',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -71,7 +71,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
 
     picsureFunctions.acceptTOS = function (callback) {
         $.ajax({
-            url: window.location.origin + settings.basePath + '/tos/accept',
+            url: window.location.origin + settings.servicesPath + '/tos/accept',
             type: 'POST',
             contentType: 'application/json',
             success: function(response){

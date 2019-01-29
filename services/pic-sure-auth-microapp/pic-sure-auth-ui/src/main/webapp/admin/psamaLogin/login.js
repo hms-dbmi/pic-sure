@@ -17,11 +17,10 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                             + "//"+ window.location.hostname
                             + (window.location.port ? ":"+window.location.port : "")
                             + (window.location.port ? ":"+window.location.port : "")
-                            //+ (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "")
-                            + "/login";
+                            + settings.uiPath + "/login";
             if(typeof queryObject.code === "string"){
                 $.ajax({
-                    url: settings.basePath + '/authentication',
+                    url: settings.servicesPath + '/authentication',
                     type: 'post',
                     data: JSON.stringify({
                         code : queryObject.code,
@@ -31,17 +30,13 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
                         if (!data.acceptedTOS){
-                            session.loadSessionVariables(function () {
-                                history.pushState({}, "", "tos");
-                            });
+                            history.pushState({}, "", "tos");
                         } else {
                             if (sessionStorage.redirection_url) {
-                                window.location = sessionStorage.redirection_url;
+                                window.location = sessionStorage.redirection_url + "?token=" + JSON.parse(sessionStorage.session).token;
                             }
                             else {
-                                session.loadSessionVariables(function () {
-                                    history.pushState({}, "", "userManagement");
-                                });
+                                history.pushState({}, "", "userManagement");
                             }
                         }
                     }.bind(this),
