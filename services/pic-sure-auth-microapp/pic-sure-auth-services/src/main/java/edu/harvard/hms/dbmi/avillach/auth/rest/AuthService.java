@@ -91,10 +91,11 @@ public class AuthService {
             }
         }
 
+        // TODO: Make the expiry a configurable value
         String token = JWTUtil.createJwtToken(
                 JAXRSConfiguration.clientSecret, null, null,
                 generateClaims(userInfo, new String[]{"user_id", "email","name" }),
-                userId, -1);
+                userId, 86400000); // Expiry in a day (24 hours in milliseconds)
 
         boolean acceptedTOS = tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject());
 

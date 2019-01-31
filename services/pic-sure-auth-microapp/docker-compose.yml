@@ -39,11 +39,9 @@ services:
       - public
 
   picsureauthdb:
-#    image: dbmi/auth-db:5.7.22_initial
     build:
       context: pic-sure-auth-db
       dockerfile: Dockerfile
-#    command: --datadir=/mysql/data
     environment:
       - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
       - MYSQL_DATABASE=auth
@@ -62,4 +60,3 @@ networks:
 
 volumes:
   picsure-auth-data:
-
