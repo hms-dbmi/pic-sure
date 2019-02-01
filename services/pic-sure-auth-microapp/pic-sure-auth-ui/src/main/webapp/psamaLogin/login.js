@@ -1,6 +1,6 @@
 define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!psamaLogin/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
 		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
-	
+
 	var loginTemplate = HBS.compile(loginTemplate);
 
 	var loginCss = null
@@ -13,11 +13,18 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
             var queryObject = parseQueryString();
             if (queryObject.redirection_url) sessionStorage.redirection_url = queryObject.redirection_url.trim();
             if (queryObject.not_authorized_url) sessionStorage.not_authorized_url = queryObject.not_authorized_url.trim();
-            var redirectURI = window.location.protocol
-                            + "//"+ window.location.hostname
-                            + (window.location.port ? ":"+window.location.port : "")
-                            + (window.location.port ? ":"+window.location.port : "")
-                            + settings.uiPath + "/login";
+
+						// The callback URL for auth0 service, has to be
+						// external URL of the page we are using.
+						// Example:
+						// if the webapp is served from `http://ec2-public-ip.aws.com/admin/`
+						// then auth0 should return, after authenticating, to
+						// `http://ec2-public-ip.aws.com/admin/login?code=aksjdhfkahsdf`
+						// we have to use the browsers variable to get the external URL :(
+						var urlparts = location.href.split('/');
+            urlparts.pop();
+            var redirectURI = urlparts.join('/') + "/login";
+						
             if(typeof queryObject.code === "string"){
                 $.ajax({
                     url: settings.servicesPath + '/authentication',
@@ -79,4 +86,3 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
 	};
 	return login;
 });
-
