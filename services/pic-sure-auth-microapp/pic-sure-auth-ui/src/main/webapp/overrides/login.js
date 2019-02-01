@@ -1,4 +1,5 @@
-define([], function(){
+define(['text!settings/settings.json'], function( settings ){
+	var settings = JSON.parse(settings);
 	return {
 		/*
 		 * This allows you to build any authorization logic you wish.
@@ -9,7 +10,7 @@ define([], function(){
 		 *
 		 */
 		authorization : undefined,
-		client_id : undefined,
+		client_id : settings.client_id,
 		/*
 		 * This allows you to modify the DOM rendered on the login screen.
 		 *
