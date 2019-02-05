@@ -1,10 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "psamaLogin/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!psamaLogin/not_authorized.hbs', 'handlebars'],
+        'text!psamaLogin/not_authorized.hbs', 'handlebars', 'accessRule/accessRuleManagement'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
-                 notAuthorizedTemplate, HBS){
+                 notAuthorizedTemplate, HBS, accessRuleManagement){
         var Router = Backbone.Router.extend({
         routes: {
             "admin/userManagement(/)" : "displayUserManagement",
@@ -15,6 +15,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
             "admin/roleManagement(/)" : "displayRoleManagement",
             "admin/privilegeManagement(/)" : "displayPrivilegeManagement",
             "admin/applicationManagement(/)" : "displayApplicationManagement",
+            "admin/accessRuleManagement(/)" : "displayAccessRuleManagement",
             "*path" : "displayUserManagement"
         },
         initialize: function(){
@@ -133,6 +134,24 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
                     var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
                     privMngmt.render();
                     $('#main-content').append(privMngmt.$el);
+                } else {
+                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+                }
+            });
+        },
+            
+        displayAccessRuleManagement : function() {
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+
+            userFunctions.me(this, function(data){
+                if (_.find(data.accessRules, function(element){
+                    return (element === 'ROLE_SUPER_ADMIN')
+                })) {
+                    var accRuleMngmt = new accessRuleManagement.View({model: new accessRuleManagement.Model()});
+                    accRuleMngmt.render();
+                    $('#main-content').append(accRuleMngmt.$el);
                 } else {
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }

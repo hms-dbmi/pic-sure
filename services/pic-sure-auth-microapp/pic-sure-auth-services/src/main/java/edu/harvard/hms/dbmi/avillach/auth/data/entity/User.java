@@ -74,6 +74,22 @@ public class User extends BaseEntity implements Serializable, Principal {
 	}
 
 	/**
+	 * return all privileges in the roles as a set
+	 * @return
+	 */
+	@JsonIgnore
+	public Set<AccessRule> getTotalAccessRule(){
+		if (roles == null)
+			return null;
+
+		Set<AccessRule> accessRules = new HashSet<>();
+		roles.stream().
+				forEach(r -> r.getPrivileges().stream().
+						forEach(p -> accessRules.addAll(p.getAccessRules())));
+		return accessRules;
+	}
+
+	/**
 	 * return all privilege name in each role as a set.
 	 *
 	 * @return
