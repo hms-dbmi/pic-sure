@@ -168,13 +168,10 @@ public class JWTFilter implements ContainerRequestFilter {
 		ObjectMapper json = PicSureWarInit.objectMapper;
 		CloseableHttpClient client = PicSureWarInit.CLOSEABLE_HTTP_CLIENT;
 
-		String token_intro_url = token_introspection_url.substring(8).split("/")[0];
-		HttpHost target = new HttpHost(token_intro_url, 443, "https");
-
-		HttpPost post = new HttpPost(token_introspection_url.substring(8 + token_intro_url.length()));
+		HttpPost post = new HttpPost(token_introspection_url);
 		applyProxySettings(post);
 
-		Map<String, String> tokenMap = new HashMap<String, String>();
+		Map<String, String> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
 		StringEntity entity = null;
 		try {
@@ -189,16 +186,16 @@ public class JWTFilter implements ContainerRequestFilter {
 		post.setHeader("Authorization", "Bearer " + token_introspection_token);
 		CloseableHttpResponse response = null;
 		try {
-			response = client.execute(target, post, buildHttpClientContext());
+			response = client.execute(post, buildHttpClientContext());
 			if (response.getStatusLine().getStatusCode() != 200){
-				logger.error("extractUserFromTokenIntrospection() error back from token intro host server ["
+				logger.error("callTokenIntroEndpoint() error back from token intro host server ["
 						+ token_introspection_url + "]: " + EntityUtils.toString(response.getEntity()));
 				throw new ApplicationException("Token Introspection host server return " + response.getStatusLine().getStatusCode() +
 						". Please see the log");
 			}
 			JsonNode responseContent = json.readTree(response.getEntity().getContent());
 			if (!responseContent.get("active").asBoolean()){
-				logger.error("Token intro endpoint return invalid token, content: " + responseContent);
+				logger.error("callTokenIntroEndpoint() Token intro endpoint return invalid token, content: " + responseContent);
 				throw new NotAuthorizedException("Token invalid or expired");
 			}
 
@@ -207,14 +204,14 @@ public class JWTFilter implements ContainerRequestFilter {
 			return userRepo.findOrCreate(new User().setSubject(sub).setUserId(sub));
 
 		} catch (IOException ex){
-			logger.error("extractUserFromTokenIntrospection() IOException when hitting url: " + post
+			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
 					+ " with exception msg: " + ex.getMessage());
 		} finally {
 			try {
 				if (response != null)
 					response.close();
 			} catch (IOException ex) {
-				logger.error("extractUserFromTokenIntrospection() IOExcpetion when closing http response: " + ex.getMessage());
+				logger.error("callTokenIntroEndpoint() IOExcpetion when closing http response: " + ex.getMessage());
 			}
 		}
 
