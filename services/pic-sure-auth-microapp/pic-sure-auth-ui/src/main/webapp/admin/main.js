@@ -8,7 +8,6 @@ require.config({
 		bootstrap: '/webjars/bootstrap/3.3.7-1/js/bootstrap.min',
 		backbone: '/webjars/backbonejs/1.3.3/backbone-min',
 		text: '/webjars/requirejs-text/2.0.15/text',
-		'auth0-js': "/webjars/auth0.js/9.2.3/build/auth0",
         Noty: '/webjars/noty/3.1.4/lib/noty',
         userManagement: "userManagement/",
         common: "common/",
@@ -17,10 +16,6 @@ require.config({
     shim: {
         "bootstrap": {
             deps: ["jquery"]
-        },
-        "auth0-js": {
-            deps:["jquery"],
-            exports: "Auth0Lock"
         }
     }
 });

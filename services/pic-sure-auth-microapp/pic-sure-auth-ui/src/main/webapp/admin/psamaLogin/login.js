@@ -1,5 +1,5 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
-		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
+define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
+		function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
 
@@ -55,19 +55,66 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                     notification.showFailureMessage("Client_ID is not provided. Please update overrides/login.js file.");
                 }
                 var clientId = overrides.client_id;
-                $.ajax("https://avillachlab.us.webtask.io/connection_details_base64/?webtask_no_cache=1&client_id=" + clientId,
-                {
-                    dataType: "text",
-                    success : function(scriptResponse){
-                        $('#main-content').html(loginTemplate({
-                            buttonScript : scriptResponse,
-                            clientId : clientId,
-                            auth0Subdomain : "avillachlab",
-                            callbackURL : redirectURI
-                        }));
-                        $('#main-content').append(loginCss);
-                    }
-                });
+                if (settings.customizeAuth0Login){
+                    require.config({
+                        paths: {
+                            'auth0-js': "/webjars/auth0.js/9.2.3/build/auth0"
+                        },
+                        shim: {
+                            "auth0-js": {
+                                deps:["jquery"],
+                                exports: "Auth0Lock"
+                            }
+                        }
+                    });
+                    require(['auth0-js'], function(){
+                        $.ajax("https://avillachlab.us.webtask.io/connection_details_base64/?webtask_no_cache=1&client_id=" + clientId,
+                        {
+                            dataType: "text",
+                            success : function(scriptResponse){
+                                $('#main-content').html(loginTemplate({
+                                    buttonScript : scriptResponse,
+                                    clientId : clientId,
+                                    auth0Subdomain : "avillachlab",
+                                    callbackURL : redirectURI
+                                }));
+                                $('#main-content').append(loginCss);
+                            }
+                        })
+                    });
+
+
+                } else {
+                    require.config({
+                        paths: {
+                            'auth0Lock': "/webjars/auth0-lock/11.2.3/build/lock",
+                        },
+                        shim: {
+                            "auth0Lock": {
+                                deps:["jquery"],
+                                exports: "Auth0Lock"
+                            }
+                        }
+                    });
+                    require(['auth0Lock'], function(Auth0Lock){
+                        var lock = new Auth0Lock(
+                            clientId,
+                            "avillachlab.auth0.com",
+                            {
+                                auth: {
+                                    redirectUrl: redirectURI,
+                                    responseType: 'code',
+                                    params: {
+                                        scope: 'openid email' // Learn about scopes: https://auth0.com/docs/scopes
+                                    }
+                                }
+                            }
+                        );
+                        lock.show();
+                    });
+                }
+
+
             }
 		},
         handleNotAuthorizedResponse : function () {
