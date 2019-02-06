@@ -7,10 +7,10 @@ import java.util.List;
 public class AuthNaming {
 
     public static class AuthRoleNaming {
-        public static final String ROLE_SYSTEM = "ROLE_SYSTEM";
-        public static final String ROLE_SUPER_ADMIN = "ROLE_SUPER_ADMIN";
-        public static final String ROLE_TOKEN_INTROSPECTION = "ROLE_TOKEN_INTROSPECTION";
-        public static final String ROLE_INTROSPECTION_USER = "ROLE_INTROSPECTION_USER";
+        public static final String SYSTEM = "SYSTEM";
+        public static final String ADMIN = "ADMIN";
+        public static final String SUPER_ADMIN = "SUPER_ADMIN";
+        public static final String TOKEN_INTROSPECTION = "ROLE_TOKEN_INTROSPECTION";
 
         public static List<String> allRoles(){
             List<String> roles = new ArrayList<>();

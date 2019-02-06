@@ -16,6 +16,7 @@ public class Application extends BaseEntity {
     @Column(unique = true)
     private String name;
     private String description;
+    private String token;
     private boolean enable = true;
 
     @OneToMany(mappedBy = "application",
@@ -38,6 +39,14 @@ public class Application extends BaseEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
     }
 
     public boolean isEnable() {

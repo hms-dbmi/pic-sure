@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
@@ -20,6 +19,9 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,6 +47,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @GET
     @Path("/{roleId}")
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     public Response getRoleById(
             @PathParam("roleId") String roleId) {
         return getEntityById(roleId,roleRepo);
@@ -52,13 +55,14 @@ public class RoleService extends BaseEntityService<Role> {
 
     @GET
     @Path("")
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     public Response getRoleAll() {
         return getEntityAll(roleRepo);
     }
 
     @Transactional
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addRole(List<Role> roles){
@@ -68,7 +72,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @Transactional
     @PUT
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateRole(List<Role> roles){
@@ -78,7 +82,7 @@ public class RoleService extends BaseEntityService<Role> {
     
     @Transactional
     @DELETE
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Path("/{roleId}")
     public Response removeById(@PathParam("roleId") final String roleId) {
         Role role = roleRepo.getById(UUID.fromString(roleId));

@@ -25,6 +25,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+
 @Startup
 @ApplicationPath("auth")
 public class JAXRSConfiguration extends Application {
@@ -84,11 +86,11 @@ public class JAXRSConfiguration extends Application {
             return;
         }
 
-        logger.info("Didn't find any role contains both " + AuthNaming.AuthRoleNaming.ROLE_SYSTEM +
-                " and " + AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN +
+        logger.info("Didn't find any role contains both " + SYSTEM +
+                " and " + SUPER_ADMIN +
                 " in database, start to create one.");
-        Privilege systemAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SYSTEM).get(0);
-        Privilege superAdmin = privilegeRepo.getByColumn("name", AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN).get(0);
+        Privilege systemAdmin = privilegeRepo.getByColumn("name", SYSTEM).get(0);
+        Privilege superAdmin = privilegeRepo.getByColumn("name", SUPER_ADMIN).get(0);
 
         Role role = new Role();
         List<Role> roles = roleRepo.getByColumn("name", defaultAdminRoleName);
@@ -128,12 +130,12 @@ public class JAXRSConfiguration extends Application {
             if (superAdmin != null && systemAdmin != null)
                 break;
 
-            if (AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN.equals(p.getName())){
+            if (SUPER_ADMIN.equals(p.getName())){
                 superAdmin = p;
                 continue;
             }
 
-            if (AuthNaming.AuthRoleNaming.ROLE_SYSTEM.equals(p.getName())){
+            if (SYSTEM.equals(p.getName())){
                 systemAdmin = p;
                 continue;
             }
@@ -142,7 +144,7 @@ public class JAXRSConfiguration extends Application {
         if (superAdmin == null){
             logger.info("Adding super admin");
             superAdmin = new Privilege();
-            superAdmin.setName(AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN);
+            superAdmin.setName(SUPER_ADMIN);
             superAdmin.setDescription("PIC-SURE Auth super admin for managing roles/privileges/application");
             privilegeRepo.persist(superAdmin);
         }
@@ -150,7 +152,7 @@ public class JAXRSConfiguration extends Application {
         if (systemAdmin == null) {
             logger.info("Adding system admin");
             systemAdmin = new Privilege();
-            systemAdmin.setName(AuthNaming.AuthRoleNaming.ROLE_SYSTEM);
+            systemAdmin.setName(SYSTEM);
             systemAdmin.setDescription("PIC-SURE Auth admin for managing users/connections.");
             privilegeRepo.persist(systemAdmin);
         }
@@ -171,9 +173,9 @@ public class JAXRSConfiguration extends Application {
                 continue;
 
             for (Privilege privilege : privileges) {
-                if (AuthNaming.AuthRoleNaming.ROLE_SYSTEM.equals(privilege.getName())) {
+                if (SYSTEM.equals(privilege.getName())) {
                     systemAdmin = true;
-                } else if (AuthNaming.AuthRoleNaming.ROLE_SUPER_ADMIN.equals(privilege.getName())) {
+                } else if (SUPER_ADMIN.equals(privilege.getName())) {
                     superAdmin = true;
                 }
             }

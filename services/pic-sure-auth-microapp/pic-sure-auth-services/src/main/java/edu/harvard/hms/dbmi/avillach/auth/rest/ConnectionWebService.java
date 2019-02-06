@@ -4,7 +4,6 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -12,6 +11,9 @@ import javax.transaction.Transactional;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+
 import java.util.List;
 
 @Path("connection")
@@ -27,12 +29,14 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
     @Path("{connectionId}")
     @GET
     @Produces("application/json")
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     public Response getConnectionById(@PathParam("connectionId") String connectionId) {
         return getEntityById(connectionId,connectionRepo);
     }
 
     @GET
     @Produces("application/json")
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     public Response getAllConnections() {
         return getEntityAll(connectionRepo);
     }
@@ -40,7 +44,7 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
     @Transactional
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Path("/")
     public Response addConnection(List<Connection> connections){
         return addEntity(connections);
@@ -48,15 +52,15 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
 
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Path("/")
     public Response updateConnection(List<Connection> connections){
         return updateEntity(connections, connectionRepo);
     }
 
     @Transactional
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
     @DELETE
+    @RolesAllowed({SYSTEM, SUPER_ADMIN})
     @Path("/{connectionId}")
     public Response removeById(@PathParam("connectionId") final String connectionId) {
         return removeEntityById(connectionId, connectionRepo);

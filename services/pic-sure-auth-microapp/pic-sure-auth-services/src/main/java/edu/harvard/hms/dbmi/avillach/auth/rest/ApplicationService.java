@@ -7,7 +7,8 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming;
+import edu.harvard.hms.dbmi.avillach.jwt.JWTUtil;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,95 +20,106 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
 
-    Logger logger = LoggerFactory.getLogger(ApplicationService.class);
+	Logger logger = LoggerFactory.getLogger(ApplicationService.class);
 
-    @Inject
-    ApplicationRepository applicationRepo;
+	@Inject
+	ApplicationRepository applicationRepo;
 
-    @Inject
-    PrivilegeRepository privilegeRepo;
+	@Inject
+	PrivilegeRepository privilegeRepo;
 
-    @Context
-    SecurityContext securityContext;
+	@Context
+	SecurityContext securityContext;
 
-    public ApplicationService() {
-        super(Application.class);
-    }
+	public ApplicationService() {
+		super(Application.class);
+	}
 
-    @GET
-    @Path("/{applicationId}")
-    public Response getApplicationById(
-            @PathParam("applicationId") String applicationId) {
-        return getEntityById(applicationId,applicationRepo);
-    }
+	@GET
+	@Path("/{applicationId}")
+	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	public Response getApplicationById(
+			@PathParam("applicationId") String applicationId) {
+		return getEntityById(applicationId,applicationRepo);
+	}
 
-    @GET
-    @Path("")
-    public Response getApplicationAll() {
-        return getEntityAll(applicationRepo);
-    }
+	@GET
+	@Path("")
+	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	public Response getApplicationAll() {
+		return getEntityAll(applicationRepo);
+	}
 
-    @Transactional
-    @POST
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/")
-    public Response addApplication(List<Application> applications){
-        checkAssociation(applications);
-        return addEntity(applications, applicationRepo);
-    }
+	@Transactional
+	@POST
+	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Path("/")
+	public Response addApplication(List<Application> applications){
+		checkAssociation(applications);
+		for(Application application : applications) {
+			Map<String, Object> claims = new HashMap<>(Map.of("user_id","PSAMA_APPLICATION|" + application.getName().toString()));
+			try{
+				String token = JWTUtil.createJwtToken(
+					JAXRSConfiguration.clientSecret, null, null,
+					claims,
+					"PSAMA_APPLICATION|" + application.getName().toString(), -1);
+			application.setToken(token);} catch(Exception e) {
+				logger.error("", e);
+			}
+		}
+		return addEntity(applications, applicationRepo);
+	}
 
-    @PUT
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/")
-    public Response updateApplication(List<Application> applications){
-        checkAssociation(applications);
-        return updateEntity(applications, applicationRepo);
-    }
+	@PUT
+	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Path("/")
+	public Response updateApplication(List<Application> applications){
+		checkAssociation(applications);
+		return updateEntity(applications, applicationRepo);
+	}
 
-    @Transactional
-    @DELETE
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
-    @Path("/{applicationId}")
-    public Response removeById(@PathParam("applicationId") final String applicationId) {
-        Application application = applicationRepo.getById(UUID.fromString(applicationId));
-        if (AuthRoleNaming.ROLE_SYSTEM.equals(application.getName())){
-            logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext)
-                    + ", is trying to remove the system admin application: " + AuthRoleNaming.ROLE_SYSTEM);
-            return PICSUREResponse.protocolError("System Admin application cannot be removed - uuid: " + application.getUuid().toString()
-                    + ", name: " + application.getName());
-        }
+	@Transactional
+	@DELETE
+	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@Path("/{applicationId}")
+	public Response removeById(@PathParam("applicationId") final String applicationId) {
+		Application application = applicationRepo.getById(UUID.fromString(applicationId));
+		return removeEntityById(applicationId, applicationRepo);
+	}
 
-        return removeEntityById(applicationId, applicationRepo);
-    }
+	private void checkAssociation(List<Application> applications){
+		for (Application application: applications){
+			if (application.getPrivileges() != null) {
+				Set<Privilege> privileges = new HashSet<>();
+				application.getPrivileges().stream().forEach(p -> {
+					Privilege privilege = privilegeRepo.getById(p.getUuid());
+					if (privilege != null){
+						privilege.setApplication(application);
+						privileges.add(privilege);
+					} else {
+						logger.error("Didn't find privilege by uuid: " + p.getUuid());
+					}
+				});
+				application.setPrivileges(privileges);
 
-    private void checkAssociation(List<Application> applications){
-        for (Application application: applications){
-            if (application.getPrivileges() != null) {
-                Set<Privilege> privileges = new HashSet<>();
-                application.getPrivileges().stream().forEach(p -> {
-                    Privilege privilege = privilegeRepo.getById(p.getUuid());
-                    if (privilege != null){
-                        privilege.setApplication(application);
-                        privileges.add(privilege);
-                    } else {
-                        logger.error("Didn't find privilege by uuid: " + p.getUuid());
-                    }
-                });
-                application.setPrivileges(privileges);
+			}
+		}
 
-            }
-        }
-
-    }
+	}
 
 }

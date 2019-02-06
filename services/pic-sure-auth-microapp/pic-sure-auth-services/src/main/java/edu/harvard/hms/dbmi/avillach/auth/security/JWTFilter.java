@@ -66,41 +66,52 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			String userForLogging = null;
 
-			/**
-			 * This TOSService code will hit to the database to retrieve a user once again
-			 */
-			final User authenticatedUser = callLocalAuthentication(requestContext, token);
-			if (!uriInfo.getPath().contains("/tos")){
-				if (tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
-					//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
-					requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
-					return;
+			Jws<Claims> jws = parseToken(token);
+			
+			String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
+			
+			if(userId.startsWith("PSAMA_APPLICATION")) {
+				if( ! uriInfo.getPath().endsWith("token/inspect")) {
+						logger.error(userId + " attempted to perform request " + uriInfo.getPath() + " token may be compromised.");
+						throw new NotAuthorizedException("User is deactivated");
 				}
+			} else {
+				/**
+				 * This TOSService code will hit to the database to retrieve a user once again
+				 */
+				User authenticatedUser = callLocalAuthentication(requestContext, jws);
+				if (!uriInfo.getPath().contains("/tos")){
+					if (tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+						//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
+						requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
+						return;
+					}
+				}
+				if (authenticatedUser == null) {
+					logger.error("Cannot extract a user from token: " + token);
+					throw new NotAuthorizedException("Cannot find or create a user");
+				}
+				// Check whether user is active
+				if (!authenticatedUser.isActive()) {
+					logger.warn("User with ID: " + authenticatedUser.getUuid() + " is deactivated.");
+					throw new NotAuthorizedException("User is deactivated");
+				}
+				// currently only user id will be logged, in the future, it might contain roles and other information,
+				// like xxxuser|roles|otherInfo
+				userForLogging = authenticatedUser.getSubject();
+				// check authorization of the authenticated user
+				checkRoles(authenticatedUser, resourceInfo
+						.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
+						? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
+						: new String[]{});
+
+				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+
+				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
+	                    uriInfo.getRequestUri().getScheme()));
+
 			}
-			if (authenticatedUser == null) {
-				logger.error("Cannot extract a user from token: " + token);
-				throw new NotAuthorizedException("Cannot find or create a user");
-			}
-			// Check whether user is active
-			if (!authenticatedUser.isActive()) {
-				logger.warn("User with ID: " + authenticatedUser.getUuid() + " is deactivated.");
-				throw new NotAuthorizedException("User is deactivated");
-			}
-			// currently only user id will be logged, in the future, it might contain roles and other information,
-			// like xxxuser|roles|otherInfo
-			userForLogging = authenticatedUser.getSubject();
-
-			// check authorization of the authenticated user
-			checkRoles(authenticatedUser, resourceInfo
-					.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
-					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-					: new String[]{});
-
-			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
-
-			requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
-                    uriInfo.getRequestUri().getScheme()));
-
+		
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
 //			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
@@ -148,6 +159,8 @@ public class JWTFilter implements ContainerRequestFilter {
 				logger.error(logMsg + "doesn't match the required role/privilege restrictions, privileges from user: "
 						+ authenticatedUser.getPrivilegeString() + ", priviliges required: " + Arrays.toString(rolesAllowed));
 				throw new NotAuthorizedException("doesn't match the required role restrictions.");
+			}else {
+				break;
 			}
 		}
 		return b;
@@ -160,12 +173,15 @@ public class JWTFilter implements ContainerRequestFilter {
 	 * @return
 	 * @throws NotAuthorizedException
 	 */
-	private User callLocalAuthentication(ContainerRequestContext requestContext, String token) throws NotAuthorizedException{
-		Jws<Claims> jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret, token);
-
+	private User callLocalAuthentication(ContainerRequestContext requestContext, Jws<Claims> jws) throws NotAuthorizedException{
 		String subject = jws.getBody().getSubject();
 		String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
 		return userRepo.findOrCreate(new User().setSubject(subject));
+	}
+
+	private Jws<Claims> parseToken(String token) {
+		Jws<Claims> jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret, token);
+		return jws;
 	}
 }

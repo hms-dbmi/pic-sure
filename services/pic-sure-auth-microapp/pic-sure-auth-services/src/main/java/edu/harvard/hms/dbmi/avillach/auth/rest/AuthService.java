@@ -49,20 +49,16 @@ public class AuthService {
     @POST
     @Path("/")
     public Response getToken(Map<String, String> authRequest){
-        String code = authRequest.get("code");
+//        String code = authRequest.get("code");
         String redirectURI = authRequest.get("redirectURI");
 
-        if (code == null || redirectURI == null || code.isEmpty() || redirectURI.isEmpty())
-            throw new ProtocolException("Missing code or redirectURI in request body.");
+//        if (code == null || redirectURI == null || code.isEmpty() || redirectURI.isEmpty())
+//            throw new ProtocolException("Missing code or redirectURI in request body.");
+//
+//        JsonNode jsonNode = tradeCode(authRequest.get("code"), authRequest.get("redirectURI"));
+        String accessToken = authRequest.get("access_token");
 
-        JsonNode jsonNode = tradeCode(authRequest.get("code"), authRequest.get("redirectURI"));
-        JsonNode accessTokenNode = jsonNode.get("access_token");
-        if (accessTokenNode == null){
-            logger.error("getToken() Cannot retrieve access_token by tradeCode(), return json response: " + jsonNode.toString());
-            throw new ApplicationException("cannot get access token by the provided code and redirectURI. Please contact admin.");
-        }
-
-        JsonNode userInfo = retrieveUserInfo(accessTokenNode.asText());
+        JsonNode userInfo = retrieveUserInfo(accessToken);
         JsonNode userIdNode = userInfo.get("user_id");
         if (userIdNode == null){
             logger.error("getToken() cannot find user_id by retrieveUserInfo(), return json response: " + userInfo.toString());

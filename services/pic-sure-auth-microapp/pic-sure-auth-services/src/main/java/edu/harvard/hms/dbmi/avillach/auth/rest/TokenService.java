@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
@@ -31,12 +32,14 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
 
 @Path("/token")
 public class TokenService {
@@ -56,7 +59,7 @@ public class TokenService {
 	ApplicationRepository applicationRepo;
 
 	@POST
-	@RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_TOKEN_INTROSPECTION)
+	@RolesAllowed(TOKEN_INTROSPECTION)
 	@Path("/inspect")
 	@Consumes("application/json")
 	public Response inspectToken(Map<String, String> tokenMap,
@@ -117,9 +120,15 @@ public class TokenService {
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		Set<String> privilegeNameSet = null;
 		if (user != null
-				&& user.getRoles() != null
-				&& (privilegeNameSet = user.getPrivilegeNameSet()).contains(AuthNaming.AuthRoleNaming.ROLE_INTROSPECTION_USER))
+				&& user.getRoles() != null) {
 			tokenInspection.responseMap.put("active", true);
+			ArrayList<String> roles = new ArrayList<String>();
+			for(Privilege p : user.getTotalPrivilege()) {
+				roles.add(p.getName());
+			}
+			tokenInspection.responseMap.put("roles", String.join(",",  roles));
+			
+		}
 
 		tokenInspection.responseMap.putAll(jws.getBody());
 

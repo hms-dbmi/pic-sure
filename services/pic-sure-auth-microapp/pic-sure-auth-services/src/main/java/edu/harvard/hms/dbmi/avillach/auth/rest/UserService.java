@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
@@ -10,7 +9,6 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +24,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
 
 /**
  * Service handling business logic for CRUD on users
@@ -52,7 +52,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     @Path("/{userId}")
     public Response getUserById(
             @PathParam("userId") String userId) {
@@ -60,7 +60,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     @Path("")
     public Response getUserAll() {
         return getEntityAll(userRepo);
@@ -68,7 +68,7 @@ public class UserService extends BaseEntityService<User> {
 
     @Transactional
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
@@ -77,7 +77,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{uuid}/role/{role}")
     public Response changeRole(
@@ -93,7 +93,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @PUT
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
