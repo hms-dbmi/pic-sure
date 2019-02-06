@@ -47,7 +47,7 @@ public class AccessRuleService extends BaseEntityService<AccessRule> {
     }
 
     @POST
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed(AuthRoleNaming.SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addAccessRule(List<AccessRule> accessRules){
@@ -55,7 +55,7 @@ public class AccessRuleService extends BaseEntityService<AccessRule> {
     }
 
     @PUT
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed(AuthRoleNaming.SUPER_ADMIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateAccessRule(List<AccessRule> accessRules){
@@ -64,14 +64,14 @@ public class AccessRuleService extends BaseEntityService<AccessRule> {
 
     @Transactional
     @DELETE
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed(AuthRoleNaming.SUPER_ADMIN)
     @Path("/{accessRuleId}")
     public Response removeById(@PathParam("accessRuleId") final String accessRuleId) {
         return removeEntityById(accessRuleId, accessRuleRepo);
     }
 
     @GET
-    @RolesAllowed(AuthRoleNaming.ROLE_SUPER_ADMIN)
+    @RolesAllowed(AuthRoleNaming.SUPER_ADMIN)
     @Path("/allTypes")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAllTypes(){

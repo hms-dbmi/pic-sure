@@ -129,13 +129,8 @@ public class TokenService {
 		//only under certain circumstances, the token will return active
 		Set<String> privilegeNameSet = null;
 		if (user != null
-<<<<<<< HEAD
-				&& user.getRoles() != null) {
-=======
 				&& user.getRoles() != null
-				&& (privilegeNameSet = user.getPrivilegeNameSet()).contains(AuthNaming.AuthRoleNaming.ROLE_INTROSPECTION_USER)
-				&& authorizationService.isAuthorized(inputMap.get("request"), securityContext))
->>>>>>> origin/picsure-236-jsonpath-authorization
+				&& authorizationService.isAuthorized(inputMap.get("request"), securityContext)) {
 			tokenInspection.responseMap.put("active", true);
 			ArrayList<String> roles = new ArrayList<String>();
 			for(Privilege p : user.getTotalPrivilege()) {
