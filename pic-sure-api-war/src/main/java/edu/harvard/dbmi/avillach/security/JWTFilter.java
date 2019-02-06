@@ -208,8 +208,8 @@ public class JWTFilter implements ContainerRequestFilter {
 			for (JsonNode role: jsonRoles) {
 				userRoles += (role.textValue() + " ");
 			}
-			return userRepo.findOrCreate(new User().setSubject(sub).setUserId(sub).setRoles(userRoles));
-
+			logger.debug("Roles for user from introspection: " + userRoles);
+			return new User().setSubject(sub).setUserId(sub).setRoles(userRoles.trim());
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
 					+ " with exception msg: " + ex.getMessage());
