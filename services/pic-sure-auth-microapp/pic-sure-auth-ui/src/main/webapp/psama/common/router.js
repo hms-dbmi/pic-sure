@@ -1,20 +1,20 @@
-define(["common/searchParser", "backbone", "common/session", "psamaLogin/login", 'header/header', 'user/userManagement',
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!psamaLogin/not_authorized.hbs', 'handlebars'],
+        'text!login/not_authorized.hbs', 'handlebars'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
                  notAuthorizedTemplate, HBS){
         var Router = Backbone.Router.extend({
         routes: {
-            "admin/userManagement(/)" : "displayUserManagement",
-            "admin/connectionManagement(/)" : "displayConnectionManagement",
-            "admin/tos(/)" : "displayTOS",
-            "admin/login(/)" : "login",
-            "admin/logout(/)" : "logout",
-            "admin/roleManagement(/)" : "displayRoleManagement",
-            "admin/privilegeManagement(/)" : "displayPrivilegeManagement",
-            "admin/applicationManagement(/)" : "displayApplicationManagement",
+            "psama/userManagement(/)" : "displayUserManagement",
+            "psama/connectionManagement(/)" : "displayConnectionManagement",
+            "psama/tos(/)" : "displayTOS",
+            "psama/login(/)" : "login",
+            "psama/logout(/)" : "logout",
+            "psama/roleManagement(/)" : "displayRoleManagement",
+            "psama/privilegeManagement(/)" : "displayPrivilegeManagement",
+            "psama/applicationManagement(/)" : "displayApplicationManagement",
             "*path" : "displayUserManagement"
         },
         initialize: function(){
@@ -64,7 +64,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SYSTEM')
+                    return (element === 'SYSTEM')
                 })) {
                     var userMngmt = new userManagement.View({model: new userManagement.Model()});
                     userMngmt.render();
@@ -92,7 +92,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SUPER_ADMIN')
+                    return (element === 'SUPER_ADMIN')
                 })) {
                     var appliMngmt = new applicationManagement.View({model: new applicationManagement.Model()});
                     appliMngmt.render();
@@ -110,7 +110,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SUPER_ADMIN')
+                    return (element === 'SUPER_ADMIN')
                 })) {
                     var roleMngmt = new roleManagement.View({model: new roleManagement.Model()});
                     roleMngmt.render();
@@ -128,7 +128,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SUPER_ADMIN')
+                    return (element === 'SUPER_ADMIN')
                 })) {
                     var privMngmt = new privilegeManagement.View({model: new privilegeManagement.Model()});
                     privMngmt.render();
@@ -146,7 +146,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
-                    return (element === 'ROLE_SUPER_ADMIN')
+                    return (element === 'SUPER_ADMIN')
                 })) {
                     var connectionMngmt = new connectionManagement.View({model: new connectionManagement.Model()});
                     connectionMngmt.render();

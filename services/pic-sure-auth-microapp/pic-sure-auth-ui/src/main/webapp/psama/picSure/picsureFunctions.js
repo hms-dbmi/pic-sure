@@ -5,19 +5,45 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
         init: function () {}
     };
 
+    var connections = undefined;
+    
     picsureFunctions.getConnection = function (connectionUuid, callback) {
-        $.ajax({
-            url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
-            type: 'GET',
-            contentType: 'application/json',
-            success: function(response){
-                callback(response);
-            },
-            error: function(response){
-                console.log("Failed to get connections from server.");
-                return connectionsJSON;
-            }
-        });
+    		if(connections){
+    			callback(_.findWhere(connections, {uuid: connectionUuid}));
+    		}else{
+    	        $.ajax({
+    	            url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
+    	            type: 'GET',
+    	            contentType: 'application/json',
+    	            success: function(response){
+    	                connections = response;
+    	                callback(response);
+    	            },
+    	            error: function(response){
+    	                console.log("Failed to get connections from server.");
+    	                console.log(response);
+    	            }
+    	        });    			
+    		}
+    }.bind(picsureFunctions);
+    picsureFunctions.getConnections = function (callback) {
+    	    if(connections){
+    	    		callback(connections);
+    	    }else{
+    	        $.ajax({
+    	            url: window.location.origin + settings.basePath + '/connection/',
+    	            type: 'GET',
+    	            contentType: 'application/json',
+    	            success: function(response){
+    	            		connections = response;
+    	                callback(response);
+    	            },
+    	            error: function(response){
+    	                console.log("Failed to get connections from server.");
+    	                return connectionsJSON;
+    	            }
+    	        });
+    	    }
     }.bind(picsureFunctions);
     picsureFunctions.createOrUpdateConnection = function (connections, requestType, callback) {
         var successMessage = 'Successfully added a connection.';

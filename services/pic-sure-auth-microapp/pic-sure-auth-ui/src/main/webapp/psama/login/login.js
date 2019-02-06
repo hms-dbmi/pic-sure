@@ -1,4 +1,4 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!psamaLogin/login.hbs', 'text!psamaLogin/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
+define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
 		function(session, settings, parseQueryString, Auth0Lock, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
@@ -18,13 +18,13 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                             + (window.location.port ? ":"+window.location.port : "")
                             + (window.location.port ? ":"+window.location.port : "")
                             //+ (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "")
-                            + "/login";
-            if(typeof queryObject.code === "string"){
+                            + "/psama/login";
+            if(typeof queryObject.access_token === "string"){
                 $.ajax({
-                    url: settings.basePath + '/authentication',
+                    url: '/picsureauth/authentication',
                     type: 'post',
                     data: JSON.stringify({
-                        code : queryObject.code,
+                        access_token : queryObject.access_token,
                         redirectURI: redirectURI
                     }),
                     contentType: 'application/json',
@@ -32,7 +32,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
                         if (!data.acceptedTOS){
                             session.loadSessionVariables(function () {
-                                history.pushState({}, "", "tos");
+                                history.pushState({}, "", "/psama/tos");
                             });
                         } else {
                             if (sessionStorage.redirection_url) {
@@ -40,14 +40,14 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                             }
                             else {
                                 session.loadSessionVariables(function () {
-                                    history.pushState({}, "", "userManagement");
+                                    history.pushState({}, "", "/psama/userManagement");
                                 });
                             }
                         }
                     }.bind(this),
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
-                        history.pushState({}, "", "logout");
+                        history.pushState({}, "", "/psama/logout");
                     }
                 });
             }else{
@@ -59,6 +59,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                 {
                     dataType: "text",
                     success : function(scriptResponse){
+                        var scriptResponse = scriptResponse.replace("responseType : \"code\",", "responseType : \"token\"," );
                         $('#main-content').html(loginTemplate({
                             buttonScript : scriptResponse,
                             clientId : clientId,
@@ -78,7 +79,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'auth0-js',
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)(settings));
             }
             else {
-                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/logout";
+                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/psama/logout";
             }
         }
 	};

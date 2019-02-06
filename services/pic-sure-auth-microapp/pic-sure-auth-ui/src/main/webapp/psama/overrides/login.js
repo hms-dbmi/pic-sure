@@ -1,4 +1,4 @@
-define([], function(){
+define(["picSure/settings"], function(settings){
 	return {
 		/*
 		 * This allows you to build any authorization logic you wish.
@@ -10,7 +10,7 @@ define([], function(){
 		 */
 		authorization : undefined,
 
-        client_id : undefined,
+        client_id : settings.client_id,
 		/*
 		 * This allows you to modify the DOM rendered on the login screen.
 		 * 

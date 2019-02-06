@@ -82,7 +82,7 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 			var options = $("#application-dropdown", this.$el);
 			var anyOptionSelected = false;
 			_.each(options[0].options, function(option) {
-                if (option.value === privilege.application.uuid) {
+                if (option.value === privilege.application ? privilege.application.uuid : false) {
                     option.selected = true;
                     anyOptionSelected = true;
                 } else {

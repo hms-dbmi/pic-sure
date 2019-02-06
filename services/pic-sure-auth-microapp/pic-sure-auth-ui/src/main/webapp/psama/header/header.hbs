@@ -1,0 +1,23 @@
+<div class="row header-row">
+	<div class="logo-img col-md-3" style="font-size: x-large;
+                                              color: white;
+                                              top: 20px;">Management console</div>
+    <span class="col-md-2"></span>
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psama/roleManagement"
+       {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
+        Super Admin Console
+    </a>
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psama/userManagement"
+       {{#not_contains privileges 'SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Users
+    </a>
+    <!--
+    <a class="col-md-2 btn btn-default header-btn" id="cnxn-header" href="/psama/connectionManagement"
+       {{#not_contains privileges 'SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Connections
+    </a>
+    -->
+    <span class="col-md-1"></span>
+    <span class="col-md-1 header-btn">
+		<a class="btn btn-default help-btn">Help</a>
+	</span>
+	<a id="logout-btn" class="col-md-1 btn btn-default header-btn">Log Out</a>
+</div>
