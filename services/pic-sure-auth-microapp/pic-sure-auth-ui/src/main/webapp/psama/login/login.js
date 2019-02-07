@@ -104,7 +104,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                             {
                                 auth: {
                                     redirectUrl: redirectURI,
-                                    responseType: 'code',
+                                    responseType: 'token',
                                     params: {
                                         scope: 'openid email' // Learn about scopes: https://auth0.com/docs/scopes
                                     }
