@@ -59,7 +59,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 if (settings.customizeAuth0Login){
                     require.config({
                         paths: {
-                            'auth0-js': "/webjars/auth0.js/9.2.3/build/auth0"
+                            'auth0-js': "webjars/auth0.js/9.2.3/build/auth0"
                         },
                         shim: {
                             "auth0-js": {
@@ -88,7 +88,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 } else {
                     require.config({
                         paths: {
-                            'auth0Lock': "/webjars/auth0-lock/11.2.3/build/lock",
+                            'auth0Lock': "webjars/auth0-lock/11.2.3/build/lock",
                         },
                         shim: {
                             "auth0Lock": {
