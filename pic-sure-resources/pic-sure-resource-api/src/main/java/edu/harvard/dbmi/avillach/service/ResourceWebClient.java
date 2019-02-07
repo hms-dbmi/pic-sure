@@ -49,9 +49,6 @@ public class ResourceWebClient {
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS);
             }
-            if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-            }
             if (rsURL == null){
                 throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
@@ -74,9 +71,6 @@ public class ResourceWebClient {
         try {
             if (searchQueryRequest == null || searchQueryRequest.getQuery() == null){
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
-            }
-            if (searchQueryRequest.getTargetURL() == null){
-                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
                 throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
@@ -110,9 +104,6 @@ public class ResourceWebClient {
             if (dataQueryRequest == null){
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
-            if (dataQueryRequest.getTargetURL() == null){
-                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-            }
             if (dataQueryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
@@ -138,9 +129,6 @@ public class ResourceWebClient {
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
-            }
-            if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
             }
             if (rsURL == null){
                 throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
@@ -173,9 +161,6 @@ public class ResourceWebClient {
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
             }
-            if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-            }
             if (rsURL == null){
                 throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
             }
@@ -206,9 +191,6 @@ public class ResourceWebClient {
             }
             if (queryRequest.getResourceCredentials() == null){
                 throw new NotAuthorizedException("Missing credentials");
-            }
-            if (queryRequest.getTargetURL() == null){
-                throw new ApplicationException("Missing target URL");
             }
             if (rsURL == null){
                 throw new ApplicationException("Missing resource URL");

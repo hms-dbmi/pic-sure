@@ -48,7 +48,6 @@ public class PicsureInfoService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 		return resourceWebClient.info(resource.getResourceRSPath(), credentialsQueryRequest);
 	}
 

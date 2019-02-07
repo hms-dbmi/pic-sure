@@ -45,7 +45,6 @@ public class PicsureSearchService {
 		if (searchQueryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
-		searchQueryRequest.setTargetURL(resource.getTargetURL());
 
 		if (searchQueryRequest.getResourceCredentials() == null){
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());

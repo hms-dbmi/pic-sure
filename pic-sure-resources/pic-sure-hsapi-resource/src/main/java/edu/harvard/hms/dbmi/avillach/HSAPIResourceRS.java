@@ -114,8 +114,13 @@ public class HSAPIResourceRS implements IResourceRS
 	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Calling HSAPI Resource info()");
-		HSAPIresourceInfo.setName("HSAPI Resource : " + queryRequest.getTargetURL());
+		HSAPIresourceInfo.setName("HSAPI Resource : " + getTargetURL());
 		return HSAPIresourceInfo;
+	}
+
+	private String getTargetURL() {
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	@POST
@@ -160,7 +165,7 @@ public class HSAPIResourceRS implements IResourceRS
             throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
 
-        if (resultRequest.getTargetURL() == null){
+        if (getTargetURL() == null){
             throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
         }
 		Object queryObject = resultRequest.getQuery();
@@ -172,8 +177,8 @@ public class HSAPIResourceRS implements IResourceRS
 
 		HttpResponse response = retrieveGetResponse(path, headers);
 		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, resultRequest.getTargetURL());
+			logger.error(getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, getTargetURL());
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();
@@ -214,10 +219,10 @@ public class HSAPIResourceRS implements IResourceRS
 				throw new ProtocolException("Page can only be included at the end of entities or subentities");
 			}
 			String query = "/?page=" + node.get("page").asText();
-			return composeURL(request.getTargetURL(), path, query);
+			return composeURL(getTargetURL(), path, query);
 		}
 
-		return composeURL(request.getTargetURL(), path);
+		return composeURL(getTargetURL(), path);
 	}
 
 }

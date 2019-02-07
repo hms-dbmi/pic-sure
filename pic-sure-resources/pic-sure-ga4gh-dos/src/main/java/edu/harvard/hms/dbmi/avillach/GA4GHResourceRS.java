@@ -80,13 +80,17 @@ public class GA4GHResourceRS implements IResourceRS
 	 */
 	private void retrieveTargetUrl(QueryRequest queryRequest){
 	    try {
-            TARGET_URL = queryRequest.getTargetURL();
+            TARGET_URL = getTargetURL();
         } catch (Exception e) {
             throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
         }
         if (TARGET_URL == null)
             throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
 
+	}
+	
+	private String getTargetURL() {
+		return null;
 	}
 
 	@GET
