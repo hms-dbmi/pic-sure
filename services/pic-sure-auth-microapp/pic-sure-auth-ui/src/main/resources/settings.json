@@ -1,3 +1,4 @@
 {
-  "helpLink": ""
+  "helpLink": "",
+  "customizeAuth0Login": false
 }
