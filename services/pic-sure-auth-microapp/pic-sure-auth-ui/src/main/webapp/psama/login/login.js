@@ -73,6 +73,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                         {
                             dataType: "text",
                             success : function(scriptResponse){
+                                scriptResponse = scriptResponse.replace("responseType : \"code\"","responseType : \"token\"");
                                 $('#main-content').html(loginTemplate({
                                     buttonScript : scriptResponse,
                                     clientId : clientId,
