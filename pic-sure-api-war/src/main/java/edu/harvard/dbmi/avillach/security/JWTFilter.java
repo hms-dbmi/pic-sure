@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
@@ -52,6 +53,8 @@ public class JWTFilter implements ContainerRequestFilter {
 	private String clientSecret;
 	@Resource(mappedName = "java:global/user_id_claim")
 	private String userIdClaim;
+	@Resource(mappedName = "java:global/roles_claim")
+	private String rolesClaim;
 
 	@Inject
 	PicSureWarInit picSureWarInit;
@@ -75,7 +78,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			User authenticatedUser = null;
 
 			if (PicSureWarInit.VERIFY_METHOD_TOKEN_INTRO.equalsIgnoreCase(picSureWarInit.getVerify_user_method())) {
-				authenticatedUser = callTokenIntroEndpoint(token, userIdClaim);
+				authenticatedUser = callTokenIntroEndpoint(token, userIdClaim, rolesClaim);
 			} else {
 				authenticatedUser = callLocalAuthentication(requestContext, token);
 			}
@@ -152,7 +155,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	 * @return
 	 * @throws IOException
 	 */
-	private User callTokenIntroEndpoint(String token, String userIdClaim) {
+	private User callTokenIntroEndpoint(String token, String userIdClaim, String rolesClaim) {
 		logger.debug("TokenIntrospection - extractUserFromTokenIntrospection() starting...");
 
 		String token_introspection_url = picSureWarInit.getToken_introspection_url();
@@ -200,9 +203,15 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 
 			String sub = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
-
-			return userRepo.findOrCreate(new User().setSubject(sub).setUserId(sub));
-
+			ArrayNode jsonRoles = responseContent.get(rolesClaim) != null ? (ArrayNode)responseContent.get(rolesClaim) : null;
+			String userRoles = "";
+			if (jsonRoles != null) {
+				for (JsonNode role : jsonRoles) {
+					userRoles += (role.textValue() + " ");
+				}
+			}
+			logger.debug("Roles for user from introspection: " + userRoles);
+			return new User().setSubject(sub).setUserId(sub).setRoles(userRoles.trim());
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
 					+ " with exception msg: " + ex.getMessage());
