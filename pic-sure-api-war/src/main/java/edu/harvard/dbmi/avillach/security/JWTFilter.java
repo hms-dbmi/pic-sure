@@ -203,10 +203,12 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 
 			String sub = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
-			ArrayNode jsonRoles = responseContent.get(rolesClaim) != null ? (ArrayNode)responseContent.get(rolesClaim) : new ObjectMapper().createArrayNode();
+			ArrayNode jsonRoles = responseContent.get(rolesClaim) != null ? (ArrayNode)responseContent.get(rolesClaim) : null;
 			String userRoles = "";
-			for (JsonNode role: jsonRoles) {
-				userRoles += (role.textValue() + " ");
+			if (jsonRoles != null) {
+				for (JsonNode role : jsonRoles) {
+					userRoles += (role.textValue() + " ");
+				}
 			}
 			logger.debug("Roles for user from introspection: " + userRoles);
 			return new User().setSubject(sub).setUserId(sub).setRoles(userRoles.trim());
