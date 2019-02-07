@@ -201,8 +201,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			String sub = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
 
-			return userRepo.findOrCreate(new User().setSubject(sub).setUserId(sub));
-
+			User user = new User().setRoles(responseContent.get("roles").asText()).setSubject(sub).setUserId(sub);
+			return user;
+			
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
 					+ " with exception msg: " + ex.getMessage());
