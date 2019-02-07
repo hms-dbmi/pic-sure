@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.ws.rs.core.SecurityContext;
 import java.util.Set;
+import java.util.UUID;
 
 public class AuthorizationService {
     private Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
@@ -27,7 +28,7 @@ public class AuthorizationService {
      * @see edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege
      * @see AccessRule
      */
-    public boolean isAuthorized(Object requestBody, SecurityContext securityContext){
+    public boolean isAuthorized(Object requestBody, UUID userUuid){
 
         //in some cases, we don't do checking
         if (requestBody == null)
@@ -44,7 +45,7 @@ public class AuthorizationService {
         // start to process the jsonpath checking
         boolean result = true;
 
-        User user = userRepo.getUniqueResultByColumn("subject",securityContext.getUserPrincipal().getName());
+        User user = userRepo.getById(userUuid);
 
         Set<AccessRule> accessRules = user.getTotalAccessRule();
         if (accessRules == null || accessRules.isEmpty())

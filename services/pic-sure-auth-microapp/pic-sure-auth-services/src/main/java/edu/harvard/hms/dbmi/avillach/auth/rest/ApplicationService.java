@@ -70,18 +70,21 @@ public class ApplicationService extends BaseEntityService<Application> {
 	@Path("/")
 	public Response addApplication(List<Application> applications){
 		checkAssociation(applications);
-		for(Application application : applications) {
+		List<Application> appEntities = addOrUpdate(applications, true, applicationRepo);
+		for(Application application : appEntities) {
 			Map<String, Object> claims = new HashMap<>(Map.of("user_id","PSAMA_APPLICATION|" + application.getName().toString()));
 			try{
 				String token = JWTUtil.createJwtToken(
-					JAXRSConfiguration.clientSecret, null, null,
-					claims,
-					"PSAMA_APPLICATION|" + application.getName().toString(), -1);
-			application.setToken(token);} catch(Exception e) {
+						JAXRSConfiguration.clientSecret, null, null,
+						claims,
+						"PSAMA_APPLICATION|" + application.getUuid().toString(), -1);
+				application.setToken(token);
+			} catch(Exception e) {
 				logger.error("", e);
 			}
 		}
-		return addEntity(applications, applicationRepo);
+
+		return updateEntity(appEntities, applicationRepo);
 	}
 
 	@PUT

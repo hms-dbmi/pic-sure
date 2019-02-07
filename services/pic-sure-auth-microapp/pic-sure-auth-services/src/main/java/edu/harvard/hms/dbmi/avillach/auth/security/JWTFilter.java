@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
@@ -26,6 +27,7 @@ import javax.ws.rs.ext.Provider;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.UUID;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
@@ -37,9 +39,12 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
 	ResourceInfo resourceInfo;
-	
+
 	@Inject
 	UserRepository userRepo;
+	
+	@Inject
+	ApplicationRepository applicationRepo;
 
 	@Inject
 	TermsOfServiceService tosService;
@@ -74,6 +79,8 @@ public class JWTFilter implements ContainerRequestFilter {
 						logger.error(userId + " attempted to perform request " + uriInfo.getPath() + " token may be compromised.");
 						throw new NotAuthorizedException("User is deactivated");
 				}
+				requestContext.setSecurityContext(new AuthSecurityContext(applicationRepo.getById(UUID.fromString(userId.split("\\|")[1])),
+	                    uriInfo.getRequestUri().getScheme()));
 			} else {
 				/**
 				 * This TOSService code will hit to the database to retrieve a user once again

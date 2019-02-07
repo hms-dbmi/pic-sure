@@ -68,7 +68,7 @@ public class TokenService {
 	public Response inspectToken(Map<String, Object> inputMap,
 			@QueryParam(value = "applicationId") String applicationId){
 		logger.info("TokenInspect starting...");
-		TokenInspection tokenInspection = _inspectToken(inputMap, applicationId);
+		TokenInspection tokenInspection = _inspectToken(inputMap);
 		if (tokenInspection.message != null)
 			tokenInspection.responseMap.put("message", tokenInspection.message);
 
@@ -81,16 +81,11 @@ public class TokenService {
 	 * @param applicationId
 	 * @return
 	 */
-	private TokenInspection _inspectToken(Map<String, Object> inputMap, String applicationId){
+	private TokenInspection _inspectToken(Map<String, Object> inputMap){
 		logger.debug("_inspectToken, the incoming token map is: " + inputMap.entrySet()
 		.stream()
 		.map(entry -> entry.getKey() + " - " + entry.getValue())
-		.collect(Collectors.joining(", ")) +" , application id is "
-				+ applicationId);
-
-		Application application = null;
-		if (applicationId != null)
-			application = applicationRepo.getById(UUID.fromString(applicationId));
+		.collect(Collectors.joining(", ")));
 
 		TokenInspection tokenInspection = new TokenInspection();
 
@@ -112,6 +107,8 @@ public class TokenService {
 			return tokenInspection;
 		}
 
+		Application application = (Application) securityContext.getUserPrincipal();
+
 		String subject = jws.getBody().getSubject();
 
 		// get the user based on subject field in token
@@ -130,7 +127,7 @@ public class TokenService {
 		Set<String> privilegeNameSet = null;
 		if (user != null
 				&& user.getRoles() != null
-				&& authorizationService.isAuthorized(inputMap.get("request"), securityContext)) {
+				&& authorizationService.isAuthorized(inputMap.get("request"), user.getUuid())) {
 			tokenInspection.responseMap.put("active", true);
 			ArrayList<String> roles = new ArrayList<String>();
 			for(Privilege p : user.getTotalPrivilege()) {

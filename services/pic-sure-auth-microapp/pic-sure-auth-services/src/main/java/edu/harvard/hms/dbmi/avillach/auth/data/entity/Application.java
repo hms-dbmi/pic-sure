@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
+
+import java.security.Principal;
 import java.util.Set;
 
 /**
@@ -11,7 +13,7 @@ import java.util.Set;
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "application")
-public class Application extends BaseEntity {
+public class Application extends BaseEntity implements Principal {
 
     @Column(unique = true)
     private String name;
