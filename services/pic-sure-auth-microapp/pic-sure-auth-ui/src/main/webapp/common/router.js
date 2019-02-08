@@ -7,14 +7,14 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
                  notAuthorizedTemplate, HBS){
         var Router = Backbone.Router.extend({
         routes: {
-            "admin/userManagement(/)" : "displayUserManagement",
-            "admin/connectionManagement(/)" : "displayConnectionManagement",
-            "admin/tos(/)" : "displayTOS",
-            "admin/login(/)" : "login",
-            "admin/logout(/)" : "logout",
-            "admin/roleManagement(/)" : "displayRoleManagement",
-            "admin/privilegeManagement(/)" : "displayPrivilegeManagement",
-            "admin/applicationManagement(/)" : "displayApplicationManagement",
+            "userManagement(/)" : "displayUserManagement",
+            "connectionManagement(/)" : "displayConnectionManagement",
+            "tos(/)" : "displayTOS",
+            "login(/)" : "login",
+            "logout(/)" : "logout",
+            "roleManagement(/)" : "displayRoleManagement",
+            "privilegeManagement(/)" : "displayPrivilegeManagement",
+            "applicationManagement(/)" : "displayApplicationManagement",
             "*path" : "displayUserManagement"
         },
         initialize: function(){
@@ -30,7 +30,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
                 return pushState.apply(history, arguments);
             }.bind({router:this});
         },
-       
+
         execute: function(callback, args, name){
             if( ! session.isValid(login.handleNotAuthorizedResponse)){
                 this.login();
@@ -72,7 +72,7 @@ define(["common/searchParser", "backbone", "common/session", "psamaLogin/login",
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-            
+
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);

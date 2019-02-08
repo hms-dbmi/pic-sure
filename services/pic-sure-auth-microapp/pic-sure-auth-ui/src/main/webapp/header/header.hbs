@@ -3,11 +3,11 @@
                                               color: white;
                                               top: 20px;">Management console</div>
     <span class="col-md-2"></span>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/admin/roleManagement"
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="roleManagement"
        {{#not_contains privileges 'ROLE_SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
         Super Admin Console
     </a>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/admin/userManagement"
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="userManagement"
        {{#not_contains privileges 'ROLE_SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Users
     </a>
     <!--
