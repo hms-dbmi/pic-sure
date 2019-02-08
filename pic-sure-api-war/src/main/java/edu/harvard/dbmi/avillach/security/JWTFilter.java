@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
@@ -11,6 +12,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+
+import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHost;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -31,7 +34,11 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.ext.Provider;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.Principal;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -47,7 +54,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
 	ResourceInfo resourceInfo;
-	
+
 	@Resource(mappedName = "java:global/client_secret")
 	private String clientSecret;
 	@Resource(mappedName = "java:global/user_id_claim")
@@ -55,7 +62,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Inject
 	PicSureWarInit picSureWarInit;
-	
+
 	@Inject
 	UserRepository userRepo;
 
@@ -75,7 +82,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			User authenticatedUser = null;
 
 			if (PicSureWarInit.VERIFY_METHOD_TOKEN_INTRO.equalsIgnoreCase(picSureWarInit.getVerify_user_method())) {
-				authenticatedUser = callTokenIntroEndpoint(token, userIdClaim);
+				authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
 			} else {
 				authenticatedUser = callLocalAuthentication(requestContext, token);
 			}
@@ -96,7 +103,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			checkRoles(authenticatedUser, resourceInfo
 					.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-					: new String[]{});
+							: new String[]{});
 
 			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
@@ -105,7 +112,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
-//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
+			//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
 		} catch (Exception e){
@@ -152,7 +159,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	 * @return
 	 * @throws IOException
 	 */
-	private User callTokenIntroEndpoint(String token, String userIdClaim) {
+	private User callTokenIntroEndpoint(ContainerRequestContext requestContext, String token, String userIdClaim) {
 		logger.debug("TokenIntrospection - extractUserFromTokenIntrospection() starting...");
 
 		String token_introspection_url = picSureWarInit.getToken_introspection_url();
@@ -171,8 +178,21 @@ public class JWTFilter implements ContainerRequestFilter {
 		HttpPost post = new HttpPost(token_introspection_url);
 		applyProxySettings(post);
 
-		Map<String, String> tokenMap = new HashMap<>();
+		Map<String, Object> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
+		InputStream entityStream = requestContext.getEntityStream();
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		try {
+			IOUtils.copy(entityStream, buffer);
+			requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
+			HashMap<String, Object> requestMap = new HashMap<String, Object>();
+			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
+			requestMap.put("", new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Map.class));
+			tokenMap.put("query", requestMap);
+		} catch (IOException e1) {
+			logger.error("IOException caught trying to build requestMap for auditing.", e1);
+			throw new NotAuthorizedException("The request could not be properly audited. If you recieve this error multiple times, please contact an administrator.");
+		}
 		StringEntity entity = null;
 		try {
 			entity = new StringEntity(json.writeValueAsString(tokenMap));
@@ -203,7 +223,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			User user = new User().setRoles(responseContent.get("roles").asText()).setSubject(sub).setUserId(sub);
 			return user;
-			
+
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
 					+ " with exception msg: " + ex.getMessage());
