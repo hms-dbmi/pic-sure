@@ -127,7 +127,7 @@ public class TokenService {
 		Set<String> privilegeNameSet = null;
 		if (user != null
 				&& user.getRoles() != null
-				&& authorizationService.isAuthorized(inputMap.get("request"), user.getUuid())) {
+				&& authorizationService.isAuthorized(application.getName(), inputMap.get("request"), user.getUuid())) {
 			tokenInspection.responseMap.put("active", true);
 			ArrayList<String> roles = new ArrayList<String>();
 			for(Privilege p : user.getTotalPrivilege()) {
