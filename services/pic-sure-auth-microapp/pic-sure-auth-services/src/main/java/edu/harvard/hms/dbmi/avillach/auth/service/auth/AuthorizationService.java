@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
@@ -51,14 +53,25 @@ public class AuthorizationService {
         if (accessRules == null || accessRules.isEmpty())
             return true;
 
+        AccessRule failedRule = null;
         for (AccessRule accessRule : accessRules) {
 
             if (!checkAccessRule(requestBody, accessRule)){
                 result = false;
+                failedRule = accessRule;
                 break;
             }
         }
 
+        try {
+			String requestJson = new ObjectMapper().writeValueAsString(requestBody);
+			logger.info("ACCESS_LOG |" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+					"| has been " + (result?"granted":"denied") + " access to execute query |" + requestJson + "|" + (result?"":failedRule.getName()));
+		} catch (JsonProcessingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        
         return result;
     }
 
