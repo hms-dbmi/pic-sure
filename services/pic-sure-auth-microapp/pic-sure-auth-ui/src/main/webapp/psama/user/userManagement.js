@@ -187,7 +187,10 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 						connections:
 							_.map(connections, function(connection){
 								var localCon = connection;
-								connection.requiredFields = JSON.parse(connection.requiredFields);
+								if(typeof connection.requiredFields === "string"){
+									// TODO : this should not be necessary
+									connection.requiredFields = JSON.parse(connection.requiredFields);									
+								}
 								return _.extend(connection, {
 									users: users.filter(
 											function(user){
