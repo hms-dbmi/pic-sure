@@ -34,14 +34,7 @@ public class MailService {
         try {
             Message message = new MimeMessage(JAXRSConfiguration.mailSession);
             String email = user.getEmail();
-            if(email == null) {
-            		HashMap<String,String> metadata = new HashMap<String, String>((java.util.Map<? extends String, ? extends String>) new ObjectMapper().readValue(user.getGeneralMetadata(), Map.class));
-            		List<String> emailKeys = metadata.keySet().stream().filter((key)->{return key.toLowerCase().contains("email");}).collect(Collectors.toList());
-            		if(emailKeys.size()>0) {
-            			email = metadata.get(emailKeys.get(0));
-            		}
-            }
-			if (email != null){
+            if (email != null){
                 message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
                 //TODO Is the subject configurable as well?  What should it say?
                 message.setSubject("Your Access To " + systemName);

@@ -9,8 +9,12 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+
+import org.hibernate.mapping.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -20,10 +24,14 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
+
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
 
@@ -73,6 +81,22 @@ public class UserService extends BaseEntityService<User> {
     @Path("/")
     public Response addUser(List<User> users){
         checkAssociation(users);
+        for(User user : users) {
+            if(user.getEmail() == null) {
+	        		HashMap<String, String> metadata;
+				try {
+					metadata = new HashMap<String, String>((java.util.Map<? extends String, ? extends String>) new ObjectMapper().readValue(user.getGeneralMetadata(), Map.class));
+					List<String> emailKeys = metadata.keySet().stream().filter((key)->{return key.toLowerCase().contains("email");}).collect(Collectors.toList());
+		        		if(emailKeys.size()>0) {
+		        			user.setEmail(metadata.get(emailKeys.get(0)));
+		        		}
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+	        }
+        }
+	
         return addEntity(users, userRepo);
     }
 
