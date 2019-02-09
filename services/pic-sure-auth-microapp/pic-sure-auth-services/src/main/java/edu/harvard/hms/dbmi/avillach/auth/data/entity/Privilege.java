@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "privilege")
@@ -71,5 +72,9 @@ public class Privilege extends BaseEntity {
                 .setUuid(application.getUuid().toString());
 
         return null;
+    }
+    
+    public String toString() {
+    		return uuid.toString() + "||" + name + "||" + description + "||{" + application.toString() + "}||({"+ accessRules.stream().map(AccessRule::toString).collect(Collectors.joining("},{")) + "})";
     }
 }

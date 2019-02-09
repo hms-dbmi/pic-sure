@@ -7,6 +7,7 @@ import javax.persistence.*;
 
 import java.security.Principal;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The purpose of this class is to provide an application level privileges management
@@ -109,5 +110,9 @@ public class Application extends BaseEntity implements Principal {
             this.uuid = uuid;
             return this;
         }
+    }
+    
+    public String toString() {
+    		return uuid.toString() + "||" + name + "||" + description + "||" + enable + "||" + privileges.stream().map(Privilege::toString).collect(Collectors.joining(","));
     }
 }

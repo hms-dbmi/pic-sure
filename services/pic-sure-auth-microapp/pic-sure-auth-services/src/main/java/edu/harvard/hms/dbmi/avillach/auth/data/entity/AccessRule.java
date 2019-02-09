@@ -91,4 +91,8 @@ public class AccessRule extends BaseEntity {
     public void setDescription(String description) {
         this.description = description;
     }
+
+    public String toString() {
+    		return uuid.toString() + "||" + name + "||" + description + "||" + rule + "||" + type + "||" + value;
+    }
 }

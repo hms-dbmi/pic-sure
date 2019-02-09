@@ -37,8 +37,8 @@ public class AuthorizationService {
 		
 		//in some cases, we don't do checking
 		if (requestBody == null) {
-			logger.info("ACCESS_LOG |" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					"| has been granted access to application |" + applicationName + "|NO REQUEST BODY FORWARDED BY APPLICATION");        
+			logger.info("ACCESS_LOG||" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+					"||has been granted access to application||" + applicationName + "||NO REQUEST BODY FORWARDED BY APPLICATION");        
 			return true;
 		}
 

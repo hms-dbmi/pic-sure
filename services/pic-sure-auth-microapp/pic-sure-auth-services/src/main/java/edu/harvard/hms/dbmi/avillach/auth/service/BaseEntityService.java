@@ -4,6 +4,8 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import edu.harvard.dbmi.avillach.data.repository.BaseRepository;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,11 +31,14 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     protected final Class<T> type;
 
+    private String auditLogName;
+    
     @Context
     SecurityContext securityContext;
 
     protected BaseEntityService(Class<T> type){
         this.type = type;
+        auditLogName = type.getSimpleName().equals(User.class.getSimpleName()) ? "ADMIN_LOG" : "SUPER_ADMIN_LOG";
         logger = LoggerFactory.getLogger(type);
     }
 
@@ -68,15 +73,19 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response addEntity(List<T> entities, BaseRepository baseRepository){
-        if (entities == null || entities.isEmpty())
+    		String username = JAXRSConfiguration.getPrincipalName(securityContext);
+		if (entities == null || entities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be added.");
 
-        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to add a list of "
+        logger.info("User: " + username + " is trying to add a list of "
                 + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, true, baseRepository);
-
+        for(T entity : addedEntities) {
+			logger.info(auditLogName + "||" + username + "||created||"+ entity.toString() + "||");
+		}
+   
         if (addedEntities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     "(s) has been added.");
@@ -97,7 +106,8 @@ public abstract class BaseEntityService<T extends BaseEntity> {
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be updated.");
 
-        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to update a list of "
+        String username = JAXRSConfiguration.getPrincipalName(securityContext);
+		logger.info("User: " + username + " is trying to update a list of "
                 + type.getSimpleName());
 
         List<T> addedEntities = addOrUpdate(entities, false, baseRepository);
@@ -106,6 +116,9 @@ public abstract class BaseEntityService<T extends BaseEntity> {
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     "(s) has been updated.");
 
+        for(T entity : addedEntities) {
+			logger.info(auditLogName + "||" + username + "||updated||"+ entity.toString() + "||");
+		}
 
         if (addedEntities.size() < entities.size())
             return PICSUREResponse.success(Integer.toString(entities.size()-addedEntities.size())
@@ -232,7 +245,8 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     public Response removeEntityById(String id, BaseRepository baseRepository) {
 
-        logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext) + " is trying to REMOVE an entity: "
+        String username = JAXRSConfiguration.getPrincipalName(securityContext);
+		logger.info("User: " + username + " is trying to REMOVE an entity: "
                 + type.getSimpleName() + ", by uuid: " + id);
 
         UUID uuid = UUID.fromString(id);
@@ -243,7 +257,9 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                     " ID");
 
         baseRepository.remove(t);
+		logger.info(auditLogName + "||" + username + "||updated||"+ t.toString() + "||");
 
+        
         t = (T) baseRepository.getById(uuid);
         if (t != null){
             return PICSUREResponse.applicationError("Cannot delete the " + type.getSimpleName().toLowerCase()+

@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "role")
@@ -43,6 +44,10 @@ public class Role extends BaseEntity {
 
     public void setPrivileges(Set<Privilege> privileges) {
         this.privileges = privileges;
+    }
+    
+    public String toString() {
+    		return uuid.toString() + "||" + name + "||" + description + "||(" + privileges.stream().map(Privilege::toString).collect(Collectors.joining("},{")) + ")";
     }
 
 }
