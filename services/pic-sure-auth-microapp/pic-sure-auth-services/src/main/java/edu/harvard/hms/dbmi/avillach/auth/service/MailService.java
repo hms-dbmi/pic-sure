@@ -39,7 +39,6 @@ public class MailService {
             		List<String> emailKeys = metadata.keySet().stream().filter((key)->{return key.toLowerCase().contains("email");}).collect(Collectors.toList());
             		if(emailKeys.size()>0) {
             			email = metadata.get(emailKeys.get(0));
-            			user.setEmail(email);
             		}
             }
 			if (email != null){
@@ -55,7 +54,7 @@ public class MailService {
         } catch (MessagingException e){
             //TODO: Freak out
         } catch (Exception e){
-            logger.error(e.getMessage());
+            logger.error(e.getMessage(), e);
         }
     }
 
