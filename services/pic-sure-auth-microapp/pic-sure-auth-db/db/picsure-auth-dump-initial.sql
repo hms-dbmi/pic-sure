@@ -164,7 +164,7 @@ CREATE TABLE `access_rule` (
   `type` int(11) DEFAULT NULL,
   `value` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE TABLE `accessRule_privilege` (
   `privilege_id` binary(16) NOT NULL,
@@ -173,7 +173,7 @@ CREATE TABLE `accessRule_privilege` (
   KEY `FK89rf30kbf9d246jty2dd7qk99` (`accessRule_id`),
   CONSTRAINT `FK7x47w81gpua380qd7lp9x94l1` FOREIGN KEY (`privilege_id`) REFERENCES `privilege` (`uuid`),
   CONSTRAINT `FK89rf30kbf9d246jty2dd7qk99` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
