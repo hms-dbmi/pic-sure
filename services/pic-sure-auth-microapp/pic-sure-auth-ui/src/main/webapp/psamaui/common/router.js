@@ -7,15 +7,15 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                  notAuthorizedTemplate, HBS, accessRuleManagement){
         var Router = Backbone.Router.extend({
         routes: {
-            "psama/userManagement(/)" : "displayUserManagement",
-            "psama/connectionManagement(/)" : "displayConnectionManagement",
-            "psama/tos(/)" : "displayTOS",
-            "psama/login(/)" : "login",
-            "psama/logout(/)" : "logout",
-            "psama/roleManagement(/)" : "displayRoleManagement",
-            "psama/privilegeManagement(/)" : "displayPrivilegeManagement",
-            "psama/applicationManagement(/)" : "displayApplicationManagement",
-            "psama/accessRuleManagement(/)" : "displayAccessRuleManagement",
+            "psamaui/userManagement(/)" : "displayUserManagement",
+            "psamaui/connectionManagement(/)" : "displayConnectionManagement",
+            "psamaui/tos(/)" : "displayTOS",
+            "psamaui/login(/)" : "login",
+            "psamaui/logout(/)" : "logout",
+            "psamaui/roleManagement(/)" : "displayRoleManagement",
+            "psamaui/privilegeManagement(/)" : "displayPrivilegeManagement",
+            "psamaui/applicationManagement(/)" : "displayApplicationManagement",
+            "psamaui/accessRuleManagement(/)" : "displayAccessRuleManagement",
             "*path" : "displayUserManagement"
         },
         initialize: function(){

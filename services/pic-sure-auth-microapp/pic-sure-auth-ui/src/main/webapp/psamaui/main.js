@@ -1,5 +1,5 @@
 require.config({
-	baseUrl: "/psama/",
+	baseUrl: "/psamaui/",
     urlArgs: "version=1.0.0",
 	paths: {
 		jquery: 'webjars/jquery/3.3.1/jquery.min',

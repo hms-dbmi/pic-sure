@@ -3,15 +3,15 @@
                                               color: white;
                                               top: 20px;">Management console</div>
     <span class="col-md-2"></span>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psama/roleManagement"
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psamaui/roleManagement"
        {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
         Super Admin Console
     </a>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psama/userManagement"
+    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-header" href="/psamaui/userManagement"
        {{#not_contains privileges 'SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Users
     </a>
     <!--
-    <a class="col-md-2 btn btn-default header-btn" id="cnxn-header" href="/psama/connectionManagement"
+    <a class="col-md-2 btn btn-default header-btn" id="cnxn-header" href="/psamaui/connectionManagement"
        {{#not_contains privileges 'SYSTEM'}}style="visibility: hidden"{{/not_contains}}>Connections
     </a>
     -->

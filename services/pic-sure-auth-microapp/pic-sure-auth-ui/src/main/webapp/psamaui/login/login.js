@@ -18,7 +18,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                             + (window.location.port ? ":"+window.location.port : "")
                             + (window.location.port ? ":"+window.location.port : "")
                             //+ (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "")
-                            + "/psama/login";
+                            + "/psamaui/login";
             if(typeof queryObject.access_token === "string"){
                 $.ajax({
                     url: '/picsureauth/authentication',
@@ -32,7 +32,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
                         if (!data.acceptedTOS){
                             session.loadSessionVariables(function () {
-                                history.pushState({}, "", "/psama/tos");
+                                history.pushState({}, "", "/psamaui/tos");
                             });
                         } else {
                             if (sessionStorage.redirection_url) {
@@ -40,14 +40,14 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                             }
                             else {
                                 session.loadSessionVariables(function () {
-                                    history.pushState({}, "", "/psama/userManagement");
+                                    history.pushState({}, "", "/psamaui/userManagement");
                                 });
                             }
                         }
                     }.bind(this),
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
-                        history.pushState({}, "", "/psama/logout");
+                        history.pushState({}, "", "/psamaui/logout");
                     }
                 });
             }else{
@@ -125,10 +125,9 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)(settings));
             }
             else {
-                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/psama/logout";
+                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/psamaui/logout";
             }
         }
 	};
 	return login;
 });
-
