@@ -57,7 +57,7 @@ public class Connection extends BaseEntity implements Serializable {
     }
     
     public String toString() {
-    		return uuid.toString() + "||" + id + "||" + subPrefix + "||" + label + "||" + requiredFields;
+    		return uuid.toString() + " ___ " + id + " ___ " + subPrefix + " ___ " + label + " ___ " + requiredFields;
     }
 }
 

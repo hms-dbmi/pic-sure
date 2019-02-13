@@ -93,6 +93,6 @@ public class AccessRule extends BaseEntity {
     }
 
     public String toString() {
-    		return uuid.toString() + "||" + name + "||" + description + "||" + rule + "||" + type + "||" + value;
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + rule + " ___ " + type + " ___ " + value;
     }
 }

@@ -74,7 +74,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
     public Response addEntity(List<T> entities, BaseRepository baseRepository){
     		String username = JAXRSConfiguration.getPrincipalName(securityContext);
-		if (entities == null || entities.isEmpty())
+		if (entities == null  ||  entities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be added.");
 
@@ -83,7 +83,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
 
         List<T> addedEntities = addOrUpdate(entities, true, baseRepository);
         for(T entity : addedEntities) {
-			logger.info(auditLogName + "||" + username + "||created||"+ entity.toString() + "||");
+			logger.info(auditLogName + " ___ " + username + " ___ created ___ "+ entity.toString() + " ___ ");
 		}
    
         if (addedEntities.isEmpty())
@@ -102,7 +102,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
     }
 
     public Response updateEntity(List<T> entities, BaseRepository baseRepository){
-        if (entities == null || entities.isEmpty())
+        if (entities == null  ||  entities.isEmpty())
             return PICSUREResponse.protocolError("No " + type.getSimpleName().toLowerCase() +
                     " to be updated.");
 
@@ -117,7 +117,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                     "(s) has been updated.");
 
         for(T entity : addedEntities) {
-			logger.info(auditLogName + "||" + username + "||updated||"+ entity.toString() + "||");
+			logger.info(auditLogName + " ___ " + username + " ___ updated ___ "+ entity.toString() + " ___ ");
 		}
 
         if (addedEntities.size() < entities.size())
@@ -147,7 +147,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                 }
             }
 
-            if (!dbContacted || t.getUuid() == null || baseRepository.getById(t.getUuid()) == null){
+            if (!dbContacted  ||  t.getUuid() == null  ||  baseRepository.getById(t.getUuid()) == null){
                 continue;
             }
 
@@ -173,7 +173,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                 fieldName = fieldName.substring(0,1).toUpperCase() + fieldName.substring(1);
                 String getter = "get" + fieldName;
                 Class<?> type = field.getType();
-                if (type == boolean.class || type == null) {
+                if (type == boolean.class  ||  type == null) {
                     getter = "is" + fieldName;
                 }
 
@@ -190,7 +190,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                  */
                 boolean inputCollectionMatchedDBCollection = true;
                 String simpleName = type.getSimpleName();
-                if (simpleName.contains("Set") || simpleName.contains("List")) {
+                if (simpleName.contains("Set")  ||  simpleName.contains("List")) {
 
                     if (retrievedValue != null){
                         Collection<BaseEntity> retrievedCollection = (Collection<BaseEntity>)retrievedValue;
@@ -257,7 +257,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                     " ID");
 
         baseRepository.remove(t);
-		logger.info(auditLogName + "||" + username + "||updated||"+ t.toString() + "||");
+		logger.info(auditLogName + " ___ " + username + " ___ updated ___ "+ t.toString() + " ___ ");
 
         
         t = (T) baseRepository.getById(uuid);

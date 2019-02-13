@@ -81,7 +81,7 @@ public class AuthenticationService {
         String token = JWTUtil.createJwtToken(
                 JAXRSConfiguration.clientSecret, null, null,
                 generateClaims(userInfo, new String[]{"user_id", "email","name" }),
-                userId, -1);
+                userId, 1000 * 60 * 60 * 24);
 
         boolean acceptedTOS = tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject());
 

@@ -37,8 +37,8 @@ public class AuthorizationService {
 		
 		//in some cases, we don't do checking
 		if (requestBody == null) {
-			logger.info("ACCESS_LOG||" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					"||has been granted access to application||" + applicationName + "||NO REQUEST BODY FORWARDED BY APPLICATION");        
+			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+					" ___ has been granted access to application ___ " + applicationName + " ___ NO REQUEST BODY FORWARDED BY APPLICATION");        
 			return true;
 		}
 
@@ -59,15 +59,15 @@ public class AuthorizationService {
 		} catch (JsonProcessingException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
-			logger.info("ACCESS_LOG |" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					"| has been denied access to execute query |" + requestBody + "| in application |" + applicationName + "|UNABLE TO PARSE REQUEST");
+			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+					" ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName + " ___ UNABLE TO PARSE REQUEST");
 			return false;
 		}
 
 		Set<AccessRule> accessRules = user.getTotalAccessRule();
 		if (accessRules == null || accessRules.isEmpty()) {
-			logger.info("ACCESS_LOG |" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					"| has been granted access to execute query |" + requestJson + "| in application |" + applicationName + "|NO ACCESS RULES EVALUATED");
+			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+					" ___ has been granted access to execute query ___ " + requestJson + " ___ in application ___ " + applicationName + " ___ NO ACCESS RULES EVALUATED");
 			return true;        	
 		}
 
@@ -81,8 +81,9 @@ public class AuthorizationService {
 			}
 		}
 
-		logger.info("ACCESS_LOG |" + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-				"| has been " + (result?"granted":"denied") + " access to execute query |" + requestJson + "| in application |" + applicationName + "|" + (result?"":failedRule.getName()));
+		logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
+				" ___ has been " + (result?"granted":"denied") + " access to execute query ___ " + requestJson + 
+				" ___ in application ___ " + applicationName + " ___ " + (result?"":failedRule.getName()));
 
 		return result;
 	}

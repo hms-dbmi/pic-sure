@@ -75,6 +75,6 @@ public class Privilege extends BaseEntity {
     }
     
     public String toString() {
-    		return uuid.toString() + "||" + name + "||" + description + "||{" + application.toString() + "}||({"+ accessRules.stream().map(AccessRule::toString).collect(Collectors.joining("},{")) + "})";
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ {" + application.toString() + "} ___ ({"+ accessRules.stream().map(AccessRule::toString).collect(Collectors.joining("},{")) + "})";
     }
 }
