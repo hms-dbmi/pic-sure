@@ -196,7 +196,7 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                         Collection<BaseEntity> retrievedCollection = (Collection<BaseEntity>)retrievedValue;
                         Collection<BaseEntity> detachedCollection = (Collection<BaseEntity>)value;
 
-                        if (retrievedCollection.size() == detachedCollection.size()){
+                        if (retrievedCollection != null && detachedCollection != null){
                             for (BaseEntity baseEntity : retrievedCollection) {
                                 if (!detachedCollection.contains(baseEntity)) {
                                     inputCollectionMatchedDBCollection = false;
