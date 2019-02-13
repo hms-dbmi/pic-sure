@@ -187,9 +187,11 @@ public class JWTFilter implements ContainerRequestFilter {
 			requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
 			HashMap<String, Object> requestMap = new HashMap<String, Object>();
 			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
-			Map query = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Map.class);
-			query.remove("resourceCredentials");
-			requestMap.put("query", query);
+			if(buffer.size()>0) {
+				Map query = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Map.class);
+				query.remove("resourceCredentials");
+				requestMap.put("query", query);
+			}
 			tokenMap.put("request", requestMap);
 		} catch (IOException e1) {
 			logger.error("IOException caught trying to build requestMap for auditing.", e1);
