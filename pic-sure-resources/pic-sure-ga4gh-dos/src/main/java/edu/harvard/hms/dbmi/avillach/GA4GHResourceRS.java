@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
 @Consumes("application/json")
 public class GA4GHResourceRS implements IResourceRS
 {
-	private String TARGET_URL = System.getenv("TARGET_URL");
+	private String TARGET_URL = System.getenv("GA4GH_TARGET_URL");
 	private String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
 
     private Header[] hdrs = {};
@@ -79,14 +79,8 @@ public class GA4GHResourceRS implements IResourceRS
 	 * @param queryRequest
 	 */
 	private void retrieveTargetUrl(QueryRequest queryRequest){
-	    try {
-            TARGET_URL = queryRequest.getTargetURL();
-        } catch (Exception e) {
-            throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
-        }
         if (TARGET_URL == null)
-            throw new ApplicationException("This resource needs a target_url to be pre-configured, please contact admin.");
-
+            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 	}
 
 	@GET

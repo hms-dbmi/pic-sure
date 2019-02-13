@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.security;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import edu.harvard.dbmi.avillach.JAXRSConfiguration;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.UserRepository;
@@ -53,8 +54,6 @@ public class JWTFilter implements ContainerRequestFilter {
 	private String clientSecret;
 	@Resource(mappedName = "java:global/user_id_claim")
 	private String userIdClaim;
-	@Resource(mappedName = "java:global/roles_claim")
-	private String rolesClaim;
 
 	@Inject
 	PicSureWarInit picSureWarInit;
@@ -78,7 +77,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			User authenticatedUser = null;
 
 			if (PicSureWarInit.VERIFY_METHOD_TOKEN_INTRO.equalsIgnoreCase(picSureWarInit.getVerify_user_method())) {
-				authenticatedUser = callTokenIntroEndpoint(token, userIdClaim, rolesClaim);
+				authenticatedUser = callTokenIntroEndpoint(token, userIdClaim, JAXRSConfiguration.rolesClaim);
 			} else {
 				authenticatedUser = callLocalAuthentication(requestContext, token);
 			}

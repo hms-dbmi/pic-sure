@@ -38,9 +38,6 @@ public class PicsureInfoService {
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
-		if (resource.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
 		if (credentialsQueryRequest == null){
 			credentialsQueryRequest = new QueryRequest();
 		}
@@ -48,7 +45,6 @@ public class PicsureInfoService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 		return resourceWebClient.info(resource.getResourceRSPath(), credentialsQueryRequest);
 	}
 

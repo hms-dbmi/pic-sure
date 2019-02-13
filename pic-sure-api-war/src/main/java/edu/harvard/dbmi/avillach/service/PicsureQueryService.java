@@ -54,9 +54,6 @@ public class PicsureQueryService {
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
 		}
-		if (resource.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
@@ -65,7 +62,6 @@ public class PicsureQueryService {
 		}
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
-		dataQueryRequest.setTargetURL(resource.getTargetURL());
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
 		//TODO Deal with possible errors
         //Save query entity
@@ -112,9 +108,6 @@ public class PicsureQueryService {
 		if (resource == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
-		if (resource.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
@@ -122,7 +115,6 @@ public class PicsureQueryService {
 		if (credentialsQueryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
-		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
@@ -161,20 +153,15 @@ public class PicsureQueryService {
 		if (resource == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
-		if (resource.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (credentialsQueryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
-		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
-		credentialsQueryRequest.setTargetURL(resource.getTargetURL());
 
 		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -201,10 +188,6 @@ public class PicsureQueryService {
 		if (resource == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
-		if (resource.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
-		queryRequest.setTargetURL(resource.getTargetURL());
 
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);

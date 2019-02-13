@@ -41,9 +41,10 @@ public class IRCTResourceRS implements IResourceRS
 
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 
+	public static String targetURL = System.getenv("IRCT_TARGET_URL");
+
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
-
 
 	public IRCTResourceRS() {
 		if(RESULT_FORMAT == null)
@@ -61,6 +62,9 @@ public class IRCTResourceRS implements IResourceRS
 //	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Calling IRCT Resource info()");
+		if (targetURL == null || targetURL.isEmpty())
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+
 		if (queryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -71,17 +75,14 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null){
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		if (queryRequest.getTargetURL() == null){
-			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-		}
 		String pathName = "resourceService/resources";
 
-		HttpResponse response = retrieveGetResponse(composeURL(queryRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200){
-            logger.error(queryRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, queryRequest.getTargetURL());
+            logger.error(targetURL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetURL);
 		}
-		return new ResourceInfo().setName("IRCT Resource : " + queryRequest.getTargetURL())
+		return new ResourceInfo().setName("IRCT Resource : " + targetURL)
 				.setQueryFormats(
 						readListFromResponse(response, QueryFormat.class));
 	}
@@ -92,6 +93,9 @@ public class IRCTResourceRS implements IResourceRS
 	public SearchResults search(QueryRequest searchJson) {
 		logger.debug("Calling IRCT Resource search()");
 		try {
+			if (targetURL == null || targetURL.isEmpty()) {
+				throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+			}
 			if (searchJson == null) {
 				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
@@ -108,22 +112,20 @@ public class IRCTResourceRS implements IResourceRS
 				throw new ProtocolException((ProtocolException.MISSING_DATA));
 			}
 			String searchTerm = search.toString();
-			if (searchJson.getTargetURL() == null){
-				throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-			}
+
 			String pathName = "resourceService/find";
 			String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse response = retrieveGetResponse(composeURL(searchJson.getTargetURL(), pathName) + queryParameter, createAuthorizationHeader(token));
+			HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(token));
 			SearchResults results = new SearchResults();
 			results.setSearchQuery(searchTerm);
 			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error(searchJson.getTargetURL() + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				//If the result is empty, a 500 is thrown for some reason
 				JsonNode responseObject = json.readTree(response.getEntity().getContent());
 				if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
 					return results;
 				}
-				throwResponseError(response, searchJson.getTargetURL());
+				throwResponseError(response, targetURL);
 			}
 			results.setResults(readObjectFromResponse(response, Object.class));
 			return results;
@@ -140,6 +142,9 @@ public class IRCTResourceRS implements IResourceRS
 	@Override
 	public QueryStatus query(QueryRequest queryJson) {
 		logger.debug("Calling IRCT Resource query()");
+		if (targetURL == null || targetURL.isEmpty()){
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+		}
 		if (queryJson == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -152,9 +157,6 @@ public class IRCTResourceRS implements IResourceRS
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
 
-		if (queryJson.getTargetURL() == null){
-		    throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-        }
 		//TODO Do we want/need to do it this way, should we revert query field back to string?
 		Object queryObject = queryJson.getQuery();
 		if (queryObject == null) {
@@ -174,10 +176,10 @@ public class IRCTResourceRS implements IResourceRS
 
 		String pathName = "queryService/runQuery";
 		long starttime = new Date().getTime();
-		HttpResponse response = retrievePostResponse(composeURL(queryJson.getTargetURL(), pathName), createAuthorizationHeader(token), queryString);
+		HttpResponse response = retrievePostResponse(composeURL(targetURL, pathName), createAuthorizationHeader(token), queryString);
 		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error(queryJson.getTargetURL() + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, queryJson.getTargetURL());
+			logger.error(targetURL + " did not return a 200: {} {} ", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetURL);
 		}
 		//Returns an object like so: {"resultId":230464}
 		//TODO later Add things like duration and expiration
@@ -210,6 +212,9 @@ public class IRCTResourceRS implements IResourceRS
 	@Override
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusQuery) {
 		logger.debug("calling IRCT Resource queryStatus() for query {}", queryId);
+		if (targetURL == null || targetURL.isEmpty()){
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+		}
 		if (statusQuery == null){
             throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
@@ -221,14 +226,11 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-        if (statusQuery.getTargetURL() == null){
-            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-        }
 		String pathName = "resultService/resultStatus/"+queryId;
-		HttpResponse response = retrieveGetResponse(composeURL(statusQuery.getTargetURL(), pathName), createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error(statusQuery.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, statusQuery.getTargetURL());
+			logger.error(targetURL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetURL);
 		}
 		//Returns an object like so: {"resultId":230958,"status":"AVAILABLE"}
 		QueryStatus status = new QueryStatus();
@@ -258,6 +260,9 @@ public class IRCTResourceRS implements IResourceRS
 	@Override
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("calling IRCT Resource queryResult() for query {}", queryId);
+		if (targetURL == null || targetURL.isEmpty()){
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+		}
         if (resultRequest == null){
             throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
@@ -269,15 +274,12 @@ public class IRCTResourceRS implements IResourceRS
 		if (token == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-        if (resultRequest.getTargetURL() == null){
-            throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-        }
 		String pathName = "resultService/result/"+queryId+"/"+RESULT_FORMAT;
 		//Returns a String in the format requested
-		HttpResponse response = retrieveGetResponse(composeURL(resultRequest.getTargetURL(), pathName), createAuthorizationHeader(token));
+		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error(resultRequest.getTargetURL() + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, resultRequest.getTargetURL());
+			logger.error(targetURL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetURL);
 		}
 		try {
 			return Response.ok(response.getEntity().getContent()).build();

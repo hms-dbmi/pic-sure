@@ -17,7 +17,7 @@ import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 public class ResourceTestInitializer
 {
     public static String TARGET_PICSURE_URL = System.getenv("TARGET_PICSURE_URL");
-    public static String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
+//    public static String TARGET_IRCT_URL = System.getenv("TARGET_IRCT_URL");
     public static String AGGREGATE_RS_URL = System.getenv("AGGREGATE_RS_URL");
     public static String IRCT_RS_URL = System.getenv("IRCT_RS_URL");
     public static String GNOME_I2B2_RS_URL = System.getenv("GNOME_I2B2_RS_URL");
@@ -29,7 +29,7 @@ public class ResourceTestInitializer
         System.out.println("ResourceTestInitializer, target picsure url is!!!: " + TARGET_PICSURE_URL);
 
 		Resource fooResource = new Resource()
-				.setTargetURL(TARGET_IRCT_URL)
+//				.setTargetURL(TARGET_IRCT_URL)
 //                .setTargetURL("http://localhost:8080/pic-sure-api-wildfly-2.0.0-SNAPSHOT/pic-sure/v1.4")
                 .setResourceRSPath(IRCT_RS_URL)
 				.setDescription("HMS DBMI NHANES PIC-SURE 1.4  Supply token with key '" + IRCTResourceRS.IRCT_BEARER_TOKEN_KEY + "'")
