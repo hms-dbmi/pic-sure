@@ -27,9 +27,6 @@ public class MailService {
     private MustacheFactory mf = new DefaultMustacheFactory();
     Mustache accessEmail = mf.compile("accessEmail.mustache");
 
-    //TODO Where/how to store this for real?
-    private String systemName = System.getenv("java:global/systemName");
-
     public void sendUsersAccessEmail(User user){
         try {
             Message message = new MimeMessage(JAXRSConfiguration.mailSession);
@@ -37,7 +34,7 @@ public class MailService {
             if (email != null){
                 message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
                 //TODO Is the subject configurable as well?  What should it say?
-                message.setSubject("Your Access To " + systemName);
+                message.setSubject("Your Access To " + JAXRSConfiguration.systemName);
                 String body = generateBody(user);
                 message.setText(body);
                 Transport.send(message);
