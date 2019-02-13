@@ -32,7 +32,8 @@ public class MailService {
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 
 	private static Mustache accessEmail = null;
-	static {
+	
+	private void loadTemplates() {
 		try(FileReader reader = new FileReader(JAXRSConfiguration.userActivationTemplatePath);){
 			accessEmail = mf.compile(reader, "accessEmail");
 		} catch (FileNotFoundException e) {
@@ -43,28 +44,26 @@ public class MailService {
 	}
 
 	public void sendUsersAccessEmail(User user){
-		if(accessEmail!=null) {
-			try {
-				Message message = new MimeMessage(JAXRSConfiguration.mailSession);
-				String email = user.getEmail();
-				if (email != null){
-					message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
-					//TODO Is the subject configurable as well?  What should it say?
-					message.setSubject("Your Access To " + JAXRSConfiguration.systemName);
-					String body = generateBody(user);
-					message.setText(body);
-					Transport.send(message);
-				} else {
-					logger.error("User " + user.getSubject() + " has no email");
-				}
-			} catch (MessagingException e){
-				logger.error(e.getMessage(), e);
-			} catch (Exception e){
-				logger.error(e.getMessage(), e);
+		if(accessEmail==null) {
+			loadTemplates();
+		}
+		try {
+			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
+			String email = user.getEmail();
+			if (email != null){
+				message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
+				//TODO Is the subject configurable as well?  What should it say?
+				message.setSubject("Your Access To " + JAXRSConfiguration.systemName);
+				String body = generateBody(user);
+				message.setText(body);
+				Transport.send(message);
+			} else {
+				logger.error("User " + user.getSubject() + " has no email");
 			}
-			
-		}else {
-			logger.error("not sending activation email because accessEmail template is not set. Please configure userActivationTemplatePath in standalone.xml");
+		} catch (MessagingException e){
+			logger.error(e.getMessage(), e);
+		} catch (Exception e){
+			logger.error(e.getMessage(), e);
 		}
 	}
 
