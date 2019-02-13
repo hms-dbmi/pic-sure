@@ -38,6 +38,9 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/client_secret")
     public static String clientSecret;
+    
+    @Resource(mappedName = "java:global/clientSecretIsBase64")
+    public static String clientSecretIsBase64;
 
     @Resource(mappedName = "java:global/user_id_claim")
     public static String userIdClaim;

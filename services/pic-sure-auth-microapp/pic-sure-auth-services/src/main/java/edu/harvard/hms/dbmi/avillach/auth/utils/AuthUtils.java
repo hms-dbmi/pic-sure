@@ -27,12 +27,12 @@ public class AuthUtils {
 			jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
 		} catch (SignatureException e) {
 			try {
-				try {
+				if(JAXRSConfiguration.clientSecretIsBase64.startsWith("true")) {
 					// handle if client secret is base64 encoded
 					jws = Jwts.parser().setSigningKey(Base64.decodeBase64(clientSecret
 							.getBytes("UTF-8")))
 							.parseClaimsJws(token);
-				} catch(SignatureException ex) {
+				} else {
 					// handle if client secret is not base64 encoded
 					jws = Jwts.parser().setSigningKey(clientSecret
 							.getBytes("UTF-8"))
@@ -40,14 +40,14 @@ public class AuthUtils {
 				} 
 			} catch (UnsupportedEncodingException ex){
 				logger.error("parseToken() clientSecret encoding UTF-8 is not supported. "
-						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage(), ex);
 				throw new NotAuthorizedException("encoding is not supported");
 			} catch (JwtException | IllegalArgumentException ex) {
-				logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
+				logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), ex);
 				throw new NotAuthorizedException(ex.getClass().getSimpleName());
 			}
 		} catch (JwtException | IllegalArgumentException e) {
-			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
+			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), ex);
 			throw new NotAuthorizedException(e.getClass().getSimpleName());
 		}
 
