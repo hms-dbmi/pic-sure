@@ -47,7 +47,7 @@ public class Role extends BaseEntity {
     }
     
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ (" + privileges.stream().map(Privilege::toString).collect(Collectors.joining("},{")) + ")";
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ (" + (privileges==null?"NO PRIVILEGES DEFINED":privileges.stream().map(Privilege::toString).collect(Collectors.joining("},{"))) + ")";
     }
 
 }

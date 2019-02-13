@@ -113,6 +113,6 @@ public class Application extends BaseEntity implements Principal {
     }
     
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + privileges.stream().map(Privilege::toString).collect(Collectors.joining(","));
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + (privileges==null?"NO PRIVILEGES DEFINED" : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
     }
 }
