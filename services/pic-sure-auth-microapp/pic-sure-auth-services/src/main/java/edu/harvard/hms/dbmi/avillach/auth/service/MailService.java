@@ -42,7 +42,7 @@ public class MailService {
                 logger.error("User " + user.getSubject() + " has no email");
             }
         } catch (MessagingException e){
-            //TODO: Freak out
+            logger.error(e.getMessage(), e);
         } catch (Exception e){
             logger.error(e.getMessage(), e);
         }
