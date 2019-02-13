@@ -85,12 +85,15 @@ public class AuthenticationService {
 
         boolean acceptedTOS = tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject());
 
-        return PICSUREResponse.success(of(
-                "token", token,
-                "name", userInfo.has("name")?userInfo.get("name"):null,
-                "email", userInfo.has("email")?userInfo.get("email"):null,
-                "userId", user.getUuid(),
-                "acceptedTOS", acceptedTOS));
+        HashMap<String, String> responseMap = new HashMap<String, String>();
+        
+        responseMap.put("token", token);
+        responseMap.put("name", (userInfo.has("name")?userInfo.get("name").asText():null));
+        responseMap.put("email", userInfo.has("email")?userInfo.get("email").asText():null);
+        responseMap.put("userId", user.getUuid().toString());
+        responseMap.put("acceptedTOS", ""+acceptedTOS);
+        
+        return PICSUREResponse.success(responseMap);
     }
 
     private JsonNode retrieveUserInfo(String accessToken){
