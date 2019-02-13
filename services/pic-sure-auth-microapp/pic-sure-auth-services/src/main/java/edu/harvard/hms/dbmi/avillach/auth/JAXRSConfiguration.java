@@ -48,6 +48,9 @@ public class JAXRSConfiguration extends Application {
     @Resource(mappedName = "java:global/auth0host")
     public static String auth0host;
     
+    @Resource(mappedName = "java:global/tosEnabled")
+    public static String tosEnabled;
+    
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;
 

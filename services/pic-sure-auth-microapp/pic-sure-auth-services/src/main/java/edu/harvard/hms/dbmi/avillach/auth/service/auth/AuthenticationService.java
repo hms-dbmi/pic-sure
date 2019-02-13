@@ -83,7 +83,8 @@ public class AuthenticationService {
                 generateClaims(userInfo, new String[]{"user_id", "email","name" }),
                 userId, 1000 * 60 * 60 * 24);
 
-        boolean acceptedTOS = tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject());
+        boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ? 
+        		tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject()) : true;
 
         HashMap<String, String> responseMap = new HashMap<String, String>();
         
