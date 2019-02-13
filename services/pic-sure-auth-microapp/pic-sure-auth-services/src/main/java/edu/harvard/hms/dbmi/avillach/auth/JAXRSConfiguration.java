@@ -50,9 +50,12 @@ public class JAXRSConfiguration extends Application {
     
     @Resource(mappedName = "java:global/tosEnabled")
     public static String tosEnabled;
-    
+
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;
+    
+    @Resource(mappedName = "java:global/userActivationTemplatePath")
+    public static String userActivationTemplatePath;
 
     @Resource(lookup = "java:jboss/mail/gmail")
     public static Session mailSession;
