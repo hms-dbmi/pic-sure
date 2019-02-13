@@ -203,6 +203,12 @@ public abstract class BaseEntityService<T extends BaseEntity> {
                                     break;
                                 }
                             }
+                            for (BaseEntity baseEntity : detachedCollection) {
+                                if (!retrievedCollection.contains(baseEntity)) {
+                                    inputCollectionMatchedDBCollection = false;
+                                    break;
+                                }
+                            }
                         } else {
                             inputCollectionMatchedDBCollection = false;
                         }
