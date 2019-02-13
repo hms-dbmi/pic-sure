@@ -42,6 +42,9 @@ public class JAXRSConfiguration extends Application {
     @Resource(mappedName = "java:global/user_id_claim")
     public static String userIdClaim;
 
+    @Resource(mappedName = "java:global/auth0host")
+    public static String auth0host;
+
     @Resource(lookup = "java:jboss/mail/gmail")
     public static Session mailSession;
 

@@ -38,6 +38,8 @@ public class AuthenticationService {
 
     @Inject
     UserRepository userRepository;
+   
+    private String auth0host = System.getenv("java:global/auth0host");
 
     @Inject
     TermsOfServiceService tosService;
@@ -94,7 +96,7 @@ public class AuthenticationService {
     }
 
     private JsonNode retrieveUserInfo(String accessToken){
-        String auth0UserInfoURI = "https://avillachlab.auth0.com/userinfo";
+        String auth0UserInfoURI = auth0host + "/userinfo";
         List<Header> headers = new ArrayList<>();
         headers.add(new BasicHeader("Content-Type", MediaType.APPLICATION_JSON));
         headers.add(new BasicHeader("Authorization", "Bearer " + accessToken));
