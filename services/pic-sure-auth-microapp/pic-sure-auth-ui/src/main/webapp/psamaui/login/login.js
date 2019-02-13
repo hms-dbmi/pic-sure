@@ -101,7 +101,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     require(['auth0Lock'], function(Auth0Lock){
                         var lock = new Auth0Lock(
                             clientId,
-                            "avillachlab.auth0.com",
+                            settings.auth0domain + ".auth0.com",
                             {
                                 auth: {
                                     redirectUrl: redirectURI,
