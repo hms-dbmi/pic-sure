@@ -47,7 +47,7 @@ public class AuthUtils {
 				throw new NotAuthorizedException(ex.getClass().getSimpleName());
 			}
 		} catch (JwtException | IllegalArgumentException e) {
-			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), ex);
+			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), e);
 			throw new NotAuthorizedException(e.getClass().getSimpleName());
 		}
 
