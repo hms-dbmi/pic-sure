@@ -21,5 +21,5 @@ RUN sed -i '/^#LoadModule socache_shmcb_module modules\/mod_socache_shmcb.so/s/^
 RUN mkdir /usr/local/apache2/logs/ssl_mutex
 
 COPY ./src/main/webapp /usr/local/apache2/htdocs
-COPY ./target/webjars/META-INF/resources/webjars /usr/local/apache2/htdocs/psama/webjars
+COPY ./target/webjars/META-INF/resources/webjars /usr/local/apache2/htdocs/psamaui/webjars
 COPY ./src/main/resources /usr/local/apache2/htdocs/settings
