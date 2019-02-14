@@ -12,6 +12,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "psamaui/tos(/)" : "displayTOS",
             "psamaui/login(/)" : "login",
             "psamaui/logout(/)" : "logout",
+            "psamaui/not_authorized(/)" : "not_authorized",
             "psamaui/roleManagement(/)" : "displayRoleManagement",
             "psamaui/privilegeManagement(/)" : "displayPrivilegeManagement",
             "psamaui/applicationManagement(/)" : "displayApplicationManagement",
@@ -57,6 +58,9 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         logout : function(){
             sessionStorage.clear();
             window.location = "/logout";
+        },
+        not_authorized : function(){
+            $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
         },
         displayUserManagement : function(){
             var headerView = header.View;

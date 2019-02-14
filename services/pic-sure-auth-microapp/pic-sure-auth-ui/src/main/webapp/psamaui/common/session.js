@@ -18,7 +18,7 @@ define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], fu
                     callback();
 				},
 				403: function(){
-                    history.pushState({}, "", "tos");
+                    history.pushState({}, "", "psamaui/not_authorized");
 				}
 			}
 		});
