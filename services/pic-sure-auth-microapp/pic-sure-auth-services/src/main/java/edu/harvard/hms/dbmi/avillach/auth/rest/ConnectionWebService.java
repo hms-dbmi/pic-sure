@@ -29,14 +29,14 @@ public class ConnectionWebService extends BaseEntityService<Connection> {
     @Path("{connectionId}")
     @GET
     @Produces("application/json")
-    @RolesAllowed({SYSTEM, SUPER_ADMIN})
+    @RolesAllowed({SYSTEM, SUPER_ADMIN, ADMIN})
     public Response getConnectionById(@PathParam("connectionId") String connectionId) {
         return getEntityById(connectionId,connectionRepo);
     }
 
     @GET
     @Produces("application/json")
-    @RolesAllowed({SYSTEM, SUPER_ADMIN})
+    @RolesAllowed({SYSTEM, SUPER_ADMIN, ADMIN})
     public Response getAllConnections() {
         return getEntityAll(connectionRepo);
     }
