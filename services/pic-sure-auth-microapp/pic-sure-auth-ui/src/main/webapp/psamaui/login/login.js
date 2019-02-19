@@ -16,7 +16,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
             var redirectURI = window.location.protocol
                             + "//"+ window.location.hostname
                             + (window.location.port ? ":"+window.location.port : "")
-                            + "/psamaui/login";
+                            + "/psamaui/login/";
             if(typeof queryObject.access_token === "string"){
                 $.ajax({
                     url: '/picsureauth/authentication',
