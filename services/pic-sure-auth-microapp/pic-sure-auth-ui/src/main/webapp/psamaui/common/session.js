@@ -82,19 +82,19 @@ define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], fu
 			// });
 		}, 10000),
         loadSessionVariables : function(callback){
-//            $.ajax({
-//				url: window.location.origin + settings.basePath + '/connection',
-//				type: 'GET',
-//				contentType: 'application/json',
-//				success: function(response){
-//                    sessionStorage.setItem("connections", JSON.stringify(response));
-//                    callback();
-//                }.bind(this),
-//				error: function(response){
-//					console.log("Failed to load connections from the server. Using defaults instead.");
-//                    callback();
-//				}
-//			});
+            $.ajax({
+				url: window.location.origin + settings.basePath + '/connection',
+				type: 'GET',
+				contentType: 'application/json',
+				success: function(response){
+                    sessionStorage.setItem("connections", JSON.stringify(response));
+                    callback();
+                }.bind(this),
+				error: function(response){
+					console.log("Failed to load connections from the server. Using defaults instead.");
+                    callback();
+				}
+			});
         },
 		setAcceptedTOS : function() {
 			session.acceptedTOS = true;
