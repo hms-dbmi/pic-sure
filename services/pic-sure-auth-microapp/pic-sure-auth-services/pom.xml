@@ -17,21 +17,40 @@
 	</properties>
 	<dependencies>
 		<!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
+
+
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-api-data</artifactId>
+			<version>2.0.0-SNAPSHOT</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.apache.httpcomponents</groupId>
 			<artifactId>httpclient</artifactId>
 			<version>4.5.6</version>
 		</dependency>
 
+		<!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
 		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-util</artifactId>
-			<version>2.0.0-SNAPSHOT</version>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>1.7.25</version>
 		</dependency>
+
+		<!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12 -->
 		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-api-data</artifactId>
-			<version>2.0.0-SNAPSHOT</version>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-log4j12</artifactId>
+			<version>1.7.25</version>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- https://mvnrepository.com/artifact/log4j/log4j -->
+		<dependency>
+			<groupId>log4j</groupId>
+			<artifactId>log4j</artifactId>
+			<version>1.2.17</version>
 		</dependency>
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
@@ -136,6 +155,11 @@
 			<version>${xml.bind.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.jwt</groupId>
+			<artifactId>jwt-creator</artifactId>
+			<version>1.0.0-SNAPSHOT</version>
+		</dependency>
+		<dependency>
 			<groupId>com.sun.xml.bind</groupId>
 			<artifactId>jaxb-impl</artifactId>
 			<version>${xml.bind.version}</version>
@@ -148,14 +172,9 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>2.13.0</version>
+            <version>2.23.4</version>
             <scope>test</scope>
         </dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach.jwt</groupId>
-			<artifactId>jwt-creator</artifactId>
-			<version>1.0.0-SNAPSHOT</version>
-		</dependency>
 		<dependency>
 			<groupId>com.github.spullara.mustache.java</groupId>
 			<artifactId>compiler</artifactId>
@@ -211,9 +230,9 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-compiler-plugin</artifactId>
+					<version>3.8.0</version>
 					<configuration>
-						<source>9</source>
-						<target>9</target>
+						<release>11</release>
 					</configuration>
 				</plugin>
 				<plugin>
