@@ -77,7 +77,6 @@ public class IRCTResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(qfs))));
 
 		QueryRequest request = new QueryRequest();
-		request.setTargetURL(targetURL);
 
 		//Should throw an error if credentials missing or wrong
 		Map<String, String> credentials = new HashMap<String, String>();
@@ -104,18 +103,16 @@ public class IRCTResourceIT extends BaseIT {
 
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
-		request.setTargetURL(null);
-		body = objectMapper.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
-		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
+//		body = objectMapper.writeValueAsString(request);
+//		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
+//		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
 
 
 		//This should work
-		request.setTargetURL(targetURL);
 		body = objectMapper.writeValueAsString(request);
 		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/info", headers, body);
         assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
@@ -154,7 +151,6 @@ public class IRCTResourceIT extends BaseIT {
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery("%antibody%");
-		queryRequest.setTargetURL(targetURL);
 
 		String body = objectMapper.writeValueAsString(queryRequest);
 
@@ -198,17 +194,15 @@ public class IRCTResourceIT extends BaseIT {
 
 
 		queryRequest.setQuery("%antibody%");
-		queryRequest.setTargetURL(null);
-		body = objectMapper.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
-		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
+//		body = objectMapper.writeValueAsString(queryRequest);
+//		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
+//		assertEquals("Missing target URL should return a 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
 		//This should work
-		queryRequest.setTargetURL(targetURL);
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/search", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
@@ -264,7 +258,6 @@ public class IRCTResourceIT extends BaseIT {
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery(queryString);
-		queryRequest.setTargetURL(targetURL);
 		String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if credentials missing or wrong
@@ -315,16 +308,14 @@ public class IRCTResourceIT extends BaseIT {
 */
 
 		queryRequest.setQuery(queryString);
-		queryRequest.setTargetURL(null);
-		body = objectMapper.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
-		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
+//		body = objectMapper.writeValueAsString(queryRequest);
+//		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query", headers, body);
+//		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
-		queryRequest.setTargetURL(targetURL);
 		JsonNode jsonNode = objectMapper.readTree(queryString);
 
 		//Request can be an object that also requests the format
@@ -373,7 +364,6 @@ public class IRCTResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(resultResponse))));
 
 		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
 	    Map<String, String> credentials = new HashMap<String, String>();
 	    queryRequest.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(queryRequest);
@@ -406,17 +396,15 @@ public class IRCTResourceIT extends BaseIT {
         response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/111/result", headers, body);
 		assertEquals("Should return a 500",500, response.getStatusLine().getStatusCode());
 
-		queryRequest.setTargetURL(null);
-		body = objectMapper.writeValueAsString(queryRequest);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
-		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
+//		body = objectMapper.writeValueAsString(queryRequest);
+//		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
+//		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
         //This should work
-		queryRequest.setTargetURL(targetURL);
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
@@ -446,7 +434,6 @@ public class IRCTResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
 		QueryRequest request = new QueryRequest();
-		request.setTargetURL(targetURL);
         Map<String, String>credentials = new HashMap<String, String>();
         request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);
@@ -477,17 +464,15 @@ public class IRCTResourceIT extends BaseIT {
 
 		credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 		request.setResourceCredentials(credentials);
-		request.setTargetURL(null);
-		body = objectMapper.writeValueAsString(request);
-		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
-		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
+//		body = objectMapper.writeValueAsString(request);
+//		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
+//		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertEquals("Error message should be " + ApplicationException.MISSING_TARGET_URL, ApplicationException.MISSING_TARGET_URL, errorMessage);
 
 		//This should work
-		request.setTargetURL(targetURL);
 		body = objectMapper.writeValueAsString(request);
 		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/status", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.junit.Test;
@@ -33,7 +34,6 @@ public class HSAPIResourceIT extends BaseIT {
 	@Test
 	public void testInfo() throws UnsupportedOperationException, IOException {
 		QueryRequest request = new QueryRequest();
-		request.setTargetURL(targetURL);
 
 		String body = objectMapper.writeValueAsString(request);
 		HttpResponse response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/info"), headers, body);
@@ -52,7 +52,6 @@ public class HSAPIResourceIT extends BaseIT {
 	@Test
 	public void testSearch() throws UnsupportedOperationException, IOException {
 		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
 
 		String body = objectMapper.writeValueAsString(queryRequest);
 
@@ -67,7 +66,6 @@ public class HSAPIResourceIT extends BaseIT {
 	@Test
 	public void testQuery() throws UnsupportedOperationException, IOException {
 		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
 
 		String body = objectMapper.writeValueAsString(queryRequest);
 
@@ -114,7 +112,6 @@ public class HSAPIResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
 		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setTargetURL(targetURL);
 		String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if missing query object
@@ -123,22 +120,21 @@ public class HSAPIResourceIT extends BaseIT {
 		JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
 		assertNotNull("Response message should not be null", responseMessage);
 		String errorMessage = responseMessage.get("message").asText();
+		System.out.println("Response message is: " + responseMessage);
 		assertTrue("Error message should be " + ProtocolException.MISSING_DATA, errorMessage.contains(ProtocolException.MISSING_DATA));
 
 		//Should throw an error if missing targetURL
 		Map<String, String> queryNode = new HashMap<>();
 		queryRequest.setQuery(queryNode);
-		queryRequest.setTargetURL(null);
-		body = objectMapper.writeValueAsString(queryRequest);
-		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
-		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
-		responseMessage = objectMapper.readTree(response.getEntity().getContent());
-		assertNotNull("Response message should not be null", responseMessage);
-		errorMessage = responseMessage.get("message").asText();
-		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
+//		body = objectMapper.writeValueAsString(queryRequest);
+//		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
+//		assertEquals("Missing target URL should return 500",500, response.getStatusLine().getStatusCode());
+//		responseMessage = objectMapper.readTree(response.getEntity().getContent());
+//		assertNotNull("Response message should not be null", responseMessage);
+//		errorMessage = responseMessage.get("message").asText();
+//		assertTrue("Error message should be " + ApplicationException.MISSING_TARGET_URL, errorMessage.contains(ApplicationException.MISSING_TARGET_URL));
 
 		//Should throw error if no 'entity' included
-		queryRequest.setTargetURL(targetURL);
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/query/sync"), headers, body);
 		assertEquals("Missing entity should return 500",500, response.getStatusLine().getStatusCode());

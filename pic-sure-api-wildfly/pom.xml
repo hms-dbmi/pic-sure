@@ -319,7 +319,9 @@
 							<!-- Notices: these envs is for something that needs to be read from env in pre-integration-test -->
 							<!-- These are for normal system config (not includes integration tests usage) -->
 							<env>
-								<TARGET_IRCT_URL>http://localhost:8079</TARGET_IRCT_URL>
+								<!--<TARGET_IRCT_URL>http://localhost:8079</TARGET_IRCT_URL>-->
+								<IRCT_TARGET_URL>http://localhost:8079</IRCT_TARGET_URL>
+								<HSAPI_TARGET_URL>http://localhost:8079</HSAPI_TARGET_URL>
 								<TARGET_GNOME_URL>http://localhost:8079</TARGET_GNOME_URL>
 								<TARGET_I2B2_URL>http://localhost:8079</TARGET_I2B2_URL>
 								<I2B2_LABEL>Patient Id</I2B2_LABEL>

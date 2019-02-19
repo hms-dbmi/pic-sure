@@ -70,7 +70,7 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
-        queryRequest.setTargetURL(targetURL);
+//        queryRequest.setTargetURL(targetURL);
         //Obviously should fail without the rsURL
         try {
             cut.info(null, queryRequest);
@@ -81,16 +81,16 @@ public class ResourceWebClientTest {
 
         //Should fail without a targetURL
 
-        queryRequest.setTargetURL(null);
-        try {
-            cut.info(testURL, queryRequest);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
+//        queryRequest.setTargetURL(null);
+//        try {
+//            cut.info(testURL, queryRequest);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
 
         //Assuming everything goes right
-        queryRequest.setTargetURL(targetURL);
+//        queryRequest.setTargetURL(targetURL);
         ResourceInfo result = cut.info(testURL, queryRequest);
         assertNotNull("Result should not be null", result);
 
@@ -148,15 +148,15 @@ public class ResourceWebClientTest {
 
         request.setQuery("query");
 
-        try {
-            cut.search(testURL, request);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
+//        try {
+//            cut.search(testURL, request);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
 
         String targetURL = "/search";
-        request.setTargetURL(targetURL);
+//        request.setTargetURL(targetURL);
 
         try {
             cut.search(null, request);
@@ -191,16 +191,16 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         request.setResourceCredentials(credentials);
-        request.setTargetURL(null);
+//        request.setTargetURL(null);
         request.setQuery("%blood%");
-        try {
-            cut.search(testURL, request);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
+//        try {
+//            cut.search(testURL, request);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
 
-        request.setTargetURL(targetURL);
+//        request.setTargetURL(targetURL);
         SearchResults result = cut.search(testURL, request);
         assertNotNull("Result should not be null", result);
 
@@ -250,7 +250,7 @@ public class ResourceWebClientTest {
             assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
         QueryRequest request = new QueryRequest();
-        request.setTargetURL("/query");
+//        request.setTargetURL("/query");
 
         try {
             cut.query(null, request);
@@ -269,16 +269,16 @@ public class ResourceWebClientTest {
 
         Map<String, String> credentials = new HashMap<>();
         request.setResourceCredentials(credentials);
-        request.setTargetURL(null);
+//        request.setTargetURL(null);
         //Should fail without a targetURL
-        try {
-            cut.query(testURL, request);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
+//        try {
+//            cut.query(testURL, request);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
 
-        request.setTargetURL("/query");
+//        request.setTargetURL("/query");
 
         //Everything goes correctly
         QueryStatus result = cut.query(testURL, request);
@@ -326,42 +326,42 @@ public class ResourceWebClientTest {
                         .withBody(mockResult)));
 
         //Should fail if missing any parameters
-        try {
-            cut.queryResult(testURL, testId, null);
-            fail();
-        } catch (ProtocolException e) {
-            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
-        }
+//        try {
+//            cut.queryResult(testURL, testId, null);
+//            fail();
+//        } catch (ProtocolException e) {
+//            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
+//        }
         QueryRequest queryRequest = new QueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
-        String targetURL = "/query/13452134/result";
-        queryRequest.setTargetURL(targetURL);
+//        String targetURL = "/query/13452134/result";
+////        queryRequest.setTargetURL(targetURL);
+//
+//        try {
+//            cut.queryResult(testURL, null, queryRequest);
+//            fail();
+//        } catch (ProtocolException e) {
+//            assertEquals(ProtocolException.MISSING_QUERY_ID, e.getContent());
+//        }
+//        try {
+//            cut.queryResult(null, testId, queryRequest);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
+//        }
 
-        try {
-            cut.queryResult(testURL, null, queryRequest);
-            fail();
-        } catch (ProtocolException e) {
-            assertEquals(ProtocolException.MISSING_QUERY_ID, e.getContent());
-        }
-        try {
-            cut.queryResult(null, testId, queryRequest);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
-        }
-
-        queryRequest.setTargetURL(null);
-        //Should fail without a targetURL
-        try {
-            cut.queryResult(testURL, testId, queryRequest);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
-
-        queryRequest.setTargetURL(targetURL);
+////        queryRequest.setTargetURL(null);
+//        //Should fail without a targetURL
+//        try {
+//            cut.queryResult(testURL, testId, queryRequest);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
+//
+////        queryRequest.setTargetURL(targetURL);
 
 
         //Everything should work here
@@ -411,8 +411,8 @@ public class ResourceWebClientTest {
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
-        String targetURL = "/query/13452134/result";
-        queryRequest.setTargetURL(targetURL);
+//        String targetURL = "/query/13452134/result";
+//        queryRequest.setTargetURL(targetURL);
 
         try {
             cut.queryStatus(testURL, null, queryRequest);
@@ -427,19 +427,19 @@ public class ResourceWebClientTest {
             assertEquals(ApplicationException.MISSING_RESOURCE_PATH, e.getContent());
         }
 
-        queryRequest.setTargetURL(null);
+//        queryRequest.setTargetURL(null);
 
         //Should fail without a targetURL
-        try {
-            cut.queryStatus(testURL, testId, queryRequest);
-            fail();
-        } catch (ApplicationException e) {
-            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
-        }
+//        try {
+//            cut.queryStatus(testURL, testId, queryRequest);
+//            fail();
+//        } catch (ApplicationException e) {
+//            assertEquals(ApplicationException.MISSING_TARGET_URL, e.getContent());
+//        }
 
 
 
-        queryRequest.setTargetURL(targetURL);
+//        queryRequest.setTargetURL(targetURL);
 
         //Everything should work here
         QueryStatus result = cut.queryStatus(testURL,testId, queryRequest);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.IRCTResourceRS;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
@@ -142,7 +143,9 @@ public class AggregateResourceIT extends BaseIT {
         String body = objectMapper.writeValueAsString(topQuery);
 
         //Should throw an error if credentials missing or wrong
+        System.out.println("401 URL: " + endpointUrl+"/query" + "|headers: " + headers + "|body: " + body);
         HttpResponse response = retrievePostResponse(endpointUrl+"/query", headers, body);
+//        System.out.println("Test Response: " + IOUtils.toString(response.getEntity().getContent(), "UTF-8"));
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);
@@ -237,6 +240,7 @@ public class AggregateResourceIT extends BaseIT {
         String body = objectMapper.writeValueAsString(request);
 
         //Should get 401 for missing or invalid credentials
+        System.out.println("401 URL: "+endpointUrl+"/query/" + queryId + "/status");
         HttpResponse response = retrievePostResponse(endpointUrl+"/query/" + queryId + "/status", headers, body);
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
