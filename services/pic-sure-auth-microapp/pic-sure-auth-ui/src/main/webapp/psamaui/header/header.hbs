@@ -2,7 +2,7 @@
 	<div class="logo-img col-md-3" style="font-size: x-large;
                                               color: white;
                                               top: 20px;">Management console</div>
-    <span class="col-md-2"></span>
+    <span class="col-md-1"></span>
     <a class="col-md-2 btn btn-default header-btn" id="userMgmt-picsureui" href="/picsureui">
         PIC-SURE UI
     </a>
@@ -10,10 +10,9 @@
        {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
         Super Admin Console
     </a>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-users" href="/psamaui/userManagement"
+    <a class="col-md-1 btn btn-default header-btn" id="userMgmt-users" href="/psamaui/userManagement"
        {{#not_contains privileges 'ADMIN'}}style="visibility: hidden"{{/not_contains}}>Users
     </a>
-    <span class="col-md-1"></span>
     <span class="col-md-1 header-btn">
 		<a class="btn btn-default help-btn">Help</a>
 	</span>
