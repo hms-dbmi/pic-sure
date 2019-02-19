@@ -1,4 +1,4 @@
-FROM dbmi/wildfly:13 AS production
+FROM jboss/wildfly:15.0.1.Final AS production
 
 # TODO: It'd be nice if wildfly used alpine -Andre
 
