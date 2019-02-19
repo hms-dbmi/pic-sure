@@ -14,8 +14,8 @@
 	<url>http://maven.apache.org</url>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<wildfly.version>13.0.0.Final</wildfly.version>
-		<argLine>--add-modules jdk.incubator.httpclient</argLine>
+		<wildfly.version>15.0.1.Final</wildfly.version>
+		<!--<argLine>&#45;&#45;add-modules jdk.incubator.httpclient</argLine>-->
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
 	</properties>
 	<dependencies>
@@ -97,7 +97,6 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>2.19.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -109,15 +108,6 @@
 				<artifactId>maven-war-plugin</artifactId>
 				<configuration>
 					<failOnMissingWebXml>false</failOnMissingWebXml>
-				</configuration>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>9</source>
-					<target>9</target>
-					<compilerArgument>--add-modules=jdk.incubator.httpclient</compilerArgument>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -263,14 +253,14 @@
 			<plugin>
 				<groupId>org.wildfly.plugins</groupId>
 				<artifactId>wildfly-maven-plugin</artifactId>
-				<version>1.2.1.Final</version>
+				<version>2.0.1.Final</version>
 				<configuration>
 					<port>9990</port>
 					<jbossHome>${jboss.home}</jbossHome>
 					<java-opts>
 						<java-opt>-Xmx1024m</java-opt>
 						<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
-						<java-opt>--add-modules=jdk.incubator.httpclient</java-opt>
+						<!--<java-opt>&#45;&#45;add-modules=jdk.incubator.httpclient</java-opt>-->
 					</java-opts>
 					<!--<env>-->
 						<!--<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET>-->
@@ -280,31 +270,31 @@
 						<!--<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN>-->
 						<!--<RESULT_FORMAT>JSON</RESULT_FORMAT>-->
 					<!--</env>-->
-					<add-user>
-						<users>
-							<user>
-								<username>admin</username>
-								<password>admin.1234</password>
-							</user>
-							<user>
-								<username>admin-user</username>
-								<password>user.1234</password>
-								<groups>
-									<group>admin</group>
-									<group>user</group>
-								</groups>
-								<application-user>true</application-user>
-							</user>
-							<user>
-								<username>default-user</username>
-								<password>user.1234</password>
-								<groups>
-									<group>user</group>
-								</groups>
-								<application-user>true</application-user>
-							</user>
-						</users>
-					</add-user>
+					<!--<add-user>-->
+						<!--<users>-->
+							<!--<user>-->
+								<!--<username>admin</username>-->
+								<!--<password>admin.1234</password>-->
+							<!--</user>-->
+							<!--<user>-->
+								<!--<username>admin-user</username>-->
+								<!--<password>user.1234</password>-->
+								<!--<groups>-->
+									<!--<group>admin</group>-->
+									<!--<group>user</group>-->
+								<!--</groups>-->
+								<!--<application-user>true</application-user>-->
+							<!--</user>-->
+							<!--<user>-->
+								<!--<username>default-user</username>-->
+								<!--<password>user.1234</password>-->
+								<!--<groups>-->
+									<!--<group>user</group>-->
+								<!--</groups>-->
+								<!--<application-user>true</application-user>-->
+							<!--</user>-->
+						<!--</users>-->
+					<!--</add-user>-->
 				</configuration>
 
 				<executions>
@@ -353,7 +343,12 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-failsafe-plugin</artifactId>
-				<version>2.20</version>
+				<version>2.22.0</version>
+				<configuration>
+					<argLine>
+						--illegal-access=permit
+					</argLine>
+				</configuration>
 				<executions>
 					<execution>
 						<id>integration-test</id>
