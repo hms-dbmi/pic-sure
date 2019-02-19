@@ -16,8 +16,6 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
             var redirectURI = window.location.protocol
                             + "//"+ window.location.hostname
                             + (window.location.port ? ":"+window.location.port : "")
-                            + (window.location.port ? ":"+window.location.port : "")
-                            //+ (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "")
                             + "/psamaui/login";
             if(typeof queryObject.access_token === "string"){
                 $.ajax({
@@ -122,10 +120,10 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 if (sessionStorage.not_authorized_url)
                     window.location = sessionStorage.not_authorized_url;
                 else
-                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)(settings));
+                    window.location = "/psamaui/not_authorized" + window.location.search;
             }
             else {
-                window.location = (window.location.pathname.split('/').length > 1 ? "/"+window.location.pathname.split('/')[1] : "") + "/psamaui/logout";
+                window.location = "/psamaui/logout" + window.location.search;
             }
         }
 	};

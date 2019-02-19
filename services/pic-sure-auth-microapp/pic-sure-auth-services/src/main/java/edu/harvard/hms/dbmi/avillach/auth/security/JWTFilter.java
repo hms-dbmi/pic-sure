@@ -42,7 +42,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Inject
 	UserRepository userRepo;
-	
+
 	@Inject
 	ApplicationRepository applicationRepo;
 
@@ -71,23 +71,23 @@ public class JWTFilter implements ContainerRequestFilter {
 			String userForLogging = null;
 
 			Jws<Claims> jws = parseToken(token);
-			
+
 			String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
-			
+
 			if(userId.startsWith("PSAMA_APPLICATION")) {
 				if( ! uriInfo.getPath().endsWith("token/inspect")) {
-						logger.error(userId + " attempted to perform request " + uriInfo.getPath() + " token may be compromised.");
-						throw new NotAuthorizedException("User is deactivated");
+					logger.error(userId + " attempted to perform request " + uriInfo.getPath() + " token may be compromised.");
+					throw new NotAuthorizedException("User is deactivated");
 				}
 				requestContext.setSecurityContext(new AuthSecurityContext(applicationRepo.getById(UUID.fromString(userId.split("\\|")[1])),
-	                    uriInfo.getRequestUri().getScheme()));
+						uriInfo.getRequestUri().getScheme()));
 			} else {
 				/**
 				 * This TOSService code will hit to the database to retrieve a user once again
 				 */
 				User authenticatedUser = callLocalAuthentication(requestContext, jws);
 				if (!uriInfo.getPath().contains("/tos")){
-					if (tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+					if (JAXRSConfiguration.tosEnabled.startsWith("true") && tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
 						//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
 						requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
 						return;
@@ -109,18 +109,18 @@ public class JWTFilter implements ContainerRequestFilter {
 				checkRoles(authenticatedUser, resourceInfo
 						.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
 						? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-						: new String[]{});
+								: new String[]{});
 
 				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
 				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
-	                    uriInfo.getRequestUri().getScheme()));
+						uriInfo.getRequestUri().getScheme()));
 
 			}
-		
+
 		} catch (NotAuthorizedException e) {
 			// the detail of this exception should be logged right before the exception thrown out
-//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
+			//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
 			// we should show different response based on role
 			requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
 		} catch (ApplicationException e){
@@ -160,14 +160,17 @@ public class JWTFilter implements ContainerRequestFilter {
 			throw new NotAuthorizedException("user doesn't have roles or privileges, please contact admin.");
 		}
 
+		boolean isAuthorized = false;
 		for (String role : rolesAllowed) {
-			if(!privilegeNameSet.contains(role)) {
-				logger.error(logMsg + "doesn't match the required role/privilege restrictions, privileges from user: "
-						+ authenticatedUser.getPrivilegeString() + ", priviliges required: " + Arrays.toString(rolesAllowed));
-				throw new NotAuthorizedException("doesn't match the required role restrictions.");
-			}else {
+			if(privilegeNameSet.contains(role.trim())) {
+				isAuthorized = true;
 				break;
 			}
+		}
+		if(!isAuthorized) {
+			logger.error(logMsg + "doesn't match the required role/privilege restrictions, privileges from user: "
+					+ authenticatedUser.getPrivilegeString() + ", priviliges required: " + Arrays.toString(rolesAllowed));
+			throw new NotAuthorizedException("doesn't match the required role restrictions.");
 		}
 		return b;
 	}

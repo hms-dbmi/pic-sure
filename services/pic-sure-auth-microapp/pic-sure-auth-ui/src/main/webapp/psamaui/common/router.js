@@ -1,10 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!psamaLogin/not_authorized.hbs', 'handlebars', 'accessRule/accessRuleManagement'],
+        'text!login/not_authorized.hbs', 'handlebars', 'accessRule/accessRuleManagement', 'picSure/settings'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
-                 notAuthorizedTemplate, HBS, accessRuleManagement){
+                 notAuthorizedTemplate, HBS, accessRuleManagement, settings){
         var Router = Backbone.Router.extend({
         routes: {
             "psamaui/userManagement(/)" : "displayUserManagement",
@@ -60,7 +60,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             window.location = "/logout";
         },
         not_authorized : function(){
-            $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
+            $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
         },
         displayUserManagement : function(){
             var headerView = header.View;
@@ -68,15 +68,9 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             $('#header-content').append(headerView.$el);
 
             userFunctions.me(this, function(data){
-                if (_.find(data.privileges, function(element){
-                    return (element === 'SYSTEM')
-                })) {
                     var userMngmt = new userManagement.View({model: new userManagement.Model()});
                     userMngmt.render();
                     $('#main-content').html(userMngmt.$el);
-                } else {
-                    $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
-                }
             });
         },
 
