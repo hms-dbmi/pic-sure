@@ -1,31 +1,26 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
-import org.hibernate.mapping.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.util.HashMap;
-import java.util.List;
-import java.util.stream.Collectors;
 
 public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
@@ -51,6 +46,9 @@ public class MailService {
 			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
 			String email = user.getEmail();
 			if (email != null){
+				InternetAddress fromEmail = new InternetAddress(JAXRSConfiguration.userActivationReplyTo);
+				message.setFrom(fromEmail);
+				message.setReplyTo(new Address[] {fromEmail});
 				message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
 				//TODO Is the subject configurable as well?  What should it say?
 				message.setSubject("Your Access To " + JAXRSConfiguration.systemName);

@@ -57,6 +57,9 @@ public class JAXRSConfiguration extends Application {
     @Resource(mappedName = "java:global/userActivationTemplatePath")
     public static String userActivationTemplatePath;
 
+    @Resource(mappedName = "java:global/userActivationReplyTo")
+	public static String userActivationReplyTo;
+
     @Resource(lookup = "java:jboss/mail/gmail")
     public static Session mailSession;
 
