@@ -77,7 +77,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 				String token = JWTUtil.createJwtToken(
 						JAXRSConfiguration.clientSecret, null, null,
 						claims,
-						"PSAMA_APPLICATION|" + application.getUuid().toString(), -1);
+						"PSAMA_APPLICATION|" + application.getUuid().toString(), 1000 * 60 * 60 * 24 * 365);
 				application.setToken(token);
 			} catch(Exception e) {
 				logger.error("", e);
