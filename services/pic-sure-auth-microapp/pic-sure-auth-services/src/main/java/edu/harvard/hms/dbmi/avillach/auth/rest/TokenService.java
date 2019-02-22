@@ -114,7 +114,7 @@ public class TokenService {
 		// get the user based on subject field in token
 		User user;
 		try{
-			user = userRepo.getByColumn("subject", subject).get(0);
+			user = userRepo.getUniqueResultByColumn("subject", subject);
 			logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
 		} catch (NoResultException e) {
 			logger.error("_inspectToken() could not find user with subject " + subject);
