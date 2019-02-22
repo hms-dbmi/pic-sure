@@ -45,7 +45,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     }.bind(this),
                     error: function(data){
                         notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
-                        history.pushState({}, "", "/psamaui/logout");
+                        history.pushState({}, "", sessionStorage.not_authorized_url? sessionStorage.not_authorized_url : "/psamaui/not_authorized?redirection_url=/picsureui");
                     }
                 });
             }else{
