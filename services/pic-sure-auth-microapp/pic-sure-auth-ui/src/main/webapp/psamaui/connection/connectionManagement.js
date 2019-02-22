@@ -112,6 +112,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
                 requestType = "PUT";
 			}
             picsureFunctions.createOrUpdateConnection(connections, requestType, function(result) {
+                session.loadSessionVariables();
                 this.render();
             }.bind(this));
         },
@@ -119,7 +120,8 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 			var uuid = this.$('input[name=uuid]').val();
 			notification.showConfirmationDialog(function () {
 				picsureFunctions.deleteConnection(uuid, function (response) {
-                    this.render()
+                    session.loadSessionVariables();
+					this.render()
 				}.bind(this));
 
 			}.bind(this));

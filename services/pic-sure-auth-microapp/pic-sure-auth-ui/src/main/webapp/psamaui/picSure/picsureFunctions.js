@@ -5,25 +5,51 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
         init: function () {}
     };
 
+    var connections = undefined;
+    
     picsureFunctions.getConnection = function (connectionUuid, callback) {
-        $.ajax({
-            url: window.location.origin + settings.servicesPath + '/connection/' + (connectionUuid ? connectionUuid : ''),
-            type: 'GET',
-            contentType: 'application/json',
-            success: function(response){
-                callback(response);
-            },
-            error: function(response){
-                console.log("Failed to get connections from server.");
-                return connectionsJSON;
-            }
-        });
+    		if(connections){
+    			callback(_.findWhere(connections, {uuid: connectionUuid}));
+    		}else{
+    	        $.ajax({
+    	            url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
+    	            type: 'GET',
+    	            contentType: 'application/json',
+    	            success: function(response){
+    	                connections = response;
+    	                callback(response);
+    	            },
+    	            error: function(response){
+    	                console.log("Failed to get connections from server.");
+    	                console.log(response);
+    	            }
+    	        });    			
+    		}
+    }.bind(picsureFunctions);
+    picsureFunctions.getConnections = function (callback) {
+    	    if(connections){
+    	    		callback(connections);
+    	    }else{
+    	        $.ajax({
+    	            url: window.location.origin + settings.basePath + '/connection/',
+    	            type: 'GET',
+    	            contentType: 'application/json',
+    	            success: function(response){
+    	            		connections = response;
+    	                callback(response);
+    	            },
+    	            error: function(response){
+    	                console.log("Failed to get connections from server.");
+    	                return connectionsJSON;
+    	            }
+    	        });
+    	    }
     }.bind(picsureFunctions);
     picsureFunctions.createOrUpdateConnection = function (connections, requestType, callback) {
         var successMessage = 'Successfully added a connection.';
         var failureMessage = 'Failed to add a connection.';
         $.ajax({
-            url: window.location.origin + settings.servicesPath + '/connection',
+            url: window.location.origin + settings.basePath + '/connection',
             type: requestType,
             contentType: 'application/json',
             data: JSON.stringify(connections),
@@ -42,7 +68,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
         var successMessage = 'Successfully deleted connection.';
         var failureMessage = 'Failed to delete connection.';
         $.ajax({
-            url: window.location.origin + settings.servicesPath + '/connection/' + uuid,
+            url: window.location.origin + settings.basePath + '/connection/' + uuid,
             type: 'DELETE',
             contentType: 'application/json',
             success: function(response){
@@ -57,7 +83,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
 
     picsureFunctions.getLatestTOS = function (callback) {
         $.ajax({
-            url: window.location.origin + settings.servicesPath + '/tos/latest',
+            url: window.location.origin + settings.basePath + '/tos/latest',
             type: 'GET',
             contentType: 'application/json',
             success: function(response){
@@ -71,7 +97,7 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
 
     picsureFunctions.acceptTOS = function (callback) {
         $.ajax({
-            url: window.location.origin + settings.servicesPath + '/tos/accept',
+            url: window.location.origin + settings.basePath + '/tos/accept',
             type: 'POST',
             contentType: 'application/json',
             success: function(response){

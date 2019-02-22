@@ -1,0 +1,26 @@
+
+    <h1>{{label}}</h1>
+    <table class="table-picsure table-hover">
+        <thead class="header-color">
+        <tr>
+
+            <th>Name</th>
+
+            <th>Description</th>
+
+            <th>Application Name</th>
+        </tr>
+        </thead>
+        <tbody>
+        {{#each accessRules}}
+            <tr>
+                <td><div class="accessRule-row" id="{{this.uuid}}">{{this.name}}</div></td>
+
+                <td><div class="accessRule-row" id="{{this.uuid}}">{{this.description}}</div></td>
+
+                <td><div class="accessRule-row" id="{{this.uuid}}">{{this.application.name}}</div></td>
+
+            </tr>
+        {{/each}}
+        </tbody>
+    </table>

@@ -1,5 +1,4 @@
 {
-  "servicesPath" : "/picsureauth",
-  "uiPath": "",
+  "basePath" : "/auth",
   "helpLink": ""
 }

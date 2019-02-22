@@ -1,5 +1,4 @@
 {
   "helpLink": "",
-	"_comment-for_client_id-field":"This is the Auth0 client id for NHANES. Feel free to replace it",
-	"client_id":"ywAq4Xu4Kl3uYNdm3m05Cc5ow0OibvXt"
+  "customizeAuth0Login": false
 }

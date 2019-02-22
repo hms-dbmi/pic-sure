@@ -13,7 +13,7 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsure
                     this.toggleNavigationButtons(false);
                     session.setAcceptedTOS();
                     if (sessionStorage.redirection_url) {
-                        window.location = sessionStorage.redirection_url + "?token=" + JSON.parse(sessionStorage.session).token;
+                        window.location = sessionStorage.redirection_url;
                     }
                     else {
                         history.pushState({}, "", "userManagement");

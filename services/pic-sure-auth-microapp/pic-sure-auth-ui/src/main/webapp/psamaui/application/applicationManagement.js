@@ -102,7 +102,8 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
             application = [{
                 uuid: uuid,
                 name: name,
-                description: description
+                description: description,
+                privileges: this.model.get("selectedApplication").privileges
             }];
 
             applicationFunctions.createOrUpdateApplication(application, requestType, function(result) {
