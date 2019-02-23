@@ -10,7 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-@Provider
+//@Provider
 public class LoggerReaderInterceptor implements ReaderInterceptor {
 
     private final String sentinel = "RESOURCE_CREDENTIALS_REDACTED";

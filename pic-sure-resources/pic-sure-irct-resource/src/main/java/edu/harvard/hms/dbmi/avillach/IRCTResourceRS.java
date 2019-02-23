@@ -207,6 +207,11 @@ public class IRCTResourceRS implements IResourceRS
 		}
 	}
 
+	private String getTargetURL() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
