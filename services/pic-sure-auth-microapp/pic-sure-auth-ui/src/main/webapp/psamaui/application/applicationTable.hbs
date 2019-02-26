@@ -1,0 +1,22 @@
+
+	<h1>{{label}}</h1>
+	<table class="table-picsure table-hover">
+        <thead class="header-color">
+            <tr>
+
+                <th>Name</th>
+
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#each applications}}
+            <tr>
+                    <td><div class="application-row" id="{{this.uuid}}">{{this.name}}</div></td>
+
+                    <td><div class="application-row" id="{{this.uuid}}">{{this.description}}</div></td>
+
+            </tr>
+            {{/each}}
+        </tbody>
+	</table>

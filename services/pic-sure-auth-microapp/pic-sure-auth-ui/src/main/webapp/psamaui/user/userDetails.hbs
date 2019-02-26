@@ -1,0 +1,65 @@
+{{#unless createOrUpdateUser}}
+<div class="col-md-12">
+    <button id="edit-user-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    {{#if user.active}}
+    <button id="switch-status-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/>   Deactivate
+    </button>
+    {{else}}
+    <button id="switch-status-button" type="button" class="btn btn-success" style="float: right">
+            <span class="glyphicon glyphicon-ok"/>   Activate
+    </button>
+    {{/if}}
+
+</div>
+{{/unless}}
+<form>
+    <input type="text" name="email" required readonly disabled value="{{user.email}}" hidden>
+    <input type="text" name="active" value="{{user.active}}" hidden>
+    <input type="text" name="auth0metadata" style="display:none;" required readonly disabled value="{{user.auth0metadata}}">
+    <div id="required-fields">
+        {{#each requiredFields}}
+         {{this.label}}:<br>
+            <input type="text" name="{{this.id}}" style="width: 100%;" required {{#unless ../createOrUpdateUser}}readonly disabled{{/unless}} value="{{requiredFieldValue ../user.generalMetadata this.id}}">
+            <br>
+        {{/each}}
+    </div>
+    UUID:<br>
+    <input type="text" name="uuid" style="width: 100%;" readonly disabled value="{{user.uuid}}">
+    <br>
+    Connection ID:<br>
+    <input type="text" name="connectionId" style="width: 100%;" required readonly disabled value="{{user.connection.id}}">
+    <br>
+    Subject:<br>
+    <input type="text" name="subject" style="width: 100%;" required readonly disabled value="{{user.subject}}">
+    <br>
+    Roles:<br>
+    {{#unless createOrUpdateUser}}
+        <ul>
+        {{#each user.roles}}
+            <li>{{this.name}}</li>
+        {{/each}}
+        </ul>
+    {{/unless}}
+    {{#if createOrUpdateUser}}
+        <div class="checkbox-group required">
+            {{#each availableRoles}}
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}"> {{this.name}}<br>
+            {{/each}}
+        </div>
+    {{/if}}
+    <br>
+    {{#if createOrUpdateUser}}
+        <div>
+        <button id="save-user-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save user
+        </button>
+        <div id="cancel-user-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

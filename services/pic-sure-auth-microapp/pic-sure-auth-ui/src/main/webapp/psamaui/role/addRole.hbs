@@ -1,0 +1,25 @@
+<div id="new-role-form">
+    <div>
+        <label for="role_name">name (required)</label>
+        <input type="text" required name="role_name" style="width: 100%;" required>
+
+        <label for="role_description">description (required)</label>
+        <input type="text" required name="role_description" style="width: 100%;" required>
+    </div>
+	<div class="checkbox-group privilege-checkbox">
+        Privileges:<br>
+		{{#each privileges}}
+            <div>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}">{{this.name}}: {{this.description}}</input>
+            </div>
+		{{/each}}
+	</div>
+    <div style="padding-top: 4px">
+        <button id="save-role-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Role
+        </button>
+        <div id="cancel-role-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+    </div>
+</div>

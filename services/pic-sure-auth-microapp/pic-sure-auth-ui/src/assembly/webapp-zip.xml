@@ -17,7 +17,7 @@
 <filtered>false</filtered>
 </fileSet>
 <fileSet>
-<outputDirectory>/webjars</outputDirectory>
+<outputDirectory>psama/webjars</outputDirectory>
 <excludes>
 <exclude>**/META-INF/**</exclude>
 <exclude>**/WEB-INF/**</exclude>

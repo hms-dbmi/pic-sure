@@ -1,0 +1,40 @@
+{{#unless createOrUpdateRole}}
+<div class="col-md-12">
+    <button id="edit-role-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-role-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form>
+    UUID:<br>
+    <input uuid="{{role.uuid}}" type="text" name="role_uuid" style="width: 100%;" required readonly disabled value="{{role.uuid}}">
+    <br>
+    Name:<br>
+    <input uuid="{{role.uuid}}" type="text" name="role_name" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly disabled{{/unless}} value="{{role.name}}">
+    <br>
+    Description:<br>
+    <input type="text" name="role_description" style="width: 100%;" required {{#unless createOrUpdateRole}}readonly disabled{{/unless}} value="{{role.description}}">
+    <br>
+    <div class="checkbox-group privilege-checkbox bordered-block">
+        Privileges:<br>
+        {{#each privileges}}
+            <div>
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}" {{#unless ../createOrUpdateRole}}disabled{{/unless}}>{{this.name}}: {{this.description}}</input>
+            </div>
+        {{/each}}
+    </div>
+    {{#if createOrUpdateRole}}
+        <div style="padding-top: 4px">
+        <button id="save-role-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Role
+        </button>
+        <div id="cancel-role-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

@@ -1,0 +1,58 @@
+{{#each connections}}
+	<h2>{{label}}</h2>
+	<table class="table-picsure">
+	<thead class="header-color">
+		<tr>
+			{{#each requiredFields}}
+				<th>{{this.label}}</th>
+		    {{/each}}
+		    <th style="width: 50%;">Roles</th>
+		    <th style="width: 7%; min-width: 75px;"></th>
+		</tr>
+	</thead>
+	<tbody>
+		{{#each users}}
+        <tr>
+            {{#each ../requiredFields}}
+            <td><div class="user-row" id="{{../uuid}}">{{{fieldHelper ../this this}}}</div></td>
+            {{/each}}
+            <td><div>{{displayUserRoles this.roles}}</div></td>
+            <td>
+                <div>
+                    {{#if this.active}}<span class="label label-success">Active</span>
+                    {{else}}<span class="label label-danger">Inactive</span>
+                    {{/if}}
+                </div>
+            </td>
+        </tr>
+		{{/each}}
+	</tbody>
+	</table>
+	{{#if inactiveUsers.length}}
+    <div>
+        <div class="btn btn-secondary btn-sm btn-show-inactive" id="{{id}}">
+            Inactive users <span class="glyphicon glyphicon-chevron-down"></span>
+        </div>
+    </div>
+	<table class="table-picsure table-inactive" id="inactive-{{id}}" hidden>
+    	<tbody>
+    		{{#each inactiveUsers}}
+            <tr>
+                {{#each ../requiredFields}}
+                <td><div class="user-row" id="{{../uuid}}">{{{fieldHelper ../this this}}}</div></td>
+                {{/each}}
+                <td style="width: 50%;"><div>{{displayUserRoles this.roles}}</div></td>
+                <td style="width: 7%; min-width: 75px;">
+                    <div>
+                        {{#if this.active}}<span class="label label-success">Active</span>
+                        {{else}}<span class="label label-danger">Inactive</span>
+                        {{/if}}
+                    </div>
+                </td>
+            </tr>
+    		{{/each}}
+    	</tbody>
+    </table>
+    {{/if}}
+    <br>
+{{/each}}

@@ -1,0 +1,51 @@
+{{#unless createOrUpdateAccessRule}}
+<div class="col-md-12">
+    <button id="edit-accessRule-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-accessRule-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form class="accessRule-detail-form">
+    UUID:<br>
+    <input uuid="{{accessRule.uuid}}" type="text" name="accessRule_uuid" style="width: 100%;" required readonly disabled value="{{accessRule.uuid}}">
+    <br>
+    Name:<br>
+    <input uuid="{{accessRule.uuid}}" type="text" name="accessRule_name" style="width: 100%;" required {{#unless createOrUpdateAccessRule}}readonly disabled{{/unless}} value="{{accessRule.name}}">
+    <br>
+    Description:<br>
+    <input type="text" name="accessRule_description" style="width: 100%;" required {{#unless createOrUpdateAccessRule}}readonly disabled{{/unless}} value="{{accessRule.description}}">
+    <br>
+
+    <div class="bordered-block application-block">
+        <Strong>Application</Strong> &nbsp&nbsp
+        <select id="application-dropdown" {{#unless createOrUpdateAccessRule}}disabled{{/unless}}>
+            <option value="">choose an application</option>
+            {{#each applications}}
+                <option value="{{this.uuid}}" description="{{this.description}}">{{this.name}}</option>
+            {{/each}}
+        </select>
+        <br>
+
+        UUID: <span id="uuid">{{accessRule.application.uuid}}</span>
+        <br>
+        Name: <span id="name">{{accessRule.application.name}}</span>
+        <br>
+        Description: <span id="description">{{accessRule.application.description}}</span>
+
+    </div>
+
+    {{#if createOrUpdateAccessRule}}
+        <div style="padding-top: 4px">
+        <button id="save-accessRule-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save AccessRule
+        </button>
+        <div id="cancel-accessRule-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

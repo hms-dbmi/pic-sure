@@ -1,0 +1,51 @@
+{{#unless createOrUpdatePrivilege}}
+<div class="col-md-12">
+    <button id="edit-privilege-button" type="button" class="btn btn-info">
+        <span class="glyphicon glyphicon-edit"/> Edit
+    </button>
+    <button id="delete-privilege-button" type="button" class="btn btn-danger" style="float: right">
+        <span class="glyphicon glyphicon-remove"/> Delete
+    </button>
+</div>
+{{/unless}}
+<form class="privilege-detail-form">
+    UUID:<br>
+    <input uuid="{{privilege.uuid}}" type="text" name="privilege_uuid" style="width: 100%;" required readonly disabled value="{{privilege.uuid}}">
+    <br>
+    Name:<br>
+    <input uuid="{{privilege.uuid}}" type="text" name="privilege_name" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly disabled{{/unless}} value="{{privilege.name}}">
+    <br>
+    Description:<br>
+    <input type="text" name="privilege_description" style="width: 100%;" required {{#unless createOrUpdatePrivilege}}readonly disabled{{/unless}} value="{{privilege.description}}">
+    <br>
+
+    <div class="bordered-block application-block">
+        <Strong>Application</Strong> &nbsp&nbsp
+        <select id="application-dropdown" {{#unless createOrUpdatePrivilege}}disabled{{/unless}}>
+            <option value="">choose an application</option>
+            {{#each applications}}
+                <option value="{{this.uuid}}" description="{{this.description}}">{{this.name}}</option>
+            {{/each}}
+        </select>
+        <br>
+
+        UUID: <span id="uuid">{{privilege.application.uuid}}</span>
+        <br>
+        Name: <span id="name">{{privilege.application.name}}</span>
+        <br>
+        Description: <span id="description">{{privilege.application.description}}</span>
+
+    </div>
+
+    {{#if createOrUpdatePrivilege}}
+        <div style="padding-top: 4px">
+        <button id="save-privilege-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save Privilege
+        </button>
+        <div id="cancel-privilege-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}
+
+</form>

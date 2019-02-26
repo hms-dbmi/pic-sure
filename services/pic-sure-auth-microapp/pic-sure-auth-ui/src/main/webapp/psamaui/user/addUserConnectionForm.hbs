@@ -1,0 +1,33 @@
+
+	{{#each connection.requiredFields}}
+		<div class='row'>
+			<label for={{this.id}}>{{this.label}} (required)</label>
+			<input type="text" required name="{{this.id}}" style="width: 100%;" required>
+		</div>
+	{{/each}}
+	{{#each connection.optionalFields}}
+		<div class='row'>
+			<label for={{this.id}}>{{this.label}}</label>
+			<input type="text" name="{{this.id}}" style="width: 100%;" required>
+		</div>
+	{{/each}}
+	</div>
+	<h3>Roles:</h3>
+    {{#if createOrUpdateUser}}
+        <div class="checkbox-group required">
+            {{#each availableRoles}}
+                <input type="checkbox" name="{{this.name}}" value="{{this.uuid}}"> {{this.name}}<br>
+            {{/each}}
+        </div>
+    {{/if}}
+    <br>
+    {{#if createOrUpdateUser}}
+        <div>
+        <button id="save-user-button" type="submit" class="btn btn-info">
+            <span class="glyphicon glyphicon-ok"></span> Save user
+        </button>
+        <div id="cancel-user-button" class="btn btn-outline" style="float: right">
+            <span class="glyphicon glyphicon-remove"></span> Cancel
+        </div>
+        </div>
+    {{/if}}

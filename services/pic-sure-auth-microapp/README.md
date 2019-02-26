@@ -19,7 +19,7 @@ eval $(docker-machine env <NAME>)
 Ensure that your VirtualBox, named &lt;NAME&gt;, has no container using port 80 and 443. If it does, either shut down the containers using those ports, or create a new VirtualBox, with a different name. ([Follow the instructions to create a new VirtualBox](https://github.com/hms-dbmi/docker-images/wiki/Local-Development-Setup)
 )
 
-## Deployment using Docker containers
+## Deployment using Docker containers and Verify by login from a browser
 
 The below commands need Java 9+ and Maven installed. The commands will do
 
@@ -39,8 +39,7 @@ open http://${DOCKER_IP}/
 
 ```
 
-
-After the commands successfully executed, list the three containers, that comprise the PIC-SURE Auth MicroApp.
+After the commands successfully executed, list the containers, that comprise the PIC-SURE Auth MicroApp.
 
 ```
 docker ps | grep pic-sure
@@ -49,8 +48,44 @@ docker ps | grep pic-sure
 
 ```
 
-If you make source code changes, just re-run the same command and it will redeploy the stack for you.
-
-Note: <small>This was changed from the much shorter maven based deployment to resolve a certificate issue with grin-docker-dev. Once the cert issue is resolved the maven tomcat configs will work again.</small>
+After the commands successfully executed, list the three containers, that comprise the PIC-SURE Auth MicroApp.
 
 
+Note: <small>This was changed from the much shorter maven based deployment to resolve a certificate issue 
+  with grin-docker-dev. Once the cert issue is resolved the maven tomcat configs will work again.</small>
+
+You'll need to provide Auth0 client_id in /admin/overrides/login.js and the client_secret of pic-sure-auth-services 
+has to match the one from Auth0 based on client_id.
+
+#### To add an initial top admin user in the system
+If you follow the steps above, spins up the docker containers and you can see the login page in the browser, you are almost there.
+
+You just need to add a top admin user in the system to be able to play with all features.
+
+There is a sql script in source code for adding the top admin user with some initial setup, you can import the script
+into your database.
+
+Open the file under /{{root_pic-sure-auth-microapp}}/pic-sure-auth-db/db/tools/first_time_run_the_system_and_insert_admin_user.sql,
+modify the configuration data - @user_email with your own google email
+
+#### Terms of Service
+
+If a user logging in has not accepted the latest terms of service, they will be directed to the 'Accept Terms of Service' page.
+The content of the terms of service is stored in the termsOfService table in the database.  This is html that is rendered on the page.  
+To trigger the acceptance of the terms of service, this html must include a button with class 'accept-tos-button'.  Anything with this class,
+upon clicking, will register the logged in user as accepting terms of service.  This button can be disabled until criteria are met.  Some example termsOfService content would be:
+
+```aidl
+These are the terms of service.
+<br>
+<input type="checkbox" id="checkMe">This box must be checked</input>
+<br>
+<button type="button" disabled id="acceptBtn" class="btn btn-info accept-tos-button">
+  <span>Accept</span> 
+</button>
+<script>
+ $('#checkMe').on('change', function(){
+	$('#acceptBtn').prop("disabled", !this.checked);
+	});
+</script>
+```
