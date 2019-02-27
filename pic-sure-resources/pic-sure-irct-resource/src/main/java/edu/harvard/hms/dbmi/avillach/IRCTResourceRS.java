@@ -37,7 +37,9 @@ import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 @Consumes("application/json")
 public class IRCTResourceRS implements IResourceRS
 {
-	private static final String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
+	private static String RESULT_FORMAT = System.getenv("RESULT_FORMAT");
+	private static final String DEFAULT_RESULT_FORMAT = "JSON";
+
 	public static final String IRCT_BEARER_TOKEN_KEY = "IRCT_BEARER_TOKEN";
 
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
@@ -49,8 +51,10 @@ public class IRCTResourceRS implements IResourceRS
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	public IRCTResourceRS() {
-		if(RESULT_FORMAT == null)
-			throw new PicsureQueryException("RESULT_FORMAT environment variable must be set.");
+		if(RESULT_FORMAT == null || RESULT_FORMAT.isEmpty()){
+		    logger.warn("RESULT_FORMAT environment variable has not been set yet. Using the default one: " + DEFAULT_RESULT_FORMAT);
+            RESULT_FORMAT = DEFAULT_RESULT_FORMAT;
+		}
 	}
 
 	@GET
