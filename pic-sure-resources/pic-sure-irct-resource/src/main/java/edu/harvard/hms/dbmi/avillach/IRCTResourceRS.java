@@ -17,16 +17,20 @@ import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
+import javax.servlet.ServletContext;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
@@ -44,16 +48,29 @@ public class IRCTResourceRS implements IResourceRS
 
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 
-	@Resource(name = "java:app/IRCT_TARGET_URL")
 	private static String targetURL;
+
+	@Context
+	private ServletContext context;
 
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	public IRCTResourceRS() {
 		if(RESULT_FORMAT == null || RESULT_FORMAT.isEmpty()){
-		    logger.warn("RESULT_FORMAT environment variable has not been set yet. Using the default one: " + DEFAULT_RESULT_FORMAT);
-            RESULT_FORMAT = DEFAULT_RESULT_FORMAT;
+			logger.warn("RESULT_FORMAT environment variable has not been set yet. Using the default one: " + DEFAULT_RESULT_FORMAT);
+			RESULT_FORMAT = DEFAULT_RESULT_FORMAT;
+		}
+
+	}
+
+	@PostConstruct
+	public void init() {
+		try {
+			InitialContext ctx = new InitialContext();
+			targetURL = (String) ctx.lookup("java:global/target_url_" + context.getContextPath().replaceAll("/",""));
+		} catch (NamingException e) {
+			throw new RuntimeException("Could not find JNDI name : "  + "java:global/target_url_" + context.getContextPath().replaceAll("/","") + " --- please put your irct target url here");
 		}
 	}
 
@@ -65,7 +82,7 @@ public class IRCTResourceRS implements IResourceRS
 
 	@POST
 	@Path("/info")
-//	@Override
+	//	@Override
 	public ResourceInfo info(QueryRequest queryRequest) {
 		logger.debug("Calling IRCT Resource info()");
 		if (targetURL == null || targetURL.isEmpty())
@@ -85,7 +102,7 @@ public class IRCTResourceRS implements IResourceRS
 
 		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName), createAuthorizationHeader(token));
 		if (response.getStatusLine().getStatusCode() != 200){
-            logger.error(targetURL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			logger.error(targetURL + " did not return a 200: {} {}", response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 			throwResponseError(response, targetURL);
 		}
 		return new ResourceInfo().setName("IRCT Resource : " + targetURL)
@@ -117,24 +134,41 @@ public class IRCTResourceRS implements IResourceRS
 			if (search == null) {
 				throw new ProtocolException((ProtocolException.MISSING_DATA));
 			}
-			String searchTerm = search.toString();
 
-			String pathName = "resourceService/find";
-			String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-			HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(token));
-			SearchResults results = new SearchResults();
-			results.setSearchQuery(searchTerm);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				//If the result is empty, a 500 is thrown for some reason
-				JsonNode responseObject = json.readTree(response.getEntity().getContent());
-				if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
-					return results;
+			if(search instanceof String) {
+				String searchTerm = search.toString();
+
+				String pathName = "resourceService/find";
+				String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
+				HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(token));
+				SearchResults results = new SearchResults();
+				results.setSearchQuery(searchTerm);
+				if (response.getStatusLine().getStatusCode() != 200) {
+					logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+					//If the result is empty, a 500 is thrown for some reason
+					JsonNode responseObject = json.readTree(response.getEntity().getContent());
+					if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
+						return results;
+					}
+					throwResponseError(response, targetURL);
 				}
-				throwResponseError(response, targetURL);
+				results.setResults(readObjectFromResponse(response, Object.class));
+				return results;
+			} else {
+				// This must be a list of searches, because that's the only other thing we support
+				ObjectMapper mapper = new ObjectMapper();
+				try{
+					List<String> entityPaths = mapper.readValue(mapper.writeValueAsString(search), List.class);
+				} catch(Exception e) {
+					logger.error("Could not parse jsonPaths, client made a mistake of some kind : " + mapper.writeValueAsString(search));
+					throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+				}
+				HttpResponse response = retrievePostResponse(composeURL(targetURL, "resourceService/jsonPath"), createAuthorizationHeader(token), mapper.writeValueAsString(search));
+				SearchResults results = new SearchResults();
+				results.setSearchQuery(mapper.writeValueAsString(search));
+				results.setResults(mapper.readValue(response.getEntity().getContent(), List.class));
+				return results;
 			}
-			results.setResults(readObjectFromResponse(response, Object.class));
-			return results;
 		} catch (UnsupportedEncodingException e){
 			//TODO what to do about this
 			throw new ApplicationException("Error encoding search term: " + e.getMessage());
@@ -227,8 +261,8 @@ public class IRCTResourceRS implements IResourceRS
 			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
 		if (statusQuery == null){
-            throw new ProtocolException(ProtocolException.MISSING_DATA);
-        }
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
 		Map<String, String> resourceCredentials = statusQuery.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
@@ -274,10 +308,10 @@ public class IRCTResourceRS implements IResourceRS
 		if (targetURL == null || targetURL.isEmpty()){
 			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
 		}
-        if (resultRequest == null){
-            throw new ProtocolException(ProtocolException.MISSING_DATA);
-        }
-        Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
+		if (resultRequest == null){
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Map<String, String> resourceCredentials = resultRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
@@ -311,14 +345,14 @@ public class IRCTResourceRS implements IResourceRS
 	private PicSureStatus mapStatus(String resourceStatus){
 		//TODO what are actually all the options?  What should the default be? What if it's something that doesn't match?
 		switch (resourceStatus) {
-			case "RUNNING":
-				return PicSureStatus.PENDING;
-			case "AVAILABLE":
-				return PicSureStatus.AVAILABLE;
-			case "ERROR":
-				return PicSureStatus.ERROR;
-			default:
-				return null;
+		case "RUNNING":
+			return PicSureStatus.PENDING;
+		case "AVAILABLE":
+			return PicSureStatus.AVAILABLE;
+		case "ERROR":
+			return PicSureStatus.ERROR;
+		default:
+			return null;
 		}
 
 	}
