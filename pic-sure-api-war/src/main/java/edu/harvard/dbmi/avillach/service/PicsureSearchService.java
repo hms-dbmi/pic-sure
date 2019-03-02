@@ -46,7 +46,6 @@ public class PicsureSearchService {
 		if (searchQueryRequest.getResourceCredentials() == null){
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
-		searchQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
 	}
 
