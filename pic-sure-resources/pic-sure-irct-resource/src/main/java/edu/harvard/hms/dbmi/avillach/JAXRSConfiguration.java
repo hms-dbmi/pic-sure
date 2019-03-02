@@ -13,18 +13,10 @@ import javax.ws.rs.core.Application;
 
 @Startup
 @ApplicationPath("pic-sure")
-@WebListener
 public class JAXRSConfiguration extends Application implements ServletContextListener {
-
-    @Override
-    public void contextInitialized(ServletContextEvent event) {
-        ServletContext servletContext = event.getServletContext(); 
-        servletContext.setInitParameter("resteasy.resources", "org.jboss.resteasy.plugins.stats.RegistryStatsResource");
-    }
-
-    @Override
-    public void contextDestroyed(ServletContextEvent event) {
-        // NOOP.
-    }
+	
+	public JAXRSConfiguration() {
+		
+	}
 
 }
