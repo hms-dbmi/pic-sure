@@ -78,7 +78,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		},
 		showConnectionAction: function (event) {
 			var uuid = event.target.id;
-			picsureFunctions.getConnection(uuid, function(result) {
+			picsureFunctions.getConnection(uuid, false, function(result) {
                 var connection = new ConnectionModel(result);
                 connection.set("requiredFields", JSON.parse(connection.get("requiredFields")));
 				this.model.set("selectedConnection", connection);
@@ -131,7 +131,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		},
 		render : function(){
 			this.$el.html(this.template({}));
-			picsureFunctions.getConnection("", function(connections){
+			picsureFunctions.getConnection("", true, function(connections){
 				this.displayConnections(connections);
 			}.bind(this));
 		}

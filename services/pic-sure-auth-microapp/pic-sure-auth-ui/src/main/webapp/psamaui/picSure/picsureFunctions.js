@@ -6,43 +6,28 @@ define(["util/notification", "picSure/settings"],
     };
 
     var connections = undefined;
-    
-    picsureFunctions.getConnection = function (connectionUuid, callback) {
-    		if(connections){
-    			callback(_.findWhere(connections, {uuid: connectionUuid}));
-    		}else{
-    	        $.ajax({
-    	            url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
-    	            type: 'GET',
-    	            contentType: 'application/json',
-    	            success: function(response){
-    	                connections = response;
-    	                callback(response);
-    	            },
-    	            error: function(response){
-    	                console.log("Failed to get connections from server.");
-    	                console.log(response);
-    	            }
-    	        });    			
-    		}
-    }.bind(picsureFunctions);
-    picsureFunctions.getConnections = function (callback) {
-    	    if(connections){
-    	    		callback(connections);
-    	    }else{
-    	        $.ajax({
-    	            url: window.location.origin + settings.basePath + '/connection/',
-    	            type: 'GET',
-    	            contentType: 'application/json',
-    	            success: function(response){
-    	            		connections = response;
-    	                callback(response);
-    	            },
-    	            error: function(response){
-    	                console.log("Failed to get connections from server.");
-    	            }
-    	        });
-    	    }
+    // forceAjax flag is to decide where get connections from API or local storage
+    picsureFunctions.getConnection = function (connectionUuid, forceAjax, callback) {
+        if(!forceAjax && connections) {
+            if (connectionUuid)
+                callback(_.findWhere(connections, {uuid: connectionUuid}));
+            else
+                callback(connections);
+        }else{
+            $.ajax({
+                url: window.location.origin + settings.basePath + '/connection/' + (connectionUuid ? connectionUuid : ''),
+                type: 'GET',
+                contentType: 'application/json',
+                success: function(response){
+                    connections = response;
+                    callback(response);
+                },
+                error: function(response){
+                    notification.showFailureMessage("Failed to get connection(s) from server.");
+                    console.log(response);
+                }
+            });
+        }
     }.bind(picsureFunctions);
     picsureFunctions.createOrUpdateConnection = function (connections, requestType, callback) {
         var successMessage = 'Successfully added a connection.';

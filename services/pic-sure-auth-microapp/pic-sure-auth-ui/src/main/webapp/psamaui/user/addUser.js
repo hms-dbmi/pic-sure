@@ -1,17 +1,10 @@
-define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "user/userManagement", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"],
-		function(BB, HBS, connections, userFunctions, userManagement, template, connectionTemplate){
+define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "picSure/picsureFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"],
+		function(BB, HBS, connections, userFunctions, picsureFunctions, template, connectionTemplate){
 	var view = BB.View.extend({
 		initialize: function(opts){
 			this.connectionTemplate = HBS.compile(connectionTemplate);
 			this.template = HBS.compile(template);
-			this.connections = connections;
-			this.connection = this.connections[0];
 			this.managementConsole = opts.managementConsole;
-            this.connections = JSON.parse(sessionStorage.connections);
-            this.connections.forEach(function (connection) {
-                connection.requiredFields = JSON.parse(connection.requiredFields);
-            })
-            this.connection = this.connections[0];
         },
 		events: {
 			"change #new-user-connection-dropdown":"renderConnectionForm",
@@ -53,9 +46,16 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 						}));
             }.bind(this));
 		},
+        getConnections : function(callback){
+            picsureFunctions.getConnection("", false, callback);
+        },
 		render: function(){
-			this.$el.html(this.template({connections: this.connections}));
-			this.renderConnectionForm({target:{value:this.connections[0].id}})
+			// load available connections first
+            this.getConnections(function (connections) {
+                this.connections = connections;
+                this.$el.html(this.template({connections: this.connections}));
+                this.renderConnectionForm({target:{value:this.connections[0].id}})
+            }.bind(this));
 		}
 	});
 	return view;
