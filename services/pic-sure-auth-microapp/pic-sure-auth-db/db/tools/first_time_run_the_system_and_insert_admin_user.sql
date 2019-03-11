@@ -33,7 +33,7 @@ and privilege.uuid = role_privilege.privilege_id;
 
 insert into user (`uuid`,`general_metadata`,`connectionId`,`matched`) values (unhex(@user_uuid), CONCAT("{\"email\":\"", @user_email, "\"}"), @connection_uuid, @matched);
 insert into user_role (`user_id`,`role_id`) values (unhex(@user_uuid),
-(select min(uuid) from management_view where privilege_name like 'ROLE_SYSTEM')) ;
+(select min(uuid) from management_view where privilege_name like 'SYSTEM')) ;
 
 #### insert into userMetadataMapping
 insert into `userMetadataMapping` values (@userMetadataMapping_uuid, @authMetadata, @connection_uuid, @generalMetadata);
