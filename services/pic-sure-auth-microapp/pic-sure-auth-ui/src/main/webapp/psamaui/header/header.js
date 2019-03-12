@@ -2,33 +2,35 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
 		function(BB, HBS, template, session, userFunctions){
 	var headerView = BB.View.extend({
 		initialize : function(){
-            HBS.registerHelper('not_contains', function(array, object, opts) {
+			HBS.registerHelper('not_contains', function(array, object, opts) {
 				var found = _.find(array, function(element){
-				    return (element === object);
+					return (element === object);
 				});
 				if (found)
-                    return opts.inverse(this);
+					return opts.inverse(this);
 				else
-                    return opts.fn(this);
-            });
+					return opts.fn(this);
+			});
 			this.template = HBS.compile(template);
 		},
-        events : {
-            "click #logout-btn" : "gotoLogin"
-        },
-        gotoLogin : function(event){
-            this.logout();
-            window.location="/psamaui/login" + window.location.search;
-        },
+		events : {
+			"click #logout-btn" : "gotoLogin"
+		},
+		gotoLogin : function(event){
+			this.logout();
+			window.location="/psamaui/login" + window.location.search;
+		},
 		logout : function(event){
-            sessionStorage.clear();
-        },
+			sessionStorage.clear();
+		},
 		render : function(){
-            userFunctions.me(this, function(user){
-                this.$el.html(this.template({
-                    privileges: user.privileges
-                }));
-            }.bind(this));
+			if(window.location.pathname!=="/psamaui/tos"){
+				userFunctions.me(this, function(user){
+					this.$el.html(this.template({
+						privileges: user.privileges
+					}));
+				}.bind(this));				
+			}
 		}
 	});
 
