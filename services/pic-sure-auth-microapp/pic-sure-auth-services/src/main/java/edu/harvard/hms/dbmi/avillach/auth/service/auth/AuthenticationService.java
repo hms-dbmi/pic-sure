@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -11,9 +10,8 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
-import edu.harvard.hms.dbmi.avillach.jwt.JWTUtil;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
-import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +20,10 @@ import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static java.util.Map.of;
 
 public class AuthenticationService {
     private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
