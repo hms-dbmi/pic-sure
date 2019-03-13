@@ -19,7 +19,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                             + "/psamaui/login/";
             if(typeof queryObject.access_token === "string"){
                 $.ajax({
-                    url: '/picsureauth/authentication',
+                    url: '/psama/authentication',
                     type: 'post',
                     data: JSON.stringify({
                         access_token : queryObject.access_token,
@@ -29,17 +29,13 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
                         if (!data.acceptedTOS){
-                            session.loadSessionVariables(function () {
-                                history.pushState({}, "", "/psamaui/tos");
-                            });
+                            history.pushState({}, "", "/psamaui/tos");
                         } else {
                             if (sessionStorage.redirection_url) {
                                 window.location = sessionStorage.redirection_url;
                             }
                             else {
-                                session.loadSessionVariables(function () {
-                                    history.pushState({}, "", "/psamaui/userManagement");
-                                });
+                                history.pushState({}, "", "/psamaui/userManagement");
                             }
                         }
                     }.bind(this),

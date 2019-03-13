@@ -1,5 +1,5 @@
 // Util functions get data to/from picsure
-define(["util/notification", "text!picSure/connections.json", "picSure/settings"],
+define(["util/notification", "picSure/settings"],
 		function(notification, connectionsJSON, settings){
     var picsureFunctions = {
         init: function () {}
@@ -40,7 +40,6 @@ define(["util/notification", "text!picSure/connections.json", "picSure/settings"
     	            },
     	            error: function(response){
     	                console.log("Failed to get connections from server.");
-    	                return connectionsJSON;
     	            }
     	        });
     	    }

@@ -22,6 +22,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         },
         logout: function (event) {
             sessionStorage.clear();
+            localStorage.clear();
         },
         render: function () {
             if (window.location.pathname !== "/psamaui/tos") {

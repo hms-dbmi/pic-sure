@@ -16,7 +16,7 @@ define(["backbone","handlebars", "text!termsOfService/tos.hbs", "picSure/picsure
                         window.location = sessionStorage.redirection_url;
                     }
                     else {
-                        history.pushState({}, "", "userManagement");
+                        history.pushState({}, "", "psamaui/userManagement");
                     }
                 }.bind(this))
             },

@@ -1,4 +1,6 @@
 {
   "helpLink": "",
-  "customizeAuth0Login": false
+  "customizeAuth0Login": false,
+  "client_id": "",
+  "basePath": "/psama"
 }
