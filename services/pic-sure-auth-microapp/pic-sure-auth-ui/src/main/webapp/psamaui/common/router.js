@@ -52,7 +52,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         				} else {
         					callback.apply(this, args);
         				}
-                }
+                    }
         		}
             
         },

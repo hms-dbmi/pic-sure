@@ -39,7 +39,7 @@ open http://${DOCKER_IP}/
 
 ```
 
-After the commands successfully executed, list the three containers, that comprise the PIC-SURE Auth MicroApp.
+After the commands successfully executed, list the containers, that comprise the PIC-SURE Auth MicroApp.
 
 ```
 docker ps | grep pic-sure
@@ -48,9 +48,11 @@ docker ps | grep pic-sure
 
 ```
 
-If you make source code changes, just re-run the same command and it will redeploy the stack for you.
+After the commands successfully executed, list the three containers, that comprise the PIC-SURE Auth MicroApp.
 
-Note: <small>This was changed from the much shorter maven based deployment to resolve a certificate issue with grin-docker-dev. Once the cert issue is resolved the maven tomcat configs will work again.</small>
+
+Note: <small>This was changed from the much shorter maven based deployment to resolve a certificate issue 
+  with grin-docker-dev. Once the cert issue is resolved the maven tomcat configs will work again.</small>
 
 You'll need to provide Auth0 client_id in /admin/overrides/login.js and the client_secret of pic-sure-auth-services 
 has to match the one from Auth0 based on client_id.

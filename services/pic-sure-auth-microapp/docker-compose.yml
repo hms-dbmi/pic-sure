@@ -2,15 +2,11 @@ version: '3'
 services:
   httpd:
     build:
-      context: ./httpd
+      context: ./pic-sure-auth-ui
       dockerfile: Dockerfile
     ports:
       - 80:80
       - 443:443
-    volumes:
-      - ./pic-sure-auth-ui/src/main/webapp:/usr/local/apache2/htdocs
-      - ./pic-sure-auth-ui/target/webjars/META-INF/resources/webjars:/usr/local/apache2/htdocs/webjars
-      - ./pic-sure-auth-ui/src/main/resources:/usr/local/apache2/htdocs/settings
     networks:
       - public
 
@@ -38,26 +34,10 @@ services:
     networks:
       - public
 
-#  picsureauthdb:
-#    image: dbmi/auth-db:5.7.22_initial
-#    command: --datadir=/mysql/data
-#    environment:
-#      - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
-#      - MYSQL_DATABASE=auth
-#    restart: always
-#    expose:
-#      - 3306
-#    volumes:
-#      - picsure-auth-data:/mysql/data
-#    networks:
-#      - public
-
   picsureauthdb:
-#    image: dbmi/auth-db:5.7.22_initial
     build:
       context: pic-sure-auth-db
       dockerfile: Dockerfile
-#    command: --datadir=/mysql/data
     environment:
       - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
       - MYSQL_DATABASE=auth
@@ -76,4 +56,3 @@ networks:
 
 volumes:
   picsure-auth-data:
-
