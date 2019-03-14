@@ -177,6 +177,18 @@ CREATE TABLE `accessRule_privilege` (
   CONSTRAINT `FK89rf30kbf9d246jty2dd7qk99` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
+CREATE OR REPLACE VIEW `management_view`
+AS SELECT
+   `role`.`uuid` AS `uuid`,
+   `role`.`name` AS `role_name`,
+   `privilege`.`name` AS `privilege_name`
+	FROM 
+		((`role` JOIN `role_privilege`) JOIN `privilege`) 
+	WHERE
+		((`role`.`uuid` = `role_privilege`.`role_id`) 
+	AND
+		(`privilege`.`uuid` = `role_privilege`.`privilege_id`));
+
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
