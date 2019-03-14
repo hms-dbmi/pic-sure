@@ -1,9 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import edu.harvard.dbmi.avillach.util.HttpClientUtil;
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
-import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
@@ -13,36 +9,26 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthorizationService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
-import io.jsonwebtoken.*;
-import org.apache.commons.codec.binary.Base64;
-import org.apache.http.HttpResponse;
-import org.apache.http.message.BasicHeader;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Resource;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.persistence.NoResultException;
-import javax.persistence.NonUniqueResultException;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.TOKEN_INTROSPECTION;
 
 @Path("/token")
 public class TokenService {
@@ -78,7 +64,6 @@ public class TokenService {
 
 	/**
 	 * @param inputMap
-	 * @param applicationId
 	 * @return
 	 */
 	private TokenInspection _inspectToken(Map<String, Object> inputMap){
@@ -107,7 +92,18 @@ public class TokenService {
 			return tokenInspection;
 		}
 
-		Application application = (Application) securityContext.getUserPrincipal();
+		Application application = null;
+
+		try {
+			application = (Application) securityContext.getUserPrincipal();
+		} catch (ClassCastException ex){
+			logger.error(securityContext.getUserPrincipal().getName()
+							+ " - " + securityContext.getUserPrincipal().getClass().getSimpleName() +
+					" - is trying to use token introspection endpoint" +
+					", but it is not an application");
+			throw new ApplicationException("The application token does not associate with an application but "
+					+ securityContext.getUserPrincipal().getClass().getSimpleName());
+		}
 
 		String subject = jws.getBody().getSubject();
 
