@@ -20,23 +20,7 @@
 START TRANSACTION;
 
 #configuration for connection table
-SET @uuidConnection = REPLACE(uuid(),'-','');
 SET @uuidUser = REPLACE(uuid(),'-','');
-
-# The default first connection information is for Google
-INSERT INTO `connection` (
-	`uuid`,
-	`label`,
-	`id`,
-	`subprefix`,
-	`requiredFields`
-) VALUES (
-	@uuidConnection, 
-	'Google', 
-	'google-oauth2', 
-	'google-oauth2|', 
-	'[{\"label\":\"Email\", \"id\":\"email\"}]'
-);
 
 INSERT INTO user (
 	`uuid`,
@@ -71,7 +55,7 @@ INSERT INTO `userMetadataMapping` (
 ) VALUES (
 	REPLACE(uuid(),'-',''), 
 	'$.email', 
-	@uuidConnection, 
+	(SELECT `uuid` FROM `connection` WHERE `label` = 'Google'), 
 	'$.email'
 );
 
