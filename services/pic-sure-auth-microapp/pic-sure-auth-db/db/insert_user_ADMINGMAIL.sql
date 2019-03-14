@@ -47,13 +47,15 @@ INSERT INTO user_role (
 );
 
 #### insert into userMetadataMapping
+SET @uuidMetaData = REPLACE(uuid(),'-','');
+
 INSERT INTO `userMetadataMapping` (
 	`uuid`,
 	`auth0MetadataJsonPath`,
 	`connectionId`,
 	`generalMetadataJsonPath`,
 ) VALUES (
-	REPLACE(uuid(),'-',''),
+	unhex(@uuidMetaData),
 	'$.email',
 	(SELECT `uuid` FROM `connection` WHERE `label` = 'Google'),
 	'$.email'
