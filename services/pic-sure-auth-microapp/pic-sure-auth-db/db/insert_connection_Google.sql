@@ -10,10 +10,10 @@ INSERT INT `connection` (
 	`subprefix`,
 	`requiredFields`
 ) VALUES (
-		unhex(@uuidConnection), 
-		'Google', 
-		'google-oauth2', 
-		'google-oauth2|', 
+		unhex(@uuidConnection),
+		'Google',
+		'google-oauth2',
+		'google-oauth2|',
 		'[{\"label\":\"Email\", \"id\":\"email\"}]'
 );
 

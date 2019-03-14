@@ -7,10 +7,10 @@
 #
 # Just in case clearing the underlying tables is required
 # One might execute the folloring scripts, but BEWARE that
-# these commands will remove ALL user information from 
+# these commands will remove ALL user information from
 # the database.
 #
-# 
+#
 # DELETE FROM `user_role`;
 # DELETE FROM `user`;
 # DELETE FROM `userMetadataMapping`;
@@ -28,9 +28,9 @@ INSERT INTO user (
 	`connectionId`,
 	`matched`
 ) VALUES (
-	unhex(@uuidUser), 
-	"{\"email\":\"__SUPERUSER_GMAIL_ADDRESS__\"}", 
-	@uuidConnection, 
+	unhex(@uuidUser),
+	"{\"email\":\"__SUPERUSER_GMAIL_ADDRESS__\"}",
+	@uuidConnection,
 	false
 );
 
@@ -53,9 +53,9 @@ INSERT INTO `userMetadataMapping` (
 	`connectionId`,
 	`generalMetadataJsonPath`,
 ) VALUES (
-	REPLACE(uuid(),'-',''), 
-	'$.email', 
-	(SELECT `uuid` FROM `connection` WHERE `label` = 'Google'), 
+	REPLACE(uuid(),'-',''),
+	'$.email',
+	(SELECT `uuid` FROM `connection` WHERE `label` = 'Google'),
 	'$.email'
 );
 
