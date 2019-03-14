@@ -53,7 +53,7 @@ INSERT INTO `userMetadataMapping` (
 	`uuid`,
 	`auth0MetadataJsonPath`,
 	`connectionId`,
-	`generalMetadataJsonPath`,
+	`generalMetadataJsonPath`
 ) VALUES (
 	unhex(@uuidMetaData),
 	'$.email',
