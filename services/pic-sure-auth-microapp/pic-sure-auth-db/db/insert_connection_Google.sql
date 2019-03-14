@@ -3,7 +3,7 @@ START TRANSACTION;
 
 SET @uuidConnection = REPLACE(uuid(),'-','');
 
-INSERT INT `connection` (
+INSERT INTO `connection` (
 	`uuid`,
 	`label`,
 	`id`,
