@@ -24,7 +24,7 @@ INSERT INTO `role_privilege` (
 )
 VALUES (
 	unhex(@uuidRole),
-	(SELECT uuid FROM `privilege` WHERE `name` = `SYSTEM`)
+	(SELECT uuid FROM `privilege` WHERE `name` = 'SYSTEM')
 );
 
 COMMIT;
