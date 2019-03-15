@@ -13,8 +13,8 @@ INSERT INTO `role` (
 )
 VALUES (
 	unhex(@uuidRole),
-	'SUPERUSER',
-	'Superuser for PSAMA services.'
+	'PIC-SURE Top Admin',
+	'PIC-SURE Auth Micro App Top admin including Admin and super Admin'
 );
 
 # This is an example, where the role is associated with the 'SUPER_ADMIN' privilege
@@ -25,6 +25,15 @@ INSERT INTO `role_privilege` (
 VALUES (
 	unhex(@uuidRole),
 	(SELECT uuid FROM `privilege` WHERE `name` = 'SUPER_ADMIN')
+);
+
+INSERT INTO `role_privilege` (
+	`role_id`,
+	`privilege_id`
+)
+VALUES (
+	unhex(@uuidRole),
+	(SELECT uuid FROM `privilege` WHERE `name` = 'ADMIN')
 );
 
 COMMIT;
