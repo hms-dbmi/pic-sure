@@ -26,11 +26,15 @@ INSERT INTO user (
 	`uuid`,
 	`general_metadata`,
 	`connectionId`,
-	`matched`
+	`matched`,
+  `subject`,
+  `is_active`
 ) VALUES (
 	unhex(@uuidUser),
 	"{\"email\":\"__SUPERUSER_GMAIL_ADDRESS__\"}",
 	@uuidConnection,
+	false,
+	'',
 	false
 );
 
