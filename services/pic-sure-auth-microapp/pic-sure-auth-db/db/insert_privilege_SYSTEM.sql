@@ -14,7 +14,7 @@ INSERT INTO `privilege` (
 	`application_id`
 )
 VALUES (
-	unhex(@uuidPrivilege), 
+	unhex(@uuidPrivilege),
 	'SYSTEM',
 	'Special privilege, to allow all access to all functions of PSAMA',
 	NULL

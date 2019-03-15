@@ -7,10 +7,10 @@
 #
 # Just in case clearing the underlying tables is required
 # One might execute the folloring scripts, but BEWARE that
-# these commands will remove ALL user information from 
+# these commands will remove ALL user information from
 # the database.
 #
-# 
+#
 # DELETE FROM `user_role`;
 # DELETE FROM `user`;
 # DELETE FROM `userMetadataMapping`;
@@ -20,23 +20,7 @@
 START TRANSACTION;
 
 #configuration for connection table
-SET @uuidConnection = REPLACE(uuid(),'-','');
 SET @uuidUser = REPLACE(uuid(),'-','');
-
-# The default first connection information is for Google
-INSERT INTO `connection` (
-	`uuid`,
-	`label`,
-	`id`,
-	`subprefix`,
-	`requiredFields`
-) VALUES (
-	@uuidConnection, 
-	'Google', 
-	'google-oauth2', 
-	'google-oauth2|', 
-	'[{\"label\":\"Email\", \"id\":\"email\"}]'
-);
 
 INSERT INTO user (
 	`uuid`,
@@ -44,9 +28,9 @@ INSERT INTO user (
 	`connectionId`,
 	`matched`
 ) VALUES (
-	unhex(@uuidUser), 
-	"{\"email\":\"__SUPERUSER_GMAIL_ADDRESS__\"}", 
-	@uuidConnection, 
+	unhex(@uuidUser),
+	"{\"email\":\"__SUPERUSER_GMAIL_ADDRESS__\"}",
+	@uuidConnection,
 	false
 );
 
@@ -63,15 +47,17 @@ INSERT INTO user_role (
 );
 
 #### insert into userMetadataMapping
+SET @uuidMetaData = REPLACE(uuid(),'-','');
+
 INSERT INTO `userMetadataMapping` (
 	`uuid`,
 	`auth0MetadataJsonPath`,
 	`connectionId`,
-	`generalMetadataJsonPath`,
+	`generalMetadataJsonPath`
 ) VALUES (
-	REPLACE(uuid(),'-',''), 
-	'$.email', 
-	@uuidConnection, 
+	unhex(@uuidMetaData),
+	'$.email',
+	(SELECT `uuid` FROM `connection` WHERE `label` = 'Google'),
 	'$.email'
 );
 

@@ -12,8 +12,8 @@ INSERT INTO `role` (
 	`description`
 )
 VALUES (
-	unhex(@uuidRole), 
-	'SUPERUSER', 
+	unhex(@uuidRole),
+	'SUPERUSER',
 	'Superuser for PSAMA services.'
 );
 
@@ -23,8 +23,8 @@ INSERT INTO `role_privilege` (
 	`privilege_id`
 )
 VALUES (
-	unhex(@uuidRole), 
-	(SELECT uuid FROM `privilege` WHERE `name` = `SYSTEM`)
+	unhex(@uuidRole),
+	(SELECT uuid FROM `privilege` WHERE `name` = 'SYSTEM')
 );
 
 COMMIT;
