@@ -16,7 +16,7 @@ INSERT INTO `privilege` (
 VALUES (
 	unhex(@uuidPrivilege),
 	'SUPER_ADMIN',
-	'PIC-SURE Auth super admin for managing roles/privileges/application',
+	'PIC-SURE Auth super admin for managing roles/privileges/application/connections',
 	NULL
 );
 
