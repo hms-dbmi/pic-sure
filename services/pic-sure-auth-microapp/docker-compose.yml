@@ -2,7 +2,7 @@ version: '3'
 services:
   httpd:
     build:
-      context: ./httpd
+      context: ./pic-sure-auth-ui
       dockerfile: Dockerfile
     ports:
       - 80:80
