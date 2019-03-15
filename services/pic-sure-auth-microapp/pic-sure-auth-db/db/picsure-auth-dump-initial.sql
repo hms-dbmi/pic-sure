@@ -153,6 +153,7 @@ CREATE TABLE `application` (
   `description` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `enable` bit(1) NOT NULL DEFAULT b'1',
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `token` varchar(2000) COLLATE utf8_bin DEFAULT NULL
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
