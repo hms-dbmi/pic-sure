@@ -163,7 +163,7 @@ public class JAXRSConfiguration extends Application {
             logger.info("Adding super admin");
             superAdmin = new Privilege();
             superAdmin.setName(SUPER_ADMIN);
-            superAdmin.setDescription("PIC-SURE Auth super admin for managing roles/privileges/application");
+            superAdmin.setDescription("PIC-SURE Auth super admin for managing roles/privileges/application/connections");
             privilegeRepo.persist(superAdmin);
         }
 
@@ -171,7 +171,7 @@ public class JAXRSConfiguration extends Application {
             logger.info("Adding system admin");
             systemAdmin = new Privilege();
             systemAdmin.setName(ADMIN);
-            systemAdmin.setDescription("PIC-SURE Auth admin for managing users/connections.");
+            systemAdmin.setDescription("PIC-SURE Auth admin for managing users.");
             privilegeRepo.persist(systemAdmin);
         }
     }
