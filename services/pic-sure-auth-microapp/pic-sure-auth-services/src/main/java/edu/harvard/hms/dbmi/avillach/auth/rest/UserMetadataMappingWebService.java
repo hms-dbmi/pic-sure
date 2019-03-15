@@ -12,12 +12,10 @@ import javax.transaction.Transactional;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import java.util.List;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SYSTEM;
-
-import java.util.List;
 
 @Path("mapping")
 public class UserMetadataMappingWebService  extends BaseEntityService<UserMetadataMapping>{
@@ -37,7 +35,7 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 	
 	@GET
 	@Produces("application/json")
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
 	@Path("{connectionId}")
 	public Response getMappingsForConnection(@PathParam("connectionId") String connection) {
 		return Response.ok(mappingService.
@@ -48,7 +46,7 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 	
 	@GET
 	@Produces("application/json")
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getAllMappings() {
 		return Response.ok(mappingService.getAllMappings()).build();
 	}
@@ -56,7 +54,7 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 	@Transactional
 	@POST
 	@Consumes(MediaType.APPLICATION_JSON)
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
 	@Path("/")
 	public Response addMapping(List<UserMetadataMapping> mappings) {
 		return mappingService.addMappings(mappings);
@@ -64,7 +62,7 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 
 	@PUT
 	@Consumes(MediaType.APPLICATION_JSON)
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
 	@Path("/")
 	public Response updateMapping(List<UserMetadataMapping> mappings) {
 		return updateEntity(mappings, mappingRepo);
@@ -72,7 +70,7 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 
 	@Transactional
 	@DELETE
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
 	@Path("/{mappingId}")
 	public Response removeById(@PathParam("mappingId") final String mappingId) {
 		return removeEntityById(mappingId, mappingRepo);

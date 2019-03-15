@@ -20,8 +20,8 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import java.util.*;
 
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SYSTEM;
 
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
@@ -43,7 +43,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("/{applicationId}")
-	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationById(
 			@PathParam("applicationId") String applicationId) {
 		return getEntityById(applicationId,applicationRepo);
@@ -51,14 +51,14 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("")
-	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationAll() {
 		return getEntityAll(applicationRepo);
 	}
 
 	@Transactional
 	@POST
-	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@RolesAllowed({SUPER_ADMIN})
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/")
 	public Response addApplication(List<Application> applications){
@@ -81,7 +81,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 	}
 
 	@PUT
-	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@RolesAllowed({SUPER_ADMIN})
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/")
 	public Response updateApplication(List<Application> applications){
@@ -91,7 +91,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@Transactional
 	@DELETE
-	@RolesAllowed({SYSTEM, SUPER_ADMIN})
+	@RolesAllowed({SUPER_ADMIN})
 	@Path("/{applicationId}")
 	public Response removeById(@PathParam("applicationId") final String applicationId) {
 		Application application = applicationRepo.getById(UUID.fromString(applicationId));

@@ -12,6 +12,8 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
+
 @Path("tos")
 public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> {
 
@@ -30,7 +32,7 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     }
 
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.SYSTEM)
+    @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @Consumes("text/html")
     @Produces("application/json")
     public Response updateTermsOfService(String html){

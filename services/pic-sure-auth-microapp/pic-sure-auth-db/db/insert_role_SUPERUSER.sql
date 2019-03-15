@@ -17,14 +17,14 @@ VALUES (
 	'Superuser for PSAMA services.'
 );
 
-# This is an example, where the role is associated with the 'SYSTEM' privilege
+# This is an example, where the role is associated with the 'SUPER_ADMIN' privilege
 INSERT INTO `role_privilege` (
 	`role_id`,
 	`privilege_id`
 )
 VALUES (
 	unhex(@uuidRole),
-	(SELECT uuid FROM `privilege` WHERE `name` = 'SYSTEM')
+	(SELECT uuid FROM `privilege` WHERE `name` = 'SUPER_ADMIN')
 );
 
 COMMIT;

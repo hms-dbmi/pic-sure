@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.ws.rs.core.SecurityContext;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,9 +22,10 @@ public class AuthorizationService {
 
 	/**
 	 * Checking based on AccessRule in Privilege
+	 *
+	 * @param applicationName
 	 * @param requestBody
-	 * @param object 
-	 * @param securityContext
+	 * @param userUuid
 	 * @return
 	 *
 	 * @see edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege

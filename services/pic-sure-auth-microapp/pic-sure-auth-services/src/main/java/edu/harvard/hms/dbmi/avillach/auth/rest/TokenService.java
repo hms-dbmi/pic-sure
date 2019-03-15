@@ -15,7 +15,6 @@ import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.persistence.NoResultException;
 import javax.ws.rs.*;
@@ -27,8 +26,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.TOKEN_INTROSPECTION;
 
 @Path("/token")
 public class TokenService {
@@ -48,7 +45,6 @@ public class TokenService {
 	SecurityContext securityContext;
 
 	@POST
-	@RolesAllowed(TOKEN_INTROSPECTION)
 	@Path("/inspect")
 	@Consumes("application/json")
 	public Response inspectToken(Map<String, Object> inputMap,

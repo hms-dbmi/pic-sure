@@ -60,7 +60,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("/{userId}")
     public Response getUserById(
             @PathParam("userId") String userId) {
@@ -68,7 +68,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @GET
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("")
     public Response getUserAll() {
         return getEntityAll(userRepo);
@@ -76,7 +76,7 @@ public class UserService extends BaseEntityService<User> {
 
     @Transactional
     @POST
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
@@ -101,7 +101,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @POST
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/{uuid}/role/{role}")
     public Response changeRole(
@@ -117,7 +117,7 @@ public class UserService extends BaseEntityService<User> {
     }
 
     @PUT
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){

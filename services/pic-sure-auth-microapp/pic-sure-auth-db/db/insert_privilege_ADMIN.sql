@@ -15,7 +15,7 @@ INSERT INTO `privilege` (
 )
 VALUES (
 	unhex(@uuidPrivilege),
-	'SYSTEM',
+	'ADMIN',
 	'Special privilege, to allow all access to all functions of PSAMA',
 	NULL
 );

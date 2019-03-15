@@ -7,7 +7,6 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,13 +18,13 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
-
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("/role")
 public class RoleService extends BaseEntityService<Role> {
@@ -47,7 +46,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @GET
     @Path("/{roleId}")
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     public Response getRoleById(
             @PathParam("roleId") String roleId) {
         return getEntityById(roleId,roleRepo);
@@ -55,14 +54,14 @@ public class RoleService extends BaseEntityService<Role> {
 
     @GET
     @Path("")
-    @RolesAllowed({SYSTEM, ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     public Response getRoleAll() {
         return getEntityAll(roleRepo);
     }
 
     @Transactional
     @POST
-    @RolesAllowed({SYSTEM, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addRole(List<Role> roles){
@@ -72,7 +71,7 @@ public class RoleService extends BaseEntityService<Role> {
 
     @Transactional
     @PUT
-    @RolesAllowed({SYSTEM, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateRole(List<Role> roles){
@@ -82,7 +81,7 @@ public class RoleService extends BaseEntityService<Role> {
     
     @Transactional
     @DELETE
-    @RolesAllowed({SYSTEM, SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @Path("/{roleId}")
     public Response removeById(@PathParam("roleId") final String roleId) {
         Role role = roleRepo.getById(UUID.fromString(roleId));
