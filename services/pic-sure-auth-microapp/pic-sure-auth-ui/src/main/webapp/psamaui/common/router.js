@@ -34,27 +34,20 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
        
         execute: function(callback, args, name){
-        		if ( name === 'not_authorized' ){
-        			callback.apply(this, args);
-        		} else {
-        			if ( ! session.isValid(login.handleNotAuthorizedResponse)){
-        				this.login();
-        				return false;
-        			}
-        			if (!session.acceptedTOS() && name !== 'displayTOS'){
-        				history.pushState({}, "", "/psamaui/tos");
-        			}
-        			else if (callback) {
-        				if (name !== 'displayTOS' && !sessionStorage.connections) {
-        					session.loadSessionVariables(function (){
-        						callback.apply(this, args);
-        					});
-        				} else {
-        					callback.apply(this, args);
-        				}
-                    }
-        		}
-            
+            if ( name === 'not_authorized' ){
+                callback.apply(this, args);
+            } else {
+                if ( ! session.isValid(login.handleNotAuthorizedResponse)){
+                    this.login();
+                    return false;
+                }
+                if (!session.acceptedTOS() && name !== 'displayTOS'){
+                    history.pushState({}, "", "/psamaui/tos");
+                }
+                else if (callback) {
+                    callback.apply(this, args);
+                }
+            }
         },
         login : function(){
             login.showLoginPage();

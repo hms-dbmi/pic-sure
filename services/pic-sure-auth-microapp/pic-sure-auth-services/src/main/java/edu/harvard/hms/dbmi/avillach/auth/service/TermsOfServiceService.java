@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import javax.inject.Inject;
 import javax.persistence.NoResultException;
@@ -56,7 +57,8 @@ public class TermsOfServiceService {
         }
         user.setAcceptedTOS(new Date());
         List<User> users = Arrays.asList(user);
+        Date tosDate = termsOfServiceRepo.getLatest().getDateUpdated();
         userService.updateUser(users);
+        logger.info("User " + (!StringUtils.isEmpty(user.getEmail()) ? user.getEmail() : user.getGeneralMetadata()) + " accepted the Terms of Service dated " + tosDate.toString());
     }
-
 }
