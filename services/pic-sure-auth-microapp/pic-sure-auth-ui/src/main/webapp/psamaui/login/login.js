@@ -28,7 +28,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     contentType: 'application/json',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
-                        if (!data.acceptedTOS != 'true'){
+                        if (!data.acceptedTOS == 'true'){
                             history.pushState({}, "", "/psamaui/tos");
                         } else {
                             if (sessionStorage.redirection_url) {
