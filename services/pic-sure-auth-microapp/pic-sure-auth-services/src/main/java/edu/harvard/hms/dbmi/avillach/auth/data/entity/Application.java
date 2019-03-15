@@ -4,18 +4,22 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
+
+import java.security.Principal;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The purpose of this class is to provide an application level privileges management
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "application")
-public class Application extends BaseEntity {
+public class Application extends BaseEntity implements Principal {
 
     @Column(unique = true)
     private String name;
     private String description;
+    private String token;
     private boolean enable = true;
 
     @OneToMany(mappedBy = "application",
@@ -38,6 +42,14 @@ public class Application extends BaseEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
     }
 
     public boolean isEnable() {
@@ -98,5 +110,9 @@ public class Application extends BaseEntity {
             this.uuid = uuid;
             return this;
         }
+    }
+    
+    public String toString() {
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + (privileges==null?"NO PRIVILEGES DEFINED" : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
     }
 }

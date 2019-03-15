@@ -41,4 +41,8 @@ public class UserMetadataMapping extends BaseEntity {
 		this.connection = connection;
 		return this;
 	}
+	
+	public String toString() {
+		return uuid.toString() + " ___ {" + connection.toString() + "} ___ " + generalMetadataJsonPath + " ___ " + auth0MetadataJsonPath; 
+	}
 }

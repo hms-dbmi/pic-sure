@@ -30,7 +30,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			});
 		},
 		connections : function(callback){
-			picsureFunctions.getConnections(callback);
+			picsureFunctions.getConnection("", false, callback);
 		},		
 		events : {
 			"click .add-user-button":   "addUserMenu",

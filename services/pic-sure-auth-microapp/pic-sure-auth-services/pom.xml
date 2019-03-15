@@ -137,11 +137,6 @@
 			<version>${xml.bind.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach.jwt</groupId>
-			<artifactId>jwt-creator</artifactId>
-			<version>1.0.0-SNAPSHOT</version>
-		</dependency>
-		<dependency>
 			<groupId>com.sun.xml.bind</groupId>
 			<artifactId>jaxb-impl</artifactId>
 			<version>${xml.bind.version}</version>

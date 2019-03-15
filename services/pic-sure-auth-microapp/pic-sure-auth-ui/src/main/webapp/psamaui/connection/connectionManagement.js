@@ -78,7 +78,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		},
 		showConnectionAction: function (event) {
 			var uuid = event.target.id;
-			picsureFunctions.getConnection(uuid, function(result) {
+			picsureFunctions.getConnection(uuid, false, function(result) {
                 var connection = new ConnectionModel(result);
                 connection.set("requiredFields", JSON.parse(connection.get("requiredFields")));
 				this.model.set("selectedConnection", connection);
@@ -112,7 +112,6 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
                 requestType = "PUT";
 			}
             picsureFunctions.createOrUpdateConnection(connections, requestType, function(result) {
-                session.loadSessionVariables();
                 this.render();
             }.bind(this));
         },
@@ -120,7 +119,6 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 			var uuid = this.$('input[name=uuid]').val();
 			notification.showConfirmationDialog(function () {
 				picsureFunctions.deleteConnection(uuid, function (response) {
-                    session.loadSessionVariables();
 					this.render()
 				}.bind(this));
 
@@ -133,7 +131,7 @@ define(["backbone","handlebars", "text!connection/connectionManagement.hbs", "te
 		},
 		render : function(){
 			this.$el.html(this.template({}));
-			picsureFunctions.getConnection(null, function(connections){
+			picsureFunctions.getConnection("", true, function(connections){
 				this.displayConnections(connections);
 			}.bind(this));
 		}

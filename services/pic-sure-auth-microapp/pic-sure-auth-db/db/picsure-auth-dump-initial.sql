@@ -156,6 +156,25 @@ CREATE TABLE `application` (
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
+CREATE TABLE `access_rule` (
+  `uuid` binary(16) NOT NULL,
+  `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `description` varchar(2000) COLLATE utf8_bin DEFAULT NULL,
+  `rule` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  `type` int(11) DEFAULT NULL,
+  `value` varchar(255) COLLATE utf8_bin DEFAULT NULL,
+  PRIMARY KEY (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
+CREATE TABLE `accessRule_privilege` (
+  `privilege_id` binary(16) NOT NULL,
+  `accessRule_id` binary(16) NOT NULL,
+  PRIMARY KEY (`privilege_id`,`accessRule_id`),
+  KEY `FK89rf30kbf9d246jty2dd7qk99` (`accessRule_id`),
+  CONSTRAINT `FK7x47w81gpua380qd7lp9x94l1` FOREIGN KEY (`privilege_id`) REFERENCES `privilege` (`uuid`),
+  CONSTRAINT `FK89rf30kbf9d246jty2dd7qk99` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
 /*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;

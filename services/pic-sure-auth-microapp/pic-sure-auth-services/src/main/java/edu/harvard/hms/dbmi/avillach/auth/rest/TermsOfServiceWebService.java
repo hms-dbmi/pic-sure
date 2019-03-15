@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
@@ -12,7 +11,8 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
-import java.util.UUID;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("tos")
 public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> {
@@ -32,7 +32,7 @@ public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> 
     }
 
     @POST
-    @RolesAllowed(AuthNaming.AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @Consumes("text/html")
     @Produces("application/json")
     public Response updateTermsOfService(String html){

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
@@ -7,9 +8,8 @@ import java.util.Set;
 
 public class AccessEmail {
 
-    //TODO: Where to actually store this?
-    private String systemName = System.getenv("systemName");
-    private String documentation = System.getenv("documentation");
+    private String systemName = JAXRSConfiguration.systemName;
+    private String documentation = null;
 
     private String username;
     private Set<Role> roles;

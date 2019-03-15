@@ -55,6 +55,10 @@ public class Connection extends BaseEntity implements Serializable {
         this.requiredFields = requiredFields;
         return this;
     }
+    
+    public String toString() {
+    		return uuid.toString() + " ___ " + id + " ___ " + subPrefix + " ___ " + label + " ___ " + requiredFields;
+    }
 }
 
 

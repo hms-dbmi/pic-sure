@@ -5,8 +5,6 @@ import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +18,9 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import java.util.List;
 import java.util.UUID;
+
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("/privilege")
 public class PrivilegeService extends BaseEntityService<Privilege> {
@@ -37,6 +38,7 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
     }
 
     @GET
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("/{privilegeId}")
     public Response getPrivilegeById(
             @PathParam("privilegeId") String privilegeId) {
@@ -44,13 +46,14 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
     }
 
     @GET
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("")
     public Response getPrivilegeAll() {
         return getEntityAll(privilegeRepo);
     }
 
     @POST
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addPrivilege(List<Privilege> privileges){
@@ -58,7 +61,7 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
     }
 
     @PUT
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updatePrivilege(List<Privilege> privileges){
@@ -67,13 +70,13 @@ public class PrivilegeService extends BaseEntityService<Privilege> {
 
     @Transactional
     @DELETE
-    @RolesAllowed(AuthRoleNaming.ROLE_SYSTEM)
+    @RolesAllowed({SUPER_ADMIN})
     @Path("/{privilegeId}")
     public Response removeById(@PathParam("privilegeId") final String privilegeId) {
         Privilege privilege = privilegeRepo.getById(UUID.fromString(privilegeId));
-        if (AuthRoleNaming.ROLE_SYSTEM.equals(privilege.getName())){
+        if (ADMIN.equals(privilege.getName())){
             logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext)
-                    + ", is trying to remove the system admin privilege: " + AuthRoleNaming.ROLE_SYSTEM);
+                    + ", is trying to remove the system admin privilege: " + ADMIN);
             return PICSUREResponse.protocolError("System Admin privilege cannot be removed - uuid: " + privilege.getUuid().toString()
                     + ", name: " + privilege.getName());
         }

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.security;
 
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
 import javax.ws.rs.core.SecurityContext;
@@ -11,6 +12,7 @@ import java.security.Principal;
 public class AuthSecurityContext implements SecurityContext {
 
     private User user;
+    private Application application;
     private String scheme;
 
     public AuthSecurityContext(User user, String scheme) {
@@ -18,9 +20,14 @@ public class AuthSecurityContext implements SecurityContext {
         this.scheme = scheme;
     }
 
+    public AuthSecurityContext(Application application, String scheme) {
+        this.application = application;
+        this.scheme = scheme;
+    }
+
     @Override
     public Principal getUserPrincipal() {
-        return this.user;
+        return this.user == null ? this.application : this.user;
     }
 
     @Override

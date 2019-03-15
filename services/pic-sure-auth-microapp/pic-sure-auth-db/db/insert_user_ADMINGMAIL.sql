@@ -34,7 +34,7 @@ INSERT INTO user (
 	false
 );
 
-# Add the initial SYSTEM role for the user.
+# Add the initial ADMIN role for the user.
 # Assuming, that all superuser privileges have been
 # assigned to this role, already, during creation
 # of the database.
@@ -43,7 +43,7 @@ INSERT INTO user_role (
 	`role_id`
 ) VALUES (
 	UNHEX(@uuidUser),
-	(SELECT MIN(uuid) FROM management_view WHERE privilege_name LIKE 'SYSTEM')
+	(SELECT MIN(uuid) FROM management_view WHERE privilege_name LIKE 'ADMIN')
 );
 
 #### insert into userMetadataMapping

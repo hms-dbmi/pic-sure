@@ -1,7 +1,12 @@
 package edu.harvard.hms.dbmi.avillach;
 
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
 
 public class HelloWorldIT {
     private static String endpointUrl;
@@ -11,13 +16,11 @@ public class HelloWorldIT {
         endpointUrl = System.getProperty("service.url");
     }
 
+
+
     @Test
     public void testPing() throws Exception {
-//        WebClient client = WebClient.create(endpointUrl + "/hello/echo/SierraTangoNevada");
-//        Response r = client.accept("text/plain").get();
-//        assertEquals(Response.Status.OK.getStatusCode(), r.getStatus());
-//        String value = IOUtils.toString((InputStream)r.getEntity());
-//        assertEquals("SierraTangoNevada", value);
+
     }
 
     @Test
