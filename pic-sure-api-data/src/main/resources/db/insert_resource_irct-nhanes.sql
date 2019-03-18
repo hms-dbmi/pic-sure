@@ -1,6 +1,6 @@
 START TRANSACTION;
 
-DELETE FROM `resource` WHERE `name` = 'irct-resource';
+DELETE FROM `resource` WHERE `name` = 'irct-nhanes';
 
 SET @uuidResource = REPLACE(uuid(),'-','');
 
@@ -13,10 +13,10 @@ INSERT INTO `resource` (
   `token`
 ) VALUES (
 	unhex(@uuidResource),
-	'http://localhost/irct/resources',
+	NULL,
 	'/i2b2-nhanes/Demo/Demo',
 	'Basic IRCT resource, for NHANES data',
-	'irct-resource',
+	'irct-nhanes',
 	NULL
 );
 
