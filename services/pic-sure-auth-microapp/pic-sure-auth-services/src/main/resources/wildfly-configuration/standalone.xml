@@ -441,10 +441,11 @@
                 <simple name="java:global/auth0host" value="${env.AUTH0HOST:https://avillachlab.auth0.com}"/>
                 <simple name="java:global/systemName" value="${env.SYSTEM_NAME:psama}"/>
                 <simple name="java:global/clientSecretIsBase64" value="${env.CLIENT_SECRET_IS_BASE_64:true}"/>
-                <simple name="java:global/userActivationTemplatePath" value="${env.USER_ACTIVATION_TEMPLATE_PATH:none}"/>
+                <simple name="java:global/emailTemplatePath" value="${env.EMAIL_TEMPLATE_PATH:none}"/>
                 <simple name="java:global/userActivationReplyTo" value="${env.USER_ACTIVATION_REPLY_TO:none}"/>
                 <simple name="java:global/tosEnabled" value="${env.TOS_ENABLED:true}"/>
-
+                <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
+                <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS}"/>
             </bindings>
             <remote-naming/>
         </subsystem>

@@ -30,11 +30,15 @@ services:
       - AUTH0HOST=https://avillachlab.auth0.com
       - MAIL_PASSWORD=${MAIL_PASSWORD:-password}
       - systemName=${systemName:-PICSURE}
+      - EMAIL_TEMPLATE_PATH=${EMAIL_TEMPLATE_PATH}
+      - COMMA_SEPARATED_EMAILS=${COMMA_SEPARATED_EMAILS:-hms.dbmi.data.infrastructure@gmail.com}
     ports:
       - 8080:8080
       - 8787:8787
     expose:
       - 8080
+    volumes:
+      - $PWD/config/psama/emailTemplates:${EMAIL_TEMPLATE_PATH}
     networks:
       - public
 
