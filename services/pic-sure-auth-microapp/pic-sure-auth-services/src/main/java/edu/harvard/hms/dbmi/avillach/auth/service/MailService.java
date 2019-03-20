@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -77,6 +78,10 @@ public class MailService {
 	private void sendEmail(String template, String to, String subject, Object scope) {
 		logger.debug("sendEmail(String, String, String, Object) - start");
 		try {
+			if (StringUtils.isEmpty(template) || StringUtils.isEmpty(to) || StringUtils.isEmpty(subject) || scope == null) {
+				logger.error("One of the required parameters is null. Can't send email.");
+				return;
+			}
 			Mustache email = loadTemplates(template);
 			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
 			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
