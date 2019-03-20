@@ -11,7 +11,6 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Transport;
@@ -40,6 +39,10 @@ public class MailService {
 		}
 	}
 
+	/**
+	 * Send email to user about changes in user Roles
+	 * @param user
+	 */
 	public void sendUsersAccessEmail(User user){
 		if (user.getEmail() == null) {
 			logger.error("User " + user.getSubject() + " has no email");
@@ -48,15 +51,18 @@ public class MailService {
 		}
 	}
 
+	/**
+	 * Send email to admin about user being denied access to the system
+	 * @param userInfo User info object returned by authentication provider
+	 */
 	public void sendDeniedAccessEmail(JsonNode userInfo){
-		logger.info("Sending 'Access Denied' email to " + JAXRSConfiguration.adminUsers + ". User: " + userInfo.get("user_id").asText());
+		logger.info("Sending 'Access Denied' email to "
+				+ JAXRSConfiguration.adminUsers
+				+ ". User: "
+				+ userInfo.get("user_id").asText());
 		ObjectMapper mapper = new ObjectMapper();
 		Map<String, Object> scope = mapper.convertValue(userInfo, Map.class);
 		scope.put("systemName", JAXRSConfiguration.systemName);
-		if (userInfo == null) {
-			logger.error("User " + scope.get("user_id") + " has no email");
-			return;
-		}
 		sendEmail("deniedAccessEmail.mustache", JAXRSConfiguration.adminUsers, "User denied access to " + JAXRSConfiguration.systemName, scope);
 	}
 
@@ -74,7 +80,6 @@ public class MailService {
 			Mustache email = loadTemplates(template);
 			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
 			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
-			//TODO Is the subject configurable per email?  What should it say?
 			message.setSubject(subject);
 			message.setText(email.execute(new StringWriter(), scope).toString());
 			Transport.send(message);
