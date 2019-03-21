@@ -26,6 +26,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
 
+	private static final long ONE_YEAR = 1000L * 60 * 60 * 24 * 365;
+
 	Logger logger = LoggerFactory.getLogger(ApplicationService.class);
 
 	@Inject
@@ -70,7 +72,7 @@ public class ApplicationService extends BaseEntityService<Application> {
 				String token = JWTUtil.createJwtToken(
 						JAXRSConfiguration.clientSecret, null, null,
 						claims,
-						"PSAMA_APPLICATION|" + application.getUuid().toString(), 1000 * 60 * 60 * 24 * 365);
+						"PSAMA_APPLICATION|" + application.getUuid().toString(), ONE_YEAR);
 				application.setToken(token);
 			} catch(Exception e) {
 				logger.error("", e);

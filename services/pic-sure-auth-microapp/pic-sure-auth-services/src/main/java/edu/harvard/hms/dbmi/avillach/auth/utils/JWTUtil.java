@@ -23,7 +23,7 @@ public class JWTUtil {
             ttlMillis = defaultTTLMillis;
 
         if (ttlMillis == 0)
-            ttlMillis = 9999 * 1000 * 60 * 60 * 24;
+            ttlMillis = 999L * 1000 * 60 * 60 * 24;
 
         SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.HS256;
 
