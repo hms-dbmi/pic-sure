@@ -45,8 +45,10 @@ public class MailService {
 	 * @param user
 	 */
 	public void sendUsersAccessEmail(User user){
-		if (user.getEmail() == null) {
-			logger.error("User " + user.getSubject() + " has no email");
+		if (user == null) {
+			logger.error("sendUsersAccessEmail(User) - User is null.");
+		} else if (user.getEmail() == null) {
+			logger.error("User " + (user.getSubject() != null ? user.getSubject() : "") + " has no email");
 		} else {
 			sendEmail("accessEmail.mustache", user.getEmail(),"Your Access To " + JAXRSConfiguration.systemName, new AccessEmail(user));
 		}
@@ -60,7 +62,7 @@ public class MailService {
 		logger.info("Sending 'Access Denied' email to "
 				+ JAXRSConfiguration.adminUsers
 				+ ". User: "
-				+ userInfo.get("user_id").asText());
+				+ userInfo.get("email") != null ? userInfo.get("email").asText() : userInfo.get("user_id").asText());
 		ObjectMapper mapper = new ObjectMapper();
 		Map<String, Object> scope = mapper.convertValue(userInfo, Map.class);
 		scope.put("systemName", JAXRSConfiguration.systemName);
