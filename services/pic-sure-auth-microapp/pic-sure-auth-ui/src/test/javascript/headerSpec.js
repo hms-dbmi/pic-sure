@@ -124,6 +124,7 @@ define(["header/header", "picSure/userFunctions", "jquery","underscore"],
 //							header.View.render();
 //							$('a#logout-btn', header.View.$el).click();
 //							expect(header.View.logout).toHaveBeenCalled();
+//							history.replaceState(undefined,"","/");
 //						});
 					});
 				});
