@@ -73,9 +73,12 @@ public class AuthenticationService {
             }
         }
 
+        Map<String, Object> claims = generateClaims(userInfo, new String[]{"user_id","name" });
+        claims.put("email",user.getEmail());
+
         String token = JWTUtil.createJwtToken(
                 JAXRSConfiguration.clientSecret, null, null,
-                generateClaims(userInfo, new String[]{"user_id", "email","name" }),
+                claims,
                 userId, 1000 * 60 * 60 * 24);
 
         boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ? 
@@ -85,7 +88,7 @@ public class AuthenticationService {
         
         responseMap.put("token", token);
         responseMap.put("name", (userInfo.has("name")?userInfo.get("name").asText():null));
-        responseMap.put("email", userInfo.has("email")?userInfo.get("email").asText():null);
+        responseMap.put("email", user.getEmail());
         responseMap.put("userId", user.getUuid().toString());
         responseMap.put("acceptedTOS", ""+acceptedTOS);
         
