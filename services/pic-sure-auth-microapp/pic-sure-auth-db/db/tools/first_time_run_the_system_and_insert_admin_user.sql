@@ -32,7 +32,7 @@ where
 role.uuid = role_privilege.role_id
 and privilege.uuid = role_privilege.privilege_id;
 
-insert into user (`uuid`,`general_metadata`,`connectionId`,`matched`) values (unhex(@user_uuid), CONCAT("{\"email\":\"", @user_email, "\"}"), @connection_uuid, @matched);
+insert into user (`uuid`,`general_metadata`,`connectionId`,`email`,`matched`) values (unhex(@user_uuid), CONCAT("{\"email\":\"", @user_email, "\"}"), @connection_uuid, @user_email, @matched);
 insert into user_role (`user_id`,`role_id`) values (unhex(@user_uuid),
 (select min(uuid) from management_view where privilege_name like 'ADMIN')) ;
 
