@@ -20,7 +20,6 @@ import javax.mail.internet.MimeMessage;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.IOException;
 import java.io.StringWriter;
 import java.util.Map;
 
@@ -28,16 +27,14 @@ public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 
-	private Mustache loadTemplates(String templateFile) throws IOException {
-		try(FileReader reader = new FileReader(JAXRSConfiguration.emailTemplatePath + templateFile)){
-			return mf.compile(reader, templateFile);
-		} catch (FileNotFoundException e) {
-			logger.error(e.getMessage(), e);
-			throw e;
-		} catch (IOException e) {
-			logger.error(e.getMessage(), e);
-			throw e;
-		}
+	/**
+	 * Compile mustache template from templateFile
+	 *
+	 * @throws FileNotFoundException Exception thrown if templateFile is missing due to not being configured
+	 */
+	private Mustache compileTemplate(String templateFile) throws FileNotFoundException {
+		FileReader reader = new FileReader(JAXRSConfiguration.emailTemplatePath + templateFile);
+		return mf.compile(reader, templateFile);
 	}
 
 	/**
@@ -45,10 +42,8 @@ public class MailService {
 	 * @param user
 	 */
 	public void sendUsersAccessEmail(User user){
-		if (user == null) {
-			logger.error("sendUsersAccessEmail(User) - User is null.");
-		} else if (user.getEmail() == null) {
-			logger.error("User " + (user.getSubject() != null ? user.getSubject() : "") + " has no email");
+		if (StringUtils.isEmpty(user.getEmail())) {
+			logger.error("User " + (user.getSubject() != null ? user.getSubject() : "") + " has no email address.");
 		} else {
 			sendEmail("accessEmail.mustache", user.getEmail(),"Your Access To " + JAXRSConfiguration.systemName, new AccessEmail(user));
 		}
@@ -84,16 +79,17 @@ public class MailService {
 				logger.error("One of the required parameters is null. Can't send email.");
 				return;
 			}
-			Mustache email = loadTemplates(template);
+			Mustache emailTemplate = compileTemplate(template);
 			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
 			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
 			message.setSubject(subject);
-			message.setText(email.execute(new StringWriter(), scope).toString());
+			message.setText(emailTemplate.execute(new StringWriter(), scope).toString());
 			Transport.send(message);
+		} catch (FileNotFoundException e) {
+			logger.error("Template not found for " + template + ". Check configuration.", e);
 		} catch (MessagingException me) {
 			logger.error("Failed to send email: '" + subject + "'", me);
-		}
-		catch (Exception e) {
+		} catch (Exception e) {
 			logger.error("Error occurred while trying to send email '" + subject + "'", e);
 		}
 	}
