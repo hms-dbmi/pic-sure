@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
@@ -25,6 +28,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
+
+	private static final long ONE_YEAR = 1000L * 60 * 60 * 24 * 365;
 
 	Logger logger = LoggerFactory.getLogger(ApplicationService.class);
 
@@ -65,13 +70,10 @@ public class ApplicationService extends BaseEntityService<Application> {
 		checkAssociation(applications);
 		List<Application> appEntities = addOrUpdate(applications, true, applicationRepo);
 		for(Application application : appEntities) {
-			Map<String, Object> claims = new HashMap<>(Map.of("user_id","PSAMA_APPLICATION|" + application.getName().toString()));
 			try{
-				String token = JWTUtil.createJwtToken(
-						JAXRSConfiguration.clientSecret, null, null,
-						claims,
-						"PSAMA_APPLICATION|" + application.getUuid().toString(), 1000 * 60 * 60 * 24 * 365);
-				application.setToken(token);
+				application.setToken(
+						generateApplicationToken(application)
+				);
 			} catch(Exception e) {
 				logger.error("", e);
 			}
@@ -87,6 +89,33 @@ public class ApplicationService extends BaseEntityService<Application> {
 	public Response updateApplication(List<Application> applications){
 		checkAssociation(applications);
 		return updateEntity(applications, applicationRepo);
+	}
+
+	@GET
+	@RolesAllowed({SUPER_ADMIN})
+	@Path("/refreshToken/{applicationId}")
+	public Response refreshApplicationToken(@PathParam("applicationId") String applicationId){
+		Application application = applicationRepo.getById(UUID.fromString(applicationId));
+
+		if (application == null){
+			logger.error("refreshApplicationToken() cannot find the application by applicationId: " + applicationId);
+			throw new ProtocolException("Cannot find application by the given applicationId: " + applicationId);
+		}
+
+		String newToken = generateApplicationToken(application);
+		if (newToken != null){
+			application.setToken(
+				newToken
+			);
+
+			applicationRepo.merge(application);
+		} else {
+			logger.error("refreshApplicationToken() token is null for application: " + applicationId);
+			throw new ApplicationException("Inner problem, please contact admin");
+		}
+
+		return PICSUREResponse.success(Map.of("token", newToken));
+
 	}
 
 	@Transactional
@@ -118,4 +147,19 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	}
 
+	public String generateApplicationToken(Application application){
+		if (application == null || application.getUuid() == null) {
+			logger.error("generateApplicationToken() application is null or uuid is missing to generate the application token");
+			throw new ApplicationException("Cannot generate application token, please contact admin");
+		}
+
+		return JWTUtil.createJwtToken(
+				JAXRSConfiguration.clientSecret, null, null,
+				new HashMap<>(
+						Map.of(
+								"user_id","PSAMA_APPLICATION|" + application.getName()
+						)
+				),
+				"PSAMA_APPLICATION|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24);
+	}
 }

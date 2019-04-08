@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.persistence.NoResultException;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
@@ -105,12 +104,12 @@ public class TokenService {
 
 		// get the user based on subject field in token
 		User user;
-		try{
-			user = userRepo.getUniqueResultByColumn("subject", subject);
-			logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
-		} catch (NoResultException e) {
+
+		user = userRepo.getUniqueResultByColumn("subject", subject);
+		logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
+		if (user == null) {
 			logger.error("_inspectToken() could not find user with subject " + subject);
-			tokenInspection.message = "error: user doesn't exist";
+			tokenInspection.message = "user doesn't exist";
 			return tokenInspection;
 		}
 

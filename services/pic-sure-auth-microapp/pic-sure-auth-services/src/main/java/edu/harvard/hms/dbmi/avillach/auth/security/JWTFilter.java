@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.security;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
@@ -75,17 +76,38 @@ public class JWTFilter implements ContainerRequestFilter {
 			String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
 			if(userId.startsWith("PSAMA_APPLICATION")) {
+				/**
+				 * authenticate as Application, we might need to extract this blob out to an separate function
+				 */
+
 				if( ! uriInfo.getPath().endsWith("token/inspect")) {
 					logger.error(userId + " attempted to perform request " + uriInfo.getPath() + " token may be compromised.");
 					throw new NotAuthorizedException("User is deactivated");
 				}
-				requestContext.setSecurityContext(new AuthSecurityContext(applicationRepo.getById(UUID.fromString(userId.split("\\|")[1])),
+				Application authenticatedApplication = applicationRepo.getById(UUID.fromString(userId.split("\\|")[1]));
+				if (authenticatedApplication == null){
+					logger.error("Cannot find an application by userId: " + userId);
+					throw new NotAuthorizedException("Your token doesn't contain valid identical information, please contact admin.");
+				}
+
+				if (!authenticatedApplication.getToken().equals(token)) {
+					logger.error("filter() incoming application token - " + token +
+							" - is not the same as record, might because the token has been refreshed. Subject: " + userId);
+					throw new NotAuthorizedException("Your token has been inactivated, please contact admin to grab you the latest one.");
+				}
+
+				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedApplication,
 						uriInfo.getRequestUri().getScheme()));
 			} else {
 				/**
+				 * authenticate as User, we might need to extract this blob out to an separate function
+				 */
+
+				User authenticatedUser = callLocalAuthentication(requestContext, jws);
+
+				/**
 				 * This TOSService code will hit to the database to retrieve a user once again
 				 */
-				User authenticatedUser = callLocalAuthentication(requestContext, jws);
 				if (!uriInfo.getPath().contains("/tos")){
 					if (JAXRSConfiguration.tosEnabled.startsWith("true") && tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
 						//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
@@ -178,7 +200,6 @@ public class JWTFilter implements ContainerRequestFilter {
 	/**
 	 *
 	 * @param requestContext
-	 * @param token
 	 * @return
 	 * @throws NotAuthorizedException
 	 */
