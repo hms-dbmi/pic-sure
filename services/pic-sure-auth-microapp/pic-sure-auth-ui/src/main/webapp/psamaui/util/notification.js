@@ -31,10 +31,10 @@ define(["Noty"],
         }).show();
     }.bind(notification);
 
-    notification.showConfirmationDialog = function (callback) {
+    notification.showConfirmationDialog = function (callback, layout, text) {
         var n = new Noty({
-            text: 'Do you want to continue?',
-            layout: 'topCenter',
+            text: text? text: 'Do you want to continue?',
+            layout: layout?layout:'topCenter',
             buttons: [
                 Noty.button('YES', 'btn btn-info', function () {
                     n.close();

@@ -64,5 +64,19 @@ define(["util/notification", "picSure/settings"],
         });
     }.bind(applicationFunctions);
 
+    applicationFunctions.refreshToken = function (uuid, callback) {
+        $.ajax({
+            url: window.location.origin + settings.basePath + '/application/refreshToken/' + uuid,
+            type: 'GET',
+            contentType: 'application/json',
+            success: function(response){
+                callback(response);
+            },
+            error: function(response){
+                notification.showFailureMessage("Failed to refresh token. " + response.message);
+            }
+        });
+    }.bind(applicationFunctions);
+
 	return applicationFunctions;
 });

@@ -424,8 +424,8 @@
             <mail-session name="default" jndi-name="java:jboss/mail/Default">
                 <smtp-server outbound-socket-binding-ref="mail-smtp"/>
             </mail-session>
-            <mail-session name="gmail" from="username@gmail.com" jndi-name="java:jboss/mail/gmail">
-                <smtp-server password="YourSecretPassword" username="username@gmail.com" ssl="true" outbound-socket-binding-ref="mail-smtp-gmail"/>
+            <mail-session name="java:jboss/mail/gmail" from="${env.MAIL_USERNAME:username@gmail.com}" jndi-name="java:jboss/mail/gmail" debug="false">
+                <smtp-server tls="true" outbound-socket-binding-ref="mail-smtp-gmail" password="${env.MAIL_PASSWORD:YourSecretPassword}" username="${env.MAIL_USERNAME:username@gmail.com}"/>
             </mail-session>
         </subsystem>
         <subsystem xmlns="urn:wildfly:microprofile-config-smallrye:1.0"/>
@@ -553,8 +553,8 @@
         <outbound-socket-binding name="mail-smtp">
             <remote-destination host="localhost" port="25"/>
         </outbound-socket-binding>
-        <outbound-socket-binding name="mail-smtp-gmail">
-            <remote-destination host="smtp.gmail.com" port="25"/>
+        <outbound-socket-binding name="mail-smtp-gmail" source-port="0" fixed-source-port="false">
+            <remote-destination host="smtp.gmail.com" port="587"/>
         </outbound-socket-binding>
     </socket-binding-group>
 </server>
