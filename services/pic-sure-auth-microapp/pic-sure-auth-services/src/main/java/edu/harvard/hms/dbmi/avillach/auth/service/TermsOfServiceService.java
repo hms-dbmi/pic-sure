@@ -59,6 +59,6 @@ public class TermsOfServiceService {
         List<User> users = Arrays.asList(user);
         Date tosDate = termsOfServiceRepo.getLatest().getDateUpdated();
         userService.updateUser(users);
-        logger.info("User " + (!StringUtils.isEmpty(user.getEmail()) ? user.getEmail() : user.getGeneralMetadata()) + " accepted the Terms of Service dated " + tosDate.toString());
+        logger.info("TOS_LOG : User " + (!StringUtils.isEmpty(user.getEmail()) ? user.getEmail() : user.getGeneralMetadata()) + " accepted the Terms of Service dated " + tosDate.toString());
     }
 }
