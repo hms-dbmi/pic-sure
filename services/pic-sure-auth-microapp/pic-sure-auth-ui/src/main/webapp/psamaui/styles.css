@@ -1,7 +1,13 @@
 #main-content {
     position: relative;
-    top: 2em;
 }
+
+.header-row {
+    font-size: x-large;
+    color: white;
+    margin-top: 10px;
+}
+
 .header-tool {
 	font-size: 2.0em;
 }
@@ -38,7 +44,7 @@
     border-color: #76a6de;
 }
 
-.btn:hover {
+.btn:hover, .btn:focus {
     color: #ffffff;
     background-color: #76a6de;
     border-color: #76a6de;
@@ -88,11 +94,8 @@
 }
  #header-content {
      width: 80%;
-     height: 80px;
-     overflow: hidden;
 }
  .header-btn {
-     top: 40px;
      border-radius: 0px;
      background-color: transparent;
      border: none;

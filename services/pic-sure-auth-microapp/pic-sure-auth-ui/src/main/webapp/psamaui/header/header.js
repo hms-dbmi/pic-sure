@@ -1,5 +1,5 @@
-define(["backbone","handlebars", "text!header/header.hbs", "common/session", "picSure/userFunctions"],
-		function(BB, HBS, template, session, userFunctions){
+define(["backbone","handlebars", "text!header/header.hbs", "common/session", "picSure/userFunctions", "picSure/applicationFunctions"],
+		function(BB, HBS, template, session, userFunctions, applicationFunctions){
 	var headerView = BB.View.extend({
         initialize: function () {
             HBS.registerHelper('not_contains', function (array, object, opts) {
@@ -12,6 +12,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     return opts.fn(this);
             });
             this.template = HBS.compile(template);
+            this.applications = [];
         },
         events: {
             "click #logout-btn": "gotoLogin"
@@ -27,9 +28,14 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         render: function () {
             if (window.location.pathname !== "/psamaui/tos") {
                 userFunctions.me(this, function (user) {
-                    this.$el.html(this.template({
-                        privileges: user.privileges
-                    }));
+                    applicationFunctions.fetchApplications(this, function(applications){
+                        this.applications = applications;
+                        this.$el.html(this.template({
+                            privileges: user.privileges,
+                            applications: this.applications
+                        }));
+                    }.bind(this))
+
                 }.bind(this));
             }
         }

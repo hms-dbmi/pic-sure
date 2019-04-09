@@ -76,15 +76,6 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
 			$(".modal-body", this.$el).html(this.crudApplicationTemplate({createOrUpdateApplication: true, application: this.model.get("selectedApplication")}));
 			// this.applyCheckboxes();
 		},
-		// applyCheckboxes: function () {
-		// 	var checkBoxes = $(":checkbox", this.$el);
-		// 	var applicationApplications = this.model.get("selectedApplication").applications;
-		// 	_.each(checkBoxes, function (applicationCheckbox) {
-		// 		if (applicationApplications.includes(applicationCheckbox.value)){
-		// 			applicationCheckbox.checked = true;
-		// 		}
-		// 	})
-		// },
 		showApplicationAction: function (event) {
 			var uuid = event.target.id;
 
@@ -111,6 +102,7 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
             var uuid = this.$('input[name=application_name]').attr('uuid');
             var name = this.$('input[name=application_name]').val();
             var description = this.$('input[name=application_description]').val();
+			var url = this.$('input[name=application_url]').val();
 
             var application;
             var requestType;
@@ -125,6 +117,7 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
                 uuid: uuid,
                 name: name,
                 description: description,
+				url: url,
                 privileges: this.model.get("selectedApplication").privileges
             }];
 

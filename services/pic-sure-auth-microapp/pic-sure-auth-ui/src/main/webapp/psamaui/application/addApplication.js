@@ -16,7 +16,8 @@ define(["backbone", "handlebars", "picSure/applicationFunctions", "application/a
 			var application = {
 				uuid : $('#new-application-form input[name=application_name]').attr('uuid'),
 				name : $('#new-application-form input[name=application_name]').val(),
-				description : $('#new-application-form input[name=application_description]').val()
+				description : $('#new-application-form input[name=application_description]').val(),
+				url : $('#new-application-form input[name=application_url]').val()
 			};
 			applicationFunctions.createOrUpdateApplication(
 				[application],
