@@ -94,6 +94,7 @@
 }
  #header-content {
      width: 80%;
+     min-height: 80px;
 }
  .header-btn {
      border-radius: 0px;

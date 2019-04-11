@@ -25,6 +25,7 @@ define(["backbone", "handlebars", "picSure/applicationFunctions", "application/a
 				function(result){
 					console.log(result);
                     this.managementConsole.render();
+                    this.managementConsole.updateHeader(application);
 				}.bind(this)
 			);
 		},

@@ -33,6 +33,14 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                         this.$el.html(this.template({
                             privileges: user.privileges,
                             applications: this.applications
+                                .filter(function (app) {
+                                    return app.url;
+                                })
+                                .sort(function(a, b){
+                                    if(a.name < b.name) { return -1; }
+                                    if(a.name > b.name) { return 1; }
+                                    return 0;
+                                })
                         }));
                     }.bind(this))
 
