@@ -18,6 +18,9 @@
     Description:<br>
     <input type="text" name="application_description" style="width: 100%;" required {{#unless createOrUpdateApplication}}readonly disabled{{/unless}} value="{{application.description}}">
     <br>
+    URL:<br>
+    <input type="text" name="application_url" style="width: 100%;" {{#unless createOrUpdateApplication}}readonly disabled{{/unless}} value="{{application.url}}">
+    <br>
 
     <div class="bordered-block">
         Token:

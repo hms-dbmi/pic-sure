@@ -1,5 +1,5 @@
-define(["backbone","handlebars",  "application/addApplication", "text!application/applicationManagement.hbs", "text!application/applicationMenu.hbs", "text!application/applicationTable.hbs", "text!options/modal.hbs", "picSure/applicationFunctions", "util/notification","picSure/applicationFunctions"],
-		function(BB, HBS, AddApplicationView, template, applicationMenuTemplate, applicationTableTemplate, modalTemplate, applicationFunctions, notification, applicationFunctions){
+define(["backbone","handlebars",  "application/addApplication", "text!application/applicationManagement.hbs", "text!application/applicationMenu.hbs", "text!application/applicationTable.hbs", "text!options/modal.hbs", "picSure/applicationFunctions", "util/notification", "header/header"],
+		function(BB, HBS, AddApplicationView, template, applicationMenuTemplate, applicationTableTemplate, modalTemplate, applicationFunctions, notification, header){
 	var applicationManagementModel = BB.Model.extend({
 	});
 
@@ -76,15 +76,6 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
 			$(".modal-body", this.$el).html(this.crudApplicationTemplate({createOrUpdateApplication: true, application: this.model.get("selectedApplication")}));
 			// this.applyCheckboxes();
 		},
-		// applyCheckboxes: function () {
-		// 	var checkBoxes = $(":checkbox", this.$el);
-		// 	var applicationApplications = this.model.get("selectedApplication").applications;
-		// 	_.each(checkBoxes, function (applicationCheckbox) {
-		// 		if (applicationApplications.includes(applicationCheckbox.value)){
-		// 			applicationCheckbox.checked = true;
-		// 		}
-		// 	})
-		// },
 		showApplicationAction: function (event) {
 			var uuid = event.target.id;
 
@@ -111,6 +102,7 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
             var uuid = this.$('input[name=application_name]').attr('uuid');
             var name = this.$('input[name=application_name]').val();
             var description = this.$('input[name=application_description]').val();
+			var url = this.$('input[name=application_url]').val();
 
             var application;
             var requestType;
@@ -125,22 +117,24 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
                 uuid: uuid,
                 name: name,
                 description: description,
+				url: url,
                 privileges: this.model.get("selectedApplication").privileges
             }];
 
             applicationFunctions.createOrUpdateApplication(application, requestType, function(result) {
                 console.log(result);
-                this.render();
+				this.render();
+				this.updateHeader(application);
             }.bind(this));
         },
 		deleteApplication: function (event) {
 			var uuid = this.$('input[name=application_name]').attr('uuid');
+			var url = this.$('input[name=application_url]').val();
 			notification.showConfirmationDialog(function () {
-
 				applicationFunctions.deleteApplication(uuid, function (response) {
 					this.render()
+					this.updateHeader({uuid: uuid, url: url});
 				}.bind(this));
-
 			}.bind(this));
 		},
 		// getApplicationApplications: function (stringApplications) {
@@ -154,11 +148,12 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
 			this.model.unset("selectedApplication");
 			$("#modalDialog").hide();
 		},
+		updateHeader: function(application) {
+			if (application && application.url)
+				header.View.render();
+		},
 		render : function(){
 			this.$el.html(this.template({}));
-			// applicationFunctions.getAvailableApplications(function (applications) {
-			// 	this.model.set("availableApplications", applications);
-			// }.bind(this));
 			applicationFunctions.fetchApplications(this, function(applications){
 				this.displayApplications.bind(this)
 				(

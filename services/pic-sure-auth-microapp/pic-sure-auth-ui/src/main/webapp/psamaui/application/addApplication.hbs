@@ -1,10 +1,11 @@
 <div id="new-application-form">
     <div>
-        <label for="application_name">name (required)</label>
+        <label for="application_name">Name (required)</label>
         <input uuid="{{this.uuid}}" type="text" required name="application_name" style="width: 100%;" required>
-
-        <label for="application_description">description (required)</label>
+        <label for="application_description">Description (required)</label>
         <input type="text" required name="application_description" style="width: 100%;" required>
+        <label for="application_url">URL (optional)</label>
+        <input type="text" required name="application_url" style="width: 100%;">
     </div>
     <div style="padding-top: 4px">
         <button id="save-application-button" type="submit" class="btn btn-info">

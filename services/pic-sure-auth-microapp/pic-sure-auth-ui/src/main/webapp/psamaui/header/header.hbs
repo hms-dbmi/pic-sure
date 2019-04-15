@@ -1,15 +1,25 @@
 <div class="row header-row">
-	<div class="logo-img col-md-3" style="font-size: x-large;
-                                              color: white;
-                                              top: 20px;">Management console</div>
-    <span class="col-md-1"></span>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-picsureui" href="/picsureui">
-        PIC-SURE UI
-    </a>
-    <a class="col-md-2 btn btn-default header-btn" id="userMgmt-super-admin" href="/psamaui/roleManagement"
-       {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
-        Super Admin Console
-    </a>
+	<div class="logo-img col-md-3">Management console</div>
+</div>
+<div class="row" style="margin-bottom: 5px">
+    <span class="col-md-5"></span>
+    <div class="col-md-2 dropdown" id="applications-dropdown">
+        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Applications</button>
+        <ul class="dropdown-menu" role="menu">
+        {{#each applications}}
+            <li class="dropdown"><a id="{{this.uuid}}" href="{{this.url}}">{{this.name}}</a></li>
+        {{/each}}
+        </ul>
+    </div>
+    <div class="col-md-2 dropdown" id="super-admin-dropdown"  {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
+        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Super Admin Console</button>
+        <ul class="dropdown-menu" role="menu">
+            <li class="dropdown"><a id="appMgmt-super-admin" href="/psamaui/applicationManagement">Application management</a></li>
+            <li class="dropdown"><a id="connMgmt-super-admin" href="/psamaui/connectionManagement">Connection management</a></li>
+            <li class="dropdown"><a id="privMgmt-super-admin" href="/psamaui/privilegeManagement">Privilege management</a></li>
+            <li class="dropdown"><a id="roleMgmt-super-admin" href="/psamaui/roleManagement">Role management</a></li>
+        </ul>
+    </div>
     <a class="col-md-1 btn btn-default header-btn" id="userMgmt-users" href="/psamaui/userManagement"
        {{#not_contains privileges 'ADMIN'}}style="visibility: hidden"{{/not_contains}}>Users
     </a>
