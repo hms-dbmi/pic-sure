@@ -1,10 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!login/not_authorized.hbs', 'handlebars', 'accessRule/accessRuleManagement', 'picSure/settings'],
+        'handlebars', 'accessRule/accessRuleManagement'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
-                 notAuthorizedTemplate, HBS, accessRuleManagement, settings){
+                 HBS, accessRuleManagement){
         var Router = Backbone.Router.extend({
         routes: {
             "psamaui/userManagement(/)" : "displayUserManagement",
@@ -58,7 +58,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             window.location = "/psamaui/logout";
         },
         not_authorized : function(){
-            $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
+            login.displayNotAuthorized();
         },
         displayUserManagement : function(){
             var headerView = header.View;

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
@@ -8,8 +10,8 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
-import javax.mail.Address;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Transport;
@@ -18,55 +20,77 @@ import javax.mail.internet.MimeMessage;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.IOException;
 import java.io.StringWriter;
-import java.io.Writer;
+import java.util.Map;
 
 public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 
-	private static Mustache accessEmail = null;
-	
-	private void loadTemplates() {
-		try(FileReader reader = new FileReader(JAXRSConfiguration.userActivationTemplatePath);){
-			accessEmail = mf.compile(reader, "accessEmail");
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+	/**
+	 * Compile mustache template from templateFile
+	 *
+	 * @throws FileNotFoundException Exception thrown if templateFile is missing due to not being configured
+	 */
+	private Mustache compileTemplate(String templateFile) throws FileNotFoundException {
+		FileReader reader = new FileReader(JAXRSConfiguration.emailTemplatePath + templateFile);
+		return mf.compile(reader, templateFile);
 	}
 
+	/**
+	 * Send email to user about changes in user Roles
+	 * @param user
+	 */
 	public void sendUsersAccessEmail(User user){
-		if(accessEmail==null) {
-			loadTemplates();
-		}
-		try {
-			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
-			String email = user.getEmail();
-			if (email != null){
-				InternetAddress fromEmail = new InternetAddress(JAXRSConfiguration.userActivationReplyTo);
-				message.setFrom(fromEmail);
-				message.setReplyTo(new Address[] {fromEmail});
-				message.setRecipient(Message.RecipientType.TO, new InternetAddress(email));
-				//TODO Is the subject configurable as well?  What should it say?
-				message.setSubject("Your Access To " + JAXRSConfiguration.systemName);
-				String body = generateBody(user);
-				message.setText(body);
-				Transport.send(message);
-			} else {
-				logger.error("User " + user.getSubject() + " has no email");
-			}
-		} catch (MessagingException e){
-			logger.error(e.getMessage(), e);
-		} catch (Exception e){
-			logger.error(e.getMessage(), e);
+		if (StringUtils.isEmpty(user.getEmail())) {
+			logger.error("User " + (user.getSubject() != null ? user.getSubject() : "") + " has no email address.");
+		} else {
+			sendEmail("accessEmail.mustache", user.getEmail(),"Your Access To " + JAXRSConfiguration.systemName, new AccessEmail(user));
 		}
 	}
 
-	public String generateBody(User u) {
-		Writer writer = accessEmail.execute(new StringWriter(),new AccessEmail(u));
-		return writer.toString();
+	/**
+	 * Send email to admin about user being denied access to the system
+	 * @param userInfo User info object returned by authentication provider
+	 */
+	public void sendDeniedAccessEmail(JsonNode userInfo){
+		logger.info("Sending 'Access Denied' email to "
+				+ JAXRSConfiguration.adminUsers
+				+ ". User: "
+				+ userInfo.get("email") != null ? userInfo.get("email").asText() : userInfo.get("user_id").asText());
+		ObjectMapper mapper = new ObjectMapper();
+		Map<String, Object> scope = mapper.convertValue(userInfo, Map.class);
+		scope.put("systemName", JAXRSConfiguration.systemName);
+		sendEmail("deniedAccessEmail.mustache", JAXRSConfiguration.adminUsers, "User denied access to " + JAXRSConfiguration.systemName, scope);
+	}
+
+	/**
+	 * Generate email from template and send it.
+	 * @param template Name of the template.
+	 * @param to Recipients
+	 * @param subject Subject of the email
+	 * @param scope Object that contains attributes for template. e.g.: Map
+	 * @throws MessagingException
+	 */
+	private void sendEmail(String template, String to, String subject, Object scope) {
+		logger.debug("sendEmail(String, String, String, Object) - start");
+		try {
+			if (StringUtils.isEmpty(template) || StringUtils.isEmpty(to) || StringUtils.isEmpty(subject) || scope == null) {
+				logger.error("One of the required parameters is null. Can't send email.");
+				return;
+			}
+			Mustache emailTemplate = compileTemplate(template);
+			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
+			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
+			message.setSubject(subject);
+			message.setText(emailTemplate.execute(new StringWriter(), scope).toString());
+			Transport.send(message);
+		} catch (FileNotFoundException e) {
+			logger.error("Template not found for " + template + ". Check configuration.", e);
+		} catch (MessagingException me) {
+			logger.error("Failed to send email: '" + subject + "'", me);
+		} catch (Exception e) {
+			logger.error("Error occurred while trying to send email '" + subject + "'", e);
+		}
 	}
 }

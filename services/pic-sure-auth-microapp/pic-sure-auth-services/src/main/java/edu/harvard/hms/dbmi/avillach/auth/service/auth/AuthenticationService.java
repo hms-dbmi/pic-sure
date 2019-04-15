@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
@@ -36,6 +37,9 @@ public class AuthenticationService {
 
     @Inject
     TermsOfServiceService tosService;
+
+    @Inject
+    MailService mailService;
 
     public Response getToken(Map<String, String> authRequest){
         String accessToken = authRequest.get("access_token");
@@ -69,6 +73,9 @@ public class AuthenticationService {
             //Try to match
             user = matchingService.matchTokenToUser(userInfo);
             if (user == null){
+                if (JAXRSConfiguration.deniedEmailEnabled.startsWith("true")) {
+                    mailService.sendDeniedAccessEmail(userInfo);
+                }
                 throw new NotAuthorizedException("No user matching user_id " + userId + " present in database");
             }
         }

@@ -1,0 +1,17 @@
+Access Changed:
+
+{{#rolesExists}}
+You have been granted access to {{systemName}} with the following roles:
+{{/rolesExists}}
+{{#roles}}
+{{name}} : {{#privileges}} {{description}} {{/privileges}}
+{{/roles}}
+{{^roles}}
+Currently NO roles have been granted for you to {{systemName}}.
+{{/roles}}
+ {{#documentation}}
+You can find documentation at the following links:
+ {{.}}
+{{/documentation}}
+
+Have a good day!
