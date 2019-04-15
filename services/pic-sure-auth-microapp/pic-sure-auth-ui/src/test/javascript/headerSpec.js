@@ -1,5 +1,5 @@
-define(["header/header", "picSure/userFunctions", "jquery","underscore"], 
-		function(header, userFunctions, $, _){
+define(["header/header", "picSure/userFunctions", "picSure/applicationFunctions", "jquery","underscore"],
+		function(header, userFunctions, applicationFunctions, $, _){
 	// Register the pretty print for matcher debugs
 	jasmine.pp = function(obj){return JSON.stringify(obj, undefined, 2);};
 	describe("header", function(){
@@ -47,6 +47,7 @@ define(["header/header", "picSure/userFunctions", "jquery","underscore"],
 		
 			describe("has a render function", function(){
 				var userFunctionsSpy;
+				var applicationFunctionsSpy;
 				it("doesn't call userFunctions.me if on the tos page", function(){
 					history.replaceState(undefined, "","/psamaui/tos");
 					userFunctionsSpy = spyOn(userFunctions, "me");
@@ -65,6 +66,10 @@ define(["header/header", "picSure/userFunctions", "jquery","underscore"],
 						.callFake(function(object, callback){
 							callback({privileges: ['SUPER_ADMIN']});
 						});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+						.callFake(function(object, callback){
+							callback([{}]);
+						});
 						header.View.render();
 						expect($('a[href="/psamaui/roleManagement"]', header.View.$el).length).toEqual(1);
 					});
@@ -73,8 +78,12 @@ define(["header/header", "picSure/userFunctions", "jquery","underscore"],
 						.callFake(function(object, callback){
 							callback({privileges: ['ADMIN']});
 						});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+						.callFake(function(object, callback){
+							callback([{}]);
+						});
 						header.View.render();
-						expect($('a[href="/psamaui/roleManagement"][style="visibility: hidden"]', header.View.$el).length).toEqual(1);
+						expect($('#super-admin-dropdown[style="visibility: hidden"]', header.View.$el).length).toEqual(1);
 					});
 					it("shows the Users button for ADMIN users", function(){
 						userFunctionsSpy = spyOn(userFunctions, "me").and
@@ -89,18 +98,47 @@ define(["header/header", "picSure/userFunctions", "jquery","underscore"],
 						.callFake(function(object, callback){
 							callback({privileges: ['SUPER_ADMIN', 'SYSTEM','RESEARCHER','blahblah']});
 						});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+						.callFake(function(object, callback){
+							callback([{}]);
+						});
 						header.View.render();
 						expect($('a[href="/psamaui/userManagement"][style="visibility: hidden"]', header.View.$el).length).toEqual(1);
 					});
 					// Since it is possible that admin users would not have access to picsure, perhaps this is the wrong approach
 					// That is not an issue related to the current ticket and those discussions will not be happening now.
-					it("shows the PIC-SURE UI button without needing any specific roles", function(){
+					// it("shows the PIC-SURE UI button without needing any specific roles", function(){
+					// 	userFunctionsSpy = spyOn(userFunctions, "me").and
+					// 	.callFake(function(object, callback){
+					// 		callback({privileges: []});
+					// 	});
+					// 	header.View.render();
+					// 	expect($('a[href="/picsureui"]', header.View.$el).length).toEqual(1);
+					// });
+					it("shows application in Applications dropdown when at least one application has a link", function(){
 						userFunctionsSpy = spyOn(userFunctions, "me").and
-						.callFake(function(object, callback){
-							callback({privileges: []});
-						});
+							.callFake(function(object, callback){
+								callback({privileges: []});
+							});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+							.callFake(function(object, callback){
+								callback([{uuid: 'app-uuid', name:'PICSURE-UI', url: '/picsureui'}]);
+							});
 						header.View.render();
-						expect($('a[href="/picsureui"]', header.View.$el).length).toEqual(1);
+						expect($('#applications-dropdown li a[href="/picsureui"]', header.View.$el).length).toEqual(1);
+					});
+					it("do not display any application in Applications dropdown when neither application has a link", function(){
+						userFunctionsSpy = spyOn(userFunctions, "me").and
+							.callFake(function(object, callback){
+								callback({privileges: []});
+							});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+							.callFake(function(object, callback){
+								callback([	{uuid: 'app-uuid-1', name:'PICSURE', url: ''},
+											{uuid: 'app-uuid-2', name:'FRACTALIS', url: ''}]);
+							});
+						header.View.render();
+						expect($('#applications-dropdown li', header.View.$el).length).toEqual(0);
 					});
 					describe("renders a Log Out button ", function(){
 						it("Log Out button is rendered and has id logout-btn", function(){

@@ -3,16 +3,16 @@
 </div>
 <div class="row" style="margin-bottom: 5px">
     <span class="col-md-5"></span>
-    <div class="col-md-2 dropdown">
-        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" id="applicationsDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Applications</button>
+    <div class="col-md-2 dropdown" id="applications-dropdown">
+        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Applications</button>
         <ul class="dropdown-menu" role="menu">
         {{#each applications}}
             <li class="dropdown"><a id="{{this.uuid}}" href="{{this.url}}">{{this.name}}</a></li>
         {{/each}}
         </ul>
     </div>
-    <div class="col-md-2 dropdown" {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
-        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" id="superAdminDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Super Admin Console</button>
+    <div class="col-md-2 dropdown" id="super-admin-dropdown"  {{#not_contains privileges 'SUPER_ADMIN'}}style="visibility: hidden"{{/not_contains}}>
+        <button class="btn btn-secondary dropdown-toggle header-btn" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Super Admin Console</button>
         <ul class="dropdown-menu" role="menu">
             <li class="dropdown"><a id="appMgmt-super-admin" href="/psamaui/applicationManagement">Application management</a></li>
             <li class="dropdown"><a id="connMgmt-super-admin" href="/psamaui/connectionManagement">Connection management</a></li>
