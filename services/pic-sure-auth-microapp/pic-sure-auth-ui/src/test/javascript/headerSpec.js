@@ -90,6 +90,10 @@ define(["header/header", "picSure/userFunctions", "picSure/applicationFunctions"
 						.callFake(function(object, callback){
 							callback({privileges: ['ADMIN']});
 						});
+						applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+						.callFake(function(object, callback){
+							callback([{}]);
+						});
 						header.View.render();
 						expect($('a[href="/psamaui/userManagement"]', header.View.$el).length).toEqual(1);
 					});
@@ -145,6 +149,10 @@ define(["header/header", "picSure/userFunctions", "picSure/applicationFunctions"
 							userFunctionsSpy = spyOn(userFunctions, "me").and
 							.callFake(function(object, callback){
 								callback({privileges: []});
+							});
+							applicationFunctionsSpy = spyOn(applicationFunctions, "fetchApplications").and
+							.callFake(function(object, callback){
+								callback([{}]);
 							});
 							header.View.render();
 							expect($('a#logout-btn', header.View.$el).length).toEqual(1);
