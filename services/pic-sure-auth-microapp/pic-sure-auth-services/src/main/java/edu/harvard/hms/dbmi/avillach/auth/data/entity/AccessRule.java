@@ -3,18 +3,35 @@ package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.Entity;
+import javax.persistence.Transient;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Entity(name = "access_rule")
 public class AccessRule extends BaseEntity {
 
+    /**
+     * please do not modify the existing values, in case the value has
+     * already saved in the database. But you can add more constant values
+     */
     public static class TypeNaming {
 //        public static final int CONTAINS = 0;
         public static final int NOT_CONTAINS = 1;
         public static final int NOT_CONTAINS_IGNORE_CASE = 2;
         public static final int NOT_EQUALS = 3;
+        public static final int EQUALS = 4;
+        public static final int ALL_CONTAINS = 5;
+        public static final int CONTAINS_IGNORE_CASE = 6;
+        public static final int ARRAY_CONTAINS = 7;
+        public static final int NOT_EQUALS_IGNORE_CASE = 8;
+        public static final int EQUALS_IGNORE_CASE = 9;
+        public static final int ARRAY_EQUALS = 10;
+        public static final int ALL_REG_MATCH = 11;
+        public static final int ARRAY_REG_MATCH = 12;
+        public static final int IS_EMPTY = 13;
+
 
         public static Map<String, Integer> getTypeNameMap(){
             Map<String, Integer> map = new HashMap<>();
@@ -51,6 +68,25 @@ public class AccessRule extends BaseEntity {
      * The value for checking
      */
     private String value;
+
+    /**
+     * Guideline of using gates: if null or empty, will skip checking gate
+     * to pass gate settings, every gate in the set needs to be passed,
+     * which means if only part of the gate set is passed, the gate still
+     * not passed
+     */
+    @Transient
+    private Set<AccessRule> gates;
+
+    /**
+     * introduce sub-accessRule to enable the ability of more complex problem
+     */
+    @Transient
+    private Set<AccessRule> subAccessRule;
+
+    private boolean checkMapNode;
+
+    private boolean checkMapKeyOnly;
 
     public int getType() {
         return type;
@@ -90,6 +126,38 @@ public class AccessRule extends BaseEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Set<AccessRule> getGates() {
+        return gates;
+    }
+
+    public void setGates(Set<AccessRule> gates) {
+        this.gates = gates;
+    }
+
+    public Set<AccessRule> getSubAccessRule() {
+        return subAccessRule;
+    }
+
+    public void setSubAccessRule(Set<AccessRule> subAccessRule) {
+        this.subAccessRule = subAccessRule;
+    }
+
+    public boolean isCheckMapNode() {
+        return checkMapNode;
+    }
+
+    public void setCheckMapNode(boolean checkMapNode) {
+        this.checkMapNode = checkMapNode;
+    }
+
+    public boolean isCheckMapKeyOnly() {
+        return checkMapKeyOnly;
+    }
+
+    public void setCheckMapKeyOnly(boolean checkMapKeyOnly) {
+        this.checkMapKeyOnly = checkMapKeyOnly;
     }
 
     public String toString() {
