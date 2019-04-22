@@ -1,9 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.data.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.Entity;
-import javax.persistence.Transient;
+import javax.persistence.ManyToOne;
+import javax.persistence.OneToMany;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,19 +72,25 @@ public class AccessRule extends BaseEntity {
      */
     private String value;
 
+    @ManyToOne
+    private AccessRule gateParent;
+
     /**
      * Guideline of using gates: if null or empty, will skip checking gate
      * to pass gate settings, every gate in the set needs to be passed,
      * which means if only part of the gate set is passed, the gate still
      * not passed
      */
-    @Transient
+    @OneToMany(mappedBy = "gateParent")
     private Set<AccessRule> gates;
+
+    @ManyToOne
+    private AccessRule subAccessRuleParent;
 
     /**
      * introduce sub-accessRule to enable the ability of more complex problem
      */
-    @Transient
+    @OneToMany(mappedBy = "subAccessRuleParent")
     private Set<AccessRule> subAccessRule;
 
     private boolean checkMapNode;
@@ -126,6 +135,26 @@ public class AccessRule extends BaseEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    @JsonIgnore
+    public AccessRule getGateParent() {
+        return gateParent;
+    }
+
+    @JsonProperty("gateParent")
+    public void setGateParent(AccessRule gateParent) {
+        this.gateParent = gateParent;
+    }
+
+    @JsonIgnore
+    public AccessRule getSubAccessRuleParent() {
+        return subAccessRuleParent;
+    }
+
+    @JsonProperty("subAccessRuleParent")
+    public void setSubAccessRuleParent(AccessRule subAccessRuleParent) {
+        this.subAccessRuleParent = subAccessRuleParent;
     }
 
     public Set<AccessRule> getGates() {
