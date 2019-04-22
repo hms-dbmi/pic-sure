@@ -13,14 +13,43 @@
 		<module>etl</module>
 		<module>data</module>
 		<module>docker</module>
+		<module>processing</module>
+		<module>war</module>
 	</modules>
 	<properties>
 		<jackson.version>1.8.6</jackson.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<dockerfile-maven-version>1.4.10</dockerfile-maven-version>
 	</properties>
 	<build>
 		<pluginManagement>
 			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-dependency-plugin</artifactId>
+					<version>2.8</version>
+					<executions>
+						<execution>
+							<id>copy-installed</id>
+							<phase>install</phase>
+							<goals>
+								<goal>copy</goal>
+							</goals>
+							<configuration>
+								<artifactItems>
+									<artifactItem>
+										<groupId>${project.groupId}</groupId>
+										<artifactId>${project.artifactId}</artifactId>
+										<version>${project.version}</version>
+										<type>${project.packaging}</type>
+									</artifactItem>
+								</artifactItems>
+								<outputDirectory>pic-sure-hpds</outputDirectory>
+							</configuration>
+						</execution>
+					</executions>
+				</plugin>
+
 				<plugin>
 					<groupId>org.apache.tomcat.maven</groupId>
 					<artifactId>tomcat7-maven-plugin</artifactId>
@@ -70,7 +99,7 @@
 					<artifactId>maven-compiler-plugin</artifactId>
 					<version>3.8.0</version>
 					<configuration>
-						<release>9</release>
+						<release>11</release>
 					</configuration>
 				</plugin>
 				<plugin>
@@ -134,12 +163,12 @@
 			</dependency>
 			<dependency>
 				<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-				<artifactId>etl</artifactId>
+				<artifactId>processing</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-				<artifactId>data</artifactId>
+				<artifactId>etl</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -151,12 +180,6 @@
 				<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 				<artifactId>pic-sure-resource-api</artifactId>
 				<version>2.0.0-SNAPSHOT</version>
-			</dependency>
-			<dependency>
-				<groupId>junit</groupId>
-				<artifactId>junit</artifactId>
-				<scope>test</scope>
-				<version>4.12</version>
 			</dependency>
 			<dependency>
 				<groupId>ch.qos.logback</groupId>
@@ -177,6 +200,11 @@
 				<groupId>com.google.guava</groupId>
 				<artifactId>guava</artifactId>
 				<version>25.1-jre</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-math3</artifactId>
+				<version>3.6.1</version>
 			</dependency>
 			<dependency>
 				<groupId>de.siegmar</groupId>

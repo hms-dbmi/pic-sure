@@ -30,7 +30,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
-
+ 
 public class LoadingStore {
 
 	private HashMap<String, byte[]> compressedPhenoCubes = new HashMap<>();
@@ -38,11 +38,11 @@ public class LoadingStore {
 	RandomAccessFile allObservationsStore;
 
 	TreeMap<String, ColumnMeta> metadataMap = new TreeMap<>();
-
+	
 	private static Logger log = Logger.getLogger(LoadingStore.class);
 	
 	public LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
-			.maximumSize(2000)
+			.maximumSize(20000)
 			.removalListener(new RemovalListener<String, PhenoCube>() {
 
 				@Override
@@ -50,7 +50,8 @@ public class LoadingStore {
 					log.info("removing " + arg0.getKey());
 					complete(arg0.getValue());
 					try {
-						ColumnMeta columnMeta = metadataMap.get(arg0.getKey());
+						ColumnMeta columnMeta = new ColumnMeta().setName(arg0.getKey()).setWidthInBytes(arg0.getValue().getColumnWidth()).setCategorical(arg0.getValue().isStringType());
+
 						columnMeta.setAllObservationsOffset(allObservationsStore.getFilePointer());
 						columnMeta.setObservationCount(arg0.getValue().sortedByKey().length);
 						if(columnMeta.isCategorical()) {
@@ -80,6 +81,7 @@ public class LoadingStore {
 						allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 						columnMeta.setAllObservationsLength(allObservationsStore.getFilePointer());
 						compressedPhenoCubes.put(arg0.getKey(), byteStream.toByteArray());
+						metadataMap.put(columnMeta.getName(), columnMeta);
 					} catch (IOException e1) {
 						e1.printStackTrace();
 					}
@@ -87,7 +89,7 @@ public class LoadingStore {
 
 				private <V extends Comparable<V>> void complete(PhenoCube<V> cube) {
 					ArrayList<KeyAndValue<V>> entryList = new ArrayList<KeyAndValue<V>>(
-							cube.loadingMap.entrySet().stream().map((entry)->{
+							cube.getLoadingMap().entrySet().stream().map((entry)->{
 								return new KeyAndValue<V>(entry.getKey(), entry.getValue());
 							}).collect(Collectors.toList()));
 
@@ -125,14 +127,14 @@ public class LoadingStore {
 							return ret;
 						}
 					});
+
+	TreeSet<Integer> allIds = new TreeSet<Integer>();
 	
 	public void saveStore() throws FileNotFoundException, IOException {
-		store.asMap().forEach((String key, PhenoCube value)->{
-			metadataMap.put(key, new ColumnMeta().setName(key).setWidthInBytes(value.getColumnWidth()).setCategorical(value.isStringType()));
-		});
 		store.invalidateAll();
-		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File("/opt/local/phenocube/columnMeta.javabin")));
+		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File("/opt/local/hpds/columnMeta.javabin")));
 		metaOut.writeObject(metadataMap);
+		metaOut.writeObject(allIds);
 		metaOut.flush();
 		metaOut.close();
 		allObservationsStore.close();

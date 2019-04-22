@@ -3,27 +3,22 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.io.*;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.log4j.Logger;
-
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
+
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 public class SQLLoader {
-	
+
 	static JdbcTemplate template;
-	
-	public SQLLoader() {
-		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
-	}
 
 	private static LoadingStore store = new LoadingStore();
-
-	private static Logger log = Logger.getLogger(SQLLoader.class);
 
 	private static final int PATIENT_NUM = 1;
 
@@ -33,22 +28,27 @@ public class SQLLoader {
 
 	private static final int TEXT_VALUE = 4;
 
+	private static final Properties props = new Properties();
+	
 	public static void main(String[] args) throws IOException {
-		template = new JdbcTemplate(new DriverManagerDataSource("jdbc:oracle:thin:@192.168.99.101:1521/ORCLPDB1", "pdbadmin", "password"));
-		store.allObservationsStore = new RandomAccessFile("/tmp/allObservationsStore.javabin", "rw");
+		props.load(new FileInputStream("/opt/local/hpds/sql.properties"));
+		template = new JdbcTemplate(new DriverManagerDataSource(prop("datasource.url"), prop("datasource.user"), prop("datasource.password")));
+		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
 		initialLoad();
 		store.saveStore();
 	}
 
+	private static String prop(String key) {
+		return props.getProperty(key);
+	}
+
 	private static void initialLoad() throws IOException {
 		final PhenoCube[] currentConcept = new PhenoCube[1];
-		template.query("select psc.PATIENT_NUM, CONCEPT_PATH, NVAL_NUM, TVAL_CHAR "
-				+ "FROM i2b2demodata.QT_PATIENT_SET_COLLECTION psc "
-				+ "LEFT JOIN i2b2demodata.OBSERVATION_FACT ofact "
-				+ "ON ofact.PATIENT_NUM=psc.PATIENT_NUM "
-				+ "JOIN i2b2demodata.CONCEPT_DIMENSION cd "
-				+ "ON cd.CONCEPT_CD=ofact.CONCEPT_CD "
-				+ "WHERE RESULT_INSTANCE_ID=41 ORDER BY CONCEPT_PATH, psc.PATIENT_NUM", new RowCallbackHandler() {
+		template.query("    select ofact.PATIENT_NUM, CONCEPT_PATH, NVAL_NUM, TVAL_CHAR \n" + 
+				"    FROM i2b2demodata.OBSERVATION_FACT ofact\n" + 
+				"    JOIN i2b2demodata.CONCEPT_DIMENSION cd \n" + 
+				"    ON cd.CONCEPT_CD=ofact.CONCEPT_CD \n" + 
+				"    ORDER BY CONCEPT_PATH, ofact.PATIENT_NUM", new RowCallbackHandler() {
 
 			@Override
 			public void processRow(ResultSet arg0) throws SQLException {
@@ -65,27 +65,29 @@ public class SQLLoader {
 	private static void processRecord(final PhenoCube[] currentConcept, ResultSet arg0) {
 		try {
 			String conceptPathFromRow = arg0.getString(CONCEPT_PATH);
+			String[] segments = conceptPathFromRow.split("\\\\");
+			for(int x = 0;x<segments.length;x++) {
+				segments[x] = segments[x].trim();
+			}
+			conceptPathFromRow = String.join("\\", segments) + "\\";
+			conceptPathFromRow = conceptPathFromRow.replaceAll("\\ufffd", "");
 			String textValueFromRow = arg0.getString(TEXT_VALUE) == null ? null : arg0.getString(TEXT_VALUE).trim();
-			String conceptPath = conceptPathFromRow.endsWith("\\" +textValueFromRow+"\\") ? conceptPathFromRow.replaceAll("\\\\[\\w\\.-]*\\\\$", "\\\\") : conceptPathFromRow;
+			if(textValueFromRow!=null) {
+				textValueFromRow = textValueFromRow.replaceAll("\\ufffd", "");
+			}
+			String conceptPath = conceptPathFromRow.endsWith("\\" +textValueFromRow+"\\") ? conceptPathFromRow.replaceAll("\\\\[^\\\\]*\\\\$", "\\\\") : conceptPathFromRow;
 			// This is not getDouble because we need to handle null values, not coerce them into 0s
 			String numericValue = arg0.getString(NUMERIC_VALUE);
-			if(numericValue==null || numericValue.isEmpty()) {
+			if((numericValue==null || numericValue.isEmpty()) && textValueFromRow!=null) {
 				try {
 					numericValue = Float.parseFloat(textValueFromRow) + "";
 				}catch(NumberFormatException e) {
-					try {
-						log.info("Record number " + arg0.getRow() 
-						+ " had an alpha value where we expected a number in the alpha column... "
-						+ "which sounds weirder than it really is.");
-					} catch (SQLException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-					}
-
+					
 				}
 			}
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
+				System.out.println(conceptPath);
 				try {
 					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
@@ -98,7 +100,9 @@ public class SQLLoader {
 			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Float.class))) {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Float.BYTES);
-				currentConcept[0].add(arg0.getInt(PATIENT_NUM), isAlpha ? value : Float.parseFloat(value));
+				int patientId = arg0.getInt(PATIENT_NUM);
+				currentConcept[0].add(patientId, isAlpha ? value : Float.parseFloat(value));
+				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {
 			e.printStackTrace();

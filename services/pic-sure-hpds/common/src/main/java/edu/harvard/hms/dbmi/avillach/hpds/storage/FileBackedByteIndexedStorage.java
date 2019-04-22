@@ -8,8 +8,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
-import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -19,14 +19,15 @@ import org.apache.commons.io.output.ByteArrayOutputStream;
 public class FileBackedByteIndexedStorage <K, V extends Serializable> implements Serializable {
 	private static final long serialVersionUID = -7297090745384302635L;
 	private transient RandomAccessFile storage;
-	private HashMap<K, Long[]> index;
+	private ConcurrentHashMap<K, Long[]> index;
 	private File storageFile;
 	private boolean completed = false;
+	private Long maxStorageSize;
 
 	public FileBackedByteIndexedStorage(Class<K> keyClass, Class<V> valueClass, File storageFile) throws FileNotFoundException {
-		this.index = new HashMap<K, Long[]>();
+		this.index = new ConcurrentHashMap<K, Long[]>();
 		this.storageFile = storageFile;
-		this.storage = new RandomAccessFile(this.storageFile, "rwd");
+		this.storage = new RandomAccessFile(this.storageFile, "rw");
 	}
 
 	public Set<K> keys(){
@@ -41,11 +42,12 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		recordIndex[0] = storage.getFilePointer();
 		store(value);
 		recordIndex[1] = storage.getFilePointer() - recordIndex[0];
+		maxStorageSize = recordIndex[1];
 		index.put(key, recordIndex);
 	}
 
 	public void load(Iterable<V> values, Function<V, K> mapper) throws IOException {
-		if(this.storageFile.exists()) this.storageFile.delete();
+		boolean deleted = this.storageFile.exists() ? this.storageFile.delete() : false;
 		this.storage = new RandomAccessFile(storageFile, "rw");
 		for(V value : values) {
 			put(mapper.apply(value), value);
@@ -58,7 +60,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		this.storage = new RandomAccessFile(this.storageFile, "rwd");
 	}
 	
-	private void complete() {
+	public void complete() {
 		this.completed = true;
 	}
 
@@ -72,6 +74,9 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	}
 
 	public V get(K key) throws IOException {
+		if(this.storage==null) {
+			this.open();
+		}
 		Long[] offsetsInStorage = index.get(key);
 		if(offsetsInStorage != null) {
 			Long offsetInStorage = index.get(key)[0];

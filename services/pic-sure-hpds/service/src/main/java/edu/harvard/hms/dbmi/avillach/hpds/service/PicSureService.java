@@ -1,9 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -31,12 +35,16 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantsOfInterestProcessor;
 
 @Path("PIC-SURE")
 @Produces("application/json")
@@ -51,6 +59,8 @@ public class PicSureService implements IResourceRS {
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	private Logger log = Logger.getLogger(PicSureService.class);
+
+	private VariantsOfInterestProcessor variantsOfInterestProcessor;
 
 	@POST
 	@Path("/info")
@@ -129,18 +139,50 @@ public class PicSureService implements IResourceRS {
 	@Path("/search")
 	public SearchResults search(QueryRequest searchJson) {
 		Set<Entry<String, ColumnMeta>> allColumns = queryService.getDataDictionary().entrySet();
-		return new SearchResults().setResults(
-				searchJson.getQuery()!=null ? 
-						allColumns.stream().filter((entry)->{
-							String lowerCaseSearchTerm = searchJson.getQuery().toString().toLowerCase();
-							return entry.getKey().toLowerCase().contains(lowerCaseSearchTerm) 
-									||(
-											entry.getValue().isCategorical() 
-											&& 
-											entry.getValue().getCategoryValues().stream().map(String::toLowerCase).collect(Collectors.toList())
-											.contains(lowerCaseSearchTerm));
-						}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) 
-						: allColumns).setSearchQuery(searchJson.getQuery().toString());
+		
+		//Phenotype Values
+		Object phenotypeResults = searchJson.getQuery()!=null ? 
+				allColumns.stream().filter((entry)->{
+					String lowerCaseSearchTerm = searchJson.getQuery().toString().toLowerCase();
+					return entry.getKey().toLowerCase().contains(lowerCaseSearchTerm) 
+							||(
+									entry.getValue().isCategorical() 
+									&& 
+									entry.getValue().getCategoryValues().stream().map(String::toLowerCase).collect(Collectors.toList())
+									.contains(lowerCaseSearchTerm));
+				}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) 
+				: allColumns;
+
+				//				// Gene Values
+				//				Map<String, GeneSpec> geneResults = new GeneLibrary().geneNameSearch(searchJson.getQuery().toString());
+				//				List<Map<String, Object>> resultMap = geneResults.values().parallelStream().map((geneSpec)->{
+				//					Set ranges = geneSpec.ranges.asRanges();
+				//					return ImmutableMap.of("name", geneSpec.name, "chr", geneSpec.chromosome, "ranges", 
+				//							ranges.stream().map((range)->{
+				//								Range range2 = (Range) range;
+				//								return ImmutableMap.of("start", range2.lowerEndpoint(), "end", range2.upperEndpoint());
+				//							}).collect(Collectors.toList()));
+				//				}).collect(Collectors.toList());
+
+				// Info Values
+				Map<String, Map> infoResults = new TreeMap<String, Map>();
+				AbstractProcessor.infoStoreColumns.parallelStream().forEach((String infoColumn)->{
+					FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
+					if(store!=null) {
+						List<String> searchResults = store.search(searchJson.getQuery().toString());
+						boolean storeIsNumeric = store.isContinuous;
+						if( ! searchResults.isEmpty()) {
+							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", searchResults, "continuous", storeIsNumeric));
+						}
+						if(store.description.toLowerCase().contains(searchJson.getQuery().toString().toLowerCase())) {
+							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", store.isContinuous? new ArrayList<String>() : store.allValues.keys(), "continuous", storeIsNumeric));
+						}
+					}
+				});
+
+				return new SearchResults().setResults(
+						ImmutableMap.of("phenotypes",phenotypeResults, /*"genes", resultMap,*/ "info", infoResults))
+						.setSearchQuery(searchJson.getQuery().toString());
 	}
 
 	@POST
@@ -156,9 +198,9 @@ public class PicSureService implements IResourceRS {
 					log.info("Key is set");
 					queryService.processor.loadAllDataFiles();
 					log.info("Data is loaded");
-					queryService.processor.initAllIds();
-					log.info("All IDs inited");
 					queryStatus.setResourceStatus("Resource unlocked.");
+					countProcessor = new CountProcessor();
+					variantsOfInterestProcessor = new VariantsOfInterestProcessor();
 				} catch(Exception e) {
 					Crypto.setKey(null);
 					e.printStackTrace();
@@ -179,11 +221,19 @@ public class PicSureService implements IResourceRS {
 				QueryStatus status = queryStatus;
 				status.setStatus(PicSureStatus.ERROR);
 				try {
+					status.setResourceStatus("Validation failed for query for reason : " + new ObjectMapper().writeValueAsString(e.getResult()));
+				} catch (JsonProcessingException e2) {
+					// TODO Auto-generated catch block
+					e2.printStackTrace();
+				}
+				try {
 					status.setResultMetadata(mapper.writeValueAsBytes(e.getResult()));
 				} catch (JsonProcessingException e1) {
 					throw new ServerErrorException(500);
 				}
 				return status;
+			} catch (ClassNotFoundException e) {
+				throw new ServerErrorException(500);
 			}  
 		} else {
 			QueryStatus status = new QueryStatus();
@@ -197,9 +247,21 @@ public class PicSureService implements IResourceRS {
 		return mapper.readValue(mapper.writeValueAsString(queryJson.getQuery()), Query.class);
 	}
 
+	private QueryStatus unknownResultTypeQueryStatus() {
+		QueryStatus status = new QueryStatus();
+		status.setDuration(0);
+		status.setExpiration(-1);
+		status.setPicsureResultId(null);
+		status.setResourceID(null);
+		status.setResourceResultId(null);
+		status.setResourceStatus("Unsupported result type");
+		status.setStatus(PicSureStatus.ERROR);
+		return status;
+	}
+
 	private QueryStatus convertToQueryStatus(AsyncResult entity) {
 		QueryStatus status = new QueryStatus();
-		status.setDuration(entity.completedTime==0?0:entity.completedTime - entity.queuedTime);;
+		status.setDuration(entity.completedTime==0?0:entity.completedTime - entity.queuedTime);
 		status.setResourceID(UUID.fromString(entity.id));
 		status.setResourceResultId(entity.id);
 		status.setResourceStatus(entity.status.name());
@@ -211,23 +273,34 @@ public class PicSureService implements IResourceRS {
 		return status;
 	}
 
+	private QueryStatus convertToQueryStatus(int count) {
+		QueryStatus status = new QueryStatus();
+		status.setResourceStatus("COMPLETE");
+		status.setResultMetadata((""+count).getBytes());
+		status.setStatus(PicSureStatus.AVAILABLE);
+		return status;
+	}
+
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
+	@Override
 	public Response queryResult(
-			@PathParam("resourceQueryId") String queryId, 
-			QueryRequest resourceCredentials) {
+			@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		return queryRS.getResultFor(queryId);
 	}
 
 	@POST
 	@Path("/query/{resourceQueryId}/status")
+	@Override
 	public QueryStatus queryStatus(
 			@PathParam("resourceQueryId") String queryId, 
-			QueryRequest resourceCredentials) {
+			QueryRequest request) {
 		return convertToQueryStatus(
 				queryService.getStatusFor(queryId));
 	}
+
+	CountProcessor countProcessor;
 
 	@POST
 	@Path("/query/sync")
@@ -237,21 +310,39 @@ public class PicSureService implements IResourceRS {
 			Query incomingQuery;
 			try {
 				incomingQuery = convertIncomingQuery(resultRequest);
-				if(incomingQuery.expectedResultType==ResultType.DATAFRAME) {
+				log.info("Query Converted");
+				if(incomingQuery.expectedResultType==ResultType.INFO_COLUMN_LISTING) {
+					ArrayList<Map> infoStores = new ArrayList<>();
+					AbstractProcessor.infoStoreColumns.stream().forEach((infoColumn)->{
+						FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
+						if(store!=null) {
+							infoStores.add(ImmutableMap.of("key", store.column_key, "description", store.description, "isContinuous", store.isContinuous, "min", store.min, "max", store.max));
+						}
+					});
+					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
+				} else if(incomingQuery.expectedResultType==ResultType.DATAFRAME || incomingQuery.expectedResultType==ResultType.DATAFRAME_MERGED) {
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
 						status = queryStatus(status.getResourceResultId(), null);
 					}
+					log.info(status.toString());
 					return queryResult(status.getResourceResultId(), null);
 				} else if (incomingQuery.expectedResultType == ResultType.CROSS_COUNT) {
-					return Response.ok(new CountProcessor().runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+//				} else if (incomingQuery.expectedResultType == ResultType.VARIANTS_OF_INTEREST) {
+//					return Response.ok(variantsOfInterestProcessor.runVariantsOfInterestQuery(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 				} else {
-					return Response.ok(new CountProcessor().runCounts(incomingQuery)).build();				
+					return Response.ok(countProcessor.runCounts(incomingQuery)).build();				
 				}
 			} catch (IOException e) {
+				// TODO Auto-generated catch block
 				e.printStackTrace();
-				return Response.status(400).entity("Unparseable request").build();
-			}
+			} catch (TooManyVariantsException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} 
+			return Response.serverError().build();
+
 		} else {
 			return Response.status(403).entity("Resource is locked").build();
 		}

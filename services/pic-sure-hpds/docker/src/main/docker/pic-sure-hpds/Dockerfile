@@ -1,7 +1,0 @@
-FROM openjdk:11-jre-slim
-
-ADD pic-sure-hpds-1.0-SNAPSHOT-war-exec.jar .
-
-EXPOSE 8080
-
-ENTRYPOINT java -XX:+UseParallelGC -XX:SurvivorRatio=5 -Xms${HEAPSIZE}m -Xmx${HEAPSIZE}m -server -jar pic-sure-hpds-1.0-SNAPSHOT-war-exec.jar -httpPort 8080 -DCACHE_SIZE=${CACHESIZE} -DSMALL_TASK_THREADS=1 -DLARGE_TASK_THREADS=1 -DSMALL_JOB_LIMIT=${SMALL_JOB_SIZE} -DID_BATCH_SIZE=${ID_BATCH_SIZE} -DALL_IDS_CONCEPT=${ALL_IDS_CONCEPT}

@@ -4,12 +4,9 @@ import java.io.Serializable;
 
 import org.apache.commons.csv.CSVRecord;
 
-public class VariantSpec implements Serializable {
-
-	private static final long serialVersionUID = 1289657089351754207L;
+public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 
 	public class VariantCoords implements Serializable {
-		private static final long serialVersionUID = -9105056750599920709L;
 		public Integer chromosome;
 		public Integer offset;
 		public String name;
@@ -18,8 +15,7 @@ public class VariantSpec implements Serializable {
 		public int qual;
 		public String format;		
 	}
-
-	public static int CHR = 0, OFF = 1, NAME = 2, REF = 3, ALT = 4, QUAL = 5, FILTER = 6, INFO = 7;
+	public static int CHR = 0, OFF = 1, NAME = 2, REF = 3, ALT = 4, QUAL = 5, FILTER = 6, INFO = 7, FORMAT = 8, DATA = 9;
 	public long heteroOffset;
 	public long homoOffset;
 	public VariantCoords metadata;
@@ -40,5 +36,17 @@ public class VariantSpec implements Serializable {
 				this.metadata.ref + "," + this.metadata.alt;
 	}
 
-}
+	@Override
+	public int compareTo(VariantSpec o) {
+		int ret = 0;
+		ret = this.metadata.chromosome.compareTo(o.metadata.chromosome);
+		if(ret == 0) {
+			ret = this.metadata.offset.compareTo(o.metadata.offset);
+		}
+		if(ret == 0) {
+			ret = this.metadata.alt.compareTo(o.metadata.alt);
+		}
+		return ret;
+	}
 
+}

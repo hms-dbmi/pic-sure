@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 
 import javax.ws.rs.GET;
@@ -17,9 +18,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
 
 @Path("query")
@@ -30,7 +32,7 @@ public class QueryRS {
 	
 	@POST
 	@Produces(MediaType.APPLICATION_JSON_VALUE)
-	public Response runQuery(Query query) {
+	public Response runQuery(Query query) throws ClassNotFoundException, FileNotFoundException, IOException {
 		try {
 			return Response.ok(queryService.runQuery(query)).build();
 		}catch(ValidationException e) {
@@ -69,7 +71,7 @@ public class QueryRS {
 
 	@POST
 	@Path("/count")
-	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException {
+	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException, ClassNotFoundException, TooManyVariantsException {
 		if(Crypto.hasKey()){
 			return Response.ok(new CountProcessor().runCounts(resultRequest)).build();
 		} else {

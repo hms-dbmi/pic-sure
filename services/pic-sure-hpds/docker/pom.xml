@@ -1,13 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <parent>
-    <artifactId>pic-sure-hpds-refactored</artifactId>
-    <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-    <version>1.0-SNAPSHOT</version>
-  </parent>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<artifactId>pic-sure-hpds</artifactId>
+		<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+		<version>1.0-SNAPSHOT</version>
+	</parent>
 
-  <artifactId>docker</artifactId>
+	<artifactId>docker</artifactId>
 
-  <name>docker</name>
+	<name>docker</name>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>1.6.0</version>
+				<executions>
+					<execution>
+						<id>get-last-git-commit</id>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<phase>package</phase>
+						<configuration>
+							<executable>git</executable>
+							<arguments>
+								<argument>log</argument>
+								<argument>-1</argument>
+								<argument>--pretty=format:%h</argument>
+							</arguments>
+							<outputFile>${basedir}/src/main/resources/gitCommit.properties</outputFile>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-resources-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-docker-build-artifacts</id>
+						<phase>copy-resources</phase>
+						<configuration>
+							<outputDirectory>${basedir}/target/docker-builds</outputDirectory>
+							<resources>
+								<resource>
+									<directory>pic-sure-hpds</directory>
+									<filtering>true</filtering>
+									<targetPath>${basedir}/target/docker-builds</targetPath>
+								</resource>
+								<resource>
+									<directory>pic-sure-hpds-etl</directory>
+									<filtering>true</filtering>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>

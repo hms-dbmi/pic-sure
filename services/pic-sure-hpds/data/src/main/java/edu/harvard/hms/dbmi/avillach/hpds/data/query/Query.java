@@ -20,6 +20,10 @@ public class Query {
 		this.requiredFields = new ArrayList<String> (query.requiredFields);
 		this.numericFilters = new TreeMap<String, FloatFilter> (query.numericFilters);
 		this.categoryFilters = new TreeMap<String, String[]> (query.categoryFilters);
+		this.variantInfoFilters = new ArrayList<VariantInfoFilter>();
+		query.variantInfoFilters.forEach((filter)->{
+			this.variantInfoFilters.add(new VariantInfoFilter(filter));
+		});
 		this.id = query.id;
 	}
 	
@@ -29,5 +33,19 @@ public class Query {
 	public List<String> requiredFields;
 	public Map<String, FloatFilter> numericFilters;
 	public Map<String, String[]> categoryFilters;
+	public List<VariantInfoFilter> variantInfoFilters;
 	public String id;
+	
+	public static class VariantInfoFilter {
+		public VariantInfoFilter() {
+			
+		}
+		
+		public VariantInfoFilter(VariantInfoFilter filter) {
+			this.numericVariantInfoFilters = new TreeMap<String, FloatFilter>(filter.numericVariantInfoFilters);
+			this.categoryVariantInfoFilters = new TreeMap<String, String[]>(filter.categoryVariantInfoFilters);
+		}
+		public Map<String, FloatFilter> numericVariantInfoFilters;
+		public Map<String, String[]> categoryVariantInfoFilters;
+	}
 }
