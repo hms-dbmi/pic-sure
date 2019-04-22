@@ -374,6 +374,32 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
+    private static String sample_caseF_fail_5 = "{\n" +
+            "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
+            "  \"query\": {\n" +
+            "    \"categoryFilters\": {\n" +
+            "      \"3,112222,112222,C,T\": [\n" +
+            "        \"1/1\"\n" +
+            "      ]\n" +
+            "    },\n" +
+            "    \"numericFilters\": {\"nothing\":null},\n" +
+            "    \"requiredFields\": [\n" +
+            "    ],\n" +
+            "    \"variantInfoFilters\": [\n" +
+            "      {\n" +
+            "        \"categoryVariantInfoFilters\": {\n" +
+            "          \"HD\": [\n" +
+            "            \"\\\"Asthma,_severe\\\"\"\n" +
+            "          ]\n" +
+            "        },\n" +
+            "        \"numericVariantInfoFilters\": {}\n" +
+            "      }\n" +
+            "    ],\n" +
+            "    \"expectedResultType\": \"COUNT\"\n" +
+            "  },\n" +
+            "  \"resourceCredentials\": {}\n" +
+            "}";
+
     @BeforeClass
     public static void init() {
         initialTestCaseA();
@@ -571,6 +597,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_caseF_fail_2, Map.class), rule_caseF));
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_caseF_fail_3, Map.class), rule_caseF));
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_caseF_fail_4, Map.class), rule_caseF));
+        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_caseF_fail_5, Map.class), rule_caseF));
     }
 
     private static void initialTestCaseF(){
