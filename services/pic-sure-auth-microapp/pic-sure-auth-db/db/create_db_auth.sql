@@ -175,7 +175,7 @@ CREATE TABLE `access_rule` (
   KEY `FK8rovvx363ui99ce21sksmg6uy` (`subAccessRuleParent_uuid`),
   CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`),
   CONSTRAINT `FKd1eyn6iwyfsq0glgr37eyhogj` FOREIGN KEY (`gateParent_uuid`) REFERENCES `access_rule` (`uuid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE TABLE `accessRule_privilege` (
   `privilege_id` binary(16) NOT NULL,
