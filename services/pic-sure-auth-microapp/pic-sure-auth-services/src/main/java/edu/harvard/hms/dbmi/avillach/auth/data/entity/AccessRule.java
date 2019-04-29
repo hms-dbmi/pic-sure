@@ -173,7 +173,7 @@ public class AccessRule extends BaseEntity {
         this.subAccessRule = subAccessRule;
     }
 
-    public Boolean isCheckMapNode() {
+    public Boolean getCheckMapNode() {
         return checkMapNode;
     }
 
@@ -181,7 +181,7 @@ public class AccessRule extends BaseEntity {
         this.checkMapNode = checkMapNode;
     }
 
-    public Boolean isCheckMapKeyOnly() {
+    public Boolean getCheckMapKeyOnly() {
         return checkMapKeyOnly;
     }
 
