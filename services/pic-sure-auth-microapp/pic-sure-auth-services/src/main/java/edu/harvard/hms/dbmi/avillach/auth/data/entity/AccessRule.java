@@ -59,7 +59,7 @@ public class AccessRule extends BaseEntity {
      *
      * @see TypeNaming
      */
-    private int type;
+    private Integer type;
 
     /**
      * The jsonpath rule to retrieve values
@@ -97,11 +97,11 @@ public class AccessRule extends BaseEntity {
 
     private boolean checkMapKeyOnly;
 
-    public int getType() {
+    public Integer getType() {
         return type;
     }
 
-    public void setType(int type) {
+    public void setType(Integer type) {
         this.type = type;
     }
 
