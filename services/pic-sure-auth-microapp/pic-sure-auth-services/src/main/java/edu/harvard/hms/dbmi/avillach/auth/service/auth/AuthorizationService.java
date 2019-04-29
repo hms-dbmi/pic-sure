@@ -216,7 +216,7 @@ public class AuthorizationService {
                         }
                     }
             }
-        } else if (accessRule.isCheckMapNode() && requestBodyValue instanceof Map) {
+        } else if (accessRule.getCheckMapNode() && requestBodyValue instanceof Map) {
             switch (accessRule.getType()) {
                 case (AccessRule.TypeNaming.ARRAY_EQUALS):
                 case (AccessRule.TypeNaming.ARRAY_CONTAINS):
@@ -225,7 +225,7 @@ public class AuthorizationService {
                         if (decisionMaker(accessRule, (String) entry.getKey(), value))
                             return true;
 
-                        if(!accessRule.isCheckMapKeyOnly() && evaluateNode(entry.getValue(), accessRule, value))
+                        if(!accessRule.getCheckMapKeyOnly() && evaluateNode(entry.getValue(), accessRule, value))
                             return true;
                     }
                     return false;
@@ -234,7 +234,7 @@ public class AuthorizationService {
                         if (decisionMaker(accessRule, (String) entry.getKey(), value) == false)
                             return false;
 
-                        if(!accessRule.isCheckMapKeyOnly() && evaluateNode(entry.getValue(), accessRule, value) == false)
+                        if(!accessRule.getCheckMapKeyOnly() && evaluateNode(entry.getValue(), accessRule, value) == false)
                             return false;
                     }
 
