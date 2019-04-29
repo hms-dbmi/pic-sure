@@ -8,7 +8,7 @@ import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import java.lang.reflect.Field;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,7 +37,7 @@ public class AccessRule extends BaseEntity {
 
 
         public static Map<String, Integer> getTypeNameMap(){
-            Map<String, Integer> map = new HashMap<>();
+            Map<String, Integer> map = new LinkedHashMap<>();
             for (Field f : AccessRule.TypeNaming.class.getDeclaredFields()){
                 f.setAccessible(true);
                 try {
