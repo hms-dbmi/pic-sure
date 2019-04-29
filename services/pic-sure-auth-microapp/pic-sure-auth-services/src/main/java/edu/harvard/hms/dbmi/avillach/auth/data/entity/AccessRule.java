@@ -93,9 +93,9 @@ public class AccessRule extends BaseEntity {
     @OneToMany(mappedBy = "subAccessRuleParent")
     private Set<AccessRule> subAccessRule;
 
-    private boolean checkMapNode;
+    private Boolean checkMapNode;
 
-    private boolean checkMapKeyOnly;
+    private Boolean checkMapKeyOnly;
 
     public Integer getType() {
         return type;
@@ -173,19 +173,19 @@ public class AccessRule extends BaseEntity {
         this.subAccessRule = subAccessRule;
     }
 
-    public boolean isCheckMapNode() {
+    public Boolean isCheckMapNode() {
         return checkMapNode;
     }
 
-    public void setCheckMapNode(boolean checkMapNode) {
+    public void setCheckMapNode(Boolean checkMapNode) {
         this.checkMapNode = checkMapNode;
     }
 
-    public boolean isCheckMapKeyOnly() {
+    public Boolean isCheckMapKeyOnly() {
         return checkMapKeyOnly;
     }
 
-    public void setCheckMapKeyOnly(boolean checkMapKeyOnly) {
+    public void setCheckMapKeyOnly(Boolean checkMapKeyOnly) {
         this.checkMapKeyOnly = checkMapKeyOnly;
     }
 
