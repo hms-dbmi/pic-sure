@@ -1,10 +1,10 @@
 define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
-        'text!login/not_authorized.hbs', 'handlebars', 'accessRule/accessRuleManagement', 'picSure/settings'],
+        'handlebars', 'accessRule/accessRuleManagement'],
         function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
-                 notAuthorizedTemplate, HBS, accessRuleManagement, settings){
+                 HBS, accessRuleManagement){
         var Router = Backbone.Router.extend({
         routes: {
             "psamaui/userManagement(/)" : "displayUserManagement",
@@ -34,27 +34,20 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
        
         execute: function(callback, args, name){
-        		if ( name === 'not_authorized' ){
-        			callback.apply(this, args);
-        		} else {
-        			if ( ! session.isValid(login.handleNotAuthorizedResponse)){
-        				this.login();
-        				return false;
-        			}
-        			if (!session.acceptedTOS() && name !== 'displayTOS'){
-        				history.pushState({}, "", "/psamaui/tos");
-        			}
-        			else if (callback) {
-        				if (name !== 'displayTOS' && !sessionStorage.connections) {
-        					session.loadSessionVariables(function (){
-        						callback.apply(this, args);
-        					});
-        				} else {
-        					callback.apply(this, args);
-        				}
-                    }
-        		}
-            
+            if ( name === 'not_authorized' ){
+                callback.apply(this, args);
+            } else {
+                if ( ! session.isValid(login.handleNotAuthorizedResponse)){
+                    this.login();
+                    return false;
+                }
+                if (!session.acceptedTOS() && name !== 'displayTOS'){
+                    history.pushState({}, "", "/psamaui/tos");
+                }
+                else if (callback) {
+                    callback.apply(this, args);
+                }
+            }
         },
         login : function(){
             login.showLoginPage();
@@ -65,7 +58,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             window.location = "/psamaui/logout";
         },
         not_authorized : function(){
-            $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
+            login.displayNotAuthorized();
         },
         displayUserManagement : function(){
             var headerView = header.View;

@@ -119,37 +119,37 @@
 					</execution>
 				</executions>
 			</plugin>
-			<!--<plugin>-->
-				<!--<groupId>com.github.searls</groupId>-->
-				<!--<artifactId>jasmine-maven-plugin</artifactId>-->
-				<!--<version>3.0-alpha-01</version>-->
-				<!--<executions>-->
-					<!--<execution>-->
-						<!--<goals>-->
-							<!--<goal>test</goal>-->
-						<!--</goals>-->
-					<!--</execution>-->
-				<!--</executions>-->
-				<!--<configuration>-->
-					<!--<specRunnerTemplate>REQUIRE_JS</specRunnerTemplate>-->
-					<!--<customRunnerConfiguration>src/test/javascript/require_config.quasi_js</customRunnerConfiguration>-->
-					<!--<preloadSources>-->
-						<!--<source>webjars/requirejs/2.3.5/require.min.js</source>-->
-					<!--</preloadSources>-->
-					<!--<additionalContexts>-->
-						<!--<additionalContext>-->
-							<!--<contextRoot>/psamaui/webjars</contextRoot>-->
-							<!--<directory>target/webjars/META-INF/resources/webjars</directory>-->
-						<!--</additionalContext>-->
-						<!--<additionalContext>-->
-							<!--<contextRoot>/psamaui/settings</contextRoot>-->
-							<!--<directory>src/test/javascript/settings</directory>-->
-						<!--</additionalContext>-->
-					<!--</additionalContexts>-->
-					<!--<srcDirectoryName>/psamaui</srcDirectoryName>-->
-					<!--<jsSrcDir>src/main/webapp/psamaui</jsSrcDir>-->
-				<!--</configuration>-->
-			<!--</plugin>-->
+			<plugin>
+				<groupId>com.github.searls</groupId>
+				<artifactId>jasmine-maven-plugin</artifactId>
+				<version>2.2</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>test</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<specRunnerTemplate>REQUIRE_JS</specRunnerTemplate>
+					<customRunnerConfiguration>src/test/javascript/require_config.quasi_js</customRunnerConfiguration>
+					<preloadSources>
+						<source>webjars/requirejs/2.3.5/require.min.js</source>
+					</preloadSources>
+					<additionalContexts>
+						<additionalContext>
+							<contextRoot>/psamaui/webjars</contextRoot>
+							<directory>target/webjars/META-INF/resources/webjars</directory>
+						</additionalContext>
+						<additionalContext>
+							<contextRoot>/psamaui/settings</contextRoot>
+							<directory>src/test/javascript/settings</directory>
+						</additionalContext>
+					</additionalContexts>
+					<srcDirectoryName>/psamaui</srcDirectoryName>
+					<jsSrcDir>src/main/webapp/psamaui</jsSrcDir>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 	<!--<profiles>-->

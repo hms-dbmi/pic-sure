@@ -20,6 +20,7 @@ public class Application extends BaseEntity implements Principal {
     private String name;
     private String description;
     private String token;
+    private String url;
     private boolean enable = true;
 
     @OneToMany(mappedBy = "application",
@@ -68,11 +69,20 @@ public class Application extends BaseEntity implements Principal {
         this.privileges = privileges;
     }
 
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class ApplicationForDisplay {
         String uuid;
         String name;
         String description;
+        String url;
         boolean enable;
 
         public String getName() {
@@ -110,9 +120,18 @@ public class Application extends BaseEntity implements Principal {
             this.uuid = uuid;
             return this;
         }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public ApplicationForDisplay setUrl(String url) {
+            this.url = url;
+            return this;
+        }
     }
     
     public String toString() {
-    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + (privileges==null?"NO PRIVILEGES DEFINED" : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
+    		return uuid.toString() + " ___ " + name + " ___ " + description + " ___ " + enable + " ___ " + url + " ___ " + (privileges==null?"NO PRIVILEGES DEFINED" : privileges.stream().map(Privilege::toString).collect(Collectors.joining(",")));
     }
 }

@@ -1,5 +1,5 @@
 
-define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], function($, _, userFunctions, settings){
+define(["jquery", "underscore"], function($, _){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));
 	
@@ -81,21 +81,6 @@ define(["jquery", "underscore", "picSure/userFunctions", "picSure/settings"], fu
 			// 	contentType: "application/json"
 			// });
 		}, 10000),
-        loadSessionVariables : function(callback){
-            $.ajax({
-				url: window.location.origin + settings.basePath + '/connection',
-				type: 'GET',
-				contentType: 'application/json',
-				success: function(response){
-                    sessionStorage.setItem("connections", JSON.stringify(response));
-                    callback();
-                }.bind(this),
-				error: function(response){
-					console.log("Failed to load connections from the server. Using defaults instead.");
-                    callback();
-				}
-			});
-        },
 		setAcceptedTOS : function() {
 			session.acceptedTOS = true;
             sessionStorage.setItem("session", JSON.stringify(session));

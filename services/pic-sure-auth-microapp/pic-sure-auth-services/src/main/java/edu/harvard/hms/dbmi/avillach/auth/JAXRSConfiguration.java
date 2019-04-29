@@ -53,15 +53,21 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;
-    
-    @Resource(mappedName = "java:global/userActivationTemplatePath")
-    public static String userActivationTemplatePath;
+
+    @Resource(mappedName = "java:global/emailTemplatePath")
+    public static String emailTemplatePath;
 
     @Resource(mappedName = "java:global/userActivationReplyTo")
 	public static String userActivationReplyTo;
 
     @Resource(lookup = "java:jboss/mail/gmail")
     public static Session mailSession;
+
+    @Resource(lookup = "java:global/adminUsers")
+    public static String adminUsers;
+
+    @Resource(lookup = "java:global/deniedEmailEnabled")
+    public static String deniedEmailEnabled;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 

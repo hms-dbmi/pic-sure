@@ -1,4 +1,4 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'picSure/settings'],
+define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
 		function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
 	
 	var loginTemplate = HBS.compile(loginTemplate);
@@ -28,7 +28,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     contentType: 'application/json',
                     success: function(data){
                         session.authenticated(data.userId, data.token, data.email, data.permissions, data.acceptedTOS, this.handleNotAuthorizedResponse);
-                        if (!data.acceptedTOS == 'true'){
+                        if (data.acceptedTOS !== 'true'){
                             history.pushState({}, "", "/psamaui/tos");
                         } else {
                             if (sessionStorage.redirection_url) {
@@ -121,7 +121,13 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
             else {
                 window.location = "/psamaui/logout" + window.location.search;
             }
+        },
+        displayNotAuthorized : function () {
+            if (overrides.displayNotAuthorized)
+                overrides.displayNotAuthorized()
+            else
+                $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
         }
-	};
+    };
 	return login;
 });

@@ -22,6 +22,7 @@ public class ApplicationServiceTest {
         Application application = new Application();
         application.setUuid(UUID.randomUUID());
         application.setName("Testing Application");
+        application.setUrl("https://psama.hms.harvard.edu");
 
         String token = new ApplicationService().generateApplicationToken(application);
 
