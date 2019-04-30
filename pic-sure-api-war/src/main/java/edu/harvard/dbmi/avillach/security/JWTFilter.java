@@ -37,6 +37,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -185,9 +186,16 @@ public class JWTFilter implements ContainerRequestFilter {
 			HashMap<String, Object> requestMap = new HashMap<String, Object>();
 			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
 			if(buffer.size()>0) {
-				Map query = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Map.class);
-				query.remove("resourceCredentials");
-				requestMap.put("query", query);
+				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
+				if (queryObject instanceof Collection) {
+					for (Object query: (Collection)queryObject) {
+						if (query instanceof Map)
+							((Map) query).remove("resourceCredentials");
+					}
+				} else if (queryObject instanceof Map){
+					((Map) queryObject).remove("resourceCredentials");
+				}
+				requestMap.put("query", queryObject);
 			}
 			tokenMap.put("request", requestMap);
 		} catch (IOException e1) {
