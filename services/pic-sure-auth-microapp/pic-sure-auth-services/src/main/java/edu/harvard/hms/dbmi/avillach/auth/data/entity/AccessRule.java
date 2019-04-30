@@ -57,6 +57,12 @@ public class AccessRule extends BaseEntity {
     /**
      * for check how to do with the retrieved value
      *
+     *
+     *    NOTICE: please don't change this back to int
+     *    we need to support a null input,
+     *    otherwise, the update mechanism will be broken
+     *
+     *
      * @see TypeNaming
      */
     private Integer type;
@@ -93,8 +99,18 @@ public class AccessRule extends BaseEntity {
     @OneToMany(mappedBy = "subAccessRuleParent")
     private Set<AccessRule> subAccessRule;
 
+    /**
+     * NOTICE: please don't change this back to boolean
+     * we need to support a null input,
+     * otherwise, the update mechanism will be broken
+     */
     private Boolean checkMapNode;
 
+    /**
+     * NOTICE: please don't change this back to boolean
+     * we need to support a null input,
+     * otherwise, the update mechanism will be broken
+     */
     private Boolean checkMapKeyOnly;
 
     public Integer getType() {
