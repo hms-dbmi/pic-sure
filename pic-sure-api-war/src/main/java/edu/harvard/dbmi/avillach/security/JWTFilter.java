@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.security;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -180,10 +181,10 @@ public class JWTFilter implements ContainerRequestFilter {
 		tokenMap.put("token", token);
 		InputStream entityStream = requestContext.getEntityStream();
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		HashMap<String, Object> requestMap = new HashMap<String, Object>();
 		try {
 			IOUtils.copy(entityStream, buffer);
 			requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
-			HashMap<String, Object> requestMap = new HashMap<String, Object>();
 			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
 			if(buffer.size()>0) {
 				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
@@ -198,6 +199,8 @@ public class JWTFilter implements ContainerRequestFilter {
 				requestMap.put("query", queryObject);
 			}
 			tokenMap.put("request", requestMap);
+		} catch (JsonParseException ex) {
+			requestMap.put("query",buffer.toString());
 		} catch (IOException e1) {
 			logger.error("IOException caught trying to build requestMap for auditing.", e1);
 			throw new NotAuthorizedException("The request could not be properly audited. If you recieve this error multiple times, please contact an administrator.");
