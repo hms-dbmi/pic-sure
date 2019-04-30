@@ -201,6 +201,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			tokenMap.put("request", requestMap);
 		} catch (JsonParseException ex) {
 			requestMap.put("query",buffer.toString());
+			tokenMap.put("request", requestMap);
 		} catch (IOException e1) {
 			logger.error("IOException caught trying to build requestMap for auditing.", e1);
 			throw new NotAuthorizedException("The request could not be properly audited. If you recieve this error multiple times, please contact an administrator.");
