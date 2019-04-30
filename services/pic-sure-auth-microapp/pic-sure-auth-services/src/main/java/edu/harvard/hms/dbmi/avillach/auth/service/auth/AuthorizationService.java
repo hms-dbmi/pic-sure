@@ -132,7 +132,7 @@ public class AuthorizationService {
         try {
             requestBodyValue = JsonPath.parse(parsedRequestBody).read(rule);
         } catch (PathNotFoundException ex){
-            logger.error("extractAndCheckRule() -> JsonPath.parse().read() throws exception: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
+            logger.debug("extractAndCheckRule() -> JsonPath.parse().read() throws exception with parsedRequestBody - {} : {} - {}", parsedRequestBody, ex.getClass().getSimpleName(), ex.getMessage());
             return false;
         }
 
