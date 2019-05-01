@@ -1,0 +1,11 @@
+version: '3.3'
+services:
+  variant-loader:
+    image: dbmi/pic-sure-hpds-etl:Apr-30-2019_jason_local_dev_build
+    environment:
+      - HEAPSIZE=26000
+      - LOADER_NAME=VCFLocalLoader
+    volumes:
+      - ./hpds:/opt/local/hpds
+      - ./vcfLoad:/opt/local/hpds/vcfInput
+      - ./hpds/all:/opt/local/hpds/vcfOutput

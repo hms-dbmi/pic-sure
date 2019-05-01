@@ -1,0 +1,9 @@
+version: '3.3'
+services:
+  sql-loader:
+    image: dbmi/pic-sure-hpds-etl:Apr-30-2019_jason_local_dev_build
+    environment:
+      - HEAPSIZE=4096
+      - LOADER_NAME=SQLLoader
+    volumes:
+      - ./hpds:/opt/local/hpds
