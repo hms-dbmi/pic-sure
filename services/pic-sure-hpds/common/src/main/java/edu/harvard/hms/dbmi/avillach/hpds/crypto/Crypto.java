@@ -30,12 +30,12 @@ public class Crypto {
 	static {
 		try {
 			setKey(IOUtils.toString(new FileInputStream("/opt/local/hpds/encryption_key"), "UTF-8").trim().getBytes());
+			LOGGER.info("****LOADED CRYPTO KEY****");	
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			LOGGER.debug("****CRYPTO KEY NOT FOUND, SOMEONE WILL HAVE TO UNLOCK THE SERVICE REMOTELY****");
+			LOGGER.info("****CRYPTO KEY NOT FOUND, SOMEONE WILL HAVE TO UNLOCK THE SERVICE REMOTELY****");
 		}
-		LOGGER.debug("****LOADED CRYPTO KEY****");	
 	}
 
 	public static byte[] encryptData(byte[] plaintextBytes) {
