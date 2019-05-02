@@ -30,10 +30,5 @@ Number of concepts vs expected number of concepts.
 Number of patients vs expected number of patients.
 Total number of facts.
 
-To verify the number of concepts, perform a search for "" against the instance and count the concepts. This should be equal to the number of folders and containers in your i2b2 ontology which actually have values for patients.
-
-To verify the number of patients, run a count query for a concept that all patients have. What concept will depend on your dataset.
-
-To verify the total number of facts is a bit more complicated. You will need to run a query for all concepts and all patients then count all non-blank fields in the response. A blank field means there was no value for that patient and concept. You should then compare this to all non-modifier observation facts in Oracle.
-
+These values are dumped into the log of the loading process at the end, immediately preceded with statistics for each concept.
 
