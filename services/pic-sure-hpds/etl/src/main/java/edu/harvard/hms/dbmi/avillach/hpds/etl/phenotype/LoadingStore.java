@@ -156,7 +156,7 @@ public class LoadingStore {
 				ColumnMeta columnMeta = metastore.get(key);
 				System.out.println(String.join("\t", key.toString(), columnMeta.getObservationCount()+"", 
 						columnMeta.getMin()==null ? "NaN" : columnMeta.getMin().toString(), 
-								columnMeta.getMax()==null ? "NaN" : columnMeta.getMin().toString(), 
+								columnMeta.getMax()==null ? "NaN" : columnMeta.getMax().toString(), 
 										columnMeta.getCategoryValues() == null ? "NUMERIC CONCEPT" : String.join(",", 
 												columnMeta.getCategoryValues()
 												.stream().map((value)->{return value==null ? "NULL_VALUE" : "\""+value+"\"";}).collect(Collectors.toList()))));
