@@ -1,7 +1,7 @@
 version: '3.3'
 services:
   sql-loader:
-    image: dbmi/pic-sure-hpds-etl:Apr-30-2019_jason_local_dev_build
+    image: dbmi/pic-sure-hpds-etl:jason-refactoring-project-structure_95fb1dd
     environment:
       - HEAPSIZE=4096
       - LOADER_NAME=SQLLoader
