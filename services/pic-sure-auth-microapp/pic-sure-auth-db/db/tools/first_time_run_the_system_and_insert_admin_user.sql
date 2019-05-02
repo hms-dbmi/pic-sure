@@ -1,19 +1,22 @@
 #configuration for user table
 #for quick usage, please use a google user
 #otherwise you need to modify connection configuration as well
-set @user_uuid='6dc35d47c7c64ca7beb42edac5184e10';
-set @user_email="change_me_to_your_email";
+
+#if you choose to use a google user for login, this user_email is the only place to change
+set @user_email='change_me_to_your_email';
+
+set @user_uuid=replace(uuid(),'-','');
 set @matched=false;
 
 #configuration for connection table
-set @connection_uuid=0x6dc35d47c7c64ca7beb42edac5184e10;
+set @connection_uuid=unhex(replace(uuid(),'-',''));
 set @label='Google';
 set @id='google-oauth2';
 set @subprefix='google-oauth2|';
 set @requiredFields='[{\"label\":\"Email\", \"id\":\"email\"}]';
 
 #configuration for userMetadataMapping table
-set @userMetadataMapping_uuid=0xed5c801a73ef4a7281de07363bb5cdba;
+set @userMetadataMapping_uuid=unhex(replace(uuid(),'-',''));
 set @authMetadata='$.email';
 set @generalMetadata='$.email';
 
