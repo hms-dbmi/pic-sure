@@ -36,6 +36,7 @@ public class SQLLoader {
 		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
 		initialLoad();
 		store.saveStore();
+		store.dumpStats();
 	}
 
 	private static String prop(String key) {

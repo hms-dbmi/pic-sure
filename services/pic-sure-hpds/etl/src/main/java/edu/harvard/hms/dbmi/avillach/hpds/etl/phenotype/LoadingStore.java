@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -10,12 +11,15 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import org.apache.log4j.Logger;
@@ -138,6 +142,35 @@ public class LoadingStore {
 		metaOut.flush();
 		metaOut.close();
 		allObservationsStore.close();
+	}
+
+	public void dumpStats() {
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin"));){
+			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
+			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
+
+			long totalNumberOfObservations = 0;
+			
+			System.out.println("\n\nConceptPath\tObservationCount\tMinNumValue\tMaxNumValue\tCategoryValues");
+			for(String key : metastore.keySet()) {
+				ColumnMeta columnMeta = metastore.get(key);
+				System.out.println(String.join("\t", key.toString(), columnMeta.getObservationCount()+"", 
+						columnMeta.getMin()==null ? "NaN" : columnMeta.getMin().toString(), 
+								columnMeta.getMax()==null ? "NaN" : columnMeta.getMin().toString(), 
+										columnMeta.getCategoryValues() == null ? "NUMERIC CONCEPT" : String.join(",", 
+												columnMeta.getCategoryValues()
+												.stream().map((value)->{return value==null ? "NULL_VALUE" : "\""+value+"\"";}).collect(Collectors.toList()))));
+				totalNumberOfObservations += columnMeta.getObservationCount();
+			}
+
+			System.out.println("Total Number of Concepts : " + metastore.size());
+			System.out.println("Total Number of Patients : " + allIds.size());
+			System.out.println("Total Number of Observations : " + totalNumberOfObservations);
+			
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+			throw new RuntimeException("Could not load metastore");
+		}
 	}
 
 
