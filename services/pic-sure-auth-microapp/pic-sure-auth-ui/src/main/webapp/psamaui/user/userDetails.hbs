@@ -32,9 +32,13 @@
     Connection ID:<br>
     <input type="text" name="connectionId" style="width: 100%;" required readonly disabled value="{{user.connection.id}}">
     <br>
+
+    {{#if user.subject}}
     Subject:<br>
     <input type="text" name="subject" style="width: 100%;" required readonly disabled value="{{user.subject}}">
     <br>
+    {{/if}}
+
     Roles:<br>
     {{#unless createOrUpdateUser}}
         <ul>
