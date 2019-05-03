@@ -251,9 +251,8 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return this;
 		}
 	}
-	
+
 	public String toString() {
-		return uuid.toString() + " ___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" +
-				connection==null?null:connection.toString() + "}";
+		return uuid.toString() + " ___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
 	}
 }
