@@ -27,6 +27,23 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	private String email;
 
+
+	/**
+	 * <p>NOTICE!!!!!!!!!!!!!!!!!!!!!!!</p>
+	 * <br><p>
+	 *
+	 * please note: when update or create a user,
+	 * please give connection.id as input, for some reason,
+	 * the UserService is specifically using connection.id for input
+	 *
+	 * </p>
+	 * <br>
+	 * <p><b>
+	 *     This is because of the method checkAssociation() in UserService
+	 * </b></p><br>
+	 *
+	 * @see edu.harvard.hms.dbmi.avillach.auth.rest.UserService
+	 */
 	@ManyToOne
 	@JoinColumn(name = "connectionId")
 	private Connection connection;
