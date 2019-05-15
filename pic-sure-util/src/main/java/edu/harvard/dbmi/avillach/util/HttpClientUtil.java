@@ -283,7 +283,7 @@ public class HttpClientUtil {
 		try {
 			return objectMapper.readTree(simpleGet(uri, client, headers));
 		} catch (IOException ex){
-			logger.error("simpleGet() cannot parse content from by GET from url: " + uri);
+			logger.error("simpleGet() cannot parse content from by GET from url: " + uri, ex);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}

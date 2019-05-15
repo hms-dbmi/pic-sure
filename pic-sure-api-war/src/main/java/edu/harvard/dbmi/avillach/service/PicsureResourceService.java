@@ -31,7 +31,6 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
     }
 
     @GET
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("/{resourceId}")
     public Response getEntityById(
             @PathParam("resourceId") String resourceId) {
@@ -39,7 +38,6 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
     }
 
     @GET
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("")
     public Response getResourceAll() {
         logger.info("Getting all resources...");

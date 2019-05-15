@@ -70,7 +70,7 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		queryEntity.setQuery(dataQueryRequest.getQuery().toString());
+		queryEntity.setQuery(dataQueryRequest.getQuery() == null ? null : dataQueryRequest.getQuery().toString());
 		queryEntity.setMetadata(results.getResultMetadata());
 		queryRepo.persist(queryEntity);
 

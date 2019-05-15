@@ -203,7 +203,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 		QueryStatus statusResponse = new QueryStatus();
 		statusResponse.setPicsureResultId(UUID.fromString(queryId));
 
-		HashMap<String, String> queryIds = getMetadata(queryId);
+		HashMap<String, String> queryIds = getMetadata(queryId, token);
 		String gnomeId = queryIds.get(GNOME);
 		if (gnomeId == null){
 			throw new ApplicationException("Unable to fetch Gnome query");
@@ -272,7 +272,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 			throw new NotAuthorizedException(NotAuthorizedException.MISSING_CREDENTIALS + " for gNOME");
 		}
 
-		HashMap<String, String> queryIds = getMetadata(queryId);
+		HashMap<String, String> queryIds = getMetadata(queryId, token);
 		String gnomeId = queryIds.get(GNOME);
 		if (gnomeId == null){
 			throw new ApplicationException("Unable to fetch Gnome query");
@@ -400,9 +400,9 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 		return headers;
 	}
 
-	private HashMap<String, String> getMetadata(String queryId){
+	private HashMap<String, String> getMetadata(String queryId, String token){
 		String pathName = "/query/" + queryId + "/metadata";
-		HttpResponse response = retrieveGetResponse(TARGET_PICSURE_URL + pathName, picsure2headers);
+		HttpResponse response = retrieveGetResponse(TARGET_PICSURE_URL + pathName, new Header[]{new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + token)});
 		QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
 		return SerializationUtils.deserialize(status.getResultMetadata());
 	}
