@@ -125,6 +125,19 @@ public class HttpClientUtil {
 		}
 	}
 
+	public static String readObjectFromResponse(HttpResponse response) {
+		logger.debug("HttpClientUtil readObjectFromResponse(HttpResponse response)");
+		try {
+			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+			logger.debug("readObjectFromResponse() responseBody "+responseBody);
+			return responseBody;
+		} catch (IOException e) {
+			logger.error("readObjectFromResponse() "+e.getMessage());
+			//TODO: Write custom exception
+			throw new ApplicationException("Incorrect object type returned", e);
+		}
+	}
+
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
