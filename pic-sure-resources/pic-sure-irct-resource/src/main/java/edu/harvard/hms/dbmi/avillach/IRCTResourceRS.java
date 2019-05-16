@@ -57,7 +57,7 @@ public class IRCTResourceRS implements IResourceRS
             .weigher(new Weigher<String, SearchResults>() {
                 @Override
                 public int weigh(String s, SearchResults searchResults) {
-                    return ((String)searchResults.getResults()).length();
+                    return ((List)searchResults.getResults()).size();
                 }
             })
             .build(
@@ -176,7 +176,7 @@ public class IRCTResourceRS implements IResourceRS
 			}
 			throwResponseError(response, targetURL);
 		}
-		results.setResults(readObjectFromResponse(response));
+		results.setResults(readObjectFromResponse(response, Object.class));
 		return results;
 	}
 
