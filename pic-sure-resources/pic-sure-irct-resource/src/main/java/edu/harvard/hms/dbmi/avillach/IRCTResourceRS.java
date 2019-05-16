@@ -50,16 +50,25 @@ public class IRCTResourceRS implements IResourceRS
 
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 
-	public static final long DEFAULT_MAXIMUM_SEARCH_SIZE = 5000L;
-	public static Long MAXIMUM_SEARCH_SIZE;
+    private static String targetURL;
 
-	// an Age search result wouldn't beyond 10M length
-	public static final long DEFAULT_MAXIMUM_WEIGHT = 10000000L;
-	public static Long MAXIMUM_WEIGHT;
-
-	private static String targetURL;
-
-	private static LoadingCache<String, SearchResults> searchLoadingCache;
+    public static LoadingCache<String, SearchResults> searchLoadingCache = CacheBuilder.newBuilder()
+        .maximumSize(JAXRSConfiguration.MAXIMUM_SEARCH_SIZE)
+            .maximumWeight(JAXRSConfiguration.MAXIMUM_WEIGHT)
+            .weigher(new Weigher<String, SearchResults>() {
+                @Override
+                public int weigh(String s, SearchResults searchResults) {
+                    return ((String)searchResults.getResults()).length();
+                }
+            })
+            .build(
+                new CacheLoader<>() {
+                @Override
+                public SearchResults load(String searchString) throws Exception {
+                    return IRCTResourceRS.loadSearchResults(searchString);
+                }
+            }
+        );
 
 	/**
 	 * to store token for current thread
@@ -70,7 +79,7 @@ public class IRCTResourceRS implements IResourceRS
 	private ServletContext context;
 
 	private final static ObjectMapper json = new ObjectMapper();
-	private Logger logger = LoggerFactory.getLogger(this.getClass());
+	private static Logger logger = LoggerFactory.getLogger(IRCTResourceRS.class);
 
 	public IRCTResourceRS() {
 		if(RESULT_FORMAT == null || RESULT_FORMAT.isEmpty()){
@@ -89,48 +98,6 @@ public class IRCTResourceRS implements IResourceRS
 			throw new RuntimeException("Could not find JNDI name : "  + "java:global/target_url_" + context.getContextPath().replaceAll("/","") + " --- please put your irct target url here");
 		}
 
-		// loading maximum search size
-		try {
-			if ((MAXIMUM_SEARCH_SIZE = Long.getLong("MAXIMUM_SEARCH_SIZE")) == null) {
-				logger.error("IRCTResourceRS() failed loading MAXIMUM_SEARCH_SIZE, " +
-						"set size back to default: " + DEFAULT_MAXIMUM_SEARCH_SIZE);
-				MAXIMUM_SEARCH_SIZE = DEFAULT_MAXIMUM_SEARCH_SIZE;
-			}
-		} catch (SecurityException ex){
-			logger.error("IRCTResourceRS() loading MAXIMUM_SEARCH_SIZE throws SecurityException. " +
-					"Set size back to default: " + DEFAULT_MAXIMUM_SEARCH_SIZE);
-		}
-
-		// loading maximum search weight
-		try {
-			if ((MAXIMUM_WEIGHT = Long.getLong("MAXIMUM_WEIGHT")) == null) {
-				logger.error("IRCTResourceRS() failed loading MAXIMUM_WEIGHT, " +
-						"set size back to default: " + DEFAULT_MAXIMUM_WEIGHT);
-				MAXIMUM_WEIGHT = DEFAULT_MAXIMUM_WEIGHT;
-			}
-		} catch (SecurityException ex){
-			logger.error("IRCTResourceRS() loading MAXIMUM_WEIGHT throws SecurityException. " +
-					"Set size back to default: " + DEFAULT_MAXIMUM_WEIGHT);
-		}
-
-		// create loading cache
-		searchLoadingCache = CacheBuilder.newBuilder()
-				.maximumSize(MAXIMUM_SEARCH_SIZE)
-				.maximumWeight(MAXIMUM_WEIGHT)
-				.weigher(new Weigher<String, SearchResults>() {
-					@Override
-					public int weigh(String s, SearchResults searchResults) {
-						return ((String)searchResults.getResults()).length();
-					}
-				})
-				.build(
-						new CacheLoader<>() {
-							@Override
-							public SearchResults load(String searchString) throws Exception {
-								return loadSearchResults(searchString);
-							}
-						}
-				);
 	}
 
 	@GET
@@ -191,14 +158,14 @@ public class IRCTResourceRS implements IResourceRS
 	 * @throws NotAuthorizedException
 	 * @throws IOException
 	 */
-	private SearchResults loadSearchResults(String search)
+	private static SearchResults loadSearchResults(String search)
 			throws NotAuthorizedException, IOException {
 
 		String searchTerm = search;
 
 		String pathName = "resourceService/find";
 		String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(this.token));
+		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(JAXRSConfiguration.search_token));
 		SearchResults results = new SearchResults();
 		results.setSearchQuery(searchTerm);
 		if (response.getStatusLine().getStatusCode() != 200) {
@@ -435,7 +402,7 @@ public class IRCTResourceRS implements IResourceRS
 
 	}
 
-	private Header[] createAuthorizationHeader(String token){
+	private static Header[] createAuthorizationHeader(String token){
 		Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, ResourceWebClient.BEARER_STRING + token);
 		Header[] headers = {authorizationHeader};
 		return headers;
