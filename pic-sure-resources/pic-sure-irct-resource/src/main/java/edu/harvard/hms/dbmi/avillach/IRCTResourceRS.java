@@ -53,7 +53,6 @@ public class IRCTResourceRS implements IResourceRS
     private static String targetURL;
 
     public static LoadingCache<String, SearchResults> searchLoadingCache = CacheBuilder.newBuilder()
-        .maximumSize(JAXRSConfiguration.MAXIMUM_SEARCH_SIZE)
             .maximumWeight(JAXRSConfiguration.MAXIMUM_WEIGHT)
             .weigher(new Weigher<String, SearchResults>() {
                 @Override
