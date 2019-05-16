@@ -192,12 +192,12 @@ public class IRCTResourceRS implements IResourceRS
 		if (resourceCredentials == null) {
 			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
 		}
-		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
-		if (token == null) {
-			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-		} else {
-			this.token = token;
-		}
+//		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
+//		if (token == null) {
+//			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+//		} else {
+//			this.token = token;
+//		}
 		Object search = searchJson.getQuery();
 		if (search == null) {
 			throw new ProtocolException((ProtocolException.MISSING_DATA));
