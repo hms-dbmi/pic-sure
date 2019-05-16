@@ -176,7 +176,7 @@ public class IRCTResourceRS implements IResourceRS
 			}
 			throwResponseError(response, targetURL);
 		}
-		results.setResults(readObjectFromResponse(response, Object.class));
+		results.setResults(readObjectFromResponse(response));
 		return results;
 	}
 
