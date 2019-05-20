@@ -74,6 +74,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                                     auth0Subdomain : "avillachlab",
                                     callbackURL : redirectURI
                                 }));
+                                overrides.postRender ? overrides.postRender.apply(this) : undefined;
                                 $('#main-content').append(loginCss);
                             }
                         })
