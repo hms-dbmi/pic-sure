@@ -45,7 +45,11 @@ public class MailService {
 		if (StringUtils.isEmpty(user.getEmail())) {
 			logger.error("User " + (user.getSubject() != null ? user.getSubject() : "") + " has no email address.");
 		} else {
-			sendEmail("accessEmail.mustache", user.getEmail(),"Your Access To " + JAXRSConfiguration.systemName, new AccessEmail(user));
+			String subject = "Your Access To " + JAXRSConfiguration.systemName;
+			if (JAXRSConfiguration.accessGrantEmailSubject != null && !JAXRSConfiguration.accessGrantEmailSubject.isEmpty() && !JAXRSConfiguration.accessGrantEmailSubject.equals("none")){
+				subject = JAXRSConfiguration.accessGrantEmailSubject;
+			}
+			sendEmail("accessEmail.mustache", user.getEmail(),subject, new AccessEmail(user));
 		}
 	}
 
