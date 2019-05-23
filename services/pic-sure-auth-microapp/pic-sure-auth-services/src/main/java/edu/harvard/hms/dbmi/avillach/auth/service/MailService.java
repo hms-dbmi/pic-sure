@@ -87,7 +87,7 @@ public class MailService {
 			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
 			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
 			message.setSubject(subject);
-			message.setText(emailTemplate.execute(new StringWriter(), scope).toString());
+			message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
 			Transport.send(message);
 		} catch (FileNotFoundException e) {
 			logger.error("Template not found for " + template + ". Check configuration.", e);
