@@ -160,6 +160,7 @@ public class IRCTResourceRS implements IResourceRS
 	private static SearchResults loadSearchResults(String search)
 			throws NotAuthorizedException, IOException {
 
+		long startTime = System.nanoTime();
 		String searchTerm = search;
 
 		String pathName = "resourceService/find";
@@ -177,6 +178,8 @@ public class IRCTResourceRS implements IResourceRS
 			throwResponseError(response, targetURL);
 		}
 		results.setResults(readObjectFromResponse(response, Object.class));
+
+		logger.debug("loadSearchResults() with search String: " + search + ", took " + (System.nanoTime() - startTime));
 		return results;
 	}
 
