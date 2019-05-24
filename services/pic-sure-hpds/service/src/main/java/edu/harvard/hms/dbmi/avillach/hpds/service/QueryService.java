@@ -207,8 +207,9 @@ public class QueryService {
 				largeTaskExecutionQueue.toArray(new AsyncResult[largeTaskExecutionQueue.size()]) : 
 					smallTaskExecutionQueue.toArray(new AsyncResult[smallTaskExecutionQueue.size()]);
 				if(asyncResult.status == Status.PENDING) {
-					for(int x = 0;x<queue.length;x++) {
-						if(queue[x].id.equals(queryId)) {
+					ArrayList<AsyncResult> queueSnapshot = new ArrayList<AsyncResult>();
+					for(int x = 0;x<queueSnapshot.size();x++) {
+						if(queueSnapshot.get(x).id.equals(queryId)) {
 							asyncResult.positionInQueue = x;
 							break;
 						}
