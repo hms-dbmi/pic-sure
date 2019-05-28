@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.security;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -37,6 +38,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -179,16 +181,26 @@ public class JWTFilter implements ContainerRequestFilter {
 		tokenMap.put("token", token);
 		InputStream entityStream = requestContext.getEntityStream();
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		HashMap<String, Object> requestMap = new HashMap<String, Object>();
 		try {
 			IOUtils.copy(entityStream, buffer);
 			requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
-			HashMap<String, Object> requestMap = new HashMap<String, Object>();
 			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
 			if(buffer.size()>0) {
-				Map query = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Map.class);
-				query.remove("resourceCredentials");
-				requestMap.put("query", query);
+				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
+				if (queryObject instanceof Collection) {
+					for (Object query: (Collection)queryObject) {
+						if (query instanceof Map)
+							((Map) query).remove("resourceCredentials");
+					}
+				} else if (queryObject instanceof Map){
+					((Map) queryObject).remove("resourceCredentials");
+				}
+				requestMap.put("query", queryObject);
 			}
+			tokenMap.put("request", requestMap);
+		} catch (JsonParseException ex) {
+			requestMap.put("query",buffer.toString());
 			tokenMap.put("request", requestMap);
 		} catch (IOException e1) {
 			logger.error("IOException caught trying to build requestMap for auditing.", e1);
