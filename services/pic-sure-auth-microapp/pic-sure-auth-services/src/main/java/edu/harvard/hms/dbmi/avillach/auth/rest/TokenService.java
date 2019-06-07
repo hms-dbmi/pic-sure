@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
@@ -18,12 +19,13 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.security.Principal;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Path("/token")
@@ -58,11 +60,88 @@ public class TokenService {
 	}
 
 	/**
+	 * This endpoint currently is only for a user token to be refreshed.
+	 * Application token won't work here.
+	 *
+	 * @return
+	 */
+	@GET
+	@Path("/refresh")
+	public Response refreshToken(@Context HttpHeaders httpHeaders){
+		logger.debug("RefreshToken starting...");
+
+		// still need to check if the user is in the database or not,
+		// just in case something changes in the middle
+		Principal principal = securityContext.getUserPrincipal();
+		if (!(principal instanceof User)){
+			logger.error("refreshToken() Security context didn't have a user stored.");
+		}
+		User user = (User) principal;
+
+		if (user.getUuid() == null){
+			logger.error("refreshToken() Stored user doesn't have a uuid.");
+			return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+		}
+
+		user = userRepo.getById(user.getUuid());
+		if (user == null){
+			logger.error("refreshToken() When retrieving current user, it returned null, the user might be removed from database");
+			throw new NotAuthorizedException("User doesn't exist anymore");
+		}
+
+		if (!user.isActive()){
+			logger.error("refreshToken() The user has just been deactivated.");
+			throw new NotAuthorizedException("User has been deactivated.");
+		}
+
+		String subject = user.getSubject();
+		if (subject == null || subject.isEmpty()){
+			logger.error("refreshToken() subject doesn't exist in the user.");
+		}
+
+		// parse origin token
+		Jws<Claims> jws;
+		try {
+			jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+					// the original token should be able to grab from header, otherwise, it should be stopped
+					// at JWTFilter level
+					httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
+							.substring(6)
+							.trim());
+		} catch (NotAuthorizedException ex) {
+			return PICSUREResponse.protocolError("Cannot parse original token");
+		}
+
+		Claims claims = jws.getBody();
+
+		// just check if the subject is along with the database record,
+		// just in case something has changed in middle
+		if (!subject.equals(claims.getSubject())){
+			logger.error("refreshToken() user subject is not the same as the subject of the input token");
+			return PICSUREResponse.applicationError("Inner application error, try again or contact admin.");
+		}
+
+		Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
+		String refreshedToken = JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+				claims.getId(),
+				claims.getIssuer(),
+				claims,
+				subject,
+				JAXRSConfiguration.tokenExpirationTime);
+
+		logger.debug("Finished RefreshToken and new token has been generated.");
+		return PICSUREResponse.success(Map.of("token", refreshedToken,
+				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()));
+	}
+
+
+
+	/**
 	 * @param inputMap
 	 * @return
 	 */
 	private TokenInspection _inspectToken(Map<String, Object> inputMap){
-		logger.debug("_inspectToken, the incoming token map is: " + inputMap.entrySet()
+		logger.debug("_inspectToken, the incoming token map is: {}", inputMap.entrySet()
 		.stream()
 		.map(entry -> entry.getKey() + " - " + entry.getValue())
 		.collect(Collectors.joining(", ")));
