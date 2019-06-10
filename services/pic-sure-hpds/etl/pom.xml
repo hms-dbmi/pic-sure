@@ -33,6 +33,11 @@
 			<groupId>oracle</groupId>
 			<artifactId>ojdbc6</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>com.github.samtools</groupId>
+			<artifactId>htsjdk</artifactId>
+			<version>2.19.0</version>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>
@@ -66,7 +71,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VCFLocalLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.IndexedVCFLocalLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
