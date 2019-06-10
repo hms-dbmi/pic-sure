@@ -1,0 +1,10 @@
+version: '3.3'
+services:
+  csv-loader:
+    image: dbmi/pic-sure-hpds-etl:jason-refactoring-project-structure_95fb1dd
+    environment:
+      - HEAPSIZE=4096
+      - LOADER_NAME=CSVLoader
+    volumes:
+      - ./hpds:/opt/local/phenocube
+      - ./hpds:/opt/local/hpds
