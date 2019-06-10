@@ -50,20 +50,30 @@ public class CSVLoader {
 		}
 
 		try {
-			String conceptPath = record.get(CONCEPT_PATH).endsWith("\\" +record.get(TEXT_VALUE).trim()+"\\") ? record.get(CONCEPT_PATH).replaceAll("\\\\[\\w\\.\\- ]*\\\\$", "\\\\") : record.get(CONCEPT_PATH);
+			String conceptPathFromRow = record.get(CONCEPT_PATH);
+			String[] segments = conceptPathFromRow.split("\\\\");
+			for(int x = 0;x<segments.length;x++) {
+				segments[x] = segments[x].trim();
+			}
+			conceptPathFromRow = String.join("\\", segments) + "\\";
+			conceptPathFromRow = conceptPathFromRow.replaceAll("\\ufffd", "");
+			String textValueFromRow = record.get(TEXT_VALUE) == null ? null : record.get(TEXT_VALUE).trim();
+			if(textValueFromRow!=null) {
+				textValueFromRow = textValueFromRow.replaceAll("\\ufffd", "");
+			}
+			String conceptPath = conceptPathFromRow.endsWith("\\" +textValueFromRow+"\\") ? conceptPathFromRow.replaceAll("\\\\[^\\\\]*\\\\$", "\\\\") : conceptPathFromRow;
+			// This is not getDouble because we need to handle null values, not coerce them into 0s
 			String numericValue = record.get(NUMERIC_VALUE);
-			if(numericValue==null || numericValue.isEmpty()) {
+			if((numericValue==null || numericValue.isEmpty()) && textValueFromRow!=null) {
 				try {
-					numericValue = Float.parseFloat(record.get(TEXT_VALUE).trim()) + "";
+					numericValue = Float.parseFloat(textValueFromRow) + "";
 				}catch(NumberFormatException e) {
-					log.info("Record number " + record.getRecordNumber() 
-					+ " had an alpha value where we expected a number in the alpha column... "
-					+ "which sounds weirder than it really is.");
-
+					
 				}
 			}
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
+				System.out.println(conceptPath);
 				try {
 					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
@@ -76,7 +86,9 @@ public class CSVLoader {
 			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Float.class))) {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Float.BYTES);
-				currentConcept[0].add(Integer.parseInt(record.get(PATIENT_NUM).trim()), isAlpha ? value : Float.parseFloat(value));
+				int patientId = Integer.parseInt(record.get(PATIENT_NUM));
+				currentConcept[0].add(patientId, isAlpha ? value : Float.parseFloat(value));
+				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {
 			e.printStackTrace();
