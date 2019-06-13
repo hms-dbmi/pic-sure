@@ -50,7 +50,7 @@ public class SQLLoader {
 				"    JOIN i2b2demodata.CONCEPT_DIMENSION cd \n" + 
 				"    ON cd.CONCEPT_CD=ofact.CONCEPT_CD \n" + 
 				"    ORDER BY CONCEPT_PATH, ofact.PATIENT_NUM", new RowCallbackHandler() {
-
+			
 			@Override
 			public void processRow(ResultSet arg0) throws SQLException {
 				int row = arg0.getRow();

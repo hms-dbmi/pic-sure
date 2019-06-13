@@ -27,13 +27,13 @@ public class CSVLoader {
 	private static final int TEXT_VALUE = 3;
 
 	public static void main(String[] args) throws IOException {
-		store.allObservationsStore = new RandomAccessFile("/opt/local/phenocube/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
 		initialLoad();
 		store.saveStore();
 	}
 
 	private static void initialLoad() throws IOException {
-		Reader in = new FileReader("/opt/local/phenocube/allConcepts.csv");
+		Reader in = new FileReader("/opt/local/hpds/allConcepts.csv");
 		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024*1024));
 
 		final PhenoCube[] currentConcept = new PhenoCube[1];
