@@ -142,7 +142,8 @@ public class UserService extends BaseEntityService<User> {
 
         return PICSUREResponse.success(new User.UserForDisaply()
                 .setEmail(user.getEmail())
-                .setPrivileges(user.getPrivilegeNameSet()));
+                .setPrivileges(user.getPrivilegeNameSet())
+                .setUuid(user.getUuid().toString()));
     }
     /**
      * check all referenced field if they are already in database. If
