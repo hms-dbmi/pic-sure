@@ -1,7 +1,7 @@
 openssl rand -hex 16 > /opt/local/hpds/encryption_key
-gpg --import gpg_pub_key.asc
+gpg --import /opt/local/hpds/gpg_pub_key.asc
 gpg --list-keys
-gpg --always-trust --batch --no-tty -e -r "$GPG_USER" /opt/local/hpds/encryption_key 
-base64 encryption_key.gpg > encryption_key_base64.gpg
-echo "-----BEGIN PGP MESSAGE-----" && cat encryption_key_base64.gpg && echo "-----END PGP MESSAGE-----" > /opt/local/hpds/encryption_key.gpg
-
+gpg --always-trust --batch --yes --no-tty -e -r "$GPG_USER" /opt/local/hpds/encryption_key 
+base64 /opt/local/hpds/encryption_key.gpg > /opt/local/hpds/encryption_key.gpg_base64
+echo "-----BEGIN PGP MESSAGE-----" > /opt/local/hpds/encryption_key.asc && cat /opt/local/hpds/encryption_key.gpg_base64 >> /opt/local/hpds/encryption_key.asc && echo "-----END PGP MESSAGE-----" >> /opt/local/hpds/encryption_key.asc
+rm /opt/local/hpds/encryption_key.gpg /opt/local/hpds/encryption_key.gpg_base64

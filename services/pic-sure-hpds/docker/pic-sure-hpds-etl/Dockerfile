@@ -1,9 +1,6 @@
 FROM openjdk:11-jre-slim as loader
 
-FROM alpine:3.8 as encryption_key
-
-RUN apk add gnupg
-RUN apk add openssl
+RUN apt-get update -y && apt-get install -y gnupg openssl && rm -rf /var/lib/apt/lists/*
 
 ADD create_key.sh .
 ADD SQLLoader-jar-with-dependencies.jar .
