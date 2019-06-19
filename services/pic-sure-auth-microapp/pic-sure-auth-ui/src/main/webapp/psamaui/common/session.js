@@ -49,6 +49,10 @@ define(["jquery", "underscore"], function($, _){
 		token: function(){
 			return JSON.parse(sessionStorage.session).token;
 		},
+		setToken: function(token){
+            session.token = token;
+            sessionStorage.setItem("session", JSON.stringify(session));
+		},
 		username : function(){
 			return JSON.parse(sessionStorage.session).username;
 		},

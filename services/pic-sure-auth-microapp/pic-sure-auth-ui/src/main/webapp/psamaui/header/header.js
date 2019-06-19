@@ -53,6 +53,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 var token = response.token;
                 $("#user_token_textarea").html(token);
                 $("#user-token-copy-button").html("COPY");
+                session.setToken(token);
             }.bind(this));
         },
         logout: function (event) {
