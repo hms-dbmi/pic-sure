@@ -16,7 +16,7 @@ eval $(docker-machine env <NAME>)
 
 ```
 
-Ensure that your VirtualBox, named &lt;NAME&gt;, has no container using port 80 and 443. If it does, either shut down the containers using those ports, or create a new VirtualBox, with a different name. ([Follow the instructions to create a new VirtualBox](https://github.com/hms-dbmi/docker-images/wiki/Local-Development-Setup)
+Ensure that your VirtualBox, named &lt;NAME&gt;, has no container using port `80` and `443`. If it does, either shut down the containers using those ports, or create a new VirtualBox, with a different name. ([Follow the instructions to create a new VirtualBox](https://github.com/hms-dbmi/docker-images/wiki/Local-Development-Setup)
 )
 
 ## Deployment using Docker containers and Verify by login from a browser
@@ -54,7 +54,7 @@ After the commands successfully executed, list the three containers, that compri
 Note: <small>This was changed from the much shorter maven based deployment to resolve a certificate issue 
   with grin-docker-dev. Once the cert issue is resolved the maven tomcat configs will work again.</small>
 
-You'll need to provide Auth0 client_id in /admin/overrides/login.js and the client_secret of pic-sure-auth-services 
+You'll need to provide Auth0 client_id in `/admin/overrides/login.js` and the client_secret of pic-sure-auth-services 
 has to match the one from Auth0 based on client_id.
 
 #### To add an initial top admin user in the system
@@ -65,8 +65,8 @@ You just need to add a top admin user in the system to be able to play with all 
 There is a sql script in source code for adding the top admin user with some initial setup, you can import the script
 into your database.
 
-Open the file under /{{root_pic-sure-auth-microapp}}/pic-sure-auth-db/db/tools/first_time_run_the_system_and_insert_admin_user.sql,
-modify the configuration data - @user_email with your own google email
+Open the file under `/{{root_pic-sure-auth-microapp}}/pic-sure-auth-db/db/tools/first_time_run_the_system_and_insert_admin_user.sql`,
+modify the configuration data - `@user_email` with your own google email
 
 #### Terms of Service
 
