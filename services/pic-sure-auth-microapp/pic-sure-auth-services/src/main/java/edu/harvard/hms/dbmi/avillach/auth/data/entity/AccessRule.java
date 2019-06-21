@@ -24,12 +24,12 @@ public class AccessRule extends BaseEntity {
         public static final int NOT_CONTAINS = 1;
         public static final int NOT_CONTAINS_IGNORE_CASE = 2;
         public static final int NOT_EQUALS = 3;
-        public static final int EQUALS = 4;
+        public static final int ALL_EQUALS = 4;
         public static final int ALL_CONTAINS = 5;
-        public static final int CONTAINS_IGNORE_CASE = 6;
+        public static final int ALL_CONTAINS_IGNORE_CASE = 6;
         public static final int ARRAY_CONTAINS = 7;
         public static final int NOT_EQUALS_IGNORE_CASE = 8;
-        public static final int EQUALS_IGNORE_CASE = 9;
+        public static final int ALL_EQUALS_IGNORE_CASE = 9;
         public static final int ARRAY_EQUALS = 10;
         public static final int ALL_REG_MATCH = 11;
         public static final int ARRAY_REG_MATCH = 12;

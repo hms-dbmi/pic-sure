@@ -469,7 +469,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         AccessRule rule_caseC_gate2 = new AccessRule();
         rule_caseC_gate2.setName("rule_caseC_gate2");
         rule_caseC_gate2.setRule("$.query.expectedResultType");
-        rule_caseC_gate2.setType(AccessRule.TypeNaming.EQUALS_IGNORE_CASE);
+        rule_caseC_gate2.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
         rule_caseC_gate2.setValue("DATAFRAME");
 
         Set<AccessRule> rule_caseC_gates = new HashSet<>();
@@ -518,13 +518,13 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseD = new AccessRule();
         rule_caseD.setName("rule_caseD");
         rule_caseD.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
-        rule_caseD.setType(AccessRule.TypeNaming.EQUALS);
+        rule_caseD.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseD.setValue("male");
 
         AccessRule rule_caseD_gate = new AccessRule();
         rule_caseD_gate.setName("rule_caseD_gate");
         rule_caseD_gate.setRule("$.query.expectedResultType");
-        rule_caseD_gate.setType(AccessRule.TypeNaming.EQUALS_IGNORE_CASE);
+        rule_caseD_gate.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
         rule_caseD_gate.setValue("dataframe");
         Set<AccessRule> rule_caseD_gates = new HashSet<>();
         rule_caseD_gates.add(rule_caseD_gate);
@@ -559,7 +559,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseE = new AccessRule();
         rule_caseE.setName("rule_caseE");
         rule_caseE.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
-        rule_caseE.setType(AccessRule.TypeNaming.EQUALS);
+        rule_caseE.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseE.setValue("male");
 
         AccessRule rule_caseE_gate = new AccessRule();
@@ -575,7 +575,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseE_2 = new AccessRule();
         rule_caseE_2.setName("rule_caseE_2");
         rule_caseE_2.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
-        rule_caseE_2.setType(AccessRule.TypeNaming.EQUALS);
+        rule_caseE_2.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseE_2.setValue("female");
 
         AccessRule rule_caseE_2_gate = new AccessRule();
@@ -624,7 +624,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         AccessRule rule_caseF_subRule_2 = new AccessRule();
         rule_caseF_subRule_2.setName("rule_caseF_subRule_2");
         rule_caseF_subRule_2.setRule("$.query.expectedResultType");
-        rule_caseF_subRule_2.setType(AccessRule.TypeNaming.EQUALS_IGNORE_CASE);
+        rule_caseF_subRule_2.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
         rule_caseF_subRule_2.setValue("COUNT");
         rule_caseF_subRules.add(rule_caseF_subRule_2);
 
