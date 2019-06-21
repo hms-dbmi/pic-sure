@@ -206,6 +206,23 @@ public class AuthorizationService {
                     // need to take care if the collection is empty
                     return false;
                 default:
+                    if (((Collection) requestBodyValue).isEmpty()){
+                        // need to take care if the collection is empty
+                        switch (accessRule.getType()){
+                            case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
+                            case (AccessRule.TypeNaming.ALL_EQUALS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
+                                // since collection is empty, nothing is complimented to the rule,
+                                // it should return false
+                                return false;
+                            default:
+                                // since collection is empty, nothing will be denied by the rule,
+                                // so return true
+                                return true;
+                        }
+                    }
+
                     for (Object item : (Collection)requestBodyValue){
                         if (item instanceof String) {
                             if (decisionMaker(accessRule, (String)item, value) == false){
@@ -215,21 +232,6 @@ public class AuthorizationService {
                             if (evaluateNode(item, accessRule, value) == false)
                                 return false;
                         }
-                    }
-
-                    // need to take care if the collection is empty
-                    switch (accessRule.getType()){
-                        case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
-                        case (AccessRule.TypeNaming.ALL_EQUALS):
-                        case (AccessRule.TypeNaming.ALL_CONTAINS):
-                        case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
-                            // since collection is empty, nothing is complimented to the rule,
-                            // it should return false
-                            return false;
-                        default:
-                            // since collection is empty, nothing will be denied by the rule,
-                            // so return true
-                            return true;
                     }
             }
         } else if (accessRule.getCheckMapNode() != null && accessRule.getCheckMapNode() && requestBodyValue instanceof Map) {
