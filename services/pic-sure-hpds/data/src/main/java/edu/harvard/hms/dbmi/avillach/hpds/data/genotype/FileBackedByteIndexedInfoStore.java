@@ -19,10 +19,10 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	public final String column_key;
 	public final String description;
 	public boolean isContinuous;
-	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
+	public Double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
 
 	public FileBackedByteIndexedStorage<String, String[]> allValues;
-	public TreeMap<Float, TreeSet<String>> continuousValueMap;
+	public TreeMap<Double, TreeSet<String>> continuousValueMap;
 
 	public CompressedIndex continuousValueIndex;
 
@@ -65,7 +65,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 				System.out.println("Skipping . value for " + infoStore.column_key);
 			}else {
 				if(x%10000 == 0) {
-					System.out.println(infoStore.column_key + " " + ((((float)x) / sortedKeys.size()) * 100) + "% done");
+					System.out.println(infoStore.column_key + " " + ((((double)x) / sortedKeys.size()) * 100) + "% done");
 				}
 				ConcurrentSkipListSet<String> variantSpecs = infoStore.allValues.get(key);
 				addEntry(key, variantSpecs.toArray(new String[variantSpecs.size()]));
@@ -76,7 +76,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		if(isContinuous) {
 			System.out.println(this.column_key + " is continuous, building continuousValueIndex and nulling continuousValueMap.");
 			this.continuousValueIndex = new CompressedIndex();
-			TreeMap<Float, TreeSet<String>> continuousValueMap = this.continuousValueIndex.buildContinuousValuesMap(this.allValues);
+			TreeMap<Double, TreeSet<String>> continuousValueMap = this.continuousValueIndex.buildContinuousValuesMap(this.allValues);
 			this.continuousValueIndex.buildIndex(continuousValueMap);
 			this.continuousValueMap = null;
 		}

@@ -37,7 +37,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.DoubleFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -50,8 +50,13 @@ public abstract class AbstractProcessor {
 		Object[] metadata = loadMetadata();
 		metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
-		infoStoreColumns = Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-				.map((String filename)->{return filename.split("_")[0];}).collect(Collectors.toList());
+		File variantStorageFolder = new File("/opt/local/hpds/all/");
+		if(variantStorageFolder.exists()) {
+			infoStoreColumns = Arrays.stream(variantStorageFolder.list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
+					.map((String filename)->{return filename.split("_")[0];}).collect(Collectors.toList());
+		}else {
+			infoStoreColumns = new ArrayList<String>();
+		}
 	}
 
 	private static final String HOMOZYGOUS_VARIANT = "1/1";
@@ -90,7 +95,7 @@ public abstract class AbstractProcessor {
 	//	private GeneLibrary geneLibrary = new GeneLibrary();
 
 	protected Object[] loadMetadata() {
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("/opt/local/phenocube/columnMeta.javabin"));){
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin"));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
 			for(Entry<String,ColumnMeta> entry : metastore.entrySet()) {
@@ -156,8 +161,8 @@ public abstract class AbstractProcessor {
 		}
 		if(query.numericFilters != null && !query.numericFilters.isEmpty()) {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.numericFilters.keySet().parallelStream().map((String key)->{
-				FloatFilter FloatFilter = query.numericFilters.get(key);
-				return (TreeSet<Integer>)(getCube(key).getKeysForRange(FloatFilter.getMin(), FloatFilter.getMax()));
+				DoubleFilter doubleFilter = query.numericFilters.get(key);
+				return (TreeSet<Integer>)(getCube(key).getKeysForRange(doubleFilter.getMin(), doubleFilter.getMax()));
 			}).collect(Collectors.toSet())));
 		}
 
@@ -185,10 +190,10 @@ public abstract class AbstractProcessor {
 					});
 				}
 				if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
-					filter.numericVariantInfoFilters.forEach((String column, FloatFilter floatFilter)->{
+					filter.numericVariantInfoFilters.forEach((String column, DoubleFilter doubleFilter)->{
 						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-						floatFilter.getMax();
-						Range<Float> filterRange = Range.closed(floatFilter.getMin(), floatFilter.getMax());
+						doubleFilter.getMax();
+						Range<Double> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 						List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
 						TreeSet<String> variants = new TreeSet<String>();
 						for(String value : valuesInRange) {
@@ -467,7 +472,7 @@ public abstract class AbstractProcessor {
 				.build(
 						new CacheLoader<String, PhenoCube<?>>() {
 							public PhenoCube<?> load(String key) throws Exception {
-								try(RandomAccessFile allObservationsStore = new RandomAccessFile("/opt/local/phenocube/allObservationsStore.javabin", "r");){
+								try(RandomAccessFile allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "r");){
 									ColumnMeta columnMeta = metaStore.get(key);
 									if(columnMeta != null) {
 										allObservationsStore.seek(columnMeta.getAllObservationsOffset());

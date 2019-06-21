@@ -52,6 +52,21 @@ public class QueryRS {
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
 	public Response getResultFor(@PathParam("queryId") String queryId) {
 		AsyncResult result = queryService.getResultFor(queryId);
+		if(result==null) {
+			// This happens sometimes when users immediately request the status for a query
+			// before it can be initialized. We wait a bit and try again before throwing an
+			// error.
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				return Response.status(500).build();
+			}
+			
+			result = queryService.getResultFor(queryId);
+			if(result==null) {
+				return Response.status(404).build();
+			}
+		}
 		if(result.status==AsyncResult.Status.SUCCESS) {
 			result.stream.open();
 			return Response.ok(result.stream).build();			

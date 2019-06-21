@@ -90,7 +90,7 @@ public class ResultStore {
 
 	DecimalFormat decimalFormat = new DecimalFormat("######.##");
 	private void stringifyDouble(String[] row, int x, int fieldOffset) {
-		row[x] = new Float(wrappedResultArray.getFloat(fieldOffset)).toString();
+		row[x] = new Double(wrappedResultArray.getDouble(fieldOffset)).toString();
 	}
 
 	private void stringifyString(String[] row, byte[][] columnBuffers, int x, int fieldOffset) {

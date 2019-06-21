@@ -11,7 +11,7 @@ public class VCFLine {
 	public String info;
 	public String data;
 	public String alt;
-	public Float qual;
+	public Double qual;
 	public String filter;	
 	public String format;		
 	public static int CHR = 0, OFF = 1, NAME = 2, REF = 3, ALT = 4, QUAL = 5, FILTER = 6, INFO = 7, FORMAT = 8, DATA = 9;
@@ -22,7 +22,7 @@ public class VCFLine {
 		this.name = r.get(NAME);
 		this.ref = r.get(REF);
 		this.alt = r.get(ALT);
-		this.qual = Float.parseFloat(r.get(QUAL));
+		this.qual = Double.parseDouble(r.get(QUAL));
 		this.filter = r.get(FILTER);
 		this.format = r.get(FORMAT);
 		this.info = r.get(INFO);
@@ -42,7 +42,7 @@ public class VCFLine {
 		this.name = r.get(NAME);
 		this.ref = r.get(REF);
 		this.alt = r.get(ALT);
-		this.qual = Float.parseFloat(r.get(QUAL));
+		this.qual = Double.parseDouble(r.get(QUAL));
 		this.filter = r.get(FILTER);
 		this.format = r.get(FORMAT);
 		this.info = processAnnotations ? r.get(INFO) : "";
@@ -55,7 +55,7 @@ public class VCFLine {
 		this.name = line[NAME];
 		this.ref = line[REF];
 		this.alt = line[ALT];
-		this.qual = Float.parseFloat(line[QUAL]);
+		this.qual = Double.parseDouble(line[QUAL]);
 		this.filter = line[FILTER];
 		this.format = line[FORMAT];
 		this.info = processAnnotations ? line[INFO] : "";

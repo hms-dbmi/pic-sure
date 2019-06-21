@@ -81,7 +81,7 @@ public class SQLLoader {
 			String numericValue = arg0.getString(NUMERIC_VALUE);
 			if((numericValue==null || numericValue.isEmpty()) && textValueFromRow!=null) {
 				try {
-					numericValue = Float.parseFloat(textValueFromRow) + "";
+					numericValue = Double.parseDouble(textValueFromRow) + "";
 				}catch(NumberFormatException e) {
 					
 				}
@@ -92,17 +92,17 @@ public class SQLLoader {
 				try {
 					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
-					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Float.class);
+					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Double.class);
 					store.store.put(conceptPath, currentConcept[0]);
 				}
 			}
 			String value = isAlpha ? arg0.getString(TEXT_VALUE) : numericValue;
 
-			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Float.class))) {
+			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Double.class))) {
 				value = value.trim();
-				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Float.BYTES);
+				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
 				int patientId = arg0.getInt(PATIENT_NUM);
-				currentConcept[0].add(patientId, isAlpha ? value : Float.parseFloat(value));
+				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value));
 				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {

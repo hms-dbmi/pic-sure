@@ -21,6 +21,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -39,6 +42,8 @@ public class QueryService {
 	private final int LARGE_TASK_THREADS;
 	private final int SMALL_TASK_THREADS;
 
+	Logger log = LogManager.getLogger(this.getClass());
+	
 	QueryProcessor processor;
 
 	private BlockingQueue<Runnable> largeTaskExecutionQueue;
@@ -73,20 +78,22 @@ public class QueryService {
 		mergeFilterFieldsIntoSelectedFields(query);
 
 		Collections.sort(query.fields);
-		
+
 		AsyncResult result = initializeResult(query);
 
 		// This is all the validation we do for now.
-		ensureAllFieldsExist(query);
+		Map<String, List<String>> validationResults = ensureAllFieldsExist(query);
+		if(validationResults != null) {
+			result.status = Status.ERROR;
+		}else {
+			if(query.fields.size() > SMALL_JOB_LIMIT) {
+				result.jobQueue = largeTaskExecutor;
+			} else {
+				result.jobQueue = smallTaskExecutor;
+			}
 
-		if(query.fields.size() > SMALL_JOB_LIMIT) {
-			result.jobQueue = largeTaskExecutor;
-		} else {
-			result.jobQueue = smallTaskExecutor;
+			result.enqueue();
 		}
-
-		result.enqueue();
-
 		return getStatusFor(result.id);
 	}
 
@@ -186,14 +193,15 @@ public class QueryService {
 			System.out.println("All fields passed validation");
 			return null;
 		} else {
-			// TODO
-			System.out.println("Field validation failed");
-			// TODO
-			throw new ValidationException( ImmutableMap.of(
+			log.info("Query failed due to field validation : " + query.id);
+			log.info("Non-existant fields : " + String.join(",", missingFields));
+			log.info("Bad numeric fields : " + String.join(",", badNumericFilters));
+			log.info("Bad category fields : " + String.join(",", badCategoryFilters));
+			return ImmutableMap.of(
 					"nonExistantFileds", missingFields, 
 					"numeric_filters_on_categorical_variables", badNumericFilters, 
 					"category_filters_on_numeric_variables", badCategoryFilters)
-					);
+					;
 		}
 	}
 

@@ -30,37 +30,37 @@ public class CompressedIndex implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 5089713203903957829L;
-	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
-	private HashMap<Range<Float>, byte[]> compressedRangeMap;
+	public Double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
+	private HashMap<Range<Double>, byte[]> compressedRangeMap;
 	private int valueCount;
 
-	public TreeMap<Float, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
-		TreeMap<Float, TreeSet<String>> continuousValueMap = new TreeMap<>();
+	public TreeMap<Double, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
+		TreeMap<Double, TreeSet<String>> continuousValueMap = new TreeMap<>();
 		for(String key : allValues.keys()) {
 			try{
-				float floatValue = Float.parseFloat(key.trim());
-				TreeSet<String> currentValues = continuousValueMap.get(floatValue);
+				Double DoubleValue = Double.parseDouble(key.trim());
+				TreeSet<String> currentValues = continuousValueMap.get(DoubleValue);
 				if(currentValues == null) {
 					currentValues = new TreeSet<>();
-					continuousValueMap.put(floatValue, currentValues);
+					continuousValueMap.put(DoubleValue, currentValues);
 				}
 				currentValues.add(key);
-				continuousValueMap.put(floatValue, currentValues);
-				setMinAndMax(floatValue);
+				continuousValueMap.put(DoubleValue, currentValues);
+				setMinAndMax(DoubleValue);
 			}catch(NumberFormatException e) {
 				String[] valuesInKey = key.split(",");
 				if(valuesInKey.length > 1) {
 					for(String value : valuesInKey) {
 						try {
-							float floatValue = Float.parseFloat(value.trim());
-							TreeSet<String> currentValues = continuousValueMap.get(floatValue);
+							Double DoubleValue = Double.parseDouble(value.trim());
+							TreeSet<String> currentValues = continuousValueMap.get(DoubleValue);
 							if(currentValues == null) {
 								currentValues = new TreeSet<>();
-								continuousValueMap.put(floatValue, currentValues);
+								continuousValueMap.put(DoubleValue, currentValues);
 							}
 							currentValues.add(key);
-							continuousValueMap.put(floatValue, currentValues);
-							setMinAndMax(floatValue);
+							continuousValueMap.put(DoubleValue, currentValues);
+							setMinAndMax(DoubleValue);
 						}catch(NumberFormatException e3) {
 							System.out.println("Unable to parse value : " + value.trim());
 						}
@@ -72,21 +72,21 @@ public class CompressedIndex implements Serializable {
 		return continuousValueMap;
 	}
 
-	private void setMinAndMax(float floatValue) {
-		if(min > floatValue) {
-			min = floatValue;
+	private void setMinAndMax(Double DoubleValue) {
+		if(min > DoubleValue) {
+			min = DoubleValue;
 		}
-		if(max < floatValue) {
-			max = floatValue;
+		if(max < DoubleValue) {
+			max = DoubleValue;
 		}
 	}
 
-	public void buildIndex(TreeMap<Float, TreeSet<String>> continuousValueMap) {
-		Set<Float> continuousValuesMapKeys = new TreeSet<Float>(continuousValueMap.keySet());
-		List<List<Float>> partitions = Lists.partition(new ArrayList<Float>(continuousValuesMapKeys), 1000);
-		HashMap<Range<Float>, TreeMap<Float, TreeSet<String>>> rangeMap = new HashMap<>();
-		List<Float> partition = partitions.get(0);
-		SortedMap<Float, TreeSet<String>> partitionMap = continuousValueMap.subMap(partition.get(0), partition.get(partition.size()-1));
+	public void buildIndex(TreeMap<Double, TreeSet<String>> continuousValueMap) {
+		Set<Double> continuousValuesMapKeys = new TreeSet<Double>(continuousValueMap.keySet());
+		List<List<Double>> partitions = Lists.partition(new ArrayList<Double>(continuousValuesMapKeys), 1000);
+		HashMap<Range<Double>, TreeMap<Double, TreeSet<String>>> rangeMap = new HashMap<>();
+		List<Double> partition = partitions.get(0);
+		SortedMap<Double, TreeSet<String>> partitionMap = continuousValueMap.subMap(partition.get(0), partition.get(partition.size()-1));
 		rangeMap.put(
 				Range.openClosed(partition.get(0), partition.get(partition.size()-1)), 
 				new TreeMap<>(partitionMap));
@@ -124,7 +124,7 @@ public class CompressedIndex implements Serializable {
 				));
 	}
 
-	public List<String> getValuesInRange(Range<Float> targetRange) {
+	public List<String> getValuesInRange(Range<Double> targetRange) {
 
 		System.out.println("Getting valuesInRange : " + targetRange);
 		// Get a list of ranges that are connected to the target range
@@ -142,7 +142,7 @@ public class CompressedIndex implements Serializable {
 		// Add all variants from enclosing ranges
 		enclosingRanges.forEach(
 				range->{
-					TreeMap<Float, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
+					TreeMap<Double, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
 					continousValueMap.values().forEach(
 							variantSet->{
 								System.out.println("Adding : " + variantSet.first() + " : " + variantSet.last());
@@ -155,7 +155,7 @@ public class CompressedIndex implements Serializable {
 
 		connectedRanges.forEach(
 				range ->{
-					TreeMap<Float, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
+					TreeMap<Double, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
 					System.out.println("Searching within : " + range.lowerEndpoint() + " : " + range.upperEndpoint());
 					continousValueMap.entrySet().stream().forEach(
 							entry->{
@@ -168,14 +168,14 @@ public class CompressedIndex implements Serializable {
 		return valuesInRange;
 	}
 
-	private TreeMap<Float, TreeSet<String>> retrieveRangeMap(Range<Float> range) {
-		TreeMap<Float, TreeSet<String>> continousValueMap = null;
+	private TreeMap<Double, TreeSet<String>> retrieveRangeMap(Range<Double> range) {
+		TreeMap<Double, TreeSet<String>> continousValueMap = null;
 		try(
 				ByteArrayInputStream bais = new ByteArrayInputStream(compressedRangeMap.get(range));
 				GZIPInputStream gzis = new GZIPInputStream(bais);
 				ObjectInputStream ois = new ObjectInputStream(gzis);
 				){
-			continousValueMap = (TreeMap<Float, TreeSet<String>>)ois.readObject();
+			continousValueMap = (TreeMap<Double, TreeSet<String>>)ois.readObject();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

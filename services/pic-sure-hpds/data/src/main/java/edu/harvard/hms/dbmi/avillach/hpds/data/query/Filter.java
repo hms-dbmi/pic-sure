@@ -3,36 +3,36 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 public interface Filter<T> {
 	public boolean apply(T value);
 
-	public static class FloatFilter implements Filter<Float> {
+	public static class DoubleFilter implements Filter<Double> {
 		
-		Float min, max;
+		Double min, max;
 
-		public Float getMin() {
+		public Double getMin() {
 			return min;
 		}
 
-		public void setMin(Float min) {
+		public void setMin(Double min) {
 			this.min = min;
 		}
 
-		public Float getMax() {
+		public Double getMax() {
 			return max;
 		}
 
-		public void setMax(Float max) {
+		public void setMax(Double max) {
 			this.max = max;
 		}
 
-		public FloatFilter() {
+		public DoubleFilter() {
 
 		}
 
-		public FloatFilter(Float min, Float max) {
+		public DoubleFilter(Double min, Double max) {
 			this.min = min;
 			this.max = max;
 		}
 
-		public boolean apply(Float value) {
+		public boolean apply(Double value) {
 			return value >= min && value <= max;
 		}
 	}

@@ -56,13 +56,13 @@ public class InfoStore implements Serializable {
 		KeySetView<String, ConcurrentSkipListSet<String>> allKeys = allValues.keySet();
 		for(String key : allKeys){
 			try {
-				Float.parseFloat(key);
+				Double.parseDouble(key);
 				numericCount++;
 			}catch(NumberFormatException e) {
 				String[] keys = key.split(",");
 				for(String key2 : keys) {
 					try {
-						Float.parseFloat(key2);
+						Double.parseDouble(key2);
 						numericCount++;
 					}catch(NumberFormatException e2) {
 						if(key.contentEquals(".")) {

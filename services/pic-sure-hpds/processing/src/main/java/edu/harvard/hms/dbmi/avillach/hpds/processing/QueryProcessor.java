@@ -81,7 +81,7 @@ public class QueryProcessor extends AbstractProcessor {
 				String[] patientIds = variantStore.getPatientIds();
 				int idPointer = 0;
 
-				ByteBuffer floatBuffer = ByteBuffer.allocate(Float.BYTES);
+				ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
 				int idInSubsetPointer = 0;
 				for(int id : ids) {
 					while(idPointer < patientIds.length) {
@@ -89,11 +89,11 @@ public class QueryProcessor extends AbstractProcessor {
 						if(key < id) {
 							idPointer++;	
 						} else if(key == id){
-							idPointer = writeVariantResultField(results, x, masks, idPointer, floatBuffer,
+							idPointer = writeVariantResultField(results, x, masks, idPointer, doubleBuffer,
 									idInSubsetPointer);
 							break;
 						} else {
-							writeVariantNullResultField(results, x, floatBuffer, idInSubsetPointer);
+							writeVariantNullResultField(results, x, doubleBuffer, idInSubsetPointer);
 							break;
 						}
 					}
@@ -106,7 +106,7 @@ public class QueryProcessor extends AbstractProcessor {
 
 				int idPointer = 0;
 
-				ByteBuffer floatBuffer = ByteBuffer.allocate(Float.BYTES);
+				ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
 				int idInSubsetPointer = 0;
 				for(int id : ids) {
 					while(idPointer < cubeValues.length) {
@@ -114,11 +114,11 @@ public class QueryProcessor extends AbstractProcessor {
 						if(key < id) {
 							idPointer++;	
 						} else if(key == id){
-							idPointer = writeResultField(results, x, cube, cubeValues, idPointer, floatBuffer,
+							idPointer = writeResultField(results, x, cube, cubeValues, idPointer, doubleBuffer,
 									idInSubsetPointer);
 							break;
 						} else {
-							writeNullResultField(results, x, cube, floatBuffer, idInSubsetPointer);
+							writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
 							break;
 						}
 					}
@@ -133,7 +133,7 @@ public class QueryProcessor extends AbstractProcessor {
 
 	}
 
-	private void writeVariantNullResultField(ResultStore results, Integer x, ByteBuffer floatBuffer,
+	private void writeVariantNullResultField(ResultStore results, Integer x, ByteBuffer doubleBuffer,
 			int idInSubsetPointer) {
 		byte[] valueBuffer = null;
 		valueBuffer = EMPTY_STRING_BYTES;
@@ -141,7 +141,7 @@ public class QueryProcessor extends AbstractProcessor {
 	}
 
 	private int writeVariantResultField(ResultStore results, Integer x, VariantMasks masks, int idPointer,
-			ByteBuffer floatBuffer, int idInSubsetPointer) {
+			ByteBuffer doubleBuffer, int idInSubsetPointer) {
 		byte[] valueBuffer;
 		if(masks.heterozygousMask != null && masks.heterozygousMask.testBit(idPointer)) {
 			valueBuffer = "0/1".getBytes();
@@ -156,27 +156,27 @@ public class QueryProcessor extends AbstractProcessor {
 	}
 
 	private int writeResultField(ResultStore results, Integer x, PhenoCube<?> cube, KeyAndValue<?>[] cubeValues,
-			int idPointer, ByteBuffer floatBuffer, int idInSubsetPointer) {
+			int idPointer, ByteBuffer doubleBuffer, int idInSubsetPointer) {
 		byte[] valueBuffer;
 		Comparable<?> value = cubeValues[idPointer++].getValue();
 		if(cube.isStringType()) {
 			valueBuffer = value.toString().getBytes();
 		}else {
-			valueBuffer = floatBuffer.putFloat((Float)value).array();
-			floatBuffer.clear();
+			valueBuffer = doubleBuffer.putDouble((Double)value).array();
+			doubleBuffer.clear();
 		}
 		results.writeField(x,idInSubsetPointer, valueBuffer);
 		return idPointer;
 	}
 
-	private void writeNullResultField(ResultStore results, Integer x, PhenoCube<?> cube, ByteBuffer floatBuffer, int idInSubsetPointer) {
+	private void writeNullResultField(ResultStore results, Integer x, PhenoCube<?> cube, ByteBuffer doubleBuffer, int idInSubsetPointer) {
 		byte[] valueBuffer = null;
 		if(cube.isStringType()) {
 			valueBuffer = EMPTY_STRING_BYTES;
 		}else {
-			Float nullFloat = Float.NaN;
-			valueBuffer = floatBuffer.putFloat(nullFloat).array();
-			floatBuffer.clear();
+			Double nullDouble = Double.NaN;
+			valueBuffer = doubleBuffer.putDouble(nullDouble).array();
+			doubleBuffer.clear();
 		}
 		results.writeField(x,idInSubsetPointer, valueBuffer);
 	}

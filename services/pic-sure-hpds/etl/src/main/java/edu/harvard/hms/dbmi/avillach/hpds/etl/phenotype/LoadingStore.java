@@ -62,12 +62,12 @@ public class LoadingStore {
 							columnMeta.setCategoryValues(new ArrayList<String>());
 							columnMeta.getCategoryValues().addAll(new TreeSet<String>(arg0.getValue().keyBasedArray()));
 						} else {
-							List<Float> map = (List<Float>) arg0.getValue().keyBasedArray().stream().map((value)->{return (Float) value;}).collect(Collectors.toList());
-							float min = Float.MAX_VALUE;
-							float max = Float.MIN_VALUE;
-							for(float f : map) {
-								min = Float.min(min, f);
-								max = Float.max(max, f);
+							List<Double> map = (List<Double>) arg0.getValue().keyBasedArray().stream().map((value)->{return (Double) value;}).collect(Collectors.toList());
+							double min = Double.MAX_VALUE;
+							double max = Double.MIN_VALUE;
+							for(double f : map) {
+								min = Double.min(min, f);
+								max = Double.max(max, f);
 							}
 							columnMeta.setMin(min);
 							columnMeta.setMax(max);

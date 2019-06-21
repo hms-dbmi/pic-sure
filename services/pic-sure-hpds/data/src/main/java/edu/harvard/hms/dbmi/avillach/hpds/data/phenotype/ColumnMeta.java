@@ -15,7 +15,7 @@ public class ColumnMeta implements Serializable{
 	private int columnOffset;
 	private boolean categorical;
 	private List<String> categoryValues;
-	private Float min, max;
+	private Double min, max;
 	private long allObservationsOffset;
 	private long allObservationsLength;
 	private int observationCount;
@@ -87,17 +87,17 @@ public class ColumnMeta implements Serializable{
 		this.categoryValues = categoryValues;
 	}
 
-	public Float getMin() {
+	public Double getMin() {
 		return min;
 	}
-	public void setMin(float min) {
+	public void setMin(double min) {
 		this.min = min;
 	}
 
-	public Float getMax() {
+	public Double getMax() {
 		return max;
 	}
-	public void setMax(float max) {
+	public void setMax(double max) {
 		this.max = max;
 	}
 
