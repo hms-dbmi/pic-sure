@@ -31,6 +31,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 $(".modal-body").html(this.userProfileTemplate({user:user}));
                 $("#user-token-copy-button").click(this.copyToken);
                 $("#user-token-refresh-button").click(this.refreshToken);
+                $('#user-token-reveal-button').click(this.revealToken);
             }.bind(this));
         },
         copyToken: function(){
@@ -52,6 +53,17 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 $("#user_token_textarea").html(user.token);
                 $("#user-token-copy-button").html("COPY");
             }.bind(this));
+        },
+        revealToken: function(event){
+            var type = $('#user-token-reveal-button').html();
+            if (type == "REVEAL"){
+                var token = $('#user_token_textarea')[0].attributes.token.value;
+                $("#user_token_textarea").html(token);
+                $("#user-token-reveal-button").html("HIDE");
+            } else {
+                $("#user_token_textarea").html("**************************************************************************************************************************************************************************************************************************************************************************************");
+                $("#user-token-reveal-button").html("REVEAL");
+            }
         },
         logout: function (event) {
             sessionStorage.clear();
