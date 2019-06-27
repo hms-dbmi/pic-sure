@@ -35,18 +35,26 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
             }.bind(this));
         },
         copyToken: function(){
+            var originValue = document.getElementById("user_token_textarea").textContent;
+
             var sel = getSelection();
             var range = document.createRange();
 
             // this if for supporting chrome, since chrome will look for value instead of textContent
-            document.getElementById("user_token_textarea").value = document.getElementById("user_token_textarea").textContent;
-
+            // document.getElementById("user_token_textarea").value = document.getElementById("user_token_textarea").textContent;
+            document.getElementById("user_token_textarea").value
+                = document.getElementById("user_token_textarea").textContent
+                = document.getElementById("user_token_textarea").attributes.token.value;
             range.selectNode(document.getElementById("user_token_textarea"));
             sel.removeAllRanges();
             sel.addRange(range);
             document.execCommand("copy");
 
             $("#user-token-copy-button").html("COPIED");
+
+            document.getElementById("user_token_textarea").textContent
+                = document.getElementById("user_token_textarea").value
+                = originValue;
         },
         refreshToken: function(){
             userFunctions.meWithToken(this, function(user){
