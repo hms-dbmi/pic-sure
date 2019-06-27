@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
@@ -75,7 +76,19 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
-			if(userId.startsWith("PSAMA_APPLICATION")) {
+			if(userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
+				/**
+				 * authenticate if a long term token is presented.
+				 * PSAMA activities should not be able to execute under this token.
+				 * Normal admin should access psama through psamaui, the token will be expired
+				 * in a certain time.
+				 * If super admin want to access the psama through APIs, the token should
+				 * be grabbed from psamaui as well to prevent the token leakage.
+				 */
+				logger.error("filter() the long term token with subject, " + userId + ", cannot access to PSAMA.");
+				throw new NotAuthorizedException("Long term tokens cannot be used to access to PSAMA.");
+
+			} else if(userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
 				/**
 				 * authenticate as Application, we might need to extract this blob out to an separate function
 				 */

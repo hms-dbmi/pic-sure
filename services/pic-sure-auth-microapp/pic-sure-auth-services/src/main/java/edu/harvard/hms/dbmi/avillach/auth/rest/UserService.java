@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
@@ -10,6 +11,11 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,18 +25,10 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
+import javax.ws.rs.core.*;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
@@ -125,9 +123,22 @@ public class UserService extends BaseEntityService<User> {
         return updateEntity(users, userRepo);
     }
 
+    /**
+     * For the long term token, current logic is,
+     * every time a user hit this endpoint /me
+     * with the query parameter ?hasToken presented,
+     * it will refresh the long term token.
+     *
+     * @param httpHeaders
+     * @param hasToken
+     * @return
+     */
+    @Transactional
     @GET
     @Path("/me")
-    public Response getCurrentUser(){
+    public Response getCurrentUser(
+            @Context HttpHeaders httpHeaders,
+            @QueryParam("hasToken") Boolean hasToken){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
             logger.error("Security context didn't have a user stored.");
@@ -140,11 +151,52 @@ public class UserService extends BaseEntityService<User> {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
 
-        return PICSUREResponse.success(new User.UserForDisaply()
+        User.UserForDisaply userForDisaply = new User.UserForDisaply()
                 .setEmail(user.getEmail())
                 .setPrivileges(user.getPrivilegeNameSet())
-                .setUuid(user.getUuid().toString()));
+                .setUuid(user.getUuid().toString());
+
+        if (hasToken!=null){
+
+            // grant the long term token
+            Jws<Claims> jws;
+            try {
+                jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+                        // the original token should be able to grab from header, otherwise, it should be stopped
+                        // at JWTFilter level
+                        httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
+                                .substring(6)
+                                .trim());
+            } catch (NotAuthorizedException ex) {
+                return PICSUREResponse.protocolError("Cannot parse token in header");
+            }
+
+            Claims claims = jws.getBody();
+            String tokenSubject = claims.getSubject();
+
+            if (tokenSubject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX+"|")) {
+                // considering the subject already contains a "|"
+                // to prevent infinitely adding the long term token prefix
+                // we will grab the real subject here
+               tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+            }
+
+            String longTermToken = JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+                    claims.getId(),
+                    claims.getIssuer(),
+                    claims,
+                    AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
+                    JAXRSConfiguration.longTermTokenExpirationTime);
+
+            user.setToken(longTermToken);
+
+            userRepo.merge(user);
+            userForDisaply.setToken(user.getToken());
+        }
+
+        return PICSUREResponse.success(userForDisaply);
     }
+
     /**
      * check all referenced field if they are already in database. If
      * they are in database, then retrieve it by id, and attach it to

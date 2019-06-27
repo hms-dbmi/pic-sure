@@ -6,6 +6,9 @@ import java.util.List;
 
 public class AuthNaming {
 
+    public static final String LONG_TERM_TOKEN_PREFIX = "LONG_TERM_TOKEN";
+    public static final String PSAMA_APPLICATION_TOKEN_PREFIX = "PSAMA_APPLICATION";
+
     public static class AuthRoleNaming {
         public static final String ADMIN = "ADMIN";
         public static final String SUPER_ADMIN = "SUPER_ADMIN";

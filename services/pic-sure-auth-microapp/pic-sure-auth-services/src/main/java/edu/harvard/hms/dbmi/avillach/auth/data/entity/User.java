@@ -61,6 +61,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Column(name = "is_active")
 	private boolean active = true;
 
+	@Column(name = "long_term_token")
+	private String token;
+
 	public String getSubject() {
 		return subject;
 	}
@@ -232,11 +235,20 @@ public class User extends BaseEntity implements Serializable, Principal {
 		this.active = active;
 	}
 
+	public String getToken() {
+		return token;
+	}
+
+	public void setToken(String token) {
+		this.token = token;
+	}
+
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	public static class UserForDisaply {
 		String uuid;
 		String email;
 		Set<String> privileges;
+		String token;
 
 		public UserForDisaply() {
 		}
@@ -265,6 +277,15 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 		public UserForDisaply setUuid(String uuid) {
 			this.uuid = uuid;
+			return this;
+		}
+
+		public String getToken() {
+			return token;
+		}
+
+		public UserForDisaply setToken(String token) {
+			this.token = token;
 			return this;
 		}
 	}

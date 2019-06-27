@@ -25,10 +25,10 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
             window.location = "/psamaui/login" + window.location.search;
         },
         userProfile: function (event) {
-            userFunctions.me(this, function(user){
+            userFunctions.meWithToken(this, function(user){
                 $("#modal-window").html(this.modalTemplate({title: "User Profile"}));
                 $("#modalDialog").show();
-                $(".modal-body").html(this.userProfileTemplate({user:user, token: session.token()}));
+                $(".modal-body").html(this.userProfileTemplate({user:user}));
                 $("#user-token-copy-button").click(this.copyToken);
                 $("#user-token-refresh-button").click(this.refreshToken);
             }.bind(this));
@@ -48,12 +48,9 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
             $("#user-token-copy-button").html("COPIED");
         },
         refreshToken: function(){
-            var currentToken = session.token();
-            tokenFunctions.refreshToken(currentToken,function(response){
-                var token = response.token;
-                $("#user_token_textarea").html(token);
+            userFunctions.meWithToken(this, function(user){
+                $("#user_token_textarea").html(user.token);
                 $("#user-token-copy-button").html("COPY");
-                session.setToken(token);
             }.bind(this));
         },
         logout: function (event) {

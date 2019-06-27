@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthorizationService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -184,6 +185,18 @@ public class TokenService {
 		// get the user based on subject field in token
 		User user;
 
+		// check if the token is the special LONG_TERM_TOKEN,
+		// the differences between this special token and normal token is
+		// one user only has one long_term_token stored in database,
+		// this token needs to be exactly the same as the database one.
+		// If the token refreshed, the old one will be invalid. But normal
+		// token will not invalid the old ones if refreshed.
+		boolean isLongTermToken = false;
+		if (subject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
+			subject = subject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+			isLongTermToken = true;
+		}
+
 		user = userRepo.getUniqueResultByColumn("subject", subject);
 		logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
 		if (user == null) {
@@ -192,20 +205,41 @@ public class TokenService {
 			return tokenInspection;
 		}
 
+
+
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		//only under certain circumstances, the token will return active
+		boolean isAuthorizationPassed = false;
 		Set<String> privilegeNameSet = null;
-		if (user != null
+
+		String errorMsg = null;
+		if (isLongTermToken) {
+			// in long_term_token mode, the token needs to be exactly the same as the token in user table\
+			if (token.equals(user.getToken()))
+				isAuthorizationPassed = true;
+			else
+				errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
+
+		} else if (user != null
 				&& user.getRoles() != null
 				&& (application.getPrivileges().isEmpty() || ! user.getPrivilegeNameSetByApplication(application).isEmpty())
 				&& authorizationService.isAuthorized(application.getName(), inputMap.get("request"), user.getUuid())) {
+			isAuthorizationPassed = true;
+		} else {
+			errorMsg = "User doesn't have enough privileges.";
+		}
+
+		if (isAuthorizationPassed){
 			tokenInspection.responseMap.put("active", true);
 			ArrayList<String> roles = new ArrayList<String>();
 			for(Privilege p : user.getTotalPrivilege()) {
 				roles.add(p.getName());
 			}
 			tokenInspection.responseMap.put("roles", String.join(",",  roles));
-			
+		} else {
+			if (errorMsg != null )
+				tokenInspection.message = errorMsg;
+			return tokenInspection;
 		}
 
 		tokenInspection.responseMap.putAll(jws.getBody());
