@@ -1,5 +1,5 @@
-define(["backbone","handlebars", "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "picSure/tokenFunctions"],
-		function(BB, HBS, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, tokenFunctions){
+define(["backbone","handlebars", "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "util/notification"],
+		function(BB, HBS, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, notification){
 	var headerView = BB.View.extend({
         initialize: function () {
             HBS.registerHelper('not_contains', function (array, object, opts) {
@@ -10,6 +10,13 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     return opts.inverse(this);
                 else
                     return opts.fn(this);
+            });
+            HBS.registerHelper('not_empty', function (array, opts) {
+                if (array.length>0)
+                    return opts.fn(this);
+                else
+                    return opts.inverse(this);
+
             });
             this.template = HBS.compile(template);
             this.applications = [];
@@ -32,6 +39,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 $("#user-token-copy-button").click(this.copyToken);
                 $("#user-token-refresh-button").click(this.refreshToken);
                 $('#user-token-reveal-button').click(this.revealToken);
+                $('.close').click(this.closeDialog);
             }.bind(this));
         },
         copyToken: function(){
@@ -57,10 +65,17 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 = originValue;
         },
         refreshToken: function(){
-            userFunctions.meWithToken(this, function(user){
-                $("#user_token_textarea").html(user.token);
-                $("#user-token-copy-button").html("COPY");
-            }.bind(this));
+            notification.showConfirmationDialog(function () {
+                userFunctions.meWithToken(this, function(user){
+                    if ($('#user-token-reveal-button').html() == "HIDE"){
+                        $("#user_token_textarea").html(user.token);
+                    }
+
+                    document.getElementById("user_token_textarea").attributes.token.value = user.token;
+
+                    $("#user-token-copy-button").html("COPY");
+                }.bind(this));
+            }.bind(this), 'center', 'Refresh will inactivate the old token!! Do you want to continue?');
         },
         revealToken: function(event){
             var type = $('#user-token-reveal-button').html();
@@ -73,30 +88,40 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 $("#user-token-reveal-button").html("REVEAL");
             }
         },
+        closeDialog: function () {
+            $("#modalDialog").hide();
+        },
         logout: function (event) {
             sessionStorage.clear();
             localStorage.clear();
         },
         render: function () {
             if (window.location.pathname !== "/psamaui/tos") {
-                userFunctions.me(this, function (user) {
-                    applicationFunctions.fetchApplications(this, function(applications){
-                        this.applications = applications;
-                        this.$el.html(this.template({
-                            privileges: user.privileges,
-                            applications: this.applications
-                                .filter(function (app) {
-                                    return app.url;
-                                })
-                                .sort(function(a, b){
-                                    if(a.name < b.name) { return -1; }
-                                    if(a.name > b.name) { return 1; }
-                                    return 0;
-                                })
-                        }));
-                    }.bind(this))
+                if (window.location.pathname == "/psamaui/userProfile"){
+                    this.$el.html(this.template({
+                        privileges: [],
+                        applications:[]
+                    }));
+                }else {
+                    userFunctions.me(this, function (user) {
+                        applicationFunctions.fetchApplications(this, function(applications){
+                            this.applications = applications;
+                            this.$el.html(this.template({
+                                privileges: user.privileges,
+                                applications: this.applications
+                                    .filter(function (app) {
+                                        return app.url;
+                                    })
+                                    .sort(function(a, b){
+                                        if(a.name < b.name) { return -1; }
+                                        if(a.name > b.name) { return 1; }
+                                        return 0;
+                                    })
+                            }));
+                        }.bind(this))
 
-                }.bind(this));
+                    }.bind(this));
+                }
             }
         }
     });
