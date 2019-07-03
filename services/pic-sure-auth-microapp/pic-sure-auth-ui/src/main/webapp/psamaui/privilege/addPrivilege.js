@@ -15,7 +15,6 @@ define(["backbone", "handlebars", "picSure/privilegeFunctions", "privilege/privi
 		createPrivilege: function(event){
 			var pName = $('#new-privilege-form input[name=privilege_name]').val();
 			if(!pName || pName.length<=0){
-				$('#alert-text').show();
                 return;
 			}
 
