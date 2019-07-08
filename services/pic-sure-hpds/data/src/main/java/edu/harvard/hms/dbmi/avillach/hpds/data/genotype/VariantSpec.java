@@ -30,6 +30,17 @@ public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 		this.metadata.qual = Integer.parseInt(r.get(QUAL));
 	}
 
+	public VariantSpec(String variant) {
+		this.metadata = new VariantCoords();
+		String[] segments = variant.split(",");
+		this.metadata.chromosome = Integer.parseInt(segments[0]);
+		this.metadata.offset = Integer.parseInt(segments[1]);
+		this.metadata.name = null;
+		this.metadata.ref = segments[2];
+		this.metadata.alt = segments[3];
+		this.metadata.qual = -1;
+	}
+
 	public String specNotation() {
 		return this.metadata.chromosome + "," 
 				+ this.metadata.offset + "," + 

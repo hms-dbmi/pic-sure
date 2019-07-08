@@ -27,7 +27,8 @@ public class VariantStore implements Serializable{
 
 	private String[] vcfHeaders = new String[24];
 	
-	public FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage = new FileBackedByteIndexedStorage[24];
+	public FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] 
+			variantMaskStorage = new FileBackedByteIndexedStorage[24];
 
 	public ArrayList<String> listVariants() {
 		ArrayList<String> allVariants = new ArrayList<>();
