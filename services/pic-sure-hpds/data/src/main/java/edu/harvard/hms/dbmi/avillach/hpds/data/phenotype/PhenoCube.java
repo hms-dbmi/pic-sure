@@ -20,7 +20,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	
 	private TreeMap<V, TreeSet<Integer>> categoryMap;
 
-	private transient HashMap<Integer, V> loadingMap = new HashMap<>();
+	private transient ArrayList<KeyAndValue<V>> loadingMap = new ArrayList<>();
 
 	public PhenoCube(String name, Class<V> vType){
 		this.vType = vType;
@@ -28,7 +28,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	}
 
 	public void add(Integer key, V value) {
-		loadingMap.put(key, value);
+		loadingMap.add(new KeyAndValue<V>(key, value));
 	}
 	
 	public V getValueForKey(Integer key) {
@@ -190,7 +190,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		this.categoryMap = categorySetMap;
 	}
 
-	public HashMap<Integer, V> getLoadingMap() {
+	public ArrayList<KeyAndValue<V>> getLoadingMap() {
 		return loadingMap;
 	}
 

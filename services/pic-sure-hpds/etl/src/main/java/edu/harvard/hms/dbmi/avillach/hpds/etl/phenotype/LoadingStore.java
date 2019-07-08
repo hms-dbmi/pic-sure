@@ -93,7 +93,7 @@ public class LoadingStore {
 
 				private <V extends Comparable<V>> void complete(PhenoCube<V> cube) {
 					ArrayList<KeyAndValue<V>> entryList = new ArrayList<KeyAndValue<V>>(
-							cube.getLoadingMap().entrySet().stream().map((entry)->{
+							cube.getLoadingMap().stream().map((entry)->{
 								return new KeyAndValue<V>(entry.getKey(), entry.getValue());
 							}).collect(Collectors.toList()));
 
