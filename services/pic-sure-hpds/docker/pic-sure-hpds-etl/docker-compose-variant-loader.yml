@@ -1,7 +1,7 @@
 version: '3.3'
 services:
   variant-loader:
-    image: dbmi/pic-sure-hpds-etl:Apr-30-2019_jason_local_dev_build
+    image: dbmi/pic-sure-hpds-etl:master_62b8ef6
     environment:
       - HEAPSIZE=26000
       - LOADER_NAME=VCFLocalLoader
