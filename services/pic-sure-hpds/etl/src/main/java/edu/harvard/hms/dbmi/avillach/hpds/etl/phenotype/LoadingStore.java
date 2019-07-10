@@ -46,7 +46,7 @@ public class LoadingStore {
 	private static Logger log = Logger.getLogger(LoadingStore.class);
 	
 	public LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
-			.maximumSize(20000)
+			.maximumSize(200)
 			.removalListener(new RemovalListener<String, PhenoCube>() {
 
 				@Override
