@@ -18,7 +18,7 @@ public class CountProcessor extends AbstractProcessor {
 	}
 
 	public int runCounts(Query query) throws TooManyVariantsException {
-		return countForQuery(query);
+		return getPatientSubsetForQuery(query).size();
 	}
 
 	public HashMap<String, Integer> runCrossCounts(Query query) throws TooManyVariantsException {
@@ -37,10 +37,6 @@ public class CountProcessor extends AbstractProcessor {
 			throw exceptions[0];
 		}
 		return counts;
-	}
-
-	private int countForQuery(Query query) throws TooManyVariantsException{
-		return getPatientSubsetForQuery(query).size();
 	}
 
 	@Override
