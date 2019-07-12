@@ -4,12 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-import javax.persistence.Entity;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-import javax.persistence.Transient;
+import javax.persistence.*;
 import java.lang.reflect.Field;
-import java.util.*;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 @Entity(name = "access_rule")
 public class AccessRule extends BaseEntity {
@@ -86,8 +86,9 @@ public class AccessRule extends BaseEntity {
     @Transient
     private Set<String> mergedValues = new HashSet<>();
 
-    @ManyToOne
-    private AccessRule gateParent;
+    @JsonIgnore
+    @Transient
+    private String mergedName = "";
 
     /**
      * Guideline of using gates: if null or empty, will skip checking gate
@@ -95,7 +96,10 @@ public class AccessRule extends BaseEntity {
      * which means if only part of the gate set is passed, the gate still
      * not passed
      */
-    @OneToMany(mappedBy = "gateParent")
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "accessRule_gate",
+            joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false, updatable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false, updatable = false)})
     private Set<AccessRule> gates;
 
     @ManyToOne
@@ -162,16 +166,6 @@ public class AccessRule extends BaseEntity {
     }
 
     @JsonIgnore
-    public AccessRule getGateParent() {
-        return gateParent;
-    }
-
-    @JsonProperty("gateParent")
-    public void setGateParent(AccessRule gateParent) {
-        this.gateParent = gateParent;
-    }
-
-    @JsonIgnore
     public AccessRule getSubAccessRuleParent() {
         return subAccessRuleParent;
     }
@@ -219,6 +213,14 @@ public class AccessRule extends BaseEntity {
 
     public void setMergedValues(Set<String> mergedValues) {
         this.mergedValues = mergedValues;
+    }
+
+    public String getMergedName() {
+        return mergedName;
+    }
+
+    public void setMergedName(String mergedName) {
+        this.mergedName = mergedName;
     }
 
     public String toString() {

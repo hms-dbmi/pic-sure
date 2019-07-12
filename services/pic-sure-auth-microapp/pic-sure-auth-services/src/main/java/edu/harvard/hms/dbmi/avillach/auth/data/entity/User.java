@@ -169,7 +169,10 @@ public class User extends BaseEntity implements Serializable, Principal {
 		roles.stream().
 				forEach(r -> privileges.addAll(r.getPrivileges()
 						.stream()
-						.filter(p -> p.getApplication().getUuid().equals(application.getUuid()))
+						.filter(p -> application.getUuid()
+                                .equals((p.getApplication()==null)?
+                                        null:
+                                        p.getApplication().getUuid()))
 						.collect(Collectors.toSet())));
 		return privileges;
 	}

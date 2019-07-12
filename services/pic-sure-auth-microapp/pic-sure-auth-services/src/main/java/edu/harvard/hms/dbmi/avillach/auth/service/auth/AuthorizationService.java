@@ -73,7 +73,6 @@ public class AuthorizationService {
 		//        }
 
 		// start to process the jsonpath checking
-		boolean result = true;
 
 		String requestJson = null;
 		try {
@@ -101,6 +100,7 @@ public class AuthorizationService {
          // Current logic here is: among all accessRules, they are OR relationship
 		Set<AccessRule> failedRules = new HashSet<>();
 		AccessRule passByRule = null;
+        boolean result = false;
 		for (AccessRule accessRule : accessRules) {
 
 			if (checkAccessRule(requestBody, accessRule)){
@@ -112,12 +112,21 @@ public class AuthorizationService {
             }
 		}
 
+		String passRuleName = null;
+
+		if (passByRule != null){
+		    if (passByRule.getMergedName().isEmpty())
+		        passRuleName = passByRule.getName();
+             else
+                passRuleName = passByRule.getMergedName();
+        }
+
 		logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
 				" ___ has been " + (result?"granted":"denied") + " access to execute query ___ " + requestJson + 
 				" ___ in application ___ " + applicationName + " ___ " +
-                (result?"passed by " + passByRule.getName():"failed by rules: ["
+                (result?"passed by " + passRuleName:"failed by rules: ["
                         + failedRules.stream()
-                        .map(ar->ar.getName())
+                        .map(ar->(ar.getMergedName().isEmpty()?ar.getName():ar.getMergedName()))
                         .collect(Collectors.joining(", ")) + "]"
                 ));
 
@@ -134,59 +143,64 @@ public class AuthorizationService {
      */
 	private Set<AccessRule> preProcessAccessRules(Set<Privilege> privileges){
 
-	    // now we use the function preProcess by sorted string keys
+        Set<AccessRule> accessRules = new HashSet<>();
+        for (Privilege privilege : privileges) {
+            accessRules.addAll(privilege.getAccessRules());
+        }
+
+        // now we use the function preProcess by sorted string keys
         // if needed, we could implement another function to sort by other key or combination of keys
-        return preProcessARBySortedKeys(privileges);
+        return preProcessARBySortedKeys(accessRules);
     }
 
     /**
      * This function is doing the merge by gathering all String keys together
      * and sorted to be the key in the map
      *
-     * @param privileges
+     * @param accessRules
      * @return
      */
-    private Set<AccessRule> preProcessARBySortedKeys(Set<Privilege> privileges){
+    protected Set<AccessRule> preProcessARBySortedKeys(Set<AccessRule> accessRules){
         // key is a combination of uuid of gates and rule
         // value is a list of the same key accessrule,
         // later will be merged to be new AccessRule for evaluation
         Map<String, Set<AccessRule>> accessRuleMap  = new HashMap<>();
-        for (Privilege privilege : privileges){
-            for (AccessRule accessRule : privilege.getAccessRules()) {
 
-                // 1st generate the key by grabbing all related string and put them together in order
-                // we use a treeSet here to put orderly combine Strings together
-                Set<String> keys = new TreeSet<>();
+        for (AccessRule accessRule : accessRules) {
 
-                // the current accessRule rule
-                keys.add(accessRule.getRule());
+            // 1st generate the key by grabbing all related string and put them together in order
+            // we use a treeSet here to put orderly combine Strings together
+            Set<String> keys = new TreeSet<>();
 
-                // the accessRule type
-                keys.add(accessRule.getType().toString());
+            // the current accessRule rule
+            keys.add(accessRule.getRule());
 
-                // all gates' UUID as strings
-                for (AccessRule gate : accessRule.getGates()){
-                    keys.add(gate.getUuid().toString());
-                }
+            // the accessRule type
+            keys.add(accessRule.getType().toString());
 
-                // all sub accessRule rules
-                for (AccessRule subAccessRule : accessRule.getSubAccessRule()){
-                    keys.add(subAccessRule.getRule());
-                }
+            // all gates' UUID as strings
+            for (AccessRule gate : accessRule.getGates()){
+                keys.add(gate.getUuid().toString());
+            }
 
-                // then we combine them together as one string for the key
-                String key = keys.stream().collect(Collectors.joining());
+            // all sub accessRule rules
+            for (AccessRule subAccessRule : accessRule.getSubAccessRule()){
+                keys.add(subAccessRule.getRule());
+            }
 
-                // put it into the accessRuleMap
-                if (accessRuleMap.containsKey(key)){
-                    accessRuleMap.get(key).add(accessRule);
-                } else {
-                    Set<AccessRule> accessRuleSet = new HashSet<>();
-                    accessRuleSet.add(accessRule);
-                    accessRuleMap.put(key, accessRuleSet);
-                }
+            // then we combine them together as one string for the key
+            String key = keys.stream().collect(Collectors.joining());
+
+            // put it into the accessRuleMap
+            if (accessRuleMap.containsKey(key)){
+                accessRuleMap.get(key).add(accessRule);
+            } else {
+                Set<AccessRule> accessRuleSet = new HashSet<>();
+                accessRuleSet.add(accessRule);
+                accessRuleMap.put(key, accessRuleSet);
             }
         }
+
 
         return mergeSameKeyAccessRules(accessRuleMap.values());
     }
@@ -234,7 +248,13 @@ public class AuthorizationService {
         }
 
         baseAccessRule.getSubAccessRule().addAll(accessRuleToBeMerged.getSubAccessRule());
-        baseAccessRule.getMergedValues().add(accessRuleToBeMerged.getRule());
+        baseAccessRule.getMergedValues().add(accessRuleToBeMerged.getValue());
+        if (baseAccessRule.getMergedName().startsWith("Merged|")){
+            baseAccessRule.setMergedName(baseAccessRule.getMergedName() +"|"+ accessRuleToBeMerged.getName());
+        } else {
+            baseAccessRule.setMergedName("Merged|" + baseAccessRule.getName() + "|"+ accessRuleToBeMerged.getName());
+        }
+
 
         return baseAccessRule;
     }
@@ -428,6 +448,22 @@ public class AuthorizationService {
      * @return
      */
     private boolean decisionMaker(AccessRule accessRule, String requestBodyValue){
+
+        // it might be possible that sometimes there is value in the accessRule.getValue()
+        // but the mergedValues doesn't have elements in it...
+        if (accessRule.getMergedValues().isEmpty()){
+            String value = accessRule.getValue();
+            if (value == null){
+                if (requestBodyValue == null) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            return _decisionMaker(accessRule, requestBodyValue, value);
+        }
+
+
         // recursively check the values
         // until one of them is true
         // if there is only one element in the merged value set

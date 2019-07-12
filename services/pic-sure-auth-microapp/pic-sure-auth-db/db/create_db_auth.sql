@@ -169,13 +169,10 @@ CREATE TABLE `access_rule` (
   `value` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `checkMapKeyOnly` bit(1) NOT NULL,
   `checkMapNode` bit(1) NOT NULL,
-  `gateParent_uuid` binary(16) DEFAULT NULL,
   `subAccessRuleParent_uuid` binary(16) DEFAULT NULL,
   PRIMARY KEY (`uuid`),
-  KEY `FKd1eyn6iwyfsq0glgr37eyhogj` (`gateParent_uuid`),
   KEY `FK8rovvx363ui99ce21sksmg6uy` (`subAccessRuleParent_uuid`),
   CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`),
-  CONSTRAINT `FKd1eyn6iwyfsq0glgr37eyhogj` FOREIGN KEY (`gateParent_uuid`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE TABLE `accessRule_privilege` (
@@ -185,6 +182,15 @@ CREATE TABLE `accessRule_privilege` (
   KEY `FK89rf30kbf9d246jty2dd7qk99` (`accessRule_id`),
   CONSTRAINT `FK7x47w81gpua380qd7lp9x94l1` FOREIGN KEY (`privilege_id`) REFERENCES `privilege` (`uuid`),
   CONSTRAINT `FK89rf30kbf9d246jty2dd7qk99` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
+CREATE TABLE `accessRule_gate` (
+  `accessRule_id` binary(16) NOT NULL,
+  `gate_id` binary(16) NOT NULL,
+  PRIMARY KEY (`accessRule_id`,`gate_id`),
+  KEY `FK6re4kcq9tyl45jv9yg584doem` (`gate_id`),
+  CONSTRAINT `FK6re4kcq9tyl45jv9yg584doem` FOREIGN KEY (`gate_id`) REFERENCES `access_rule` (`uuid`),
+  CONSTRAINT `FKe6l5ee7f207958mm3anpsmqom` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE OR REPLACE VIEW `management_view`
