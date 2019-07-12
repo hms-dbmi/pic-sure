@@ -184,9 +184,23 @@ public abstract class AbstractProcessor {
 
 		addIdSetsForCategoryFilters(query, filteredIdSets);
 
-System.out.println();	
 		return filteredIdSets;
 	}
+
+	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
+		ArrayList<Set<Integer>> filteredIdSets;
+		
+		filteredIdSets = idSetsForEachFilter(query);
+		
+		TreeSet<Integer> idList;
+		if(filteredIdSets.isEmpty()) {
+			idList = allIds;
+		}else {
+			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
+		}
+		return idList;
+	}
+
 	private void addIdSetsForRequiredFields(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.requiredFields != null && !query.requiredFields.isEmpty()) {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.requiredFields.parallelStream().map(path->{

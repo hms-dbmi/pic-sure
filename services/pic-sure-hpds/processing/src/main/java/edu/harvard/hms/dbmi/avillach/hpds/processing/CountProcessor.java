@@ -40,15 +40,7 @@ public class CountProcessor extends AbstractProcessor {
 	}
 
 	private int countForQuery(Query query) throws TooManyVariantsException{
-		ArrayList<Set<Integer>> filteredIdSets;
-		filteredIdSets = idSetsForEachFilter(query);
-		TreeSet<Integer> idList;
-		if(filteredIdSets.isEmpty()) {
-			idList = allIds; 
-		}else {
-			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
-		}
-		return idList.size();
+		return getPatientSubsetForQuery(query).size();
 	}
 
 	@Override

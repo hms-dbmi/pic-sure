@@ -35,27 +35,7 @@ public class QueryProcessor extends AbstractProcessor {
 		};
 	}
 
-	private TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
-		ArrayList<Set<Integer>> filteredIdSets;
-		
-		filteredIdSets = idSetsForEachFilter(query);
-		
-		TreeSet<Integer> idList;
-		if(filteredIdSets.isEmpty()) {
-			idList = allIds;
-		}else {
-			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
-		}
-		return idList;
-	}
 	
-	public void runSizeQuery(Query query, AsyncResult result) throws TooManyVariantsException {
-		TreeSet<Integer> idList = getPatientSubsetForQuery(query);
-		// we need all the fields.
-		
-	}
-	
-
 	private ResultStore buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		List<String> paths = query.fields;
 		int columnCount = paths.size() + 1;
