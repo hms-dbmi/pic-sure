@@ -149,6 +149,16 @@ public class QueryProcessor extends AbstractProcessor {
 		return idPointer;
 	}
 
+	/**
+	 * Correctly handle null records. A numerical value should be a NaN if it is missing to distinguish from a zero. A
+	 * String based value(categorical) should be empty instead of null because the word null might be a valid value.
+	 * 
+	 * @param results
+	 * @param x
+	 * @param cube
+	 * @param doubleBuffer
+	 * @param idInSubsetPointer
+	 */
 	private void writeNullResultField(ResultStore results, Integer x, PhenoCube<?> cube, ByteBuffer doubleBuffer, int idInSubsetPointer) {
 		byte[] valueBuffer = null;
 		if(cube.isStringType()) {
