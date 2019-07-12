@@ -7,10 +7,9 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.Transient;
 import java.lang.reflect.Field;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Entity(name = "access_rule")
 public class AccessRule extends BaseEntity {
@@ -77,6 +76,15 @@ public class AccessRule extends BaseEntity {
      * The value for checking
      */
     private String value;
+
+    /**
+     * only inner use for merge accessRule
+     * This field should neither be saved to database
+     * nor seen by a user
+     */
+    @JsonIgnore
+    @Transient
+    private Set<String> mergedValues = new HashSet<>();
 
     @ManyToOne
     private AccessRule gateParent;
@@ -203,6 +211,14 @@ public class AccessRule extends BaseEntity {
 
     public void setCheckMapKeyOnly(Boolean checkMapKeyOnly) {
         this.checkMapKeyOnly = checkMapKeyOnly;
+    }
+
+    public Set<String> getMergedValues() {
+        return mergedValues;
+    }
+
+    public void setMergedValues(Set<String> mergedValues) {
+        this.mergedValues = mergedValues;
     }
 
     public String toString() {
