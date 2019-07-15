@@ -6,6 +6,7 @@ import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.validation.constraints.NotNull;
 import javax.ws.rs.NotAuthorizedException;
 import java.io.UnsupportedEncodingException;
 
@@ -19,7 +20,7 @@ public class AuthUtils {
 	 * @param token
 	 * @return
 	 */
-	public static Jws<Claims> parseToken(String clientSecret, String token)
+	public static Jws<Claims> parseToken(@NotNull String clientSecret, String token)
 			throws NotAuthorizedException{
 		Jws<Claims> jws;
 
@@ -40,14 +41,14 @@ public class AuthUtils {
 				} 
 			} catch (UnsupportedEncodingException ex){
 				logger.error("parseToken() clientSecret encoding UTF-8 is not supported. "
-						+ ex.getClass().getSimpleName() + ": " + ex.getMessage(), ex);
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
 				throw new NotAuthorizedException("encoding is not supported");
 			} catch (JwtException | IllegalArgumentException ex) {
-				logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), ex);
+				logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
 				throw new NotAuthorizedException(ex.getClass().getSimpleName());
 			}
 		} catch (JwtException | IllegalArgumentException e) {
-			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage(), e);
+			logger.error("parseToken() throws: " + e.getClass().getSimpleName() + ", " + e.getMessage());
 			throw new NotAuthorizedException(e.getClass().getSimpleName());
 		}
 
@@ -58,4 +59,6 @@ public class AuthUtils {
 
 		return jws;
 	}
+
+
 }

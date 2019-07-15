@@ -388,12 +388,24 @@ public class AuthorizationService {
                             }
                         }
                     }
+                    // need to take care if the collection is empty
                     return false;
                 default:
-                    if (accessRule.getValue()!= null
-                            && !accessRule.getValue().isEmpty()
-                            && (requestBodyValue == null ||((Collection) requestBodyValue).isEmpty())){
-                        return false;
+                    if (((Collection) requestBodyValue).isEmpty()){
+                        // need to take care if the collection is empty
+                        switch (accessRule.getType()){
+                            case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
+                            case (AccessRule.TypeNaming.ALL_EQUALS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
+                                // since collection is empty, nothing is complimented to the rule,
+                                // it should return false
+                                return false;
+                            default:
+                                // since collection is empty, nothing will be denied by the rule,
+                                // so return true
+                                return true;
+                        }
                     }
 
                     for (Object item : (Collection)requestBodyValue){
@@ -422,10 +434,21 @@ public class AuthorizationService {
                     }
                     return false;
                 default:
-                    if (accessRule.getValue()!= null
-                            && !accessRule.getValue().isEmpty()
-                            && (requestBodyValue == null ||((Collection) requestBodyValue).isEmpty())){
-                        return false;
+                    if (((Map) requestBodyValue).isEmpty()){
+                        // need to take care if the collection is empty
+                        switch (accessRule.getType()){
+                            case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
+                            case (AccessRule.TypeNaming.ALL_EQUALS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS):
+                            case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
+                                // since collection is empty, nothing is complimented to the rule,
+                                // it should return false
+                                return false;
+                            default:
+                                // since collection is empty, nothing will be denied by the rule,
+                                // so return true
+                                return true;
+                        }
                     }
                     for (Map.Entry entry : ((Map<String, Object>) requestBodyValue).entrySet()){
                         if (decisionMaker(accessRule, (String) entry.getKey()) == false)
@@ -524,7 +547,7 @@ public class AuthorizationService {
                 else
                     return false;
             case(AccessRule.TypeNaming.ARRAY_EQUALS):
-            case(AccessRule.TypeNaming.EQUALS):
+            case(AccessRule.TypeNaming.ALL_EQUALS):
                 if (value.equals(requestBodyValue))
                     return true;
                 else
@@ -535,7 +558,7 @@ public class AuthorizationService {
                     return true;
                 else
                     return false;
-            case(AccessRule.TypeNaming.CONTAINS_IGNORE_CASE):
+            case(AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
                 if (requestBodyValue.toLowerCase().contains(value.toLowerCase()))
                     return true;
                 else
@@ -545,7 +568,7 @@ public class AuthorizationService {
                     return true;
                 else
                     return false;
-            case(AccessRule.TypeNaming.EQUALS_IGNORE_CASE):
+            case(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
                 if (value.equalsIgnoreCase(requestBodyValue))
                     return true;
                 else

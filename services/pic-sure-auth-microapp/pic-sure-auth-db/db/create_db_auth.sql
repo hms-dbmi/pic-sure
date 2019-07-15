@@ -87,6 +87,7 @@ CREATE TABLE `user` (
   `matched` bit(1) NOT NULL DEFAULT FALSE,
   `subject` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `is_active` bit(1) NOT NULL DEFAULT TRUE,
+  `long_term_token` varchar(4000) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `UK_r8xpakluitn685ua7pt8xjy9r` (`subject`),
   KEY `FKn8bku0vydfcnuwbqwgnbgg8ry` (`connectionId`),
