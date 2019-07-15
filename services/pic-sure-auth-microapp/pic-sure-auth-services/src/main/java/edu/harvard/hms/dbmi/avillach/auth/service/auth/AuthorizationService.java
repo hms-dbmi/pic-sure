@@ -390,6 +390,12 @@ public class AuthorizationService {
                     }
                     return false;
                 default:
+                    if (accessRule.getValue()!= null
+                            && !accessRule.getValue().isEmpty()
+                            && (requestBodyValue == null ||((Collection) requestBodyValue).isEmpty())){
+                        return false;
+                    }
+
                     for (Object item : (Collection)requestBodyValue){
                         if (item instanceof String) {
                             if (decisionMaker(accessRule, (String)item) == false){
@@ -416,6 +422,11 @@ public class AuthorizationService {
                     }
                     return false;
                 default:
+                    if (accessRule.getValue()!= null
+                            && !accessRule.getValue().isEmpty()
+                            && (requestBodyValue == null ||((Collection) requestBodyValue).isEmpty())){
+                        return false;
+                    }
                     for (Map.Entry entry : ((Map<String, Object>) requestBodyValue).entrySet()){
                         if (decisionMaker(accessRule, (String) entry.getKey()) == false)
                             return false;
