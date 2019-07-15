@@ -120,7 +120,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
     @BeforeClass
     public static void init() {
         GATE_resouceUUID = new AccessRule();
-        GATE_resouceUUID.setType(AccessRule.TypeNaming.EQUALS);
+        GATE_resouceUUID.setType(AccessRule.TypeNaming.ALL_EQUALS);
         GATE_resouceUUID.setName("Gate_resoruceUUID");
         GATE_resouceUUID.setRule("$.queries..resourceUUID");
         GATE_resouceUUID.setValue("8694e3d4-5cb4-410f-8431-993445e6d3f6");

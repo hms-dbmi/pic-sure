@@ -9,7 +9,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthorizationService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
@@ -18,12 +20,13 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.security.Principal;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Path("/token")
@@ -58,11 +61,88 @@ public class TokenService {
 	}
 
 	/**
+	 * This endpoint currently is only for a user token to be refreshed.
+	 * Application token won't work here.
+	 *
+	 * @return
+	 */
+	@GET
+	@Path("/refresh")
+	public Response refreshToken(@Context HttpHeaders httpHeaders){
+		logger.debug("RefreshToken starting...");
+
+		// still need to check if the user is in the database or not,
+		// just in case something changes in the middle
+		Principal principal = securityContext.getUserPrincipal();
+		if (!(principal instanceof User)){
+			logger.error("refreshToken() Security context didn't have a user stored.");
+		}
+		User user = (User) principal;
+
+		if (user.getUuid() == null){
+			logger.error("refreshToken() Stored user doesn't have a uuid.");
+			return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+		}
+
+		user = userRepo.getById(user.getUuid());
+		if (user == null){
+			logger.error("refreshToken() When retrieving current user, it returned null, the user might be removed from database");
+			throw new NotAuthorizedException("User doesn't exist anymore");
+		}
+
+		if (!user.isActive()){
+			logger.error("refreshToken() The user has just been deactivated.");
+			throw new NotAuthorizedException("User has been deactivated.");
+		}
+
+		String subject = user.getSubject();
+		if (subject == null || subject.isEmpty()){
+			logger.error("refreshToken() subject doesn't exist in the user.");
+		}
+
+		// parse origin token
+		Jws<Claims> jws;
+		try {
+			jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+					// the original token should be able to grab from header, otherwise, it should be stopped
+					// at JWTFilter level
+					httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
+							.substring(6)
+							.trim());
+		} catch (NotAuthorizedException ex) {
+			return PICSUREResponse.protocolError("Cannot parse original token");
+		}
+
+		Claims claims = jws.getBody();
+
+		// just check if the subject is along with the database record,
+		// just in case something has changed in middle
+		if (!subject.equals(claims.getSubject())){
+			logger.error("refreshToken() user subject is not the same as the subject of the input token");
+			return PICSUREResponse.applicationError("Inner application error, try again or contact admin.");
+		}
+
+		Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
+		String refreshedToken = JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+				claims.getId(),
+				claims.getIssuer(),
+				claims,
+				subject,
+				JAXRSConfiguration.tokenExpirationTime);
+
+		logger.debug("Finished RefreshToken and new token has been generated.");
+		return PICSUREResponse.success(Map.of("token", refreshedToken,
+				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()));
+	}
+
+
+
+	/**
 	 * @param inputMap
 	 * @return
 	 */
 	private TokenInspection _inspectToken(Map<String, Object> inputMap){
-		logger.debug("_inspectToken, the incoming token map is: " + inputMap.entrySet()
+		logger.debug("_inspectToken, the incoming token map is: {}", inputMap.entrySet()
 		.stream()
 		.map(entry -> entry.getKey() + " - " + entry.getValue())
 		.collect(Collectors.joining(", ")));
@@ -105,6 +185,18 @@ public class TokenService {
 		// get the user based on subject field in token
 		User user;
 
+		// check if the token is the special LONG_TERM_TOKEN,
+		// the differences between this special token and normal token is
+		// one user only has one long_term_token stored in database,
+		// this token needs to be exactly the same as the database one.
+		// If the token refreshed, the old one will be invalid. But normal
+		// token will not invalid the old ones if refreshed.
+		boolean isLongTermToken = false;
+		if (subject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
+			subject = subject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+			isLongTermToken = true;
+		}
+
 		user = userRepo.getUniqueResultByColumn("subject", subject);
 		logger.info("_inspectToken() user with subject - " + subject + " - exists in database");
 		if (user == null) {
@@ -113,20 +205,41 @@ public class TokenService {
 			return tokenInspection;
 		}
 
+
+
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		//only under certain circumstances, the token will return active
+		boolean isAuthorizationPassed = false;
 		Set<String> privilegeNameSet = null;
-		if (user != null
+
+		String errorMsg = null;
+		if (isLongTermToken) {
+			// in long_term_token mode, the token needs to be exactly the same as the token in user table\
+			if (token.equals(user.getToken()))
+				isAuthorizationPassed = true;
+			else
+				errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
+
+		} else if (user != null
 				&& user.getRoles() != null
 				&& (application.getPrivileges().isEmpty() || ! user.getPrivilegeNameSetByApplication(application).isEmpty())
 				&& authorizationService.isAuthorized(application.getName(), inputMap.get("request"), user.getUuid())) {
+			isAuthorizationPassed = true;
+		} else {
+			errorMsg = "User doesn't have enough privileges.";
+		}
+
+		if (isAuthorizationPassed){
 			tokenInspection.responseMap.put("active", true);
 			ArrayList<String> roles = new ArrayList<String>();
 			for(Privilege p : user.getTotalPrivilege()) {
 				roles.add(p.getName());
 			}
 			tokenInspection.responseMap.put("roles", String.join(",",  roles));
-			
+		} else {
+			if (errorMsg != null )
+				tokenInspection.message = errorMsg;
+			return tokenInspection;
 		}
 
 		tokenInspection.responseMap.putAll(jws.getBody());

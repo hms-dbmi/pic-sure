@@ -21,10 +21,9 @@ import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.*;
 
 public class AuthenticationService {
     private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
@@ -83,10 +82,11 @@ public class AuthenticationService {
         Map<String, Object> claims = generateClaims(userInfo, new String[]{"user_id","name" });
         claims.put("email",user.getEmail());
 
+        Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
         String token = JWTUtil.createJwtToken(
                 JAXRSConfiguration.clientSecret, null, null,
                 claims,
-                userId, 1000 * 60 * 60 * 24);
+                userId, JAXRSConfiguration.tokenExpirationTime);
 
         boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ? 
         		tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject()) : true;
@@ -98,6 +98,7 @@ public class AuthenticationService {
         responseMap.put("email", user.getEmail());
         responseMap.put("userId", user.getUuid().toString());
         responseMap.put("acceptedTOS", ""+acceptedTOS);
+        responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
         
         return PICSUREResponse.success(responseMap);
     }

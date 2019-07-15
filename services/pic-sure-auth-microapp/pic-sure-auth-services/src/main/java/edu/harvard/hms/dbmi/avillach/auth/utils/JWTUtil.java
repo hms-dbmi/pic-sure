@@ -15,8 +15,18 @@ import java.util.Map;
  */
 public class JWTUtil {
 
-    private static final long defaultTTLMillis = 1000 * 60 * 60 * 24 * 7;
+    private static final long defaultTTLMillis = 1000L * 60 * 60 * 24 * 7;
 
+    /**
+     *
+     * @param clientSecret
+     * @param id
+     * @param issuer
+     * @param claims
+     * @param subject
+     * @param ttlMillis
+     * @return
+     */
     public static String createJwtToken(String clientSecret, String id, String issuer, Map<String, Object> claims , String subject, long ttlMillis) {
 
         if (ttlMillis < 0)
