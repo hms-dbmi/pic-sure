@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.io.*;
+import java.nio.charset.Charset;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
@@ -10,6 +11,7 @@ import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
+import org.apache.commons.io.IOUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -45,11 +47,8 @@ public class SQLLoader {
 
 	private static void initialLoad() throws IOException {
 		final PhenoCube[] currentConcept = new PhenoCube[1];
-		template.query("    select ofact.PATIENT_NUM, CONCEPT_PATH, NVAL_NUM, TVAL_CHAR \n" + 
-				"    FROM i2b2demodata.OBSERVATION_FACT ofact\n" + 
-				"    JOIN i2b2demodata.CONCEPT_DIMENSION cd \n" + 
-				"    ON cd.CONCEPT_CD=ofact.CONCEPT_CD \n" + 
-				"    ORDER BY CONCEPT_PATH, ofact.PATIENT_NUM", new RowCallbackHandler() {
+		String loadQuery = IOUtils.toString(new FileInputStream("/opt/local/hpds/loadQuery.sql"), Charset.forName("UTF-8"));
+		template.query(loadQuery, new RowCallbackHandler() {
 			
 			@Override
 			public void processRow(ResultSet arg0) throws SQLException {
