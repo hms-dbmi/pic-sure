@@ -76,7 +76,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		if(isContinuous) {
 			System.out.println(this.column_key + " is continuous, building continuousValueIndex and nulling continuousValueMap.");
 			this.continuousValueIndex = new CompressedIndex();
-			TreeMap<Double, TreeSet<String>> continuousValueMap = this.continuousValueIndex.buildContinuousValuesMap(this.allValues);
+			TreeMap<Float, TreeSet<String>> continuousValueMap = this.continuousValueIndex.buildContinuousValuesMap(this.allValues);
 			this.continuousValueIndex.buildIndex(continuousValueMap);
 			this.continuousValueMap = null;
 		}

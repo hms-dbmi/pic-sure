@@ -30,7 +30,7 @@ public class CompressedIndex implements Serializable {
 	 */
 	private static final long serialVersionUID = 5089713203903957829L;
 	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
-	private HashMap<Range<Double>, byte[]> compressedRangeMap;
+	private HashMap<Range<Float>, byte[]> compressedRangeMap;
 	private int valueCount;
 
 	public TreeMap<Float, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
@@ -80,12 +80,12 @@ public class CompressedIndex implements Serializable {
 		}
 	}
 
-	public void buildIndex(TreeMap<Double, TreeSet<String>> continuousValueMap) {
-		Set<Double> continuousValuesMapKeys = new TreeSet<Double>(continuousValueMap.keySet());
-		List<List<Double>> partitions = Lists.partition(new ArrayList<Double>(continuousValuesMapKeys), 1000);
-		HashMap<Range<Double>, TreeMap<Double, TreeSet<String>>> rangeMap = new HashMap<>();
-		List<Double> partition = partitions.get(0);
-		SortedMap<Double, TreeSet<String>> partitionMap = continuousValueMap.subMap(partition.get(0), partition.get(partition.size()-1));
+	public void buildIndex(TreeMap<Float, TreeSet<String>> continuousValueMap) {
+		Set<Float> continuousValuesMapKeys = new TreeSet<Float>(continuousValueMap.keySet());
+		List<List<Float>> partitions = Lists.partition(new ArrayList<Float>(continuousValuesMapKeys), 1000);
+		HashMap<Range<Float>, TreeMap<Float, TreeSet<String>>> rangeMap = new HashMap<>();
+		List<Float> partition = partitions.get(0);
+		SortedMap<Float, TreeSet<String>> partitionMap = continuousValueMap.subMap(partition.get(0), partition.get(partition.size()-1));
 		rangeMap.put(
 				Range.openClosed(partition.get(0), partition.get(partition.size()-1)), 
 				new TreeMap<>(partitionMap));
@@ -122,7 +122,7 @@ public class CompressedIndex implements Serializable {
 				));
 	}
 
-	public List<String> getValuesInRange(Range<Double> targetRange) {
+	public List<String> getValuesInRange(Range<Float> targetRange) {
 
 		System.out.println("Getting valuesInRange : " + targetRange);
 		// Get a list of ranges that are connected to the target range
@@ -153,7 +153,7 @@ public class CompressedIndex implements Serializable {
 
 		connectedRanges.forEach(
 				range ->{
-					TreeMap<Double, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
+					TreeMap<Float, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
 					System.out.println("Searching within : " + range.lowerEndpoint() + " : " + range.upperEndpoint());
 					continousValueMap.entrySet().stream().forEach(
 							entry->{
