@@ -29,15 +29,15 @@ public class CompressedIndex implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 5089713203903957829L;
-	public Double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
+	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
 	private HashMap<Range<Double>, byte[]> compressedRangeMap;
 	private int valueCount;
 
-	public TreeMap<Double, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
-		TreeMap<Double, TreeSet<String>> continuousValueMap = new TreeMap<>();
+	public TreeMap<Float, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
+		TreeMap<Float, TreeSet<String>> continuousValueMap = new TreeMap<>();
 		for(String key : allValues.keys()) {
 			try{
-				Double DoubleValue = Double.parseDouble(key.trim());
+				Float DoubleValue = Float.parseFloat(key.trim());
 				TreeSet<String> currentValues = continuousValueMap.get(DoubleValue);
 				if(currentValues == null) {
 					currentValues = new TreeSet<>();
@@ -51,7 +51,7 @@ public class CompressedIndex implements Serializable {
 				if(valuesInKey.length > 1) {
 					for(String value : valuesInKey) {
 						try {
-							Double DoubleValue = Double.parseDouble(value.trim());
+							Float DoubleValue = Float.parseFloat(value.trim());
 							TreeSet<String> currentValues = continuousValueMap.get(DoubleValue);
 							if(currentValues == null) {
 								currentValues = new TreeSet<>();
@@ -71,7 +71,7 @@ public class CompressedIndex implements Serializable {
 		return continuousValueMap;
 	}
 
-	private void setMinAndMax(Double DoubleValue) {
+	private void setMinAndMax(Float DoubleValue) {
 		if(min > DoubleValue) {
 			min = DoubleValue;
 		}
