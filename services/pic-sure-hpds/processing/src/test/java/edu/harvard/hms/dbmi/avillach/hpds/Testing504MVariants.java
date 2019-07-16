@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
 import java.util.Random;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
@@ -29,21 +28,28 @@ public class Testing504MVariants {
 		for(int x = 0; x<ints.length;x++) {
 			ints[x] = r.nextInt();
 		}
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ByteBuffer buf = ByteBuffer.allocate(4);
-		for(int x : ints) {
-			try {
-				buf.clear();
-				buf.putInt(x);
-				out.write(buf.array());
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+		BigInteger mask = null;;
+		try(
+				ByteArrayOutputStream out = new ByteArrayOutputStream();)
+		{
+			ByteBuffer buf = ByteBuffer.allocate(4);
+			for(int x : ints) {
+				try {
+					buf.clear();
+					buf.putInt(x);
+					out.write(buf.array());
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 			}
+			mask = new BigInteger(out.toByteArray());
+			System.out.println(out.size());
+
+		} catch (IOException e1) {
+			e1.printStackTrace();
 		}
-		BigInteger mask = new BigInteger(out.toByteArray());
-		System.out.println(out.size());
 		return mask;
 	}
-	
+
 }

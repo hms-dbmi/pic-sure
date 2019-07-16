@@ -1,20 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
-import java.io.SequenceInputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -28,19 +22,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.commons.compress.utils.IOUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-
-import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
-import htsjdk.samtools.util.BlockCompressedInputStream;
-
 
 public class IndexedVCFLocalLoader {
 
@@ -56,8 +45,7 @@ public class IndexedVCFLocalLoader {
 	private static void loadVCFs(File vcfIndexFile, File storageDir) throws FileNotFoundException, IOException {
 		long startTime = System.currentTimeMillis();
 
-		HashMap<String/*patient id*/, VCFLineProducer/*patient specific producer*/> patientProducerMap;
-		patientProducerMap = createAndStartProducers(vcfIndexFile);
+		createAndStartProducers(vcfIndexFile);
 
 		TreeSet<String> patientIds = new TreeSet<>(
 				producers.stream().map(producer->{return producer.patientId;})

@@ -34,7 +34,6 @@ public class VariantStore implements Serializable{
 		ArrayList<String> allVariants = new ArrayList<>();
 		for(int x = 1;x<variantMaskStorage.length-1;x++) {
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage[x];
-			final int final_x = x;
 			storage
 			.keys()
 			.stream()

@@ -95,7 +95,7 @@ public class CompressedIndex implements Serializable {
 		partition = partitions.get(partitions.size()-1);
 		partitionMap = continuousValueMap.subMap(partition.get(0), partition.get(partition.size()-1));
 		rangeMap.put(Range.openClosed(partition.get(0), partition.get(partition.size()-1)), new TreeMap<>(partitionMap));
-		ArrayBackedByteIndexedStorage<Range, TreeMap> storage = new ArrayBackedByteIndexedStorage<Range, TreeMap>(Range.class, TreeMap.class);
+		
 		compressedRangeMap = new HashMap<>(rangeMap.entrySet().stream().collect(
 				Collectors.toMap(
 						(key)->{return key.getKey();}, 

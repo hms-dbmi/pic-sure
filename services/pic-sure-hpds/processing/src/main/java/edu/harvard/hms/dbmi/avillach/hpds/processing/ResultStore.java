@@ -88,7 +88,7 @@ public class ResultStore {
 
 	DecimalFormat decimalFormat = new DecimalFormat("######.##");
 	private void stringifyDouble(String[] row, int x, int fieldOffset) {
-		row[x] = new Double(wrappedResultArray.getDouble(fieldOffset)).toString();
+		row[x] = Double.valueOf(wrappedResultArray.getDouble(fieldOffset)).toString();
 	}
 
 	private void stringifyString(String[] row, byte[][] columnBuffers, int x, int fieldOffset) {

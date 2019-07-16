@@ -464,7 +464,7 @@ public abstract class AbstractProcessor {
 
 	protected LoadingCache<String, PhenoCube<?>> initializeCache() throws ClassNotFoundException, FileNotFoundException, IOException {
 		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
-			this.variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin"))).readObject();
+			variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin"))).readObject();
 			variantStore.open();			
 		}
 		return CacheBuilder.newBuilder()
