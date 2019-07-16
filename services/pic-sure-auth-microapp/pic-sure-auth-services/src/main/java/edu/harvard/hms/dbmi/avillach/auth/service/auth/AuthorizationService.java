@@ -329,14 +329,23 @@ public class AuthorizationService {
 
         // AccessRule type IS_EMPTY is very special, needs to be checked in front of any others
         // in type IS_EMPTY, it doens't matter if the value is null or anything
-        if (accessRule.getType() == AccessRule.TypeNaming.IS_EMPTY){
+        int accessRuleType = accessRule.getType();
+        if (accessRuleType == AccessRule.TypeNaming.IS_EMPTY
+                || accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY){
             if (requestBodyValue == null
                     || (requestBodyValue instanceof String && ((String)requestBodyValue).isEmpty())
                     || (requestBodyValue instanceof Collection && ((Collection)requestBodyValue).isEmpty())
-                    || (requestBodyValue instanceof Map && ((Map)requestBodyValue).isEmpty()))
-                return true;
-            else
-                return false;
+                    || (requestBodyValue instanceof Map && ((Map)requestBodyValue).isEmpty())){
+                if (accessRuleType == AccessRule.TypeNaming.IS_EMPTY)
+                    return true;
+                else
+                    return false;
+            } else {
+                if (accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY)
+                    return true;
+                else
+                    return false;
+            }
         }
 
         return evaluateNode(requestBodyValue, accessRule);

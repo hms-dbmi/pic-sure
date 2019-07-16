@@ -33,7 +33,7 @@ public class AccessRule extends BaseEntity {
         public static final int ALL_REG_MATCH = 11;
         public static final int ARRAY_REG_MATCH = 12;
         public static final int IS_EMPTY = 13;
-
+        public static final int IS_NOT_EMPTY = 14;
 
         public static Map<String, Integer> getTypeNameMap(){
             Map<String, Integer> map = new LinkedHashMap<>();
