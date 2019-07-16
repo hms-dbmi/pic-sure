@@ -19,7 +19,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	public final String column_key;
 	public final String description;
 	public boolean isContinuous;
-	public Double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
+	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
 
 	public FileBackedByteIndexedStorage<String, String[]> allValues;
 	public TreeMap<Double, TreeSet<String>> continuousValueMap;
