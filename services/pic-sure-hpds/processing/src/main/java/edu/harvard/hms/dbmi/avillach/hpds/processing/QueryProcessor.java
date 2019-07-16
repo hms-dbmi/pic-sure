@@ -61,7 +61,7 @@ public class QueryProcessor extends AbstractProcessor {
 		int columnCount = paths.size() + 1;
 
 		ArrayList<Integer> columnIndex = useResidentCubesFirst(paths, columnCount);
-		ResultStore results = new ResultStore(result, query.id, paths.stream().map((path)->{
+		ResultStore results = new ResultStore(result.id, query.id, paths.stream().map((path)->{
 			return metaStore.get(path);
 		}).collect(Collectors.toList()), ids);
 

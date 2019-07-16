@@ -20,13 +20,11 @@ public class ResultStore {
 	private List<ColumnMeta> columns;
 	int rowWidth;
 	private int numRows;
-	AsyncResult result;
-
+	
 	private static final ColumnMeta PATIENT_ID_COLUMN_META = new ColumnMeta().setColumnOffset(0).setName("PatientId").setWidthInBytes(Integer.BYTES);
 	byte[] resultArray;
 	
-	public ResultStore(AsyncResult result, String queryId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
-		this.result = result;
+	public ResultStore(String resultId, String queryId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		this.columns = new ArrayList<ColumnMeta>();
 		this.numRows = ids.size();
 		this.getColumns().add(PATIENT_ID_COLUMN_META);
@@ -38,7 +36,7 @@ public class ResultStore {
 		}
 		this.rowWidth = rowWidth;
 		try {
-			log.info("Allocating result array : " + this.result.id + " : " + this.result.retryCount);
+			log.info("Allocating result array : " + resultId);
 			resultArray = new byte[this.rowWidth * this.getNumRows()];
 		} catch(Error e) {
 			throw new NotEnoughMemoryException();			
