@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.DoubleFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 
 public class Query {
 	
@@ -42,10 +43,10 @@ public class Query {
 		}
 		
 		public VariantInfoFilter(VariantInfoFilter filter) {
-			this.numericVariantInfoFilters = new TreeMap<String, DoubleFilter>(filter.numericVariantInfoFilters);
+			this.numericVariantInfoFilters = new TreeMap<String, FloatFilter>(filter.numericVariantInfoFilters);
 			this.categoryVariantInfoFilters = new TreeMap<String, String[]>(filter.categoryVariantInfoFilters);
 		}
-		public Map<String, DoubleFilter> numericVariantInfoFilters;
+		public Map<String, FloatFilter> numericVariantInfoFilters;
 		public Map<String, String[]> categoryVariantInfoFilters;
 	}
 }

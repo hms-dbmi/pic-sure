@@ -38,6 +38,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.DoubleFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -190,10 +191,10 @@ public abstract class AbstractProcessor {
 					});
 				}
 				if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
-					filter.numericVariantInfoFilters.forEach((String column, DoubleFilter doubleFilter)->{
+					filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
 						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
 						doubleFilter.getMax();
-						Range<Double> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
+						Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 						List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
 						TreeSet<String> variants = new TreeSet<String>();
 						for(String value : valuesInRange) {
