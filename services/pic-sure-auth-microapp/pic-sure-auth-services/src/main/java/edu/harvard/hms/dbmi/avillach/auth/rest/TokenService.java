@@ -223,7 +223,7 @@ public class TokenService {
 		} else if (user != null
 				&& user.getRoles() != null
 				&& (application.getPrivileges().isEmpty() || ! user.getPrivilegeNameSetByApplication(application).isEmpty())
-				&& authorizationService.isAuthorized(application.getName(), inputMap.get("request"), user.getUuid())) {
+				&& authorizationService.isAuthorized(application, inputMap.get("request"), user.getUuid())) {
 			isAuthorizationPassed = true;
 		} else {
 			errorMsg = "User doesn't have enough privileges.";

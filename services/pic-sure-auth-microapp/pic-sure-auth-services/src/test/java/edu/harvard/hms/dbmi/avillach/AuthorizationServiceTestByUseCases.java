@@ -55,7 +55,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
     private static AccessRule AR_ExpectedResultType_String_contains;
 
 
-    private static String sample_caseAB_pass = "{\n" +
+    public static String sample_caseAB_pass = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -76,7 +76,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseAB_fail = "{\n" +
+    public static String sample_caseAB_fail = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\laboratory\\\\SEX\\\\\": [\n" +
@@ -97,7 +97,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseCD_pass = "{\n" +
+    public static String sample_caseCD_pass = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -118,7 +118,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseCD_fail = "{\n" +
+    public static String sample_caseCD_fail = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -141,7 +141,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseCD_fail_2 = "{\n" +
+    public static String sample_caseCD_fail_2 = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\laboratory\\\\SEX\\\\\": [\n" +
@@ -162,7 +162,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseE_pass = "{\n" +
+    public static String sample_caseE_pass = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -183,7 +183,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseE_2_pass = "{\n" +
+    public static String sample_caseE_2_pass = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -204,7 +204,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseE_fail = "{\n" +
+    public static String sample_caseE_fail = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -226,7 +226,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseE_2_fail = "{\n" +
+    public static String sample_caseE_2_fail = "{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -250,7 +250,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_pass = "{\n" +
+    public static String sample_caseF_pass = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
@@ -276,7 +276,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_fail = "{\n" +
+    public static String sample_caseF_fail = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
@@ -305,7 +305,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_fail_2 = "{\n" +
+    public static String sample_caseF_fail_2 = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
@@ -321,7 +321,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_fail_3 = "{\n" +
+    public static String sample_caseF_fail_3 = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
@@ -347,7 +347,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_fail_4 = "{\n" +
+    public static String sample_caseF_fail_4 = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
@@ -374,7 +374,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  \"resourceCredentials\": {}\n" +
             "}";
 
-    private static String sample_caseF_fail_5 = "{\n" +
+    public static String sample_caseF_fail_5 = "{\n" +
             "  \"resourceUUID\": \"8e8c7ed0-87ea-4342-b8da-f939e46bac26\",\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +

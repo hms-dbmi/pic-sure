@@ -4,10 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
-import javax.persistence.Entity;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
+import javax.persistence.*;
 import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -34,7 +33,7 @@ public class AccessRule extends BaseEntity {
         public static final int ALL_REG_MATCH = 11;
         public static final int ARRAY_REG_MATCH = 12;
         public static final int IS_EMPTY = 13;
-
+        public static final int IS_NOT_EMPTY = 14;
 
         public static Map<String, Integer> getTypeNameMap(){
             Map<String, Integer> map = new LinkedHashMap<>();
@@ -78,8 +77,18 @@ public class AccessRule extends BaseEntity {
      */
     private String value;
 
-    @ManyToOne
-    private AccessRule gateParent;
+    /**
+     * only inner use for merge accessRule
+     * This field should neither be saved to database
+     * nor seen by a user
+     */
+    @JsonIgnore
+    @Transient
+    private Set<String> mergedValues = new HashSet<>();
+
+    @JsonIgnore
+    @Transient
+    private String mergedName = "";
 
     /**
      * Guideline of using gates: if null or empty, will skip checking gate
@@ -87,7 +96,10 @@ public class AccessRule extends BaseEntity {
      * which means if only part of the gate set is passed, the gate still
      * not passed
      */
-    @OneToMany(mappedBy = "gateParent")
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "accessRule_gate",
+            joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false, updatable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false, updatable = false)})
     private Set<AccessRule> gates;
 
     @ManyToOne
@@ -154,16 +166,6 @@ public class AccessRule extends BaseEntity {
     }
 
     @JsonIgnore
-    public AccessRule getGateParent() {
-        return gateParent;
-    }
-
-    @JsonProperty("gateParent")
-    public void setGateParent(AccessRule gateParent) {
-        this.gateParent = gateParent;
-    }
-
-    @JsonIgnore
     public AccessRule getSubAccessRuleParent() {
         return subAccessRuleParent;
     }
@@ -203,6 +205,22 @@ public class AccessRule extends BaseEntity {
 
     public void setCheckMapKeyOnly(Boolean checkMapKeyOnly) {
         this.checkMapKeyOnly = checkMapKeyOnly;
+    }
+
+    public Set<String> getMergedValues() {
+        return mergedValues;
+    }
+
+    public void setMergedValues(Set<String> mergedValues) {
+        this.mergedValues = mergedValues;
+    }
+
+    public String getMergedName() {
+        return mergedName;
+    }
+
+    public void setMergedName(String mergedName) {
+        this.mergedName = mergedName;
     }
 
     public String toString() {
