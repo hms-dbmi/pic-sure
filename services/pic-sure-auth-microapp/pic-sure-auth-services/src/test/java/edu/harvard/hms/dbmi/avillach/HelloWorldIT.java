@@ -1,12 +1,7 @@
 package edu.harvard.hms.dbmi.avillach;
 
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.Map;
 
 public class HelloWorldIT {
     private static String endpointUrl;
@@ -20,7 +15,8 @@ public class HelloWorldIT {
 
     @Test
     public void testPing() throws Exception {
-
+        String s = "1,111111,A,G";
+        System.out.println(s.matches("^\\d,\\d+,[ACGT],[ACGT]$"));
     }
 
     @Test

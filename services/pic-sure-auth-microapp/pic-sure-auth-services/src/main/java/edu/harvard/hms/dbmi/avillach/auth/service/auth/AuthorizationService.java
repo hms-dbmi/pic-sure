@@ -262,9 +262,10 @@ public class AuthorizationService {
     /**
      * inside one accessRule, it might contain a set of gates and a set of subAccessRule.
      * <br>
-     * Gates are AND relationship, and are the first parts to be checked. If all the gates are passed,
-     * it will start to check the rules. All rules are AND relationship.
-     *
+     * The default relationship between gates are AND. Gates are the first parts to be checked. If all the gates are passed,
+     * it will start to check the rules. But relationship between gates could be set to OR.
+     * <br>
+     * All rules (rules and subAccessRules) under one accessRule are AND relationship .
      *
      * @param parsedRequestBody
      * @param accessRule
@@ -274,20 +275,41 @@ public class AuthorizationService {
 
 		Set<AccessRule> gates = accessRule.getGates();
 
-		boolean applyGate = false;
+		boolean gatesPassed = true;
 
-		// check every each gate first to see if gate will be apply
+		// depends on the flag isGateAnyRelation is true or false,
+        // the logic of checking if apply gate will be changed
+        // the following cases are gate passed:
+        // 1. if gates are null or empty
+        // 2. if isGateAnyRelation is false, all gates passed
+        // 3. if isGateAnyRelation is true, one of the gate passed
 		if (gates != null && !gates.isEmpty()) {
-            applyGate = true;
-			for (AccessRule gate : gates){
-			    if (!extractAndCheckRule(gate, parsedRequestBody)){
-			        applyGate = false;
-			        break;
+		    if (accessRule.isGateAnyRelation() == false) {
+
+		        // All gates are AND relationship
+                // means one fails all fail
+                for (AccessRule gate : gates){
+                    if (!extractAndCheckRule(gate, parsedRequestBody)){
+                        gatesPassed = false;
+                        break;
+                    }
                 }
-			}
+            } else {
+
+		        // All gates are OR relationship
+                // means one passes all pass
+		        gatesPassed = false;
+                for (AccessRule gate : gates){
+                    if (extractAndCheckRule(gate, parsedRequestBody)){
+                        gatesPassed = true;
+                        break;
+                    }
+                }
+            }
+
 		}
 
-        if (gates == null || gates.isEmpty() || applyGate) {
+        if (gatesPassed) {
             if (extractAndCheckRule(accessRule, parsedRequestBody) == false)
                 return false;
             else {
@@ -306,6 +328,9 @@ public class AuthorizationService {
     /**
      * This function does two parts: extract the value from current node, then
      * call the evaluateNode() to check if it passed or not
+     *
+     * <br>
+     * Note: if rule is empty, the
      *
      * @param accessRule
      * @param parsedRequestBody
@@ -383,9 +408,9 @@ public class AuthorizationService {
             return decisionMaker(accessRule, (String)requestBodyValue);
         } else if (requestBodyValue instanceof Collection) {
             switch (accessRule.getType()){
-                case (AccessRule.TypeNaming.ARRAY_EQUALS):
-                case (AccessRule.TypeNaming.ARRAY_CONTAINS):
-                case(AccessRule.TypeNaming.ARRAY_REG_MATCH):
+                case (AccessRule.TypeNaming.ANY_EQUALS):
+                case (AccessRule.TypeNaming.ANY_CONTAINS):
+                case(AccessRule.TypeNaming.ANY_REG_MATCH):
                     for (Object item : (Collection)requestBodyValue) {
                         if (item instanceof String){
                             if (decisionMaker(accessRule, (String)item)){
@@ -430,9 +455,9 @@ public class AuthorizationService {
             }
         } else if (accessRule.getCheckMapNode() != null && accessRule.getCheckMapNode() && requestBodyValue instanceof Map) {
             switch (accessRule.getType()) {
-                case (AccessRule.TypeNaming.ARRAY_EQUALS):
-                case (AccessRule.TypeNaming.ARRAY_CONTAINS):
-                case(AccessRule.TypeNaming.ARRAY_REG_MATCH):
+                case (AccessRule.TypeNaming.ANY_EQUALS):
+                case (AccessRule.TypeNaming.ANY_CONTAINS):
+                case(AccessRule.TypeNaming.ANY_REG_MATCH):
                     for (Map.Entry entry : ((Map<String, Object>) requestBodyValue).entrySet()){
                         if (decisionMaker(accessRule, (String) entry.getKey()))
                             return true;
@@ -555,14 +580,14 @@ public class AuthorizationService {
                     return true;
                 else
                     return false;
-            case(AccessRule.TypeNaming.ARRAY_EQUALS):
+            case(AccessRule.TypeNaming.ANY_EQUALS):
             case(AccessRule.TypeNaming.ALL_EQUALS):
                 if (value.equals(requestBodyValue))
                     return true;
                 else
                     return false;
             case(AccessRule.TypeNaming.ALL_CONTAINS):
-            case(AccessRule.TypeNaming.ARRAY_CONTAINS):
+            case(AccessRule.TypeNaming.ANY_CONTAINS):
                 if (requestBodyValue.contains(value))
                     return true;
                 else
@@ -583,7 +608,7 @@ public class AuthorizationService {
                 else
                     return false;
             case(AccessRule.TypeNaming.ALL_REG_MATCH):
-            case(AccessRule.TypeNaming.ARRAY_REG_MATCH):
+            case(AccessRule.TypeNaming.ANY_REG_MATCH):
                 if (requestBodyValue.matches(value))
                     return true;
                 else

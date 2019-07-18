@@ -435,7 +435,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseB = new AccessRule();
         rule_caseB.setName("rule_caseB");
         rule_caseB.setRule("$..*");
-        rule_caseB.setType(AccessRule.TypeNaming.ARRAY_CONTAINS);
+        rule_caseB.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         rule_caseB.setValue("\\demographics\\");
 
         AccessRule rule_caseB_sub = new AccessRule();
@@ -565,7 +565,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         AccessRule rule_caseE_gate = new AccessRule();
         rule_caseE_gate.setName("rule_caseE_gate");
         rule_caseE_gate.setRule("$..*");
-        rule_caseE_gate.setType(AccessRule.TypeNaming.ARRAY_CONTAINS);
+        rule_caseE_gate.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         rule_caseE_gate.setValue("\\laboratory\\");
         rule_caseE_gate.setCheckMapNode(true);
         Set<AccessRule> rule_caseE_gates = new HashSet<>();
@@ -581,7 +581,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         AccessRule rule_caseE_2_gate = new AccessRule();
         rule_caseE_2_gate.setName("rule_caseE_2_gate");
         rule_caseE_2_gate.setRule("$..*");
-        rule_caseE_2_gate.setType(AccessRule.TypeNaming.ARRAY_CONTAINS);
+        rule_caseE_2_gate.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         rule_caseE_2_gate.setValue("\\examination\\");
         rule_caseE_2_gate.setCheckMapNode(true);
         Set<AccessRule> rule_caseE_2_gates = new HashSet<>();
@@ -604,7 +604,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseF = new AccessRule();
         rule_caseF.setName("rule_caseF");
         rule_caseF.setRule("$.query");
-        rule_caseF.setType(AccessRule.TypeNaming.ARRAY_CONTAINS);
+        rule_caseF.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         rule_caseF.setValue("variantInfoFilters");
         rule_caseF.setCheckMapNode(true);
         rule_caseF.setCheckMapKeyOnly(true);

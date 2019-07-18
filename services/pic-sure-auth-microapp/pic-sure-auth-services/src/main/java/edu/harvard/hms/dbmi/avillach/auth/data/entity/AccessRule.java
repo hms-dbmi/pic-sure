@@ -26,12 +26,12 @@ public class AccessRule extends BaseEntity {
         public static final int ALL_EQUALS = 4;
         public static final int ALL_CONTAINS = 5;
         public static final int ALL_CONTAINS_IGNORE_CASE = 6;
-        public static final int ARRAY_CONTAINS = 7;
+        public static final int ANY_CONTAINS = 7;
         public static final int NOT_EQUALS_IGNORE_CASE = 8;
         public static final int ALL_EQUALS_IGNORE_CASE = 9;
-        public static final int ARRAY_EQUALS = 10;
+        public static final int ANY_EQUALS = 10;
         public static final int ALL_REG_MATCH = 11;
-        public static final int ARRAY_REG_MATCH = 12;
+        public static final int ANY_REG_MATCH = 12;
         public static final int IS_EMPTY = 13;
         public static final int IS_NOT_EMPTY = 14;
 
@@ -101,6 +101,13 @@ public class AccessRule extends BaseEntity {
             joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false, updatable = false)},
             inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false, updatable = false)})
     private Set<AccessRule> gates;
+
+    /**
+     * this attribute is for determining the relationship between gates
+     * the default value is false, means gates are AND relationship,
+     * meaning all gates need to be passed to check the actual rules
+     */
+    private boolean isGateAnyRelation = false;
 
     @ManyToOne
     private AccessRule subAccessRuleParent;
@@ -221,6 +228,14 @@ public class AccessRule extends BaseEntity {
 
     public void setMergedName(String mergedName) {
         this.mergedName = mergedName;
+    }
+
+    public boolean isGateAnyRelation() {
+        return isGateAnyRelation;
+    }
+
+    public void setGateAnyRelation(boolean gateAnyRelation) {
+        isGateAnyRelation = gateAnyRelation;
     }
 
     public String toString() {

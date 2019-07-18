@@ -134,7 +134,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         AR_CategoryFilter_Array_Contains = new AccessRule();
         AR_CategoryFilter_Array_Contains.setName("AR_CategoryFilter");
         AR_CategoryFilter_Array_Contains.setRule("$.queries..fields.*");
-        AR_CategoryFilter_Array_Contains.setType(AccessRule.TypeNaming.ARRAY_CONTAINS);
+        AR_CategoryFilter_Array_Contains.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         AR_CategoryFilter_Array_Contains.setValue("\\demographics\\SEX\\");
 
 

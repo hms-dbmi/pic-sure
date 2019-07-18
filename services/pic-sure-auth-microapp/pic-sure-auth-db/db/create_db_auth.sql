@@ -173,7 +173,7 @@ CREATE TABLE `access_rule` (
   `subAccessRuleParent_uuid` binary(16) DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   KEY `FK8rovvx363ui99ce21sksmg6uy` (`subAccessRuleParent_uuid`),
-  CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`),
+  CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE TABLE `accessRule_privilege` (
