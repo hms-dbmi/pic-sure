@@ -100,7 +100,7 @@ public class AccessRule extends BaseEntity {
     @JoinTable(name = "accessRule_gate",
             joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false, updatable = false)},
             inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false, updatable = false)})
-    private Set<AccessRule> gates;
+    private Set<AccessRule> gates = new HashSet<>();
 
     /**
      * this attribute is for determining the relationship between gates
@@ -116,7 +116,7 @@ public class AccessRule extends BaseEntity {
      * introduce sub-accessRule to enable the ability of more complex problem
      */
     @OneToMany(mappedBy = "subAccessRuleParent")
-    private Set<AccessRule> subAccessRule;
+    private Set<AccessRule> subAccessRule = new HashSet<>();
 
     /**
      * NOTICE: please don't change this back to boolean
