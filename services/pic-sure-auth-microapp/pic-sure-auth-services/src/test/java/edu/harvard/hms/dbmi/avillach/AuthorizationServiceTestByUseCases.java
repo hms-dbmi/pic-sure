@@ -11,10 +11,11 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
- * <p>This is a test class from the view of high level use cases</p>
- *
+ * <p>This is a test class from the view of high level use cases (user input aspect)</p>
+ * <br>
  * <p>This class should contain the following use cases:</p>
  * <ul>
  *    <li>A: Level 1 users must not include DATAFRAME as expectedResultType
@@ -33,6 +34,8 @@ import java.util.Set;
  *           <br><b>This is the authentication only variant search functionality.</b> </li>
  * </ul>
  *
+ * We also have a class testing from the aspect of design, which means each test case is just testing one feature.
+ * @see AuthorizationServiceTest
  */
 public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
@@ -418,6 +421,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseA(){
         rule_caseA = new AccessRule();
+        rule_caseA.setUuid(UUID.randomUUID());
         rule_caseA.setType(AccessRule.TypeNaming.NOT_CONTAINS_IGNORE_CASE);
         rule_caseA.setName("rule_caseA");
         rule_caseA.setRule("$..expectedResultType");
@@ -433,12 +437,14 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseB(){
         rule_caseB = new AccessRule();
+        rule_caseB.setUuid(UUID.randomUUID());
         rule_caseB.setName("rule_caseB");
         rule_caseB.setRule("$..*");
         rule_caseB.setType(AccessRule.TypeNaming.ANY_CONTAINS);
         rule_caseB.setValue("\\demographics\\");
 
         AccessRule rule_caseB_sub = new AccessRule();
+        rule_caseB_sub.setUuid(UUID.randomUUID());
         rule_caseB_sub.setName("rule_caseB_sub");
         rule_caseB_sub.setRule("$..*");
         rule_caseB_sub.setType(AccessRule.TypeNaming.NOT_CONTAINS_IGNORE_CASE);
@@ -458,6 +464,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseC(){
         rule_caseC = new AccessRule();
+        rule_caseC.setUuid(UUID.randomUUID());
         rule_caseC.setName("rule_caseC");
 
 //        AccessRule rule_caseC_gate = new AccessRule();
@@ -467,6 +474,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 //        rule_caseC_gate.setValue("COUNT");
 
         AccessRule rule_caseC_gate2 = new AccessRule();
+        rule_caseC_gate2.setUuid(UUID.randomUUID());
         rule_caseC_gate2.setName("rule_caseC_gate2");
         rule_caseC_gate2.setRule("$.query.expectedResultType");
         rule_caseC_gate2.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
@@ -478,6 +486,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseC.setGates(rule_caseC_gates);
 
         AccessRule rule_caseC_subRule = new AccessRule();
+        rule_caseC_subRule.setUuid(UUID.randomUUID());
         rule_caseC_subRule.setName("rule_caseC_subRule");
         rule_caseC_subRule.setRule("$.query.categoryFilters");
         rule_caseC_subRule.setCheckMapNode(true);
@@ -489,6 +498,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseC.setSubAccessRule(rule_caseC_subRules);
 
         AccessRule rule_caseC_subRule2 = new AccessRule();
+        rule_caseC_subRule2.setUuid(UUID.randomUUID());
         rule_caseC_subRule2.setName("rule_caseC_subRule");
         rule_caseC_subRule2.setRule("$.query.requiredFields");
         rule_caseC_subRule2.setCheckMapNode(true);
@@ -498,6 +508,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseC_subRules.add(rule_caseC_subRule2);
 
         AccessRule rule_caseC_subRule3 = new AccessRule();
+        rule_caseC_subRule3.setUuid(UUID.randomUUID());
         rule_caseC_subRule3.setName("rule_caseC_subRule");
         rule_caseC_subRule3.setRule("$.query.fields");
         rule_caseC_subRule3.setCheckMapNode(true);
@@ -516,12 +527,14 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseD(){
         rule_caseD = new AccessRule();
+        rule_caseD.setUuid(UUID.randomUUID());
         rule_caseD.setName("rule_caseD");
         rule_caseD.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
         rule_caseD.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseD.setValue("male");
 
         AccessRule rule_caseD_gate = new AccessRule();
+        rule_caseD_gate.setUuid(UUID.randomUUID());
         rule_caseD_gate.setName("rule_caseD_gate");
         rule_caseD_gate.setRule("$.query.expectedResultType");
         rule_caseD_gate.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
@@ -557,12 +570,14 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseE(){
         rule_caseE = new AccessRule();
+        rule_caseE.setUuid(UUID.randomUUID());
         rule_caseE.setName("rule_caseE");
         rule_caseE.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
         rule_caseE.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseE.setValue("male");
 
         AccessRule rule_caseE_gate = new AccessRule();
+        rule_caseE_gate.setUuid(UUID.randomUUID());
         rule_caseE_gate.setName("rule_caseE_gate");
         rule_caseE_gate.setRule("$..*");
         rule_caseE_gate.setType(AccessRule.TypeNaming.ANY_CONTAINS);
@@ -573,12 +588,14 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseE.setGates(rule_caseE_gates);
 
         rule_caseE_2 = new AccessRule();
+        rule_caseE_2.setUuid(UUID.randomUUID());
         rule_caseE_2.setName("rule_caseE_2");
         rule_caseE_2.setRule("$.query.categoryFilters.\\demographics\\SEX\\");
         rule_caseE_2.setType(AccessRule.TypeNaming.ALL_EQUALS);
         rule_caseE_2.setValue("female");
 
         AccessRule rule_caseE_2_gate = new AccessRule();
+        rule_caseE_2_gate.setUuid(UUID.randomUUID());
         rule_caseE_2_gate.setName("rule_caseE_2_gate");
         rule_caseE_2_gate.setRule("$..*");
         rule_caseE_2_gate.setType(AccessRule.TypeNaming.ANY_CONTAINS);
@@ -602,6 +619,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
     private static void initialTestCaseF(){
         rule_caseF = new AccessRule();
+        rule_caseF.setUuid(UUID.randomUUID());
         rule_caseF.setName("rule_caseF");
         rule_caseF.setRule("$.query");
         rule_caseF.setType(AccessRule.TypeNaming.ANY_CONTAINS);
@@ -612,6 +630,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseF.setSubAccessRule(rule_caseF_subRules);
 
         AccessRule rule_caseF_subRule = new AccessRule();
+        rule_caseF_subRule.setUuid(UUID.randomUUID());
         rule_caseF_subRule.setName("rule_caseF_subRule");
         rule_caseF_subRule.setRule("$.query.categoryFilters");
         rule_caseF_subRule.setCheckMapNode(true);
@@ -622,6 +641,7 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
 
 
         AccessRule rule_caseF_subRule_2 = new AccessRule();
+        rule_caseF_subRule_2.setUuid(UUID.randomUUID());
         rule_caseF_subRule_2.setName("rule_caseF_subRule_2");
         rule_caseF_subRule_2.setRule("$.query.expectedResultType");
         rule_caseF_subRule_2.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
@@ -629,12 +649,14 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseF_subRules.add(rule_caseF_subRule_2);
 
         AccessRule rule_caseF_subRule_3 = new AccessRule();
+        rule_caseF_subRule_3.setUuid(UUID.randomUUID());
         rule_caseF_subRule_3.setName("rule_caseF_subRule_3");
         rule_caseF_subRule_3.setRule("$.query.numericFilters");
         rule_caseF_subRule_3.setType(AccessRule.TypeNaming.IS_EMPTY);
         rule_caseF_subRules.add(rule_caseF_subRule_3);
 
         AccessRule rule_caseF_subRule_4 = new AccessRule();
+        rule_caseF_subRule_4.setUuid(UUID.randomUUID());
         rule_caseF_subRule_4.setName("rule_caseF_subRule_4");
         rule_caseF_subRule_4.setRule("$.query.requiredFields");
         rule_caseF_subRule_4.setType(AccessRule.TypeNaming.IS_EMPTY);

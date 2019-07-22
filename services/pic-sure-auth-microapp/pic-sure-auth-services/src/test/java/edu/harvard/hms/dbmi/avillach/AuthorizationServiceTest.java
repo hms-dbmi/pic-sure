@@ -14,7 +14,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * This test class is from the aspect of features in the code
+ * This test class is from the aspect of features provided in the design, not from the the aspect of user input,
+ * which means the each test case is testing each feature. If from aspect of user input, one test case might contain
+ * a bunch of features.
+ *
+ * We also have a class is testing from the aspect of user input, which is also very useful, because user input tests are very
+ * similar to real use cases.
+ *
+ * @see AuthorizationServiceTestByUseCases
  */
 public class AuthorizationServiceTest extends AuthorizationService{
 
@@ -23,7 +30,9 @@ public class AuthorizationServiceTest extends AuthorizationService{
 
 
     private static AccessRule GATE_resouceUUID;
-    private static AccessRule GATE_2;
+    private static AccessRule GATE_has_expectedResultType;
+    private static AccessRule GATE_has_categoryFilters;
+    private static AccessRule GATE_has_requiredFields;
 
     private static AccessRule AR_CategoryFilter_String_contains;
     private static AccessRule AR_CategoryFilter_Any_Contains;
@@ -35,27 +44,29 @@ public class AuthorizationServiceTest extends AuthorizationService{
 
     private static String sample_matchGate = "{\"queries\":[{\"resourceUUID\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\"query\":{\"expectedResultType\":\"DATAFRAME\"}}]}";
 
-    private static String sample_passGate = "{\"queries\":[{\n" +
-        "  \"query\": {\n" +
-        "    \"categoryFilters\": {\n" +
-        "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
-        "        \"male\"\n" +
-        "      ]\n" +
-        "    },\n" +
-        "    \"numericFilters\": {},\n" +
-        "    \"requiredFields\": [\n" +
-        "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-        "    ],\n" +
-        "    \"expectedResultType\": \"DATAFRAME\",\n" +
-        "    \"fields\": [\n" +
-        "      \"\\\\demographics\\\\SEX\\\\\",\n" +
-        "      \"\\\\demographics\\\\AGE\\\\\"\n" +
-        "    ]\n" +
-        "  },\n" +
-        "  \"resourceUUID\": \"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\n" +
-        "  \"resourceCredentials\": {}\n" +
-        "}]\n" +
-        "}";
+    private static String sample_gates_all_any = "{\"queries\":" +
+            "[" +
+            "{\"resourceUUID\":\"8694e3d4-5cb4-410f-8431-993445e6d3f6\"" +
+            "}]}";
+
+    private static String sample_nestedGates = "{\"queries\":[{\n" +
+            "  \"query\": {\n" +
+            "    \"categoryFilters\": {\n" +
+            "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
+            "        \"male\"\n" +
+            "      ]\n" +
+            "    },\n" +
+            "    \"numericFilters\": {},\n" +
+            "    \"expectedResultType\": \"DATAFRAME\",\n" +
+            "    \"fields\": [\n" +
+            "      \"\\\\demographics\\\\SEX\\\\\",\n" +
+            "      \"\\\\demographics\\\\AGE\\\\\"\n" +
+            "    ]\n" +
+            "  },\n" +
+            "  \"resourceUUID\": \"8694e3d4-5cb4-410f-8431-993445e6d3f6\",\n" +
+            "  \"resourceCredentials\": {}\n" +
+            "}]\n" +
+            "}";
 
     private static String getSample_passGate_passCheck_array_contains = "{\"queries\":[{\n" +
             "  \"query\": {\n" +
@@ -144,7 +155,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         "}]\n" +
         "}";
 
-    private static String sample_UUID_8694e3d4_withFields_SEE_AGE_SEX = "{\"queries\":[{\n" +
+    private static String sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX = "{\"queries\":[{\n" +
             "  \"query\": {\n" +
             "    \"categoryFilters\": {\n" +
             "      \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -214,6 +225,33 @@ public class AuthorizationServiceTest extends AuthorizationService{
         GATE_resouceUUID.setRule("$.queries..resourceUUID");
         GATE_resouceUUID.setValue("8694e3d4-5cb4-410f-8431-993445e6d3f6");
 
+        GATE_has_expectedResultType = new AccessRule();
+        GATE_has_expectedResultType.setUuid(UUID.randomUUID());
+        GATE_has_expectedResultType.setType(AccessRule.TypeNaming.ANY_CONTAINS);
+        GATE_has_expectedResultType.setName("GATE_has_expectedResultType");
+        GATE_has_expectedResultType.setRule("$.queries..query");
+        GATE_has_expectedResultType.setValue("expectedResultType");
+        GATE_has_expectedResultType.setCheckMapNode(true);
+        GATE_has_expectedResultType.setCheckMapKeyOnly(true);
+
+        GATE_has_categoryFilters = new AccessRule();
+        GATE_has_categoryFilters.setUuid(UUID.randomUUID());
+        GATE_has_categoryFilters.setType(AccessRule.TypeNaming.ANY_CONTAINS);
+        GATE_has_categoryFilters.setName("GATE_has_categoryFilters");
+        GATE_has_categoryFilters.setRule("$.queries..query");
+        GATE_has_categoryFilters.setValue("categoryFilters");
+        GATE_has_categoryFilters.setCheckMapNode(true);
+        GATE_has_categoryFilters.setCheckMapKeyOnly(true);
+
+        GATE_has_requiredFields = new AccessRule();
+        GATE_has_requiredFields.setUuid(UUID.randomUUID());
+        GATE_has_requiredFields.setType(AccessRule.TypeNaming.ANY_CONTAINS);
+        GATE_has_requiredFields.setName("GATE_has_requiredFields");
+        GATE_has_requiredFields.setRule("$.queries..query");
+        GATE_has_requiredFields.setValue("requiredFields");
+        GATE_has_requiredFields.setCheckMapNode(true);
+        GATE_has_requiredFields.setCheckMapKeyOnly(true);
+
         AR_CategoryFilter_String_contains = new AccessRule();
         AR_CategoryFilter_String_contains.setUuid(UUID.randomUUID());
         AR_CategoryFilter_String_contains.setName("AR_CategoryFilter");
@@ -262,9 +300,10 @@ public class AuthorizationServiceTest extends AuthorizationService{
     }
 
     @Test
-    public void testGate_resourceUUID() throws IOException {
+    public void testGates() throws IOException {
 
         Assert.assertTrue(checkAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_resouceUUID));
+        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_has_expectedResultType));
 
     }
 
@@ -334,7 +373,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Assert.assertTrue(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEX_And_AGE, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEE_AGE_SEX, Map.class),
+        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class),
@@ -356,5 +395,56 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_NOT_EMPTY));
     }
 
+    /**
+     * testing gates combination either all or any
+     * @throws IOException
+     */
+    @Test
+    public void testGatesAllorAny() throws IOException{
+        AccessRule accessRuleGatesAllAny = new AccessRule();
+        accessRuleGatesAllAny.setUuid(UUID.randomUUID());
+        accessRuleGatesAllAny.setRule("$.queries..query.categoryFilter");
+        accessRuleGatesAllAny.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
+        accessRuleGatesAllAny.getGates().add(GATE_resouceUUID);
+        accessRuleGatesAllAny.getGates().add(GATE_has_expectedResultType);
+
+        // default is false, for testing, we explicitly set it here just for fluently reading code
+        accessRuleGatesAllAny.setGateAnyRelation(false);
+        // Since does not enter the gate, the rule is not valuated, so return true. Because the flag is false, both gates need to be passed.
+        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+
+        accessRuleGatesAllAny.setGateAnyRelation(true);
+        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+
+    }
+
+    /**
+     * testing gates combination nested all and any
+     * @throws IOException
+     */
+    @Test
+    public void testGateNestedAllorAny() throws IOException {
+        AccessRule accessRuleGatesAllandAny = new AccessRule();
+        accessRuleGatesAllandAny.setUuid(UUID.randomUUID());
+        accessRuleGatesAllandAny.setRule("$.queries..query.numericFilters.*");
+        accessRuleGatesAllandAny.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
+
+        // the relationship of the nestedGate here is
+        // GATE_resouceUUID && GATE_has_expectedResultType && (GATE_has_categoryFilters || GATE_has_requiredFields)
+        AccessRule orGate = new AccessRule();
+        orGate.setUuid(UUID.randomUUID());
+        orGate.setGateAnyRelation(true);
+        orGate.setName("Gate_OR_for_GATE_has_categoryFilters_GATE_has_requiredFields");
+        orGate.getGates().add(GATE_has_requiredFields);
+        orGate.getGates().add(GATE_has_categoryFilters);
+        orGate.setEvaluateOnlyByGates(true);
+
+        accessRuleGatesAllandAny.getGates().add(orGate);
+        accessRuleGatesAllandAny.getGates().add(GATE_resouceUUID);
+        accessRuleGatesAllandAny.getGates().add(GATE_has_expectedResultType);
+
+        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
+
+    }
 
 }

@@ -11,12 +11,34 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * <p>
+ * <h3>Thoughts of design:</h3> the AccessRule is designed to fulfilled the requirements
+ * of complicated scenarios that includes AND/OR or nested AND/OR cases of jsonPath authorization
+ *</p>
+ * <br>
+ * <br>
+ * <b>Explanation on several attributes</b>:
+ *     <li><b>checkMapNode</b> - after retrieving the value by jsonPath rule, if the value is a map,
+ *     this flag will let the evaluation go through all the map nodes and their children nodes</li>
+ *     <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will
+ *     let the evaluation only check the key of current map node, it will stop the evaluation to go into
+ *     the children nodes</li>
+ *     <li><b>isGateAnyRelation</b> - true: gates are evaluated as ANY relationship, false: gates are evaluated as AND relationship</li>
+ *     <li><b>isEvaluateOnlyByGates</b> - this flag means no matter what rules and values are set,
+ *     the evaluation will based on whether the gates are passed or not, which means if gates are passed,
+ *     then evaluation result is true, not passed, return false. The use case for this flag is sometimes, we
+ *     need to meet the requirements of some nested AND/OR gates like gateA && gateB && (gateC || gateD),
+ *     in this example, (gateC || gateD) has to be together in a gate and not evaluate by the values and rules</li>
+ *
+ */
 @Entity(name = "access_rule")
 public class AccessRule extends BaseEntity {
 
     /**
      * please do not modify the existing values, in case the value has
-     * already saved in the database. But you can add more constant values
+     * already saved in the database. But you can add more constant values, or
+     * update the keys.
      */
     public static class TypeNaming {
 //        public static final int CONTAINS = 0;
@@ -109,6 +131,12 @@ public class AccessRule extends BaseEntity {
      */
     private boolean isGateAnyRelation = false;
 
+    /**
+     * this attribute is to tell if the accessRule passes only based on
+     * the gates passes or not
+     */
+    private boolean isEvaluateOnlyByGates = false;
+
     @ManyToOne
     private AccessRule subAccessRuleParent;
 
@@ -188,6 +216,14 @@ public class AccessRule extends BaseEntity {
 
     public void setGates(Set<AccessRule> gates) {
         this.gates = gates;
+    }
+
+    public boolean isEvaluateOnlyByGates() {
+        return isEvaluateOnlyByGates;
+    }
+
+    public void setEvaluateOnlyByGates(boolean evaluateOnlyByGates) {
+        this.isEvaluateOnlyByGates = evaluateOnlyByGates;
     }
 
     public Set<AccessRule> getSubAccessRule() {

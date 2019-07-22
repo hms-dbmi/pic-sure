@@ -289,7 +289,7 @@ public class AuthorizationService {
 		        // All gates are AND relationship
                 // means one fails all fail
                 for (AccessRule gate : gates){
-                    if (!extractAndCheckRule(gate, parsedRequestBody)){
+                    if (!checkAccessRule(parsedRequestBody, gate)){
                         gatesPassed = false;
                         break;
                     }
@@ -300,7 +300,7 @@ public class AuthorizationService {
                 // means one passes all pass
 		        gatesPassed = false;
                 for (AccessRule gate : gates){
-                    if (extractAndCheckRule(gate, parsedRequestBody)){
+                    if (checkAccessRule(parsedRequestBody, gate)){
                         gatesPassed = true;
                         break;
                     }
@@ -308,6 +308,11 @@ public class AuthorizationService {
             }
 
 		}
+
+		// the result is based on if gates passed or not
+		if (accessRule.isEvaluateOnlyByGates()){
+		    return gatesPassed;
+        }
 
         if (gatesPassed) {
             if (extractAndCheckRule(accessRule, parsedRequestBody) == false)
@@ -338,7 +343,6 @@ public class AuthorizationService {
      */
 	private boolean extractAndCheckRule(AccessRule accessRule, Object parsedRequestBody){
         String rule = accessRule.getRule();
-        String value = accessRule.getValue();
 
         if (rule == null || rule.isEmpty())
             return true;
