@@ -335,7 +335,7 @@ public class AuthorizationService {
      * call the evaluateNode() to check if it passed or not
      *
      * <br>
-     * Note: if rule is empty, the
+     * Note: if rule is empty, the check will always return true
      *
      * @param accessRule
      * @param parsedRequestBody
