@@ -24,8 +24,8 @@ import java.util.Set;
  *     <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will
  *     let the evaluation only check the key of current map node, it will stop the evaluation to go into
  *     the children nodes</li>
- *     <li><b>isGateAnyRelation</b> - true: gates are evaluated as ANY relationship, false: gates are evaluated as AND relationship</li>
- *     <li><b>isEvaluateOnlyByGates</b> - this flag means no matter what rules and values are set,
+ *     <li><b>gateAnyRelation</b> - true: gates are evaluated as ANY relationship, false: gates are evaluated as AND relationship</li>
+ *     <li><b>evaluateOnlyByGates</b> - this flag means no matter what rules and values are set,
  *     the evaluation will based on whether the gates are passed or not, which means if gates are passed,
  *     then evaluation result is true, not passed, return false. The use case for this flag is sometimes, we
  *     need to meet the requirements of some nested AND/OR gates like gateA && gateB && (gateC || gateD),
@@ -122,20 +122,30 @@ public class AccessRule extends BaseEntity {
     @JoinTable(name = "accessRule_gate",
             joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false, updatable = false)},
             inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false, updatable = false)})
-    private Set<AccessRule> gates = new HashSet<>();
+    private Set<AccessRule> gates;
 
     /**
      * this attribute is for determining the relationship between gates
      * the default value is false, means gates are AND relationship,
      * meaning all gates need to be passed to check the actual rules
+     *
+     * NOTICE: please don't change this back to boolean
+     * we need to support a null input,
+     * otherwise, the update mechanism will be broken
      */
-    private boolean isGateAnyRelation = false;
+    @Column(name = "isGateAnyRelation")
+    private Boolean gateAnyRelation;
 
     /**
      * this attribute is to tell if the accessRule passes only based on
      * the gates passes or not
+     *
+     * NOTICE: please don't change this back to boolean
+     * we need to support a null input,
+     * otherwise, the update mechanism will be broken
      */
-    private boolean isEvaluateOnlyByGates = false;
+    @Column(name = "isEvaluateOnlyByGates")
+    private Boolean evaluateOnlyByGates;
 
     @ManyToOne
     private AccessRule subAccessRuleParent;
@@ -144,7 +154,7 @@ public class AccessRule extends BaseEntity {
      * introduce sub-accessRule to enable the ability of more complex problem
      */
     @OneToMany(mappedBy = "subAccessRuleParent")
-    private Set<AccessRule> subAccessRule = new HashSet<>();
+    private Set<AccessRule> subAccessRule;
 
     /**
      * NOTICE: please don't change this back to boolean
@@ -218,12 +228,12 @@ public class AccessRule extends BaseEntity {
         this.gates = gates;
     }
 
-    public boolean isEvaluateOnlyByGates() {
-        return isEvaluateOnlyByGates;
+    public Boolean getEvaluateOnlyByGates() {
+        return evaluateOnlyByGates;
     }
 
-    public void setEvaluateOnlyByGates(boolean evaluateOnlyByGates) {
-        this.isEvaluateOnlyByGates = evaluateOnlyByGates;
+    public void setEvaluateOnlyByGates(Boolean evaluateOnlyByGates) {
+        this.evaluateOnlyByGates = evaluateOnlyByGates;
     }
 
     public Set<AccessRule> getSubAccessRule() {
@@ -266,12 +276,12 @@ public class AccessRule extends BaseEntity {
         this.mergedName = mergedName;
     }
 
-    public boolean isGateAnyRelation() {
-        return isGateAnyRelation;
+    public Boolean getGateAnyRelation() {
+        return gateAnyRelation;
     }
 
-    public void setGateAnyRelation(boolean gateAnyRelation) {
-        isGateAnyRelation = gateAnyRelation;
+    public void setGateAnyRelation(Boolean gateAnyRelation) {
+        this.gateAnyRelation = gateAnyRelation;
     }
 
     public String toString() {
