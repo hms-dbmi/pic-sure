@@ -171,9 +171,11 @@ CREATE TABLE `access_rule` (
   `checkMapKeyOnly` bit(1) NOT NULL,
   `checkMapNode` bit(1) NOT NULL,
   `subAccessRuleParent_uuid` binary(16) DEFAULT NULL,
+  `isGateAnyRelation` bit(1) NOT NULL,
+  `isEvaluateOnlyByGates` bit(1) NOT NULL,
   PRIMARY KEY (`uuid`),
   KEY `FK8rovvx363ui99ce21sksmg6uy` (`subAccessRuleParent_uuid`),
-  CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`),
+  CONSTRAINT `FK8rovvx363ui99ce21sksmg6uy` FOREIGN KEY (`subAccessRuleParent_uuid`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 CREATE TABLE `accessRule_privilege` (
