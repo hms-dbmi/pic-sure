@@ -179,13 +179,17 @@ public class AuthorizationService {
             keys.add(accessRule.getType().toString());
 
             // all gates' UUID as strings
-            for (AccessRule gate : accessRule.getGates()){
-                keys.add(gate.getUuid().toString());
+            if (accessRule.getGates() != null) {
+                for (AccessRule gate : accessRule.getGates()){
+                    keys.add(gate.getUuid().toString());
+                }
             }
 
             // all sub accessRule rules
-            for (AccessRule subAccessRule : accessRule.getSubAccessRule()){
-                keys.add(subAccessRule.getRule());
+            if (accessRule.getSubAccessRule() != null){
+                for (AccessRule subAccessRule : accessRule.getSubAccessRule()){
+                    keys.add(subAccessRule.getRule());
+                }
             }
 
             // then we combine them together as one string for the key
@@ -247,7 +251,12 @@ public class AuthorizationService {
             return accessRuleToBeMerged;
         }
 
-        baseAccessRule.getSubAccessRule().addAll(accessRuleToBeMerged.getSubAccessRule());
+        if (baseAccessRule.getSubAccessRule()!= null && accessRuleToBeMerged.getSubAccessRule() != null){
+            baseAccessRule.getSubAccessRule().addAll(accessRuleToBeMerged.getSubAccessRule());
+        } else if (baseAccessRule.getSubAccessRule() == null && accessRuleToBeMerged.getSubAccessRule() != null){
+            baseAccessRule.setSubAccessRule(accessRuleToBeMerged.getSubAccessRule());
+        }
+
         baseAccessRule.getMergedValues().add(accessRuleToBeMerged.getValue());
         if (baseAccessRule.getMergedName().startsWith("Merged|")){
             baseAccessRule.setMergedName(baseAccessRule.getMergedName() +"|"+ accessRuleToBeMerged.getName());
@@ -277,14 +286,14 @@ public class AuthorizationService {
 
 		boolean gatesPassed = true;
 
-		// depends on the flag isGateAnyRelation is true or false,
+		// depends on the flag getGateAnyRelation is true or false,
         // the logic of checking if apply gate will be changed
         // the following cases are gate passed:
         // 1. if gates are null or empty
-        // 2. if isGateAnyRelation is false, all gates passed
-        // 3. if isGateAnyRelation is true, one of the gate passed
+        // 2. if getGateAnyRelation is false, all gates passed
+        // 3. if getGateAnyRelation is true, one of the gate passed
 		if (gates != null && !gates.isEmpty()) {
-		    if (accessRule.isGateAnyRelation() == false) {
+		    if (accessRule.getGateAnyRelation() == null || accessRule.getGateAnyRelation() == false) {
 
 		        // All gates are AND relationship
                 // means one fails all fail
@@ -310,7 +319,7 @@ public class AuthorizationService {
 		}
 
 		// the result is based on if gates passed or not
-		if (accessRule.isEvaluateOnlyByGates()){
+		if (accessRule.getEvaluateOnlyByGates() != null && accessRule.getEvaluateOnlyByGates()){
 		    return gatesPassed;
         }
 

@@ -405,8 +405,10 @@ public class AuthorizationServiceTest extends AuthorizationService{
         accessRuleGatesAllAny.setUuid(UUID.randomUUID());
         accessRuleGatesAllAny.setRule("$.queries..query.categoryFilter");
         accessRuleGatesAllAny.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
-        accessRuleGatesAllAny.getGates().add(GATE_resouceUUID);
-        accessRuleGatesAllAny.getGates().add(GATE_has_expectedResultType);
+        Set<AccessRule> gates = new HashSet<>();
+        gates.add(GATE_resouceUUID);
+        gates.add(GATE_has_expectedResultType);
+        accessRuleGatesAllAny.setGates(gates);
 
         // default is false, for testing, we explicitly set it here just for fluently reading code
         accessRuleGatesAllAny.setGateAnyRelation(false);
@@ -435,13 +437,17 @@ public class AuthorizationServiceTest extends AuthorizationService{
         orGate.setUuid(UUID.randomUUID());
         orGate.setGateAnyRelation(true);
         orGate.setName("Gate_OR_for_GATE_has_categoryFilters_GATE_has_requiredFields");
-        orGate.getGates().add(GATE_has_requiredFields);
-        orGate.getGates().add(GATE_has_categoryFilters);
+        Set<AccessRule> gates = new HashSet<>();
+        gates.add(GATE_has_requiredFields);
+        gates.add(GATE_has_categoryFilters);
+        orGate.setGates(gates);
         orGate.setEvaluateOnlyByGates(true);
 
-        accessRuleGatesAllandAny.getGates().add(orGate);
-        accessRuleGatesAllandAny.getGates().add(GATE_resouceUUID);
-        accessRuleGatesAllandAny.getGates().add(GATE_has_expectedResultType);
+        Set<AccessRule> gates2 = new HashSet<>();
+        gates2.add(orGate);
+        gates2.add(GATE_resouceUUID);
+        gates2.add(GATE_has_expectedResultType);
+        accessRuleGatesAllandAny.setGates(gates2);
 
         Assert.assertFalse(checkAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
 
