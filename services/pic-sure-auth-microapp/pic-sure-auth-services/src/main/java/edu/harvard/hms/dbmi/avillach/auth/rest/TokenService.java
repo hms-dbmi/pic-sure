@@ -205,22 +205,27 @@ public class TokenService {
 			return tokenInspection;
 		}
 
-
-
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		//only under certain circumstances, the token will return active
 		boolean isAuthorizationPassed = false;
+        String errorMsg = null;
 		Set<String> privilegeNameSet = null;
 
-		String errorMsg = null;
-		if (isLongTermToken) {
-			// in long_term_token mode, the token needs to be exactly the same as the token in user table\
-			if (token.equals(user.getToken()))
-				isAuthorizationPassed = true;
-			else
-				errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
+		// long term token needs to be the same as the token in the database user table, if
+        // not the token might has been compromised, which will not go through the authorization check
+		boolean isLongTermTokenCompromised = false;
+		if (isLongTermToken && !token.equals(user.getToken())) {
+			// in long_term_token mode, the token needs to be exactly the same as the token in user table
+            isLongTermTokenCompromised = true;
+            errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
+		}
 
-		} else if (user != null
+		// we go through the authorization layer check only if we need to in order to improve the performance
+        // the logic here, if the token associated with a user, we will start the authorization check.
+        // If the current application has at least one privilege, the user must have one privilege associated to the application
+        // pass the accessRule check if there is any accessRules associated with.
+		if (user != null
+                && !isLongTermTokenCompromised
 				&& user.getRoles() != null
 				&& (application.getPrivileges().isEmpty() || ! user.getPrivilegeNameSetByApplication(application).isEmpty())
 				&& authorizationService.isAuthorized(application, inputMap.get("request"), user.getUuid())) {
