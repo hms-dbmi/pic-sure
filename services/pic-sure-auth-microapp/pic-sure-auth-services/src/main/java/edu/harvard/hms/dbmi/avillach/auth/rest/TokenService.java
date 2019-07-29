@@ -213,17 +213,20 @@ public class TokenService {
 		Set<String> privilegeNameSet = null;
 
 		String errorMsg = null;
-		if (isLongTermToken) {
+		// if application doesn't have any privileges associated with
+        // skip the privilege authorization layer check
+        if (application.getPrivileges().isEmpty()){
+            // if no privileges associated
+            isAuthorizationPassed = true;
+        } else if (isLongTermToken) {
 			// in long_term_token mode, the token needs to be exactly the same as the token in user table\
 			if (token.equals(user.getToken()))
 				isAuthorizationPassed = true;
 			else
 				errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
-
-		} else if (user != null
+		}else if (user != null
 				&& user.getRoles() != null
-				&& (application.getPrivileges().isEmpty() || ! user.getPrivilegeNameSetByApplication(application).isEmpty())
-				&& authorizationService.isAuthorized(application, inputMap.get("request"), user.getUuid())) {
+				&& authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
 			isAuthorizationPassed = true;
 		} else {
 			errorMsg = "User doesn't have enough privileges.";
