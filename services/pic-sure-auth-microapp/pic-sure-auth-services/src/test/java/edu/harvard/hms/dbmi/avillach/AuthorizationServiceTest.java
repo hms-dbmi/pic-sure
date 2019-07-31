@@ -302,8 +302,8 @@ public class AuthorizationServiceTest extends AuthorizationService{
     @Test
     public void testGates() throws IOException {
 
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_resouceUUID));
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_has_expectedResultType));
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_resouceUUID));
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_has_expectedResultType));
 
     }
 
@@ -313,7 +313,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_passGate_passCheck_string_contains, Map.class), AR_CategoryFilter_String_contains));
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_passGate_passCheck_string_contains, Map.class), AR_CategoryFilter_String_contains));
 
     }
 
@@ -323,7 +323,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertFalse(checkAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
 
     }
 
@@ -333,7 +333,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_Any_Contains.setGates(gates);
-        Assert.assertTrue(checkAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_Any_Contains));
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_Any_Contains));
 
     }
 
@@ -343,7 +343,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertFalse(checkAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
 
     }
 
@@ -352,7 +352,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_no_pass_gate, Map.class), AR_CategoryFilter_String_contains));
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_no_pass_gate, Map.class), AR_CategoryFilter_String_contains));
     }
 
     /**
@@ -370,16 +370,16 @@ public class AuthorizationServiceTest extends AuthorizationService{
 
         Assert.assertEquals(1, mergedAccessRules.size());
 
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEX_And_AGE, Map.class),
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEX_And_AGE, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX, Map.class),
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class),
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withNoFieldsNode, Map.class),
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withNoFieldsNode, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
     }
 
@@ -391,8 +391,8 @@ public class AuthorizationServiceTest extends AuthorizationService{
      */
     @Test
     public void testRuleIsEmpty_IsNotEmpty() throws IOException {
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_EMPTY));
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_NOT_EMPTY));
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_EMPTY));
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_NOT_EMPTY));
     }
 
     /**
@@ -412,11 +412,15 @@ public class AuthorizationServiceTest extends AuthorizationService{
 
         // default is false, for testing, we explicitly set it here just for fluently reading code
         accessRuleGatesAllAny.setGateAnyRelation(false);
-        // Since does not enter the gate, the rule is not valuated, so return true. Because the flag is false, both gates need to be passed.
-        Assert.assertTrue(checkAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+        // No gates applied, return false.
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
 
+        // the rules will deny the access, but since we set only evaluate gates with OR relationship,
+        // while the gates passes, it will return true.
+        // Here we test any relationship and evaluate only by gates.
         accessRuleGatesAllAny.setGateAnyRelation(true);
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+        accessRuleGatesAllAny.setEvaluateOnlyByGates(true);
+        Assert.assertTrue(evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
 
     }
 
@@ -449,7 +453,7 @@ public class AuthorizationServiceTest extends AuthorizationService{
         gates2.add(GATE_has_expectedResultType);
         accessRuleGatesAllandAny.setGates(gates2);
 
-        Assert.assertFalse(checkAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
+        Assert.assertFalse(evaluateAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
 
     }
 

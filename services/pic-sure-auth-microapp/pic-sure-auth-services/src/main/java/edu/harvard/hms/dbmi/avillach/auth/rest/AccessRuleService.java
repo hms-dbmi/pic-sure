@@ -55,6 +55,19 @@ public class AccessRuleService extends BaseEntityService<AccessRule> {
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addAccessRule(List<AccessRule> accessRules){
+        accessRules.stream().forEach(accessRule -> {
+            if (accessRule.getEvaluateOnlyByGates() == null)
+                accessRule.setEvaluateOnlyByGates(false);
+
+            if (accessRule.getCheckMapKeyOnly() == null)
+                accessRule.setCheckMapKeyOnly(false);
+
+            if (accessRule.getCheckMapNode() == null)
+                accessRule.setCheckMapNode(false);
+
+            if (accessRule.getGateAnyRelation() == null)
+                accessRule.setGateAnyRelation(false);
+        });
         return addEntity(accessRules, accessRuleRepo);
     }
 

@@ -8,19 +8,14 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.inject.Inject;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class AuthorizationService {
 	private Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
-
-	@Inject
-	UserRepository userRepo;
 
 	/**
 	 * Checking based on AccessRule in Privilege
@@ -45,19 +40,17 @@ public class AuthorizationService {
 	 *
 	 * @param application
 	 * @param requestBody
-	 * @param userUuid
 	 * @return
 	 *
 	 * @see edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege
 	 * @see AccessRule
 	 */
-	public boolean isAuthorized(Application application , Object requestBody, UUID userUuid){
+	public boolean isAuthorized(Application application , Object requestBody, User user){
 
-	    String applicationName = application.getName();
+	    // (application.getPrivileges().isEmpty() && !user.getPrivilegeNameSetByApplication(application).isEmpty())
 
-		User user = userRepo.getById(userUuid);
-		
-		//in some cases, we don't do checking
+        String applicationName = application.getName();
+		//in some cases, we don't go through the evaluation
 		if (requestBody == null) {
 			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
 					" ___ has been granted access to application ___ " + applicationName + " ___ NO REQUEST BODY FORWARDED BY APPLICATION");        
@@ -81,20 +74,34 @@ public class AuthorizationService {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					" ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName + " ___ UNABLE TO PARSE REQUEST");
+					" ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName
+                    + " ___ UNABLE TO PARSE REQUEST");
 			return false;
 		}
 
 		Set<Privilege> privileges = user.getPrivilegesByApplication(application);
 
+		// if the user doesn't have any privileges associated to the application,
+        // will return false. The logic is if there are any privileges associated with the application,
+        // a user need to have at least one privilege under the same application,
+        // or be denied.
+        // The check if the application has privileges or not should be outside this function,
+        // here we assume that the application has at least one privilege
+		if (privileges == null && privileges.isEmpty()) {
+		    logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() +
+                    " ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName
+                    + " __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES");
+            return false;
+        }
+
         Set<AccessRule> accessRules = preProcessAccessRules(privileges);
 
 		if (accessRules == null || accessRules.isEmpty()) {
 			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					" ___ has been granted access to execute query ___ " + requestJson + " ___ in application ___ " + applicationName + " ___ NO ACCESS RULES EVALUATED");
+					" ___ has been granted access to execute query ___ " + requestJson + " ___ in application ___ " + applicationName
+                    + " ___ NO ACCESS RULES EVALUATED");
 			return true;        	
 		}
-
 
          // loop through all accessRules
          // Current logic here is: among all accessRules, they are OR relationship
@@ -103,7 +110,7 @@ public class AuthorizationService {
         boolean result = false;
 		for (AccessRule accessRule : accessRules) {
 
-			if (checkAccessRule(requestBody, accessRule)){
+			if (evaluateAccessRule(requestBody, accessRule)){
 				result = true;
 				passByRule = accessRule;
 				break;
@@ -191,6 +198,15 @@ public class AuthorizationService {
                     keys.add(subAccessRule.getRule());
                 }
             }
+            Boolean checkMapKeyOnly = accessRule.getCheckMapKeyOnly(),
+                    checkMapNode = accessRule.getCheckMapNode(),
+                    evaluateOnlyByGates = accessRule.getEvaluateOnlyByGates(),
+                    gateAnyRelation = accessRule.getGateAnyRelation();
+
+            keys.add(checkMapKeyOnly==null?"null":Boolean.toString(checkMapKeyOnly));
+            keys.add(checkMapNode==null?"null":Boolean.toString(checkMapNode));
+            keys.add(evaluateOnlyByGates==null?"null":Boolean.toString(evaluateOnlyByGates));
+            keys.add(gateAnyRelation==null?"null":Boolean.toString(gateAnyRelation));
 
             // then we combine them together as one string for the key
             String key = keys.stream().collect(Collectors.joining());
@@ -280,10 +296,12 @@ public class AuthorizationService {
      * @param accessRule
      * @return
      */
-	protected boolean checkAccessRule(Object parsedRequestBody, AccessRule accessRule) {
+	protected boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
 
 		Set<AccessRule> gates = accessRule.getGates();
 
+		// if no gates in this accessRule, this flag will be set to true
+        // meaning the rules in this accessRule will be evaluated
 		boolean gatesPassed = true;
 
 		// depends on the flag getGateAnyRelation is true or false,
@@ -298,7 +316,7 @@ public class AuthorizationService {
 		        // All gates are AND relationship
                 // means one fails all fail
                 for (AccessRule gate : gates){
-                    if (!checkAccessRule(parsedRequestBody, gate)){
+                    if (!evaluateAccessRule(parsedRequestBody, gate)){
                         gatesPassed = false;
                         break;
                     }
@@ -309,7 +327,7 @@ public class AuthorizationService {
                 // means one passes all pass
 		        gatesPassed = false;
                 for (AccessRule gate : gates){
-                    if (checkAccessRule(parsedRequestBody, gate)){
+                    if (evaluateAccessRule(parsedRequestBody, gate)){
                         gatesPassed = true;
                         break;
                     }
@@ -334,6 +352,9 @@ public class AuthorizationService {
                     }
                 }
             }
+        } else {
+		    // if gates not applied, this accessRule will consider deny
+		    return false;
         }
 
         return true;
@@ -634,7 +655,7 @@ public class AuthorizationService {
 
 
 		default:
-			logger.warn("checkAccessRule() incoming accessRule type is out of scope. Just return true.");
+			logger.warn("evaluateAccessRule() incoming accessRule type is out of scope. Just return true.");
 			return true;
 		}
 	}
