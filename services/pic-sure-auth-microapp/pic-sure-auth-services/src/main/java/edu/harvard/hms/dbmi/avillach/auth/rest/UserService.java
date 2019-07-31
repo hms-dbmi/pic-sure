@@ -158,44 +158,86 @@ public class UserService extends BaseEntityService<User> {
 
         if (hasToken!=null){
 
-            // grant the long term token
-            Jws<Claims> jws;
-            try {
-                jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
-                        // the original token should be able to grab from header, otherwise, it should be stopped
-                        // at JWTFilter level
-                        httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
-                                .substring(6)
-                                .trim());
-            } catch (NotAuthorizedException ex) {
-                return PICSUREResponse.protocolError("Cannot parse token in header");
+            if (user.getToken() != null && !user.getToken().isEmpty()){
+                userForDisaply.setToken(user.getToken());
+            } else {
+                user.setToken(generateUserLongTermToken(httpHeaders));
+                userRepo.merge(user);
+                userForDisaply.setToken(user.getToken());
             }
-
-            Claims claims = jws.getBody();
-            String tokenSubject = claims.getSubject();
-
-            if (tokenSubject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX+"|")) {
-                // considering the subject already contains a "|"
-                // to prevent infinitely adding the long term token prefix
-                // we will grab the real subject here
-               tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
-            }
-
-            String longTermToken = JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
-                    claims.getId(),
-                    claims.getIssuer(),
-                    claims,
-                    AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
-                    JAXRSConfiguration.longTermTokenExpirationTime);
-
-            user.setToken(longTermToken);
-
-            userRepo.merge(user);
-            userForDisaply.setToken(user.getToken());
         }
 
         return PICSUREResponse.success(userForDisaply);
     }
+
+    /**
+     * For the long term token, current logic is,
+     * every time a user hit this endpoint /me
+     * with the query parameter ?hasToken presented,
+     * it will refresh the long term token.
+     *
+     * @param httpHeaders
+     * @param hasToken
+     * @return
+     */
+    @Transactional
+    @GET
+    @Path("/me/refresh_long_term_token")
+    public Response refreshUserToken(
+            @Context HttpHeaders httpHeaders,
+            @QueryParam("hasToken") Boolean hasToken){
+        User user = (User) securityContext.getUserPrincipal();
+        if (user == null || user.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        user = userRepo.getById(user.getUuid());
+        if (user == null){
+            logger.error("When retrieving current user, it returned null");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        String longTermToken = generateUserLongTermToken(httpHeaders);
+        user.setToken(longTermToken);
+
+        userRepo.merge(user);
+
+        return PICSUREResponse.success(Map.of("userLongTermToken", longTermToken));
+    }
+
+    private String generateUserLongTermToken(HttpHeaders httpHeaders) throws ProtocolException{
+        // grant the long term token
+        Jws<Claims> jws;
+        try {
+            jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+                    // the original token should be able to grab from header, otherwise, it should be stopped
+                    // at JWTFilter level
+                    httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
+                            .substring(6)
+                            .trim());
+        } catch (NotAuthorizedException ex) {
+            throw new ProtocolException("Cannot parse token in header");
+        }
+
+        Claims claims = jws.getBody();
+        String tokenSubject = claims.getSubject();
+
+        if (tokenSubject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX+"|")) {
+            // considering the subject already contains a "|"
+            // to prevent infinitely adding the long term token prefix
+            // we will grab the real subject here
+            tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+        }
+
+        return JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+                claims.getId(),
+                claims.getIssuer(),
+                claims,
+                AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
+                JAXRSConfiguration.longTermTokenExpirationTime);
+    }
+
 
     /**
      * check all referenced field if they are already in database. If

@@ -66,12 +66,12 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         },
         refreshToken: function(){
             notification.showConfirmationDialog(function () {
-                userFunctions.meWithToken(this, function(user){
+                userFunctions.refreshUserLongTermToken(this, function(result){
                     if ($('#user-token-reveal-button').html() == "HIDE"){
-                        $("#user_token_textarea").html(user.token);
+                        $("#user_token_textarea").html(result.userLongTermToken);
                     }
 
-                    document.getElementById("user_token_textarea").attributes.token.value = user.token;
+                    document.getElementById("user_token_textarea").attributes.token.value = result.userLongTermToken;
 
                     $("#user-token-copy-button").html("COPY");
                 }.bind(this));
