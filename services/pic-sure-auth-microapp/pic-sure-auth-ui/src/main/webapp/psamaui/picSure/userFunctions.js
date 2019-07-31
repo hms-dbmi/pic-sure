@@ -97,6 +97,21 @@ define(["util/notification", "picSure/settings"],
         });
     }.bind(userFunctions);
 
+    userFunctions.refreshUserLongTermToken = function (object, callback) {
+        // var failureMessage = "Failed to load user.";
+        $.ajax({
+            url: window.location.origin + settings.basePath + '/user/me/refresh_long_term_token',
+            type: 'GET',
+            contentType: 'application/json',
+            success: function(response){
+                callback(response, object);
+            }.bind(object),
+            error: function(response){
+                // handleAjaxError(response, failureMessage);
+            }
+        });
+    }.bind(userFunctions);
+
     var handleAjaxError = function (response, message) {
         if (response.status !== 401) {
             notification.showFailureMessage(message);

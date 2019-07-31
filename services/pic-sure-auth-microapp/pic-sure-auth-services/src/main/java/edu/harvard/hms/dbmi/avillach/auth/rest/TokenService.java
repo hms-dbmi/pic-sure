@@ -167,7 +167,7 @@ public class TokenService {
 			return tokenInspection;
 		}
 
-		Application application = null;
+		Application application;
 
 		try {
 			application = (Application) securityContext.getUserPrincipal();
@@ -179,6 +179,13 @@ public class TokenService {
 			throw new ApplicationException("The application token does not associate with an application but "
 					+ securityContext.getUserPrincipal().getClass().getSimpleName());
 		}
+
+		// application null check should be finished when application token goes through the JWTFilter authentication process,
+        // here we just double check it to prevent a null application object goes further.
+		if (application == null){
+		    logger.error("_inspectToken() There is no application in securityContext, which shall not be.");
+		    throw new ApplicationException("Inner application error, please ask admin to check the log.");
+        }
 
 		String subject = jws.getBody().getSubject();
 
@@ -210,26 +217,36 @@ public class TokenService {
 		//Essentially we want to return jws.getBody() with an additional active: true field
 		//only under certain circumstances, the token will return active
 		boolean isAuthorizationPassed = false;
-		Set<String> privilegeNameSet = null;
+        String errorMsg = null;
 
-		String errorMsg = null;
-		// if application doesn't have any privileges associated with
-        // skip the privilege authorization layer check
-        if (application.getPrivileges().isEmpty()){
+        // long term token needs to be the same as the token in the database user table, if
+        // not the token might has been compromised, which will not go through the authorization check
+        boolean isLongTermTokenCompromised = false;
+        if (isLongTermToken && !token.equals(user.getToken())) {
+            // in long_term_token mode, the token needs to be exactly the same as the token in user table
+            isLongTermTokenCompromised = true;
+            logger.error("_inspectToken User " + user.getUuid() + "|" + user.getSubject()
+                    + "is sending a long term token that is not matching the record in database user table.");
+            errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
+        }
+
+        // we go through the authorization layer check only if we need to in order to improve the performance
+        // the logic here, if the token associated with a user, we will start the authorization check.
+        // If the current application has at least one privilege, the user must have one privilege associated to the application
+        // pass the accessRule check if there is any accessRules associated with.
+        if (application.getPrivileges() == null || application.getPrivileges().isEmpty()){
             // if no privileges associated
             isAuthorizationPassed = true;
-        } else if (isLongTermToken) {
-			// in long_term_token mode, the token needs to be exactly the same as the token in user table\
-			if (token.equals(user.getToken()))
-				isAuthorizationPassed = true;
-			else
-				errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
-		}else if (user != null
-				&& user.getRoles() != null
+        } else if (user != null
+                && !isLongTermTokenCompromised
+                && user.getRoles() != null
 				&& authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
 			isAuthorizationPassed = true;
 		} else {
-			errorMsg = "User doesn't have enough privileges.";
+            // if isLongTermTokenCompromised flag is true,
+            // the error message has already been set previously
+            if (!isLongTermTokenCompromised)
+			    errorMsg = "User doesn't have enough privileges.";
 		}
 
 		if (isAuthorizationPassed){
@@ -247,14 +264,9 @@ public class TokenService {
 
 		tokenInspection.responseMap.putAll(jws.getBody());
 
-		// add all privileges into response based on application
-		// if no application in request, return all privileges for now
-		if (application != null) {
-			tokenInspection.responseMap.put("privileges", user.getPrivilegeNameSetByApplication(application));
-		} else {
-			if (privilegeNameSet != null && !privilegeNameSet.isEmpty())
-				tokenInspection.responseMap.put("privileges", privilegeNameSet);
-		}
+        // attach all privileges associated with the application to the responseMap
+		tokenInspection.responseMap.put("privileges", user.getPrivilegeNameSetByApplication(application));
+
 
 		logger.info("_inspectToken() Successfully inspect and return response map: "
 				+ tokenInspection.responseMap.entrySet()
