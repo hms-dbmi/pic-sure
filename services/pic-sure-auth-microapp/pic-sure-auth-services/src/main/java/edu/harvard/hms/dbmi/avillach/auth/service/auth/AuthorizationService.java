@@ -198,11 +198,15 @@ public class AuthorizationService {
                     keys.add(subAccessRule.getRule());
                 }
             }
+            Boolean checkMapKeyOnly = accessRule.getCheckMapKeyOnly(),
+                    checkMapNode = accessRule.getCheckMapNode(),
+                    evaluateOnlyByGates = accessRule.getEvaluateOnlyByGates(),
+                    gateAnyRelation = accessRule.getGateAnyRelation();
 
-            keys.add((accessRule.getCheckMapKeyOnly()==null)?"null":Boolean.toString(accessRule.getCheckMapKeyOnly()));
-            keys.add((accessRule.getCheckMapNode()==null)?"null":Boolean.toString(accessRule.getCheckMapNode()));
-            keys.add((accessRule.getEvaluateOnlyByGates()==null)?"null":Boolean.toString(accessRule.getEvaluateOnlyByGates()));
-            keys.add((accessRule.getGateAnyRelation()==null)?"null":Boolean.toString(accessRule.getGateAnyRelation()));
+            keys.add(checkMapKeyOnly==null?"null":Boolean.toString(checkMapKeyOnly));
+            keys.add(checkMapNode==null?"null":Boolean.toString(checkMapNode));
+            keys.add(evaluateOnlyByGates==null?"null":Boolean.toString(evaluateOnlyByGates));
+            keys.add(gateAnyRelation==null?"null":Boolean.toString(gateAnyRelation));
 
             // then we combine them together as one string for the key
             String key = keys.stream().collect(Collectors.joining());
