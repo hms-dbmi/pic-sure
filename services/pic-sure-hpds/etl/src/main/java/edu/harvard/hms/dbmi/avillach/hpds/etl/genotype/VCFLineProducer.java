@@ -38,6 +38,7 @@ public class VCFLineProducer {
 		this.sampleIndex = sampleIndex;
 		this.processAnnotations = processAnnotations;
 		this.vcfIsGzipped = vcfIsGzipped;
+		System.out.println("Created producer for " + patientId + " " + (processAnnotations ? " processing annotations " : " not processing annotations "));
 	}
 
 	private Thread thread;
@@ -45,10 +46,13 @@ public class VCFLineProducer {
 	public ArrayList<String> headerLines = new ArrayList<String>();
 
 	private static LoadingCache<String, VCFLine> vcfLineCache = CacheBuilder.newBuilder().maximumSize(10).build(new CacheLoader<String, VCFLine>(){
+		
 		@Override
 		public VCFLine load(String key) throws Exception {
-			return new VCFLine(splitLineCache.get(key), 0, false);
-		}});
+			return new VCFLine(splitLineCache.get(key), 0, true);
+		}
+		
+	});
 
 	private static LoadingCache<String, String[]> splitLineCache = CacheBuilder.newBuilder().maximumSize(10).build(new CacheLoader<String, String[]>(){
 
@@ -58,6 +62,10 @@ public class VCFLineProducer {
 		}
 
 	});
+
+	private long lineNumber = 0;
+
+	public long getLineNumber() {return lineNumber;}
 
 	private static HashMap<String, LoadingCache<Long, String>> fileCaches = new HashMap<>();
 
@@ -71,32 +79,33 @@ public class VCFLineProducer {
 				LoadingCache<Long, String> lineCacheForFile = fileCaches.get(cacheKey);
 				if(lineCacheForFile==null) {
 					System.out.println("Creating Cache : " + cacheKey);
-					lineCacheForFile = CacheBuilder.newBuilder().maximumSize(IndexedVCFLocalLoader.VCF_LINE_QUEUE_SIZE+100).build(new CacheLoader<Long, String>(){
-						InputStream in = new SequenceInputStream(Collections.enumeration(inputFiles.keySet().stream().map((key)->{try {
-							return  vcfIsGzipped ? new BlockCompressedInputStream(new FileInputStream(inputFiles.get(key))) : new FileInputStream(inputFiles.get(key));
-						} catch (FileNotFoundException e) {
-							throw new RuntimeException("File not found, please fix the VCF index file : " + inputFiles.get(key).getAbsolutePath(), e);
-						}}).collect(Collectors.toList())));
-						InputStreamReader reader = new InputStreamReader(in);
-						BufferedReader reader2 = new BufferedReader(reader);
-						@Override
-						public String load(Long key) throws Exception {
-							String line = reader2.readLine();
-							return line == null ? "" : line;
-						}
-					});
+					lineCacheForFile = CacheBuilder.newBuilder()
+							.maximumSize(IndexedVCFLocalLoader.VCF_LINE_QUEUE_SIZE+100)
+							.build(new CacheLoader<Long, String>(){
+								InputStream in = new SequenceInputStream(Collections.enumeration(inputFiles.keySet().stream().map((key)->{try {
+									return  vcfIsGzipped ? new BlockCompressedInputStream(new FileInputStream(inputFiles.get(key))) : new FileInputStream(inputFiles.get(key));
+								} catch (FileNotFoundException e) {
+									throw new RuntimeException("File not found, please fix the VCF index file : " + inputFiles.get(key).getAbsolutePath(), e);
+								}}).collect(Collectors.toList())));
+								InputStreamReader reader = new InputStreamReader(in);
+								BufferedReader reader2 = new BufferedReader(reader);
+								@Override
+								public String load(Long key) throws Exception {
+									String line = reader2.readLine();
+									return line == null ? "" : line;
+								}
+							});
 					System.out.println("Created cache for : " + cacheKey);
 					fileCaches.put(cacheKey, lineCacheForFile);
 				}
 			}
 
-			long lineNumber = 0;
 			LoadingCache<Long, String> fileCache = fileCaches.get(cacheKey);
 			try{
 				String rawline = fileCache.get(lineNumber);
 				while(!rawline.isEmpty()) {
 					if(rawline.startsWith("#")) {
-						System.out.println("Header" + rawline);
+						headerLines.add(rawline);
 					} else {
 						VCFLine lineHusk = vcfLineCache.get(rawline);
 

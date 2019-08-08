@@ -14,6 +14,14 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
+/**
+ * This file is UDN specific currently. IndexedVCFLocalLoader should make it 
+ * unnecessary moving forward, but we shouldn't delete it until we prove that 
+ * a UDN load can happen using the new class.
+ * 
+ * @author jason
+ *
+ */
 public class PerPatientVCFLocalProducer {
 
 	private File inputFile;

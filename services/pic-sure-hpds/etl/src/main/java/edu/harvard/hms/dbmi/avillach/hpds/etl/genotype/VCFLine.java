@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
 import org.apache.commons.csv.CSVRecord;
 
-public class VCFLine {
+public class VCFLine implements Comparable<VCFLine> {
 	public String patientId;
 	public Integer chromosome;
 	public Integer offset;
@@ -84,6 +84,23 @@ public class VCFLine {
 		return this.chromosome + "," 
 				+ this.offset + "," + 
 				this.ref + "," + this.alt;
+	}
+
+	@Override
+	public int compareTo(VCFLine o) {
+		if(this.chromosome.compareTo(o.chromosome)!=0) {
+			return this.chromosome.compareTo(o.chromosome);
+		}else {
+			if(this.offset.compareTo(o.offset)!=0) {
+				return this.offset.compareTo(o.offset);
+			}else {
+				if(this.alt.compareTo(o.alt)!=0) {
+					return this.alt.compareTo(o.alt);
+				}else {
+					return 0;
+				}
+			}
+		}
 	}
 
 }

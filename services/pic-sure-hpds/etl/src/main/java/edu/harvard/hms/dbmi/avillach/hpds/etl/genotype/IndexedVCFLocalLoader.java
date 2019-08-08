@@ -5,11 +5,14 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -22,9 +25,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
+import javax.management.MBeanServer;
+
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+
+import com.sun.management.HotSpotDiagnosticMXBean;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
@@ -41,34 +48,44 @@ public class IndexedVCFLocalLoader {
 	}
 
 	static List<VCFLineProducer> producers = new ArrayList<>();
+	static TreeSet<String> patientIds = null;
+	static Map<String, Integer> patientIdMap = null;
+	static HashMap<String, String[]> loadingMap = null;
+	static File storageDir = null;
+	static ExecutorService chunkWriteEx = Executors.newFixedThreadPool(1);
+	static ConcurrentHashMap<String, InfoStore> infoStores = new ConcurrentHashMap<String, InfoStore>();
+	static long startTime = System.currentTimeMillis();
 
-	private static void loadVCFs(File vcfIndexFile, File storageDir) throws FileNotFoundException, IOException {
-		long startTime = System.currentTimeMillis();
+
+	private static void loadVCFs(File vcfIndexFile, File storageDirectory) throws FileNotFoundException, IOException {
+
+		storageDir = storageDirectory;
 
 		createAndStartProducers(vcfIndexFile);
 
-		TreeSet<String> patientIds = new TreeSet<>(
+		patientIds = new TreeSet<>(
 				producers.stream().map(producer->{return producer.patientId;})
 				.collect(Collectors.toList()));
 
-		HashMap<String, Integer> patientIdMap = logPatientIds(patientIds);
+		patientIdMap = Collections.synchronizedMap(mapPatientIds());
 
 		System.out.println("Priming Queues");
 		primeQueues();
+		System.out.println("Queues are primed.");
 
-		ConcurrentHashMap<String, InfoStore> infoStores = new ConcurrentHashMap<String, InfoStore>();
 		VariantStore store = new VariantStore();
 		store.setPatientIds(patientIds.toArray(new String[0]));
 		FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage = 
 				new FileBackedByteIndexedStorage[24];
 
 		System.out.println("Parsing Headers");
-		parseHeaders(infoStores);
+		parseHeaders();
+		System.out.println(infoStores.size() + " INFO columns detected ");
 
-		VCFLine[] lastLineProcessed = new VCFLine[1];
+		VCFLine lastLineProcessed = null;
 		int lastChromosomeProcessed = 0;
 		int lastChunkProcessed = 0;
-		HashMap<String, String[]> loadingMap = new HashMap<>();
+		loadingMap = new HashMap<String, String[]>();
 
 		System.out.println("Processing Variants");
 
@@ -77,67 +94,80 @@ public class IndexedVCFLocalLoader {
 		 *  During this conversion each 0/1, 0/1, 0/0 etc value for each patient is changed to a
 		 *  single bit in the appropriate zygosity bitmask of a VariantMask.
 		 */
-		ExecutorService ex = Executors.newFixedThreadPool(1);
 		ArrayList<VCFLine> lowestLines;
+		int currentChunk = 0;
+		int currentChromosome = 0;
 		do {
-			lowestLines = getLowestChromosomalOffsetLines();
-			if(lowestLines.isEmpty()) {
-				lowestLines = getLowestChromosomalOffsetLines();
-			}
+			lowestLines = allowLowestLinesToPopulate();
 			if(!lowestLines.isEmpty()) {
-				lastLineProcessed[0] = lowestLines.get(0);
-			}
-			int currentChunk = lastLineProcessed[0].offset/1000;
-			if(lastLineProcessed[0].chromosome>lastChromosomeProcessed || currentChunk > lastChunkProcessed) {
-				loadingMap = flipChunk(storageDir, infoStores, variantMaskStorage, lastLineProcessed[0],
-						lastChromosomeProcessed, lastChunkProcessed, loadingMap, ex, false);
-				lastChromosomeProcessed = lastLineProcessed[0].chromosome;
-				lastChunkProcessed = currentChunk;
-				if(lastChunkProcessed % 10 == 0) {
-					System.out.println(System.currentTimeMillis() + " Done loading chunk : " + lastChunkProcessed + " for chromosome " + lastChromosomeProcessed);
+				lastLineProcessed = lowestLines.get(0);
+				currentChunk = lastLineProcessed.offset/1000;
+				currentChromosome = lastLineProcessed.chromosome;
+				if(currentChromosome > lastChromosomeProcessed || currentChunk > lastChunkProcessed) {
+					loadingMap = flipChunk(variantMaskStorage, lastLineProcessed,
+							lastChromosomeProcessed, lastChunkProcessed, false);
+					lastChromosomeProcessed = lastLineProcessed.chromosome;
+					lastChunkProcessed = currentChunk;
+					if(lastChunkProcessed % 10 == 0) {
+						System.out.println(System.currentTimeMillis() + " Done loading chunk : " + lastChunkProcessed + " for chromosome " + lastChromosomeProcessed);
+					}
 				}
+
+				lowestLines.parallelStream().forEach((line)->{
+					if(line != null) {
+						processLine(line, loadingMap);
+					}
+				});
 			}
-			HashMap<String, String[]>[] loadingMap_f = new HashMap[] {loadingMap};
-			lowestLines.parallelStream().forEach((line)->{
-				if(line != null) {
-					processLine(patientIds, patientIdMap, infoStores, line, loadingMap_f[0]);
-				}
-			});
 		} while(producers.stream().anyMatch(
 				producer->{return !producer.vcfLineQueue.isEmpty() || producer.isRunning(); }) || !lowestLines.isEmpty());
 		// Don't forget to save the last chunk.
-		loadingMap = flipChunk(storageDir, infoStores, variantMaskStorage, lastLineProcessed[0],
-				lastChromosomeProcessed, lastChunkProcessed, loadingMap, ex, true);
-		ex.shutdown();
-		while(!ex.isTerminated()) {
+		loadingMap = flipChunk(variantMaskStorage, lastLineProcessed,
+				lastChromosomeProcessed, lastChunkProcessed, true);
+
+		shutdownChunkWriteExecutor();
+
+		System.out.println("Done processing VCFs.");
+
+		saveVariantStore(store, variantMaskStorage);
+
+		saveInfoStores();
+
+		splitInfoStoresByColumn();
+
+		convertInfoStoresToByteIndexed();
+	}
+
+	private static ArrayList<VCFLine> allowLowestLinesToPopulate() {
+		ArrayList<VCFLine> lowestLines;
+		ensureQueuesNotEmpty();
+		lowestLines = getLowestChromosomalOffsetLines();
+		return lowestLines;
+	}
+
+	private static void shutdownChunkWriteExecutor() {
+		chunkWriteEx.shutdown();
+		while(!chunkWriteEx.isTerminated()) {
 			try {
-				System.out.println(((ThreadPoolExecutor)ex).getQueue().size() + " writes left to be written.");
-				ex.awaitTermination(20, TimeUnit.SECONDS);
+				System.out.println(((ThreadPoolExecutor)chunkWriteEx).getQueue().size() + " writes left to be written.");
+				chunkWriteEx.awaitTermination(20, TimeUnit.SECONDS);
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}			
 		}
-		System.out.println("Done processing VCFs.");
-
-		saveVariantStore(storageDir, store, variantMaskStorage);
-
-		saveInfoStores(storageDir, startTime, infoStores);
-
-		splitInfoStoresByColumn(startTime);
-
-		convertInfoStoresToByteIndexed(startTime);
 	}
 
 	private static String lastSpecNotation = null;
 
 	private static String[] variantValues;
 
-	private static void processLine(TreeSet<String> patientIds, HashMap<String, Integer> patientIdMap,
-			ConcurrentHashMap<String, InfoStore> infoStores, VCFLine lastLineProcessed,
+	private static String lastInfoLineProcessed = "";
+
+	private static void processLine(VCFLine lastLineProcessed,
 			HashMap<String, String[]> loadingMap) {
 		final String specNotation = lastLineProcessed.specNotation();
-		if( lastSpecNotation == null || ! specNotation.contentEquals(lastSpecNotation)) {
+		if( variantValues == null || lastSpecNotation == null || ! specNotation.contentEquals(lastSpecNotation)) {
 			synchronized(producers) {
 				variantValues = loadingMap.get(specNotation);
 				if(variantValues==null) {
@@ -150,11 +180,24 @@ public class IndexedVCFLocalLoader {
 		VCFLineProducer producer = producers.get(0);
 		String value = lastLineProcessed.data == null ? "0/0" : 
 			lastLineProcessed.data.substring(0,3);
-		int patientIndex = patientIdMap.get(
-				lastLineProcessed.patientId);
-		variantValues[patientIndex] 
-				= value;
-		if(producer.processAnnotations) {
+		Integer patientIndex = patientIdMap.get(
+				lastLineProcessed.patientId.trim());
+		synchronized(producers) {
+			if(patientIndex == null||variantValues == null) {
+				System.out.println(specNotation + " patientId : " + lastLineProcessed.patientId + " variantValues : " + variantValues + " value : " + value + " : " + patientIndex);
+				System.out.println(patientIndex);
+				for(String key : patientIdMap.keySet()) {
+					System.out.println(key + " : " + patientIdMap.get(key));
+				}
+				variantValues[patientIndex]
+						= value;
+				System.exit(-1);
+			}else {
+				variantValues[patientIndex]
+						= value;			
+			}
+		}
+		if(producer.processAnnotations && !lastLineProcessed.info.contentEquals(lastInfoLineProcessed)) {
 			String[] infoValues = (lastLineProcessed.info).split(";");
 			infoStores.values().parallelStream().forEach(infoStore->{
 				try {
@@ -162,15 +205,16 @@ public class IndexedVCFLocalLoader {
 				}catch(NumberFormatException e) {
 					System.out.println("Skipping record due to parsing exception : " + String.join(",", infoValues));
 				}
-			});			
+			});
+			lastInfoLineProcessed = lastLineProcessed.info;
 		}
 	}
 
-	private static HashMap<String, Integer> logPatientIds(TreeSet<String> patientIds) {
+	private static HashMap<String, Integer> mapPatientIds() {
 		HashMap<String, Integer> patientIdMap = new HashMap<String, Integer>(patientIds.size());
 		int x = 0;
 		for(String patientId : patientIds) {
-			patientIdMap.put(patientId, x++);
+			patientIdMap.put(patientId.trim(), x++);
 		}
 
 		System.out.println("Listed all patients. " + patientIds.size());
@@ -188,11 +232,9 @@ public class IndexedVCFLocalLoader {
 	SAMPLE_RELATIONSHIPS_COLUMN=6,
 	RELATED_SAMPLE_IDS_COLUMN=7
 	;
-	public static final int VCF_LINE_QUEUE_SIZE = 10000;
+	public static final int VCF_LINE_QUEUE_SIZE = 2000;
 
-
-	private static HashMap<String/*patient id*/, VCFLineProducer/*patient specific producer*/> 
-	createAndStartProducers(File vcfIndexFile) {
+	private static void createAndStartProducers(File vcfIndexFile) {
 
 		CSVParser parser;
 		try {
@@ -244,7 +286,6 @@ public class IndexedVCFLocalLoader {
 			});
 
 			System.out.println("Started all producers. " + producers.size());
-			return ret;
 		} catch (IOException e) {
 			throw new RuntimeException("IOException caught parsing vcfIndexFile", e);
 		}
@@ -259,11 +300,18 @@ public class IndexedVCFLocalLoader {
 				sleep();
 			}
 		}
-
-		System.out.println("Producers are primed.");
 	}
 
-	private static void parseHeaders(ConcurrentHashMap<String, InfoStore> infoStores) {
+	private static void ensureQueuesNotEmpty() {
+		// wait until all queues are primed
+		for(VCFLineProducer producer : producers) {
+			while(producer.isRunning() && producer.vcfLineQueue.size() < 1) {
+				sleep();
+			}
+		}
+	}
+
+	private static void parseHeaders() {
 		for(VCFLineProducer producer : producers) {
 			for(String line : producer.headerLines) {
 				if(line.startsWith("##INFO") && ! line.contains("ID=PU,")) {
@@ -280,58 +328,39 @@ public class IndexedVCFLocalLoader {
 				}
 			}
 		}
-
 		System.out.println("Header lines parsed.");
 	}
 
 	private static ArrayList<VCFLine> getLowestChromosomalOffsetLines() {
-		VCFLine lastLineProcessed;
-		Thread.yield();
-		producers.sort((a, b)->{
-			VCFLine aLine = a.vcfLineQueue.peek();
-			VCFLine bLine = b.vcfLineQueue.peek();
-			if (aLine == null) {
-				sleep();
-				aLine = a.vcfLineQueue.peek();
-				if(aLine == null) {
-					return 1;
+		ArrayList<VCFLine> lines = new ArrayList<>(producers.parallelStream()
+				.filter((producer)->{return !producer.vcfLineQueue.isEmpty();})
+				.map((producer)->{return producer.vcfLineQueue.peek();})
+				.collect(Collectors.toList()));
+		if(lines.isEmpty()) {
+			return lines;
+		}
+		VCFLine lowestLine = Collections.min(lines);
+		ArrayList<VCFLine> lowestLines = new ArrayList<VCFLine>();
+		producers.parallelStream().filter((producer)->{
+			VCFLine producerLine = producer.vcfLineQueue.peek();
+			return producerLine != null 
+					&& producerLine.compareTo(lowestLine) == 0;
+		}).forEach((producer)->{
+			VCFLine line;
+			try {
+				line = producer.vcfLineQueue.take();
+				synchronized(lowestLines) {
+					lowestLines.add(line);
 				}
-			} 
-			if (bLine == null) {
-				sleep();
-				bLine = b.vcfLineQueue.peek();
-				if(bLine == null) {
-					return -1;
-				}
-			}
-			if(aLine.chromosome.equals(bLine.chromosome)) {
-				if(aLine.offset.equals(bLine.offset)) {
-					return aLine.alt.compareTo(bLine.alt);
-				}else {
-					return aLine.offset.compareTo(bLine.offset);
-				}
-			}else {
-				return aLine.chromosome.compareTo(bLine.chromosome);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
 		});
-		ArrayList<VCFLine> lowestLines = new ArrayList<VCFLine>();
-		lastLineProcessed = producers.get(0).vcfLineQueue.poll();
-		if(lastLineProcessed != null) {
-			lowestLines.add(lastLineProcessed);
-			for(int x = 1;x<producers.size();x++) {
-				VCFLineProducer vcfLineProducer = producers.get(x);
-				VCFLine producerLine = vcfLineProducer.vcfLineQueue.peek();
-				if(producerLine != null && producerLine.chromosome.equals(lastLineProcessed.chromosome) && producerLine.offset.equals(lastLineProcessed.offset) && producerLine.alt.contentEquals(lastLineProcessed.alt)) {
-					lowestLines.add(vcfLineProducer.vcfLineQueue.poll());
-				} else {
-					x=producers.size();
-				}
-			}
-		}
 		return lowestLines;
 	}
 
-	private static void saveVariantStore(File storageDir, VariantStore store,
+	private static void saveVariantStore(VariantStore store,
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage)
 					throws IOException, FileNotFoundException {
 		store.variantMaskStorage = variantMaskStorage;
@@ -347,7 +376,7 @@ public class IndexedVCFLocalLoader {
 		System.out.println("Done saving variant masks.");
 	}
 
-	private static void saveInfoStores(File storageDir, long startTime, ConcurrentHashMap<String, InfoStore> infoStores)
+	private static void saveInfoStores()
 			throws IOException, FileNotFoundException {
 		try (
 				FileOutputStream fos = new FileOutputStream(new File(storageDir, "infoStores.javabin"));
@@ -356,12 +385,11 @@ public class IndexedVCFLocalLoader {
 				){
 			oos.writeObject(infoStores);
 		}
-
 		System.out.println("Done saving info.");
 		System.out.println("completed load in " + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	private static void splitInfoStoresByColumn(long startTime) throws FileNotFoundException, IOException {
+	private static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
 		System.out.println("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreSplitter.splitAll();
@@ -372,9 +400,8 @@ public class IndexedVCFLocalLoader {
 		System.out.println("Split" + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	private static void convertInfoStoresToByteIndexed(long startTime) throws FileNotFoundException, IOException {
+	private static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
 		System.out.println("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
-
 		try {
 			VCFPerPatientInfoStoreToFBBIISConverter.convertAll("/opt/local/hpds/merged", "/opt/local/hpds/all");
 		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
@@ -384,22 +411,29 @@ public class IndexedVCFLocalLoader {
 		System.out.println("Converted" + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	private static HashMap<String, String[]> flipChunk(File storageDir, ConcurrentHashMap<String, InfoStore> infoStores,
+	static boolean[] infoStoreFlipped = new boolean[24];
+
+	private static HashMap<String, String[]> flipChunk(
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage,
 			VCFLine lastLineProcessed, int lastChromosomeProcessed, int lastChunkProcessed,
-			HashMap<String, String[]> loadingMap, ExecutorService ex, boolean isLastChunk) throws IOException, FileNotFoundException {
+			boolean isLastChunk) throws IOException, FileNotFoundException {
 		if(isLastChunk || lastLineProcessed.chromosome>lastChromosomeProcessed) {
-			File infoFile = new File(storageDir, lastChromosomeProcessed + "_infoStores.javabin");
-			System.out.println("Flipping info : " + infoFile.getAbsolutePath());
-			try (
-					FileOutputStream fos = new FileOutputStream(infoFile);
-					GZIPOutputStream gzos = new GZIPOutputStream(fos);
-					ObjectOutputStream oos = new ObjectOutputStream(gzos);			
-					){
-				oos.writeObject(infoStores);
-			}
-			for(String key : infoStores.keySet()) {
-				infoStores.get(key).allValues.clear();
+			if(!infoStoreFlipped[lastChromosomeProcessed]) {
+				infoStoreFlipped[lastChromosomeProcessed] = true;
+				File infoFile = new File(storageDir, lastChromosomeProcessed + "_infoStores.javabin");
+				System.out.println(Thread.currentThread().getName() + " : " + "Flipping info : " + infoFile.getAbsolutePath() + " " + isLastChunk + " " + lastLineProcessed.chromosome + " " + lastChromosomeProcessed + " ");
+				try (
+						FileOutputStream fos = new FileOutputStream(infoFile);
+						GZIPOutputStream gzos = new GZIPOutputStream(fos);
+						ObjectOutputStream oos = new ObjectOutputStream(gzos);			
+						){
+					oos.writeObject(infoStores);
+				}
+				ConcurrentHashMap<String, InfoStore> newInfoStores = new ConcurrentHashMap<String, InfoStore>();
+				for(String key : infoStores.keySet()) {
+					newInfoStores.put(key, new InfoStore(infoStores.get(key).description, ";", key));
+				}
+				infoStores = newInfoStores;
 			}
 		}
 		FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage_f = variantMaskStorage;
@@ -407,10 +441,12 @@ public class IndexedVCFLocalLoader {
 		int lastChromosomeProcessed_f = lastChromosomeProcessed;
 		int lastChunkProcessed_f = lastChunkProcessed;
 		loadingMap = new HashMap<>();
-		ex.submit(()->{
+		chunkWriteEx.submit(()->{
 			try {
 				if(variantMaskStorage_f[lastChromosomeProcessed_f]==null) {
-					variantMaskStorage_f[lastChromosomeProcessed_f] = new FileBackedByteIndexedStorage(Integer.class, ConcurrentHashMap.class, new File(storageDir, "chr" + lastChromosomeProcessed_f + "masks.bin"));							
+					variantMaskStorage_f[lastChromosomeProcessed_f] = 
+							new FileBackedByteIndexedStorage(Integer.class, ConcurrentHashMap.class, 
+									new File(storageDir, "chr" + lastChromosomeProcessed_f + "masks.bin"));							
 				}
 				variantMaskStorage_f[lastChromosomeProcessed_f].put(lastChunkProcessed_f, convertLoadingMapToMaskMap(loadingMap_f));
 			} catch (IOException e) {
@@ -419,6 +455,13 @@ public class IndexedVCFLocalLoader {
 			}
 		});
 		return loadingMap;
+	}
+
+	public static void dumpHeap(String filePath, boolean live) throws IOException {
+		MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+		HotSpotDiagnosticMXBean mxBean = ManagementFactory.newPlatformMXBeanProxy(
+				server, "com.sun.management:type=HotSpotDiagnostic", HotSpotDiagnosticMXBean.class);
+		mxBean.dumpHeap(filePath, live);
 	}
 
 	private static ConcurrentHashMap<String, VariantMasks> convertLoadingMapToMaskMap(HashMap<String, String[]> loadingMap) {
