@@ -1,3 +1,5 @@
+-- // TODO: Delete if this is not being used
+
 CREATE DATABASE  IF NOT EXISTS `picsure` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */;
 USE `picsure`;
 -- MySQL dump 10.13  Distrib 5.7.17, for macos10.12 (x86_64)
