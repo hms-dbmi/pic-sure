@@ -11,12 +11,6 @@
 	<artifactId>pic-sure-irct-resource</artifactId>
 	<name>pic-sure-irct-resource</name>
 	<packaging>war</packaging>
-	<url>http://maven.apache.org</url>
-	<properties>
-		<wildfly.version>13.0.0.Final</wildfly.version>
-		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-	</properties>
     <build>
         <finalName>${project.artifactId}</finalName>
     </build>
@@ -65,5 +59,13 @@
 			<groupId>org.hibernate</groupId>
 			<artifactId>hibernate-annotations</artifactId>
 		</dependency>
+
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>27.1-jre</version>
+			<scope>compile</scope>
+		</dependency>
+
 	</dependencies>
 </project>

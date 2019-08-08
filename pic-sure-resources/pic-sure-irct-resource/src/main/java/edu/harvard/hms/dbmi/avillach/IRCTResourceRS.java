@@ -2,12 +2,15 @@ package edu.harvard.hms.dbmi.avillach;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.Weigher;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -18,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.servlet.ServletContext;
@@ -48,13 +50,35 @@ public class IRCTResourceRS implements IResourceRS
 
 	public static final String MISSING_CREDENTIALS_MESSAGE = "Missing credentials";
 
-	private static String targetURL;
+    private static String targetURL;
+
+    public static LoadingCache<String, SearchResults> searchLoadingCache = CacheBuilder.newBuilder()
+            .maximumWeight(JAXRSConfiguration.MAXIMUM_WEIGHT)
+            .weigher(new Weigher<String, SearchResults>() {
+                @Override
+                public int weigh(String s, SearchResults searchResults) {
+                    return ((List)searchResults.getResults()).size();
+                }
+            })
+            .build(
+                new CacheLoader<>() {
+                @Override
+                public SearchResults load(String searchString) throws Exception {
+                    return IRCTResourceRS.loadSearchResults(searchString);
+                }
+            }
+        );
+
+	/**
+	 * to store token for current thread
+	 */
+	private String token;
 
 	@Context
 	private ServletContext context;
 
 	private final static ObjectMapper json = new ObjectMapper();
-	private Logger logger = LoggerFactory.getLogger(this.getClass());
+	private static Logger logger = LoggerFactory.getLogger(IRCTResourceRS.class);
 
 	public IRCTResourceRS() {
 		if(RESULT_FORMAT == null || RESULT_FORMAT.isEmpty()){
@@ -72,6 +96,7 @@ public class IRCTResourceRS implements IResourceRS
 		} catch (NamingException e) {
 			throw new RuntimeException("Could not find JNDI name : "  + "java:global/target_url_" + context.getContextPath().replaceAll("/","") + " --- please put your irct target url here");
 		}
+
 	}
 
 	@GET
@@ -116,64 +141,86 @@ public class IRCTResourceRS implements IResourceRS
 	public SearchResults search(QueryRequest searchJson) {
 		logger.debug("Calling IRCT Resource search()");
 		try {
-			if (targetURL == null || targetURL.isEmpty()) {
-				throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
-			}
-			if (searchJson == null) {
-				throw new ProtocolException(ProtocolException.MISSING_DATA);
-			}
-			Map<String, String> resourceCredentials = searchJson.getResourceCredentials();
-			if (resourceCredentials == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-			}
-			String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
-			if (token == null) {
-				throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
-			}
-			Object search = searchJson.getQuery();
-			if (search == null) {
-				throw new ProtocolException((ProtocolException.MISSING_DATA));
-			}
-
-			if(search instanceof String) {
-				String searchTerm = search.toString();
-
-				String pathName = "resourceService/find";
-				String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
-				HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(token));
-				SearchResults results = new SearchResults();
-				results.setSearchQuery(searchTerm);
-				if (response.getStatusLine().getStatusCode() != 200) {
-					logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-					//If the result is empty, a 500 is thrown for some reason
-					JsonNode responseObject = json.readTree(response.getEntity().getContent());
-					if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
-						return results;
-					}
-					throwResponseError(response, targetURL);
-				}
-				results.setResults(readObjectFromResponse(response, Object.class));
-				return results;
-			} else {
-				// This must be a list of searches, because that's the only other thing we support
-				ObjectMapper mapper = new ObjectMapper();
-				try{
-					List<String> entityPaths = mapper.readValue(mapper.writeValueAsString(search), List.class);
-				} catch(Exception e) {
-					logger.error("Could not parse jsonPaths, client made a mistake of some kind : " + mapper.writeValueAsString(search));
-					throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-				}
-				HttpResponse response = retrievePostResponse(composeURL(targetURL, "resourceService/jsonPath"), createAuthorizationHeader(token), mapper.writeValueAsString(search));
-				SearchResults results = new SearchResults();
-				results.setSearchQuery(mapper.writeValueAsString(search));
-				results.setResults(mapper.readValue(response.getEntity().getContent(), List.class));
-				return results;
-			}
+			return getSearchResults(searchJson);
 		} catch (UnsupportedEncodingException e){
 			//TODO what to do about this
 			throw new ApplicationException("Error encoding search term: " + e.getMessage());
 		} catch (IOException e){
 			throw new ApplicationException("Error reading response: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * for cache loader load result
+	 * @param search
+	 * @return
+	 * @throws NotAuthorizedException
+	 * @throws IOException
+	 */
+	private static SearchResults loadSearchResults(String search)
+			throws NotAuthorizedException, IOException {
+
+		long startTime = System.nanoTime();
+		String searchTerm = search;
+
+		String pathName = "resourceService/find";
+		String queryParameter = "?term=" + URLEncoder.encode(searchTerm, "UTF-8");
+		HttpResponse response = retrieveGetResponse(composeURL(targetURL, pathName) + queryParameter, createAuthorizationHeader(JAXRSConfiguration.search_token));
+		SearchResults results = new SearchResults();
+		results.setSearchQuery(searchTerm);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error(targetURL + " did not return a 200: {} {}",response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			//If the result is empty, a 500 is thrown for some reason
+			JsonNode responseObject = json.readTree(response.getEntity().getContent());
+			if (response.getStatusLine().getStatusCode() == 500 && responseObject.get("message") != null && responseObject.get("message").asText().equals("No entities were found.")) {
+				return results;
+			}
+			throwResponseError(response, targetURL);
+		}
+		results.setResults(readObjectFromResponse(response, Object.class));
+
+		logger.debug("loadSearchResults() with search String: " + search + ", took " + (System.nanoTime() - startTime));
+		return results;
+	}
+
+	private SearchResults getSearchResults(QueryRequest searchJson)
+			throws IOException{
+		if (targetURL == null || targetURL.isEmpty()) {
+			throw new ApplicationException(ApplicationException.MISSING_TARGET_URL);
+		}
+		if (searchJson == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Map<String, String> resourceCredentials = searchJson.getResourceCredentials();
+		if (resourceCredentials == null) {
+			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+		}
+//		String token = resourceCredentials.get(IRCT_BEARER_TOKEN_KEY);
+//		if (token == null) {
+//			throw new NotAuthorizedException(MISSING_CREDENTIALS_MESSAGE);
+//		} else {
+//			this.token = token;
+//		}
+		Object search = searchJson.getQuery();
+		if (search == null) {
+			throw new ProtocolException((ProtocolException.MISSING_DATA));
+		}
+		if (search instanceof String){
+			return searchLoadingCache.getUnchecked((String)search);
+		} else {
+			// This must be a list of searches, because that's the only other thing we support
+			ObjectMapper mapper = new ObjectMapper();
+			try{
+				List<String> entityPaths = mapper.readValue(mapper.writeValueAsString(search), List.class);
+			} catch(Exception e) {
+				logger.error("Could not parse jsonPaths, client made a mistake of some kind : " + mapper.writeValueAsString(search));
+				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+			}
+			HttpResponse response = retrievePostResponse(composeURL(targetURL, "resourceService/jsonPath"), createAuthorizationHeader(token), mapper.writeValueAsString(search));
+			SearchResults results = new SearchResults();
+			results.setSearchQuery(mapper.writeValueAsString(search));
+			results.setResults(mapper.readValue(response.getEntity().getContent(), List.class));
+			return results;
 		}
 	}
 
@@ -357,7 +404,7 @@ public class IRCTResourceRS implements IResourceRS
 
 	}
 
-	private Header[] createAuthorizationHeader(String token){
+	private static Header[] createAuthorizationHeader(String token){
 		Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, ResourceWebClient.BEARER_STRING + token);
 		Header[] headers = {authorizationHeader};
 		return headers;
