@@ -110,6 +110,13 @@ public abstract class AbstractProcessor {
 		} 
 	}
 
+	/**
+	 * Merges a list of sets of patient ids by intersection. If we implemented OR semantics
+	 * this would be where the change happens.
+	 * 
+	 * @param filteredIdSets
+	 * @return
+	 */
 	protected Set<Integer> applyBooleanLogic(ArrayList<Set<Integer>> filteredIdSets) {
 		Set<Integer>[] ids = new Set[] {filteredIdSets.get(0)};
 		filteredIdSets.forEach((keySet)->{
@@ -146,133 +153,73 @@ public abstract class AbstractProcessor {
 //		return interestingVariants;
 //	}
 
-	private BigInteger flipMask(BigInteger caseMask) {
-		for(int x = 2;x<caseMask.bitLength()-2;x++) {
-			caseMask = caseMask.flipBit(x);
+	/**
+	 * Returns a new BigInteger object where each bit except the bookend bits for the bitmask parameter have been flipped.
+	 * @param bitmask
+	 * @return
+	 */
+	private BigInteger flipMask(BigInteger bitmask) {
+		for(int x = 2;x<bitmask.bitLength()-2;x++) {
+			bitmask = bitmask.flipBit(x);
 		}
-		return caseMask;
+		return bitmask;
 	}
 
+	/**
+	 * For each filter in the query, return a set of patient ids that match. The order of these sets in the
+	 * returned list of sets does not matter and cannot currently be tied back to the filter that generated
+	 * it.
+	 * 
+	 * @param query
+	 * @return
+	 * @throws TooManyVariantsException
+	 */
 	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) throws TooManyVariantsException {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
+		
+		addIdSetsForRequiredFields(query, filteredIdSets);
+		
+		addIdSetsForNumericFilters(query, filteredIdSets);
+
+		addIdSetsForVariantInfoFilters(query, filteredIdSets);
+
+		addIdSetsForCategoryFilters(query, filteredIdSets);
+
+		return filteredIdSets;
+	}
+
+	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
+		ArrayList<Set<Integer>> filteredIdSets;
+		
+		filteredIdSets = idSetsForEachFilter(query);
+		
+		TreeSet<Integer> idList;
+		if(filteredIdSets.isEmpty()) {
+			idList = allIds;
+		}else {
+			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
+		}
+		return idList;
+	}
+
+	private void addIdSetsForRequiredFields(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.requiredFields != null && !query.requiredFields.isEmpty()) {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.requiredFields.parallelStream().map(path->{
 				return new TreeSet<Integer>(getCube(path).keyBasedIndex()) ;
 			}).collect(Collectors.toSet()))); 
 		}
+	}
+
+	private void addIdSetsForNumericFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.numericFilters != null && !query.numericFilters.isEmpty()) {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.numericFilters.keySet().parallelStream().map((String key)->{
 				DoubleFilter doubleFilter = query.numericFilters.get(key);
 				return (TreeSet<Integer>)(getCube(key).getKeysForRange(doubleFilter.getMin(), doubleFilter.getMax()));
 			}).collect(Collectors.toSet())));
 		}
+	}
 
-		/* VARIANT INFO FILTER HANDLING IS MESSY */
-		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				// Add variant sets for each filter
-				if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
-					filter.categoryVariantInfoFilters.forEach((String column, String[] values)->{
-						Arrays.sort(values);
-						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-						List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
-							int insertionIndex = Arrays.binarySearch(values, key);
-							return insertionIndex > -1 && insertionIndex < values.length;
-						}).collect(Collectors.toList());
-						for(String key : infoKeys) {
-							try {
-								variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-					});
-				}
-				if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
-					filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
-						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-						doubleFilter.getMax();
-						Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
-						List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-						TreeSet<String> variants = new TreeSet<String>();
-						for(String value : valuesInRange) {
-							try {
-								for(String variantName : infoStore.allValues.get(value)) {
-									System.out.println(variantName);
-								}
-								variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-						variantSets.add(new TreeSet<String>(variants));
-					});
-				}
-				if(!variantSets.isEmpty()) {
-					// INTERSECT all the variant sets.
-					Set<String> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<String> variantSet : variantSets) {
-						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-					}
-					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					log.info("Number of matching variant sets : " + variantSets.size());
-					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-					log.info("Number of matching variants for all sets : " + stats);
-					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
-					if(intersectionOfInfoFilters.size() > 100000) {
-						log.info("Too many variants included in query, will not attempt to process");
-						throw new TooManyVariantsException();
-					}else if(!intersectionOfInfoFilters.isEmpty()) {
-						try {
-							VariantMasks masks;
-							BigInteger heteroMask = variantStore.emptyBitmask();
-							BigInteger homoMask = variantStore.emptyBitmask();
-							BigInteger matchingPatients = variantStore.emptyBitmask();
-							for(String variant : intersectionOfInfoFilters){
-								masks = variantStore.getMasks(variant);
-								if(masks != null) {
-									heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
-									homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
-									BigInteger orMasks = heteroMask.or(homoMask);
-									matchingPatients = matchingPatients.or(orMasks);								
-								}
-							}
-							Set<Integer> ids = new TreeSet<Integer>();
-							String bitmaskString = matchingPatients.toString(2);
-							log.info("or'd masks : " + bitmaskString);
-							PhenoCube<String> patientIdCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
-							for(int x = 2;x < bitmaskString.length()-2;x++) {
-								if('1'==bitmaskString.charAt(x)) {
-									// Minor hack here to deal with Baylor not sticking to one file naming convention
-									String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
-									try {
-										ids.add(patientIdCube.getKeysForValue(patientId).iterator().next());
-									}catch(NullPointerException e) {
-										System.out.println("Could not find id for patient " + patientId);
-									}
-								}
-							}
-							filteredIdSets.add(ids);
-						} catch (IOException e) {
-							log.error(e);
-						} catch (ExecutionException e) {
-							log.error(e);
-						}					
-					}else {
-						log.error("No matches found for info filters.");
-						filteredIdSets.add(new TreeSet<>());
-					}
-				}else {
-					log.error("No info filters included in query.");
-				}
-			}
-
-		}
-		/* END OF VARIANT INFO FILTER HANDLING */
-
+	private void addIdSetsForCategoryFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.categoryFilters != null && !query.categoryFilters.isEmpty()) {
 			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
 				Set<Integer> ids = new TreeSet<Integer>();
@@ -424,10 +371,116 @@ public abstract class AbstractProcessor {
 			}).collect(Collectors.toSet());
 			filteredIdSets.addAll(idsThatMatchFilters);
 		}
-		for(Set set : filteredIdSets) {
-			System.out.println("filtered set : " + set.stream().map((integer) -> {return integer.toString() + " ";}).collect(Collectors.joining()));
+	}
+
+	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets)
+			throws TooManyVariantsException {
+
+		/* VARIANT INFO FILTER HANDLING IS MESSY */
+		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
+			for(VariantInfoFilter filter : query.variantInfoFilters){
+				ArrayList<Set<String>> variantSets = new ArrayList<>();
+				// Add variant sets for each filter
+				if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
+					filter.categoryVariantInfoFilters.forEach((String column, String[] values)->{
+						Arrays.sort(values);
+						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+						List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
+							int insertionIndex = Arrays.binarySearch(values, key);
+							return insertionIndex > -1 && insertionIndex < values.length;
+						}).collect(Collectors.toList());
+						for(String key : infoKeys) {
+							try {
+								variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						}
+					});
+				}
+				if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
+					filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
+						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+						doubleFilter.getMax();
+						Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
+						List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
+						TreeSet<String> variants = new TreeSet<String>();
+						for(String value : valuesInRange) {
+							try {
+								for(String variantName : infoStore.allValues.get(value)) {
+									System.out.println(variantName);
+								}
+								variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						}
+						variantSets.add(new TreeSet<String>(variants));
+					});
+				}
+				if(!variantSets.isEmpty()) {
+					// INTERSECT all the variant sets.
+					Set<String> intersectionOfInfoFilters = variantSets.get(0);
+					for(Set<String> variantSet : variantSets) {
+						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
+					}
+					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
+					log.info("Number of matching variant sets : " + variantSets.size());
+					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
+					log.info("Number of matching variants for all sets : " + stats);
+					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
+					if(intersectionOfInfoFilters.size() > 100000) {
+						log.info("Too many variants included in query, will not attempt to process");
+						throw new TooManyVariantsException();
+					}else if(!intersectionOfInfoFilters.isEmpty()) {
+						try {
+							VariantMasks masks;
+							BigInteger heteroMask = variantStore.emptyBitmask();
+							BigInteger homoMask = variantStore.emptyBitmask();
+							BigInteger matchingPatients = variantStore.emptyBitmask();
+							for(String variant : intersectionOfInfoFilters){
+								masks = variantStore.getMasks(variant);
+								if(masks != null) {
+									heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
+									homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
+									BigInteger orMasks = heteroMask.or(homoMask);
+									matchingPatients = matchingPatients.or(orMasks);								
+								}
+							}
+							Set<Integer> ids = new TreeSet<Integer>();
+							String bitmaskString = matchingPatients.toString(2);
+							log.info("or'd masks : " + bitmaskString);
+							PhenoCube<String> patientIdCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
+							for(int x = 2;x < bitmaskString.length()-2;x++) {
+								if('1'==bitmaskString.charAt(x)) {
+									// Minor hack here to deal with Baylor not sticking to one file naming convention
+									String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
+									try {
+										ids.add(patientIdCube.getKeysForValue(patientId).iterator().next());
+									}catch(NullPointerException e) {
+										System.out.println("Could not find id for patient " + patientId);
+									}
+								}
+							}
+							filteredIdSets.add(ids);
+						} catch (IOException e) {
+							log.error(e);
+						} catch (ExecutionException e) {
+							log.error(e);
+						}					
+					}else {
+						log.error("No matches found for info filters.");
+						filteredIdSets.add(new TreeSet<>());
+					}
+				}else {
+					log.error("No info filters included in query.");
+				}
+			}
+
 		}
-		return filteredIdSets;
+		/* END OF VARIANT INFO FILTER HANDLING */
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
@@ -442,6 +495,15 @@ public abstract class AbstractProcessor {
 		return key.matches("rs[0-9]+.*") || key.matches("[0-9]+,[0-9\\.]+,.*");
 	}
 
+	/**
+	 * If there are concepts in the list of paths which are already in the cache, push those to the
+	 * front of the list so that we don't evict and then reload them for concepts which are not yet
+	 * in the cache.
+	 * 
+	 * @param paths
+	 * @param columnCount
+	 * @return
+	 */
 	protected ArrayList<Integer> useResidentCubesFirst(List<String> paths, int columnCount) {
 		int x;
 		TreeSet<String> pathSet = new TreeSet<String>(paths);
@@ -463,6 +525,14 @@ public abstract class AbstractProcessor {
 		return columnIndex;
 	}
 
+	/**
+	 * Load the variantStore object from disk and build the PhenoCube cache.
+	 * 
+	 * @return
+	 * @throws ClassNotFoundException
+	 * @throws FileNotFoundException
+	 * @throws IOException
+	 */
 	protected LoadingCache<String, PhenoCube<?>> initializeCache() throws ClassNotFoundException, FileNotFoundException, IOException {
 		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
 			variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin"))).readObject();
@@ -494,6 +564,10 @@ public abstract class AbstractProcessor {
 						});
 	}
 
+	/**
+	 * Prime the cache if we have a key already by loading PhenoCubes into the cache up to maximum CACHE_SIZE
+	 * 
+	 */
 	public void loadAllDataFiles() {
 		if(Crypto.hasKey()) {
 			List<String> cubes = new ArrayList<String>(metaStore.keySet());
@@ -547,6 +621,14 @@ public abstract class AbstractProcessor {
 		return metaStore;
 	}
 
+	/**
+	 * Execute whatever processing is required for the particular implementation of AbstractProcessor
+	 * 
+	 * @param query
+	 * @param asyncResult
+	 * @throws NotEnoughMemoryException
+	 * @throws TooManyVariantsException
+	 */
 	public abstract void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException, TooManyVariantsException;
 
 }

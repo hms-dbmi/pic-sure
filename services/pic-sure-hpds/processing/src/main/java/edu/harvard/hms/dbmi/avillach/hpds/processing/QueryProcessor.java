@@ -35,27 +35,7 @@ public class QueryProcessor extends AbstractProcessor {
 		};
 	}
 
-	private TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
-		ArrayList<Set<Integer>> filteredIdSets;
-		
-		filteredIdSets = idSetsForEachFilter(query);
-		
-		TreeSet<Integer> idList;
-		if(filteredIdSets.isEmpty()) {
-			idList = allIds;
-		}else {
-			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
-		}
-		return idList;
-	}
 	
-	public void runSizeQuery(Query query, AsyncResult result) throws TooManyVariantsException {
-		TreeSet<Integer> idList = getPatientSubsetForQuery(query);
-		// we need all the fields.
-		
-	}
-	
-
 	private ResultStore buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		List<String> paths = query.fields;
 		int columnCount = paths.size() + 1;
@@ -169,6 +149,16 @@ public class QueryProcessor extends AbstractProcessor {
 		return idPointer;
 	}
 
+	/**
+	 * Correctly handle null records. A numerical value should be a NaN if it is missing to distinguish from a zero. A
+	 * String based value(categorical) should be empty instead of null because the word null might be a valid value.
+	 * 
+	 * @param results
+	 * @param x
+	 * @param cube
+	 * @param doubleBuffer
+	 * @param idInSubsetPointer
+	 */
 	private void writeNullResultField(ResultStore results, Integer x, PhenoCube<?> cube, ByteBuffer doubleBuffer, int idInSubsetPointer) {
 		byte[] valueBuffer = null;
 		if(cube.isStringType()) {

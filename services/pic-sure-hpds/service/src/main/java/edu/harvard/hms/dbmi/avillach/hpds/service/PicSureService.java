@@ -49,6 +49,15 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantsOfInterestProcessor
 @Produces("application/json")
 public class PicSureService implements IResourceRS {
 
+	public PicSureService() {
+		try {
+			countProcessor = new CountProcessor();
+		} catch (ClassNotFoundException | IOException e3) {
+			// TODO Auto-generated catch block
+			e3.printStackTrace();
+		}
+	}
+	
 	@Autowired
 	private QueryService queryService;
 
@@ -198,7 +207,6 @@ public class PicSureService implements IResourceRS {
 					queryService.processor.loadAllDataFiles();
 					log.info("Data is loaded");
 					queryStatus.setResourceStatus("Resource unlocked.");
-					countProcessor = new CountProcessor();
 					variantsOfInterestProcessor = new VariantsOfInterestProcessor();
 				} catch(Exception e) {
 					Crypto.setKey(null);

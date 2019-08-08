@@ -12,11 +12,12 @@ import org.apache.log4j.Logger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
+import edu.harvard.hms.dbmi.avillach.hpds.exception.ResultSetTooLargeException;
 
 public class ResultStore {
-	
+
 	private static Logger log = Logger.getLogger(ResultStore.class);
-	
+
 	private List<ColumnMeta> columns;
 	int rowWidth;
 	private int numRows;
@@ -26,7 +27,7 @@ public class ResultStore {
 	
 	public ResultStore(String resultId, String queryId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		this.columns = new ArrayList<ColumnMeta>();
-		this.numRows = ids.size();
+		this.numRows = ids.size() + 1;
 		this.getColumns().add(PATIENT_ID_COLUMN_META);
 		int rowWidth = Integer.BYTES;
 		for(ColumnMeta column : columns) {
@@ -35,6 +36,9 @@ public class ResultStore {
 			this.getColumns().add(column);
 		}
 		this.rowWidth = rowWidth;
+		if(1L * this.rowWidth * this.getNumRows() > Integer.MAX_VALUE) {
+			throw new ResultSetTooLargeException((1L * this.rowWidth * this.getNumRows())/(Integer.MAX_VALUE/2));
+		}
 		try {
 			log.info("Allocating result array : " + resultId);
 			resultArray = new byte[this.rowWidth * this.getNumRows()];
@@ -50,7 +54,12 @@ public class ResultStore {
 
 	public void writeField(int column, int row, byte[] fieldValue) {
 		int offset = getFieldOffset(row,column);
-		System.arraycopy(fieldValue, 0, resultArray, offset, fieldValue.length);
+		try {
+			System.arraycopy(fieldValue, 0, resultArray, offset, fieldValue.length);
+		}catch(Exception e) {
+			log.info("Exception caught writing field : " + column + ", " + row + " : " + fieldValue.length + " bytes into result at offset " + offset + " of " + resultArray.length);
+			throw e;
+		}
 	}
 
 	public int getFieldOffset(int row, int column) {
@@ -70,7 +79,7 @@ public class ResultStore {
 		for(int x = 0;x<getColumns().size();x++) {
 			columnBuffers[x] = new byte[getColumns().get(x).getWidthInBytes()];
 		}
-		
+
 		stringifyRow(rowNumber, row, columnBuffers);
 	}
 
