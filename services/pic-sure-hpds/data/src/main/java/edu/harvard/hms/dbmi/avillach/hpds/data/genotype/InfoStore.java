@@ -87,7 +87,7 @@ public class InfoStore implements Serializable {
 	public void processRecord(String specNotation, String[] infoValues) {
 		for(String value : infoValues) {
 			if(value.startsWith(prefix)) {
-				String valueWithoutkey = value.replaceFirst(prefix, "");
+				String valueWithoutkey = value.substring(prefix.length());
 				ConcurrentSkipListSet<String> entriesForValue = allValues.get(valueWithoutkey);
 				if(entriesForValue == null) {
 					entriesForValue = new ConcurrentSkipListSet<>();
