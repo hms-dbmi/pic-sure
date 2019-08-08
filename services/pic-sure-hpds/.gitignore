@@ -24,3 +24,5 @@ buildNumber.properties
 war-exec.properties
 war-exec.manifest
 .extract/
+
+.DS_Store
