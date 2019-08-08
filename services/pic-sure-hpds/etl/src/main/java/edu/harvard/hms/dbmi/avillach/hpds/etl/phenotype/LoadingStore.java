@@ -19,6 +19,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import org.apache.log4j.Logger;
 
@@ -34,8 +36,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
  
 public class LoadingStore {
-
-	private HashMap<String, byte[]> compressedPhenoCubes = new HashMap<>();
  
 	RandomAccessFile allObservationsStore;
 
@@ -44,7 +44,7 @@ public class LoadingStore {
 	private static Logger log = Logger.getLogger(LoadingStore.class);
 	
 	public LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
-			.maximumSize(200)
+			.maximumSize(64)
 			.removalListener(new RemovalListener<String, PhenoCube>() {
 
 				@Override
@@ -57,8 +57,7 @@ public class LoadingStore {
 						columnMeta.setAllObservationsOffset(allObservationsStore.getFilePointer());
 						columnMeta.setObservationCount(arg0.getValue().sortedByKey().length);
 						if(columnMeta.isCategorical()) {
-							columnMeta.setCategoryValues(new ArrayList<String>());
-							columnMeta.getCategoryValues().addAll(new TreeSet<String>(arg0.getValue().keyBasedArray()));
+							columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>(arg0.getValue().keyBasedArray())));
 						} else {
 							List<Double> map = (List<Double>) arg0.getValue().keyBasedArray().stream().map((value)->{return (Double) value;}).collect(Collectors.toList());
 							double min = Double.MAX_VALUE;
@@ -82,7 +81,6 @@ public class LoadingStore {
 						}
 						allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 						columnMeta.setAllObservationsLength(allObservationsStore.getFilePointer());
-						compressedPhenoCubes.put(arg0.getKey(), byteStream.toByteArray());
 						metadataMap.put(columnMeta.getName(), columnMeta);
 					} catch (IOException e1) {
 						e1.printStackTrace();
@@ -120,30 +118,29 @@ public class LoadingStore {
 			.build(
 					new CacheLoader<String, PhenoCube>() {
 						public PhenoCube load(String key) throws Exception {
-							log.info(key);
-							byte[] bytes = compressedPhenoCubes.get(key);
-							if(bytes == null) return null;
-							ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(bytes));
-							PhenoCube ret = (PhenoCube)inStream.readObject();
-							inStream.close();
-							return ret;
+							log.info("Loading cube: " + key);
+							return null;
 						}
 					});
 
 	TreeSet<Integer> allIds = new TreeSet<Integer>();
 	
 	public void saveStore() throws FileNotFoundException, IOException {
+		System.out.println("Invalidating store");
 		store.invalidateAll();
-		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File("/opt/local/hpds/columnMeta.javabin")));
+		store.cleanUp();
+		System.out.println("Writing metadata");
+		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File("/opt/local/hpds/columnMeta.javabin"))));
 		metaOut.writeObject(metadataMap);
 		metaOut.writeObject(allIds);
 		metaOut.flush();
 		metaOut.close();
+		System.out.println("Closing Store");
 		allObservationsStore.close();
 	}
 
 	public void dumpStats() {
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin"));){
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
 

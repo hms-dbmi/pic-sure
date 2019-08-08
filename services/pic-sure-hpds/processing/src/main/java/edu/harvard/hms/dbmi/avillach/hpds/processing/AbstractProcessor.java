@@ -96,7 +96,7 @@ public abstract class AbstractProcessor {
 	//	private GeneLibrary geneLibrary = new GeneLibrary();
 
 	protected Object[] loadMetadata() {
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin"));){
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
 			for(Entry<String,ColumnMeta> entry : metastore.entrySet()) {
