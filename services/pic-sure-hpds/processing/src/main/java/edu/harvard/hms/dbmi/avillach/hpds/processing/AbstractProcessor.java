@@ -188,6 +188,14 @@ public abstract class AbstractProcessor {
 		return filteredIdSets;
 	}
 
+	/**
+	 * Process each filter in the query and return a list of patient ids that should be included in the
+	 * result. 
+	 * 
+	 * @param query
+	 * @return
+	 * @throws TooManyVariantsException
+	 */
 	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
 		ArrayList<Set<Integer>> filteredIdSets;
 		
@@ -224,143 +232,7 @@ public abstract class AbstractProcessor {
 			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
 				Set<Integer> ids = new TreeSet<Integer>();
 				if(pathIsVariantSpec(key)) {
-					ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
-					Arrays.stream(query.categoryFilters.get(key)).forEach((zygosity) -> {
-						String variantName = key.replaceAll(",\\d/\\d$", "");
-						System.out.println("looking up masks : " + key + " to " + variantName);
-						VariantMasks masks;
-						try {
-							masks = variantStore.getMasks(variantName);
-							if(masks!=null) {
-								if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
-									BigInteger indiscriminateVariantBitmap = null;
-									if(masks.heterozygousMask == null && masks.homozygousMask != null) {
-										indiscriminateVariantBitmap = masks.homozygousMask;
-									}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
-										indiscriminateVariantBitmap = masks.heterozygousMask;
-									}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
-										indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
-									}
-									for(int x = 2;x<indiscriminateVariantBitmap.bitLength()-2;x++) {
-										indiscriminateVariantBitmap = indiscriminateVariantBitmap.flipBit(x);
-									}
-									variantBitmasks.add(indiscriminateVariantBitmap);
-								} else if(masks.heterozygousMask != null && zygosity.equals(HETEROZYGOUS_VARIANT)) {
-									BigInteger heterozygousVariantBitmap = masks.heterozygousMask;
-									variantBitmasks.add(heterozygousVariantBitmap);							
-								}else if(masks.homozygousMask != null && zygosity.equals(HOMOZYGOUS_VARIANT)) {
-									BigInteger homozygousVariantBitmap = masks.homozygousMask;
-									variantBitmasks.add(homozygousVariantBitmap);
-								}else if(zygosity.equals("")) {
-									if(masks.heterozygousMask == null && masks.homozygousMask != null) {
-										variantBitmasks.add(masks.homozygousMask);
-									}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
-										variantBitmasks.add(masks.heterozygousMask);
-									}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
-										BigInteger indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
-										variantBitmasks.add(indiscriminateVariantBitmap);
-									}
-								}
-							} else {
-								variantBitmasks.add(variantStore.emptyBitmask());
-							}
-						} catch (IOException e) {
-							log.error(e);
-						}
-					});
-					if( ! variantBitmasks.isEmpty()) {
-						BigInteger bitmask = variantBitmasks.get(0);
-						if(variantBitmasks.size()>1) {
-							for(int x = 1;x<variantBitmasks.size();x++) {
-								bitmask = bitmask.or(variantBitmasks.get(x));
-							}
-						}
-						String bitmaskString = bitmask.toString(2);
-						System.out.println("or'd masks : " + bitmaskString);
-						PhenoCube<String> idCube;
-						try {
-							idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
-							for(int x = 2;x < bitmaskString.length()-2;x++) {
-								if('1'==bitmaskString.charAt(x)) {
-									// Minor hack here to deal with Baylor not sticking to one file naming convention
-									String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
-									try{
-										ids.add(idCube.getKeysForValue(patientId).iterator().next());
-									}catch(NullPointerException e) {
-										log.error(ID_CUBE_NAME + " has no value for patientId : " + patientId);
-									}
-								}
-							}
-						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-					}
-//				} else if(pathIsGeneName(key)) {
-					//					try {
-					//						List<VCFPerPatientVariantMasks> matchingMasks = 
-					//								variantStore.getMasksForRangesOfChromosome(
-					//										geneLibrary.getChromosomeForGene(key), 
-					//										geneLibrary.offsetsForGene(key),
-					//										geneLibrary.rangeSetForGene(key));
-					//						System.out.println("Found " + matchingMasks.size() + " masks for variant " + key);
-					//						BigInteger matchingPatients = variantStore.emptyBitmask();
-					//						for(String zygosity : query.categoryFilters.get(key)) {
-					//							if(zygosity.equals(HETEROZYGOUS_VARIANT)) {
-					//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-					//									if(masks!=null) {
-					//										if(masks.heterozygousMask != null) {
-					//											//											String bitmaskString = masks.heterozygousMask.toString(2);
-					//											//											System.out.println("heterozygousMask : " + bitmaskString);
-					//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
-					//										}
-					//									}
-					//								}
-					//							}else if(zygosity.equals(HOMOZYGOUS_VARIANT)) {
-					//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-					//									if(masks!=null) {
-					//										if(masks.homozygousMask != null) {
-					//											//											String bitmaskString = masks.homozygousMask.toString(2);
-					//											//											System.out.println("homozygousMask : " + bitmaskString);
-					//											matchingPatients = matchingPatients.or(masks.homozygousMask);
-					//										}
-					//									}
-					//								}					
-					//							}else if(zygosity.equals("")) {
-					//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-					//									if(masks!=null) {
-					//										if(masks.homozygousMask != null) {
-					//											//											String bitmaskString = masks.homozygousMask.toString(2);
-					//											//											System.out.println("homozygousMask : " + bitmaskString);
-					//											matchingPatients = matchingPatients.or(masks.homozygousMask);
-					//										}
-					//										if(masks.heterozygousMask != null) {
-					//											//											String bitmaskString = masks.heterozygousMask.toString(2);
-					//											//											System.out.println("heterozygousMask : " + bitmaskString);
-					//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
-					//										}
-					//									}
-					//								}	
-					//							}
-					//						}
-					//						String bitmaskString = matchingPatients.toString(2);
-					//						System.out.println("or'd masks : " + bitmaskString);
-					//						PhenoCube idCube = store.get(ID_CUBE_NAME);
-					//						for(int x = 2;x < bitmaskString.length()-2;x++) {
-					//							if('1'==bitmaskString.charAt(x)) {
-					//								String patientId = variantStore.getPatientIds()[x-2];
-					//								int id = -1;
-					//								for(KeyAndValue<String> ids : idCube.sortedByValue()) {
-					//									if(patientId.equalsIgnoreCase(ids.getValue())) {
-					//										id = ids.getKey();
-					//									}
-					//								}
-					//								ids.add(id);
-					//							}
-					//						}
-					//					} catch (IOException | ExecutionException e) {
-					//						log.error(e);
-					//					} 
+					addIdSetsForVariantSpecCategoryFilters(query, key, ids);
 				} else {
 					String[] categoryFilter = query.categoryFilters.get(key);
 					for(String category : categoryFilter) {
@@ -371,6 +243,153 @@ public abstract class AbstractProcessor {
 			}).collect(Collectors.toSet());
 			filteredIdSets.addAll(idsThatMatchFilters);
 		}
+	}
+
+	private void addIdSetsForVariantSpecCategoryFilters(Query query, String key, Set<Integer> ids) {
+		ArrayList<BigInteger> variantBitmasks = getBitmasksForVariantSpecCategoryFilter(query, key);
+		if( ! variantBitmasks.isEmpty()) {
+			BigInteger bitmask = variantBitmasks.get(0);
+			if(variantBitmasks.size()>1) {
+				for(int x = 1;x<variantBitmasks.size();x++) {
+					bitmask = bitmask.or(variantBitmasks.get(x));
+				}
+			}
+			// TODO : This is probably not necessary, see TODO below. 
+			String bitmaskString = bitmask.toString(2);
+			System.out.println("or'd masks : " + bitmaskString);
+			PhenoCube<String> idCube;
+			try {
+				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
+				// TODO : This is much less efficient than using bitmask.testBit(x)
+				for(int x = 2;x < bitmaskString.length()-2;x++) {
+					if('1'==bitmaskString.charAt(x)) {
+						// Minor hack here to deal with Baylor not sticking to one file naming convention
+						String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
+						try{
+							ids.add(idCube.getKeysForValue(patientId).iterator().next());
+						}catch(NullPointerException e) {
+							log.error(ID_CUBE_NAME + " has no value for patientId : " + patientId);
+						}
+					}
+				}
+			} catch (ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+//				} else if(pathIsGeneName(key)) {
+		//					try {
+		//						List<VCFPerPatientVariantMasks> matchingMasks = 
+		//								variantStore.getMasksForRangesOfChromosome(
+		//										geneLibrary.getChromosomeForGene(key), 
+		//										geneLibrary.offsetsForGene(key),
+		//										geneLibrary.rangeSetForGene(key));
+		//						System.out.println("Found " + matchingMasks.size() + " masks for variant " + key);
+		//						BigInteger matchingPatients = variantStore.emptyBitmask();
+		//						for(String zygosity : query.categoryFilters.get(key)) {
+		//							if(zygosity.equals(HETEROZYGOUS_VARIANT)) {
+		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
+		//									if(masks!=null) {
+		//										if(masks.heterozygousMask != null) {
+		//											//											String bitmaskString = masks.heterozygousMask.toString(2);
+		//											//											System.out.println("heterozygousMask : " + bitmaskString);
+		//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
+		//										}
+		//									}
+		//								}
+		//							}else if(zygosity.equals(HOMOZYGOUS_VARIANT)) {
+		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
+		//									if(masks!=null) {
+		//										if(masks.homozygousMask != null) {
+		//											//											String bitmaskString = masks.homozygousMask.toString(2);
+		//											//											System.out.println("homozygousMask : " + bitmaskString);
+		//											matchingPatients = matchingPatients.or(masks.homozygousMask);
+		//										}
+		//									}
+		//								}					
+		//							}else if(zygosity.equals("")) {
+		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
+		//									if(masks!=null) {
+		//										if(masks.homozygousMask != null) {
+		//											//											String bitmaskString = masks.homozygousMask.toString(2);
+		//											//											System.out.println("homozygousMask : " + bitmaskString);
+		//											matchingPatients = matchingPatients.or(masks.homozygousMask);
+		//										}
+		//										if(masks.heterozygousMask != null) {
+		//											//											String bitmaskString = masks.heterozygousMask.toString(2);
+		//											//											System.out.println("heterozygousMask : " + bitmaskString);
+		//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
+		//										}
+		//									}
+		//								}	
+		//							}
+		//						}
+		//						String bitmaskString = matchingPatients.toString(2);
+		//						System.out.println("or'd masks : " + bitmaskString);
+		//						PhenoCube idCube = store.get(ID_CUBE_NAME);
+		//						for(int x = 2;x < bitmaskString.length()-2;x++) {
+		//							if('1'==bitmaskString.charAt(x)) {
+		//								String patientId = variantStore.getPatientIds()[x-2];
+		//								int id = -1;
+		//								for(KeyAndValue<String> ids : idCube.sortedByValue()) {
+		//									if(patientId.equalsIgnoreCase(ids.getValue())) {
+		//										id = ids.getKey();
+		//									}
+		//								}
+		//								ids.add(id);
+		//							}
+		//						}
+		//					} catch (IOException | ExecutionException e) {
+		//						log.error(e);
+		//					} 
+	}
+
+	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(Query query, String key) {
+		ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
+		Arrays.stream(query.categoryFilters.get(key)).forEach((zygosity) -> {
+			String variantName = key.replaceAll(",\\d/\\d$", "");
+			System.out.println("looking up masks : " + key + " to " + variantName);
+			VariantMasks masks;
+			try {
+				masks = variantStore.getMasks(variantName);
+				if(masks!=null) {
+					if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
+						BigInteger indiscriminateVariantBitmap = null;
+						if(masks.heterozygousMask == null && masks.homozygousMask != null) {
+							indiscriminateVariantBitmap = masks.homozygousMask;
+						}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
+							indiscriminateVariantBitmap = masks.heterozygousMask;
+						}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
+							indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
+						}
+						for(int x = 2;x<indiscriminateVariantBitmap.bitLength()-2;x++) {
+							indiscriminateVariantBitmap = indiscriminateVariantBitmap.flipBit(x);
+						}
+						variantBitmasks.add(indiscriminateVariantBitmap);
+					} else if(masks.heterozygousMask != null && zygosity.equals(HETEROZYGOUS_VARIANT)) {
+						BigInteger heterozygousVariantBitmap = masks.heterozygousMask;
+						variantBitmasks.add(heterozygousVariantBitmap);							
+					}else if(masks.homozygousMask != null && zygosity.equals(HOMOZYGOUS_VARIANT)) {
+						BigInteger homozygousVariantBitmap = masks.homozygousMask;
+						variantBitmasks.add(homozygousVariantBitmap);
+					}else if(zygosity.equals("")) {
+						if(masks.heterozygousMask == null && masks.homozygousMask != null) {
+							variantBitmasks.add(masks.homozygousMask);
+						}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
+							variantBitmasks.add(masks.heterozygousMask);
+						}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
+							BigInteger indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
+							variantBitmasks.add(indiscriminateVariantBitmap);
+						}
+					}
+				} else {
+					variantBitmasks.add(variantStore.emptyBitmask());
+				}
+			} catch (IOException e) {
+				log.error(e);
+			}
+		});
+		return variantBitmasks;
 	}
 
 	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets)
