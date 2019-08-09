@@ -124,34 +124,34 @@ public abstract class AbstractProcessor {
 		});
 		return ids[0];
 	}
-//
-//	protected Map<String, Double> variantsOfInterestForSubset(String geneName, BigInteger caseMask, double pValueCutoff) throws IOException{
-//		TreeSet<String> nonsynonymous_SNVs = new TreeSet<>(Arrays.asList(infoStores.get("UCG").allValues.get("nonsynonymous_SNV")));
-//		TreeSet<String> variantsInGene = new TreeSet<>(Arrays.asList(infoStores.get("GN").allValues.get(geneName)));
-//		TreeSet<String> nonsynVariantsInGene = new TreeSet<String>(Sets.intersection(variantsInGene, nonsynonymous_SNVs));
-//
-//		HashMap<String, Double> interestingVariants = new HashMap<>();
-//
-//		nonsynVariantsInGene.stream().forEach((variantSpec)->{
-//			VariantMasks masks;
-//			try {
-//				masks = variantStore.getMasks(variantSpec);
-//			} catch (IOException e) {
-//				throw new RuntimeException(e);
-//			}
-//			BigInteger controlMask = flipMask(caseMask);
-//			BigInteger variantAlleleMask = masks.heterozygousMask.or(masks.homozygousMask);
-//			BigInteger referenceAlleleMask = flipMask(variantAlleleMask);
-//			Double value = new ChiSquareTest().chiSquare(new long[][] {
-//				{variantAlleleMask.and(caseMask).bitCount()-4, variantAlleleMask.and(controlMask).bitCount()-4},
-//				{referenceAlleleMask.and(caseMask).bitCount()-4, referenceAlleleMask.and(controlMask).bitCount()-4}
-//			});
-//			if(value < pValueCutoff) {
-//				interestingVariants.put(variantSpec, value);
-//			}
-//		});
-//		return interestingVariants;
-//	}
+	//
+	//	protected Map<String, Double> variantsOfInterestForSubset(String geneName, BigInteger caseMask, double pValueCutoff) throws IOException{
+	//		TreeSet<String> nonsynonymous_SNVs = new TreeSet<>(Arrays.asList(infoStores.get("UCG").allValues.get("nonsynonymous_SNV")));
+	//		TreeSet<String> variantsInGene = new TreeSet<>(Arrays.asList(infoStores.get("GN").allValues.get(geneName)));
+	//		TreeSet<String> nonsynVariantsInGene = new TreeSet<String>(Sets.intersection(variantsInGene, nonsynonymous_SNVs));
+	//
+	//		HashMap<String, Double> interestingVariants = new HashMap<>();
+	//
+	//		nonsynVariantsInGene.stream().forEach((variantSpec)->{
+	//			VariantMasks masks;
+	//			try {
+	//				masks = variantStore.getMasks(variantSpec);
+	//			} catch (IOException e) {
+	//				throw new RuntimeException(e);
+	//			}
+	//			BigInteger controlMask = flipMask(caseMask);
+	//			BigInteger variantAlleleMask = masks.heterozygousMask.or(masks.homozygousMask);
+	//			BigInteger referenceAlleleMask = flipMask(variantAlleleMask);
+	//			Double value = new ChiSquareTest().chiSquare(new long[][] {
+	//				{variantAlleleMask.and(caseMask).bitCount()-4, variantAlleleMask.and(controlMask).bitCount()-4},
+	//				{referenceAlleleMask.and(caseMask).bitCount()-4, referenceAlleleMask.and(controlMask).bitCount()-4}
+	//			});
+	//			if(value < pValueCutoff) {
+	//				interestingVariants.put(variantSpec, value);
+	//			}
+	//		});
+	//		return interestingVariants;
+	//	}
 
 	/**
 	 * Returns a new BigInteger object where each bit except the bookend bits for the bitmask parameter have been flipped.
@@ -176,9 +176,9 @@ public abstract class AbstractProcessor {
 	 */
 	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) throws TooManyVariantsException {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
-		
+
 		addIdSetsForRequiredFields(query, filteredIdSets);
-		
+
 		addIdSetsForNumericFilters(query, filteredIdSets);
 
 		addIdSetsForVariantInfoFilters(query, filteredIdSets);
@@ -198,9 +198,9 @@ public abstract class AbstractProcessor {
 	 */
 	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
 		ArrayList<Set<Integer>> filteredIdSets;
-		
+
 		filteredIdSets = idSetsForEachFilter(query);
-		
+
 		TreeSet<Integer> idList;
 		if(filteredIdSets.isEmpty()) {
 			idList = allIds;
@@ -277,7 +277,7 @@ public abstract class AbstractProcessor {
 				e.printStackTrace();
 			}
 		}
-//				} else if(pathIsGeneName(key)) {
+		//				} else if(pathIsGeneName(key)) {
 		//					try {
 		//						List<VCFPerPatientVariantMasks> matchingMasks = 
 		//								variantStore.getMasksForRangesOfChromosome(
@@ -346,50 +346,53 @@ public abstract class AbstractProcessor {
 
 	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(Query query, String key) {
 		ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
-		Arrays.stream(query.categoryFilters.get(key)).forEach((zygosity) -> {
-			String variantName = key.replaceAll(",\\d/\\d$", "");
-			System.out.println("looking up masks : " + key + " to " + variantName);
-			VariantMasks masks;
-			try {
-				masks = variantStore.getMasks(variantName);
+		String variantName = key.replaceAll(",\\d/\\d$", "");
+		System.out.println("looking up masks : " + key + " to " + variantName);
+		VariantMasks masks;
+		try {
+			masks = variantStore.getMasks(variantName);
+			Arrays.stream(query.categoryFilters.get(key)).forEach((zygosity) -> {
 				if(masks!=null) {
 					if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
-						BigInteger indiscriminateVariantBitmap = null;
-						if(masks.heterozygousMask == null && masks.homozygousMask != null) {
-							indiscriminateVariantBitmap = masks.homozygousMask;
-						}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
-							indiscriminateVariantBitmap = masks.heterozygousMask;
-						}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
-							indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
+						BigInteger homozygousReferenceBitmask = calculateIndiscriminateBitmask(masks);
+						for(int x = 2;x<homozygousReferenceBitmask.bitLength()-2;x++) {
+							homozygousReferenceBitmask = homozygousReferenceBitmask.flipBit(x);
 						}
-						for(int x = 2;x<indiscriminateVariantBitmap.bitLength()-2;x++) {
-							indiscriminateVariantBitmap = indiscriminateVariantBitmap.flipBit(x);
-						}
-						variantBitmasks.add(indiscriminateVariantBitmap);
+						variantBitmasks.add(homozygousReferenceBitmask);
 					} else if(masks.heterozygousMask != null && zygosity.equals(HETEROZYGOUS_VARIANT)) {
-						BigInteger heterozygousVariantBitmap = masks.heterozygousMask;
-						variantBitmasks.add(heterozygousVariantBitmap);							
+						variantBitmasks.add(masks.heterozygousMask);							
 					}else if(masks.homozygousMask != null && zygosity.equals(HOMOZYGOUS_VARIANT)) {
-						BigInteger homozygousVariantBitmap = masks.homozygousMask;
-						variantBitmasks.add(homozygousVariantBitmap);
+						variantBitmasks.add(masks.homozygousMask);
 					}else if(zygosity.equals("")) {
-						if(masks.heterozygousMask == null && masks.homozygousMask != null) {
-							variantBitmasks.add(masks.homozygousMask);
-						}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
-							variantBitmasks.add(masks.heterozygousMask);
-						}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
-							BigInteger indiscriminateVariantBitmap = masks.heterozygousMask.or(masks.homozygousMask);
-							variantBitmasks.add(indiscriminateVariantBitmap);
-						}
+						variantBitmasks.add(calculateIndiscriminateBitmask(masks));
 					}
 				} else {
 					variantBitmasks.add(variantStore.emptyBitmask());
 				}
-			} catch (IOException e) {
-				log.error(e);
-			}
-		});
+
+			});
+		} catch (IOException e) {
+			log.error(e);
+		}
 		return variantBitmasks;
+	}
+
+	/**
+	 * Calculate a bitmask which is a bitwise OR of any populated masks in the VariantMasks passed in
+	 * @param masks
+	 * @return
+	 */
+	private BigInteger calculateIndiscriminateBitmask(VariantMasks masks) {
+		BigInteger indiscriminateVariantBitmask = null;
+		if(masks.heterozygousMask == null && masks.homozygousMask != null) {
+			indiscriminateVariantBitmask = masks.homozygousMask;
+		}else if(masks.homozygousMask == null && masks.heterozygousMask != null) {
+			indiscriminateVariantBitmask = masks.heterozygousMask;
+		}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
+			indiscriminateVariantBitmask = masks.heterozygousMask.or(masks.homozygousMask);
+		}
+		throw new RuntimeException("This is a bug, but we can't handle it here because we have no way "
+				+ "to know how many bits should be in the answer.");
 	}
 
 	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets)
@@ -505,10 +508,10 @@ public abstract class AbstractProcessor {
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
 		return infoStores.get(column);
 	}
-//
-//	private boolean pathIsGeneName(String key) {
-//		return new GeneLibrary().geneNameSearch(key).size()==1;
-//	}
+	//
+	//	private boolean pathIsGeneName(String key) {
+	//		return new GeneLibrary().geneNameSearch(key).size()==1;
+	//	}
 
 	public boolean pathIsVariantSpec(String key) {
 		return key.matches("rs[0-9]+.*") || key.matches("[0-9]+,[0-9\\.]+,.*");
