@@ -447,6 +447,7 @@
                 <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
                 <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS:none}"/>
                 <simple name="java:global/accessGrantEmailSubject" value="${env.accessGrantEmailSubject:none}"/>
+                <simple name="java:global/tokenExpirationTime" value="${env.tokenExpriationTime:900000}" />
             </bindings>
             <remote-naming/>
         </subsystem>
