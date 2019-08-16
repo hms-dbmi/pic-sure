@@ -121,8 +121,8 @@ public class JAXRSConfiguration extends Application {
     private void initializeTokenExpirationTime(){
         try {
             Context ctx = new InitialContext();
-            tokenExpirationTime = (long)ctx.lookup("java:global/tokenExpirationTime");
-        } catch (NamingException | ClassCastException ex){
+            tokenExpirationTime = Long.parseLong((String)ctx.lookup("java:global/tokenExpirationTime"));
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
             tokenExpirationTime = defaultTokenExpirationTime;
         }
 
@@ -133,8 +133,8 @@ public class JAXRSConfiguration extends Application {
     private void initializeLongTermTokenExpirationTime(){
         try {
             Context ctx = new InitialContext();
-            longTermTokenExpirationTime = (long)ctx.lookup("java:global/longTermTokenExpirationTime");
-        } catch (NamingException | ClassCastException ex){
+            longTermTokenExpirationTime = Long.parseLong((String)ctx.lookup("java:global/longTermTokenExpirationTime"));
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
             longTermTokenExpirationTime = defaultLongTermTokenExpirationTime;
         }
 
