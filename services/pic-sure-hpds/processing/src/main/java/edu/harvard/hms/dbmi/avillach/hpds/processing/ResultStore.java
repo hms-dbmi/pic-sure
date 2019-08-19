@@ -95,7 +95,7 @@ public class ResultStore {
 		}
 	}
 
-	DecimalFormat decimalFormat = new DecimalFormat("######.##");
+	DecimalFormat decimalFormat = new DecimalFormat("########.####");
 	private void stringifyDouble(String[] row, int x, int fieldOffset) {
 		row[x] = Double.valueOf(wrappedResultArray.getDouble(fieldOffset)).toString();
 	}
