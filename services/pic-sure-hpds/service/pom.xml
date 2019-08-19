@@ -18,6 +18,10 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+			<artifactId>client-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 			<artifactId>processing</artifactId>
 		</dependency>
 		<dependency>
