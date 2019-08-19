@@ -58,6 +58,7 @@ public abstract class AbstractProcessor {
 		}else {
 			infoStoreColumns = new ArrayList<String>();
 		}
+		loadAllDataFiles();
 	}
 
 	private static final String HOMOZYGOUS_VARIANT = "1/1";

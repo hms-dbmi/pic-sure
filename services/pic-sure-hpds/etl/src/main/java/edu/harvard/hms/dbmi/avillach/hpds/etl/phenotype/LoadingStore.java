@@ -140,6 +140,7 @@ public class LoadingStore {
 	}
 
 	public void dumpStats() {
+		System.out.println("Dumping Stats");
 		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
