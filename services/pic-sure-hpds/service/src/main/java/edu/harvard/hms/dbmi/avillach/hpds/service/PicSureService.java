@@ -72,7 +72,7 @@ public class PicSureService implements IResourceRS {
 
 	@POST
 	@Path("/info")
-	public ResourceInfo info(Map<String, String> resourceCredentials) {
+	public ResourceInfo info(QueryRequest request) {
 		ResourceInfo info = new ResourceInfo();
 		info.setName("PhenoCube v1.0-SNAPSHOT");
 		info.setId(UUID.randomUUID());
