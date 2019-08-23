@@ -16,9 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.*;
@@ -50,6 +48,8 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
         when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
         when(resourceRepo.getById(not(ArgumentMatchers.same(resourceId)))).thenReturn(null);
         when(webClient.info(any(), any())).thenReturn(results);
+        when(resourceRepo.list()).thenReturn(Arrays.asList(mockResource));
+        when(mockResource.getUuid()).thenReturn(resourceId);
     }
 
     @Test
@@ -93,5 +93,14 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
         //Should also work without clientCredentials
         responseInfo = infoService.info(resourceId, null);
         assertNotNull("Resource response should not be null", responseInfo);
+    }
+
+    @Test
+    public void testResourcesEndpoint() {
+        //Should give a UUID list of all resources
+        List<UUID> resourceList = infoService.resources();
+        assertNotNull("Resource listing should not be null", resourceList);
+        assertEquals("Resource listing should only have 1 entry", 1, resourceList.size());
+        assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.get(0));
     }
 }

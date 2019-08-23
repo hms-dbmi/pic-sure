@@ -48,7 +48,7 @@ public class PicsureRS {
 	@GET
 	@Path("/info/resources")
 	@ApiOperation(value = "Returns list of resources available")
-	public List<Resource> resources(){
+	public List<UUID> resources(){
 		return infoService.resources();
 	}
 	
