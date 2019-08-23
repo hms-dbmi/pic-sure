@@ -1,37 +1,38 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
-
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * Service handling business logic for CRUD on users
@@ -52,6 +53,9 @@ public class UserService extends BaseEntityService<User> {
 
     @Inject
     ConnectionRepository connectionRepo;
+
+    @Inject
+    ApplicationRepository applicationRepo;
 
     public UserService() {
         super(User.class);
@@ -138,7 +142,8 @@ public class UserService extends BaseEntityService<User> {
     @Path("/me")
     public Response getCurrentUser(
             @Context HttpHeaders httpHeaders,
-            @QueryParam("hasToken") Boolean hasToken){
+            @QueryParam("hasToken") Boolean hasToken,
+            @QueryParam("hasHPDSQueryTemplate") Boolean hasHPDSQueryTemplate){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
             logger.error("Security context didn't have a user stored.");
@@ -156,7 +161,7 @@ public class UserService extends BaseEntityService<User> {
                 .setPrivileges(user.getPrivilegeNameSet())
                 .setUuid(user.getUuid().toString());
 
-        if (hasToken!=null){
+        if (hasToken!=null && hasToken!=false){
 
             if (user.getToken() != null && !user.getToken().isEmpty()){
                 userForDisaply.setToken(user.getToken());
@@ -168,6 +173,80 @@ public class UserService extends BaseEntityService<User> {
         }
 
         return PICSUREResponse.success(userForDisaply);
+    }
+
+    @Transactional
+    @GET
+    @Path("/me/queryTemplate/{applicationId}")
+    public Response getQueryTemplate(
+            @PathParam("applicationId") String applicationId){
+
+        if (applicationId == null || applicationId.trim().isEmpty()){
+            logger.error("getQueryTemplate() input application UUID is null or empty.");
+            throw new ProtocolException("Input application UUID is incorrect.");
+        }
+
+        User user = (User) securityContext.getUserPrincipal();
+        if (user == null || user.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        user = userRepo.getById(user.getUuid());
+        if (user == null){
+            logger.error("When retrieving current user, it returned null");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        Application application = applicationRepo.getById(UUID.fromString(applicationId));
+
+        if (application == null){
+            logger.error("getQueryTemplate() cannot find corresponding application by UUID: " + applicationId);
+            throw new ProtocolException("Cannot find application by input UUID: " + applicationId);
+        }
+
+        return PICSUREResponse.success(
+                Map.of("queryTemplate", mergeTemplate(user, application)));
+
+    }
+
+
+    private String mergeTemplate(User user, Application application) {
+        String resultJSON = null;
+        Map mergedTemplateMap = null;
+        for (Privilege privilege : user.getPrivilegesByApplication(application)){
+            String template = privilege.getQueryTemplate();
+
+            Map<String, Object> templateMap = null;
+
+            try {
+                templateMap = JAXRSConfiguration.objectMapper.readValue(template, Map.class);
+            } catch (IOException ex){
+                logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: " + template);
+                throw new ApplicationException("Inner application error, please contact admin.");
+            }
+
+            if (templateMap == null) {
+                continue;
+            }
+
+            if (mergedTemplateMap == null){
+                mergedTemplateMap = templateMap;
+                continue;
+            }
+
+            mergedTemplateMap = JsonUtils.mergeTemplateMap(mergedTemplateMap, templateMap);
+        }
+
+        try {
+            resultJSON = JAXRSConfiguration.objectMapper.writeValueAsString(mergedTemplateMap);
+        } catch (JsonProcessingException ex) {
+            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is.");
+            throw new ApplicationException("Inner application error, please contact admin.");
+        }
+
+        return resultJSON;
+
     }
 
     /**
