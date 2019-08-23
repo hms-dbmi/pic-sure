@@ -29,6 +29,7 @@ CREATE TABLE `privilege` (
   `description` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `application_id` binary(16) DEFAULT NULL,
+  `queryTemplate` varchar(8192) DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `UK_h7iwbdg4ev8mgvmij76881tx8` (`name`),
   KEY `FK61h3jewffk70b5ni4tsi5rhoy` (`application_id`),

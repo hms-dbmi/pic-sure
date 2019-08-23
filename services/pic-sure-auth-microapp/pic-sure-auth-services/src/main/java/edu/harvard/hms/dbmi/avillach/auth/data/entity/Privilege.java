@@ -28,6 +28,14 @@ public class Privilege extends BaseEntity {
             inverseJoinColumns = {@JoinColumn(name = "accessRule_id")})
     private Set<AccessRule> accessRules;
 
+    /**
+     * We only support a JSON Object format for now,
+     * since it will return a merged JSON in the end,
+     * if saving as a JSON array, later processing will
+     * throw exception
+     */
+    private String queryTemplate;
+
     public String getName() {
         return name;
     }
@@ -60,6 +68,14 @@ public class Privilege extends BaseEntity {
 
     public void setAccessRules(Set<AccessRule> accessRules) {
         this.accessRules = accessRules;
+    }
+
+    public String getQueryTemplate() {
+        return queryTemplate;
+    }
+
+    public void setQueryTemplate(String queryTemplate) {
+        this.queryTemplate = queryTemplate;
     }
 
     @JsonProperty("application")
