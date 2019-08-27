@@ -217,6 +217,10 @@ public class UserService extends BaseEntityService<User> {
         for (Privilege privilege : user.getPrivilegesByApplication(application)){
             String template = privilege.getQueryTemplate();
 
+            if (template == null || template.trim().isEmpty()){
+                continue;
+            }
+
             Map<String, Object> templateMap = null;
 
             try {
