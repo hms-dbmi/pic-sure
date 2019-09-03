@@ -1,0 +1,16 @@
+version: '3'
+services:
+  httpd:
+    build:
+      context: ./httpd
+      dockerfile: Dockerfile
+    expose:
+      - 80
+      - 443
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./src/main/javascript:/usr/local/apache2/htdocs
+      - ./src/main/javascript:/usr/local/apache2/htdocs/psamaui/login
+      - ./target/webjars/META-INF/resources/webjars:/usr/local/apache2/htdocs/fence-test/webjars
