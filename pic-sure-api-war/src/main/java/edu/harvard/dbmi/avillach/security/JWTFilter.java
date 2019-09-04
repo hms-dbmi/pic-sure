@@ -3,17 +3,11 @@ package edu.harvard.dbmi.avillach.security;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import edu.harvard.dbmi.avillach.JAXRSConfiguration;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.User;
-import edu.harvard.dbmi.avillach.data.repository.UserRepository;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -61,9 +55,6 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Inject
 	PicSureWarInit picSureWarInit;
 
-	@Inject
-	UserRepository userRepo;
-
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
@@ -79,11 +70,8 @@ public class JWTFilter implements ContainerRequestFilter {
 		try {
 			User authenticatedUser = null;
 
-			if (PicSureWarInit.VERIFY_METHOD_TOKEN_INTRO.equalsIgnoreCase(picSureWarInit.getVerify_user_method())) {
-				authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
-			} else {
-				authenticatedUser = callLocalAuthentication(requestContext, token);
-			}
+			authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
+
 
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token + ", verify method: " + picSureWarInit.getVerify_user_method());
@@ -248,14 +236,5 @@ public class JWTFilter implements ContainerRequestFilter {
 		}
 
 		return null;
-	}
-
-	private User callLocalAuthentication(ContainerRequestContext requestContext, String token) throws JwtException{
-		Jws<Claims> jws = Jwts.parser().setSigningKey(clientSecret.getBytes()).parseClaimsJws(token);
-
-		String subject = jws.getBody().getSubject();
-		String userId = jws.getBody().get(userIdClaim, String.class);
-
-		return userRepo.findOrCreate(new User().setSubject(subject).setUserId(userId));
 	}
 }
