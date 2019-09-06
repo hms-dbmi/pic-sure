@@ -13,12 +13,13 @@ define(["Noty"],
         }).show();
     }.bind(notification);
 
-    notification.showFailureMessage = function (message) {
+    notification.showFailureMessage = function (message, timeout) {
         var defaultMessage = "Failed to perform action.";
+        if(!timeout) timeout=3000;
         new Noty({
             type: "error",
             text: message ? message : defaultMessage,
-            timeout: 3000
+            timeout: timeout
         }).show();
     }.bind(notification);
 

@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
 import java.io.IOException;
@@ -82,8 +83,21 @@ public class UserService extends BaseEntityService<User> {
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
+        User currentUser = (User)securityContext.getUserPrincipal();
+        if (currentUser == null || currentUser.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
         checkAssociation(users);
+
+        boolean allowAdd = true;
         for(User user : users) {
+            if (!allowUpdateSuperAdminRole(currentUser, user, null)){
+                allowAdd = false;
+                break;
+            }
+
             if(user.getEmail() == null) {
 	        		HashMap<String, String> metadata;
 				try {
@@ -93,38 +107,113 @@ public class UserService extends BaseEntityService<User> {
 		        			user.setEmail(metadata.get(emailKeys.get(0)));
 		        		}
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 	        }
         }
-	
-        return addEntity(users, userRepo);
+
+	    if (allowAdd){
+            return addEntity(users, userRepo);
+        } else {
+            logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant "
+                    + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " role when adding a user.");
+            throw new ProtocolException(Response.Status.BAD_REQUEST, "Not allowed to add a user with a " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege associated.");
+        }
     }
 
-    @POST
-    @RolesAllowed({ADMIN})
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/{uuid}/role/{role}")
-    public Response changeRole(
-            @PathParam("uuid") String uuid,
-            @PathParam("role") String role){
-        User user = userRepo.getById(UUID.fromString(uuid));
-        if (user == null)
-            return PICSUREResponse.protocolError("User is not found by given user ID: " + uuid);
-
-//        User updatedUser = userRepo.changeRole(user, role);
-
-        return PICSUREResponse.success("User has new role: "); //+ updatedUser.getRoles(), updatedUser);
-    }
-
+    @Transactional
     @PUT
     @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
+        User currentUser = (User)securityContext.getUserPrincipal();
+        if (currentUser == null || currentUser.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
         checkAssociation(users);
-        return updateEntity(users, userRepo);
+
+        boolean allowUpdate = true;
+        for (User user : users) {
+
+            User originalUser = userRepo.getById(user.getUuid());
+            if (allowUpdateSuperAdminRole(currentUser, user, originalUser)){
+                continue;
+            } else {
+                allowUpdate = false;
+                break;
+            }
+        }
+
+        if (allowUpdate){
+            return updateEntity(users, userRepo);
+        }
+        else {
+            logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant or remove "
+                    + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege.");
+            throw new ProtocolException(Response.Status.BAD_REQUEST, "Not allowed to update a user with changes associated to " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege.");
+        }
+    }
+
+    /**
+     * This check is to prevent non-admin user to create/remove a super admin role
+     * against a user. Only super admin could perform such actions.
+     *
+     * <p>
+     *     if no super admin role updates, this will return true.
+     * </p>
+     *
+     *
+     * @param currentUser the user trying to perform the action
+     * @param inputUser
+     * @param originalUser there could be no original user when adding a new user
+     * @return
+     */
+    private boolean allowUpdateSuperAdminRole(
+            @NotNull User currentUser,
+            @NotNull User inputUser,
+            User originalUser){
+
+        // if current user is a super admin, this check will return true
+        for (Role role : currentUser.getRoles()) {
+            for (Privilege privilege : role.getPrivileges()){
+                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)) {
+                    return true;
+                }
+            }
+        }
+
+        boolean inputUserHasSuperAdmin = false;
+        boolean originalUserHasSuperAdmin = false;
+
+        for (Role role : inputUser.getRoles()){
+            for (Privilege privilege : role.getPrivileges()){
+                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)){
+                    inputUserHasSuperAdmin = true;
+                    break;
+                }
+            }
+        }
+
+        if (originalUser != null){
+            for (Role role : originalUser.getRoles()){
+                for (Privilege privilege : role.getPrivileges()){
+                    if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)){
+                        originalUserHasSuperAdmin = true;
+                        break;
+                    }
+                }
+            }
+
+            // when they equals, nothing has changed, a non super admin user could perform the action
+            return inputUserHasSuperAdmin == originalUserHasSuperAdmin;
+        } else {
+            // if inputUser has super admin, it should return false
+            return !inputUserHasSuperAdmin;
+        }
+
     }
 
     /**
