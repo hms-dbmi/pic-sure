@@ -94,7 +94,7 @@ public class JsonUtils {
     /**
      * will merge the two elements in the same location.
      * meaning baseList(0) will merge with incomingList(0) ...
-     * So if two elements are not in the same type, will only keep the element in baseList
+     * So if two same-location elements are not in the same type, will only keep the element in baseList
      *
      * @param baseList
      * @param incomingList
@@ -107,7 +107,8 @@ public class JsonUtils {
             Object incomingElement = incomingList.get(i);
             if (baseElement.getClass() == incomingElement.getClass() ) {
                 if (baseElement instanceof String) {
-                    mergedList.add(mergeToNewList(baseElement, incomingElement));
+                    mergedList.add(baseElement);
+                    mergedList.add(incomingElement);
                 } else if (baseElement instanceof List){
                     mergedList.add(mergeListToList((List)baseElement, (List)incomingElement));
                 } else if (baseElement instanceof Map){
