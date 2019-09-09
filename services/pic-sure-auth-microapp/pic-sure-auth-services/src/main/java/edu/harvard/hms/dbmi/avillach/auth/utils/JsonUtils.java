@@ -8,10 +8,42 @@ import javax.validation.constraints.NotNull;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Originally the class is designed for merging two JSON maps (input as two Map), there
+ * is only mergeTemplateMap class is public. But afterwards, the methods inside which are private
+ * at the beginning, seems could be used as utility methods as well, so they became public.
+ * <b>However,</b> there is one thing that needs to be noticed when using these methods that these
+ * methods are designed specifically for query template merging use cases, which means might not fit into
+ * other use cases. So be careful!!
+ */
 public class JsonUtils {
 
     static Logger logger = LoggerFactory.getLogger(JsonUtils.class);
 
+    /**
+     * The logic here are:
+     * <li>
+     *     Only takes JSON map as input - this could be extended as take any JSON format as input
+     * </li>
+     * <li>
+     *     When a JSON map merge with another map, it will recursively merge every level of JSON Objects.
+     * </li>
+     * <li>
+     *     Data in the same level will be merged, which means data of level 3 in JSON map A will not be merged as level
+     *     2 in JSON map B.
+     * </li>
+     * <li>
+     *     When a JSONArray element merges with another JSONArray element, only the data in the same corresponding
+     *     location will be merged, and the rest of elements in the longer array will be attached to the shorter one.
+     * </li>
+     * <li>
+     *     When a JSON Map merge into an Json Array, it will be either append or merge into one of the element that is a
+     *     Json Map as well and has the same structure based on isMapMergeable method
+     * </li>
+     * @param originMap
+     * @param incomingMap
+     * @return
+     */
     public static Map<String, Object> mergeTemplateMap(@NotNull Map<String, Object> originMap,
                                                  @NotNull Map<String, Object> incomingMap){
         Map mergedMap = originMap;
@@ -69,14 +101,14 @@ public class JsonUtils {
         return mergedMap;
     }
 
-    private static List mergeToNewList(Object a, Object b){
+    public static List mergeToNewList(Object a, Object b){
         List list = new ArrayList();
         list.add(a);
         list.add(b);
         return list;
     }
 
-    private static List mergeStringToList(String s, List list){
+    public static List mergeStringToList(String s, List list){
         boolean isExist = false;
         for (Object object: list){
             if (object instanceof String && s.equals(object)){
@@ -100,7 +132,7 @@ public class JsonUtils {
      * @param incomingList
      * @return
      */
-    private static List mergeListToList(List baseList, List incomingList){
+    public static List mergeListToList(List baseList, List incomingList){
         List mergedList = new ArrayList();
         for (int i = 0 ; i < baseList.size() ; i++) {
             Object baseElement = baseList.get(i);
@@ -123,7 +155,15 @@ public class JsonUtils {
         return mergedList;
     }
 
-    private static List mergeMapToList(Map map, List list){
+    /**
+     *  attach or merge a map to a list, the list might contain many elements that are JSON Object,
+     *  JSON Array, JSON map, or a JSON string. To attach or to merge, depends on the method <code>isMapMergeable<code/>
+     *
+     * @param map
+     * @param list
+     * @return
+     */
+    public static List mergeMapToList(Map map, List list){
         List mergedList = new ArrayList(list.size());
 
         boolean merged = false;
@@ -151,7 +191,7 @@ public class JsonUtils {
      * @param incomingMap
      * @return
      */
-    private static boolean isMapMergeable(Map baseMap, Map incomingMap){
+    public static boolean isMapMergeable(Map baseMap, Map incomingMap){
         Set<String> baseMapKeys = new TreeSet<>();
         for (Object key : baseMap.keySet()){
             baseMapKeys.add((String)key);
