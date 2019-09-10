@@ -87,7 +87,7 @@ public class AuthorizationService {
         // or be denied.
         // The check if the application has privileges or not should be outside this function,
         // here we assume that the application has at least one privilege
-		if (privileges == null && privileges.isEmpty()) {
+		if (privileges == null || privileges.isEmpty()) {
 		    logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() +
                     " ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName
                     + " __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES");
