@@ -98,10 +98,20 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
         render: function () {
             if (window.location.pathname !== "/psamaui/tos") {
                 if (window.location.pathname == "/psamaui/userProfile"){
-                    this.$el.html(this.template({
-                        privileges: [],
-                        applications:[]
-                    }));
+                    applicationFunctions.fetchApplications(this, function(applications){
+                        this.$el.html(this.template({
+                            privileges: [],
+                            applications: applications
+                                .filter(function (app) {
+                                    return app.url;
+                                })
+                                .sort(function(a, b){
+                                    if(a.name < b.name) { return -1; }
+                                    if(a.name > b.name) { return 1; }
+                                    return 0;
+                                })
+                        }));
+                    }.bind(this));
                 }else {
                     userFunctions.me(this, function (user) {
                         applicationFunctions.fetchApplications(this, function(applications){
