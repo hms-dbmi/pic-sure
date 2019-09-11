@@ -275,7 +275,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 		String email;
 		Set<String> privileges;
 		String token;
-		String queryTemplate;
+		Set<String> queryScopes;
 
 		public UserForDisaply() {
 		}
@@ -316,14 +316,14 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return this;
 		}
 
-        public String getQueryTemplate() {
-            return queryTemplate;
-        }
+		public Set<String> getQueryScopes() {
+			return queryScopes;
+		}
 
-        public void setQueryTemplate(String queryTemplate) {
-            this.queryTemplate = queryTemplate;
-        }
-    }
+		public void setQueryScopes(Set<String> queryScopes) {
+			this.queryScopes = queryScopes;
+		}
+	}
 
 	public String toString() {
 		return uuid.toString() + " ___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
