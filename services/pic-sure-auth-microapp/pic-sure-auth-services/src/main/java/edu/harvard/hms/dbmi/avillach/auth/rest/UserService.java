@@ -231,8 +231,7 @@ public class UserService extends BaseEntityService<User> {
     @Path("/me")
     public Response getCurrentUser(
             @Context HttpHeaders httpHeaders,
-            @QueryParam("hasToken") Boolean hasToken,
-            @QueryParam("hasHPDSQueryTemplate") Boolean hasHPDSQueryTemplate){
+            @QueryParam("hasToken") Boolean hasToken){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
             logger.error("Security context didn't have a user stored.");
@@ -250,7 +249,7 @@ public class UserService extends BaseEntityService<User> {
                 .setPrivileges(user.getPrivilegeNameSet())
                 .setUuid(user.getUuid().toString());
 
-        if (hasToken!=null && hasToken!=false){
+        if (hasToken!=null){
 
             if (user.getToken() != null && !user.getToken().isEmpty()){
                 userForDisaply.setToken(user.getToken());
@@ -305,6 +304,10 @@ public class UserService extends BaseEntityService<User> {
         Map mergedTemplateMap = null;
         for (Privilege privilege : user.getPrivilegesByApplication(application)){
             String template = privilege.getQueryTemplate();
+
+            if (template == null || template.trim().isEmpty()){
+                continue;
+            }
 
             Map<String, Object> templateMap = null;
 

@@ -24,7 +24,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import java.util.*;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("/application")
@@ -49,7 +48,6 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("/{applicationId}")
-	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationById(
 			@PathParam("applicationId") String applicationId) {
 		return getEntityById(applicationId,applicationRepo);
@@ -57,7 +55,6 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("")
-	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationAll() {
 		return getEntityAll(applicationRepo);
 	}
