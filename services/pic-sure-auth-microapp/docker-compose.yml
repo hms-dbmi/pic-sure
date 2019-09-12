@@ -41,8 +41,8 @@ services:
       - ./pic-sure-auth-services/src/main/resources/emailTemplates:${EMAIL_TEMPLATE_PATH:-/opt/jboss/wildfly/emailTemplates}
     networks:
       - public
-    env_file:
-      - .env
+    #env_file:
+    #  - .env
 
   picsureauthdb:
     build:
@@ -56,13 +56,8 @@ services:
       - 3306
     ports:
       - 3306:3306
-    volumes:
-      - picsure-auth-data:/var/lib/mysql
     networks:
       - public
 
 networks:
   public:
-
-volumes:
-  picsure-auth-data:

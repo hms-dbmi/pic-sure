@@ -24,11 +24,8 @@ import javax.json.*;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-<<<<<<< HEAD
-=======
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
->>>>>>> master
 import java.util.*;
 
 public class AuthenticationService {
