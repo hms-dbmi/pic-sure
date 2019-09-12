@@ -12,19 +12,19 @@ import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import net.minidev.json.JSONObject;
 import org.apache.http.Header;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import javax.json.*;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class AuthenticationService {
     private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
@@ -40,6 +40,60 @@ public class AuthenticationService {
 
     @Inject
     MailService mailService;
+
+    private JsonNode getFENCEUserProfile(String access_token) {
+        List<Header> headers = new ArrayList<>();
+        headers.add(new BasicHeader("Authorization", "Bearer " + access_token));
+        return HttpClientUtil.simpleGet(
+                "https://staging.datastage.io/user/user",
+                JAXRSConfiguration.client,
+                JAXRSConfiguration.objectMapper,
+                headers.toArray(new Header[headers.size()])
+        );
+    }
+
+    private JsonNode getFENCEAccessToken(String fence_code) {
+        List<Header> headers = new ArrayList<>();
+        //headers.add(new BasicHeader("Content-Type", MediaType.APPLICATION_JSON));
+        Base64.Encoder encoder = Base64.getEncoder();
+        String fence_auth_header = JAXRSConfiguration.fence_client_id+":"+JAXRSConfiguration.fence_client_secret;
+        headers.add(new BasicHeader("Authorization", "Basic " +
+                encoder.encodeToString(fence_auth_header.getBytes())));
+
+        // Build the request body, as JSON
+        JSONObject reqBody = new JSONObject();
+        reqBody.put("grant_type", "authorization_code");
+        reqBody.put("code", fence_code);
+        reqBody.put("redirect_uri", "https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/");
+        logger.debug("getFENCEToken() req body:"+reqBody.toJSONString());
+
+        return HttpClientUtil.simplePost(
+                "https://staging.datastage.io/user/oauth2/token",
+                new StringEntity(reqBody.toString(), "application/json"),
+                JAXRSConfiguration.client,
+                JAXRSConfiguration.objectMapper,
+                headers.toArray(new Header[headers.size()])
+        );
+
+    }
+
+    // Get access_token from FENCE, based on the provided `code`
+    public Response getFENCEProfile(Map<String, String> authRequest){
+        logger.debug("getFENCEToken() starting...");
+        String fence_code  = authRequest.get("code");
+
+        HashMap<String, String> responseMap = new HashMap<String, String>();
+        try {
+            JsonNode resp = getFENCEUserProfile(getFENCEAccessToken(fence_code).get("access_token").asText());
+            responseMap.put("status", "ok");
+            responseMap.put("profile", resp.asText());
+
+        } catch (Exception ex) {
+            responseMap.put("status", "error");
+            responseMap.put("message", ex.getMessage());
+        }
+        return PICSUREResponse.success(responseMap);
+    }
 
     public Response getToken(Map<String, String> authRequest){
         String accessToken = authRequest.get("access_token");

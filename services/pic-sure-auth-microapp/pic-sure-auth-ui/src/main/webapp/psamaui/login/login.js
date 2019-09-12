@@ -1,6 +1,6 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
-		function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
-	
+define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'login/fence_login'],
+		function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification, fenceLogin){
+
 	var loginTemplate = HBS.compile(loginTemplate);
 
 	var loginCss = null
@@ -10,6 +10,55 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
 
 	var login = {
 		showLoginPage : function(){
+			if (overrides.idp_provider == 'fence') {
+
+                //var code = window.location.search.slice(6);
+
+                // Check if the `code` parameter is set in the URL, as it would be, when
+                // FENCE redirects back after authentication.
+                var queryString = window.location.search.substring(1);
+                var params = {}, queries, temp, i, l;
+                // Split into key/value pairs
+                queries = queryString.split("&");
+                // Convert the array of strings into an object
+                for ( i = 0, l = queries.length; i < l; i++ ) {
+                    temp = queries[i].split('=');
+                    params[temp[0]] = temp[1];
+                }
+                var code = params['code'];
+
+                if (code) {
+                    $('#main-content').html('Got a code back: '+code);
+                    $.ajax({
+                        url: '/psama/authentication-fence',
+                        type: 'post',
+                        data: JSON.stringify({
+                            "code":code
+                        }),
+                        contentType: 'application/json',
+                        success: function(data){
+                           // Redirect to picsureui
+                            console.log(data);
+                            window.location = '/picsureui';
+                        },
+                        error: function(data){
+                            console.log("ERROR");
+                            console.log(data);
+                            notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
+                            history.pushState({}, "", sessionStorage.not_authorized_url? sessionStorage.not_authorized_url : "/psamaui/not_authorized?redirection_url=/picsureui");
+                        }
+                    });
+                    return null;
+                } else {
+                    // This is the initial login, when there is no code present
+                    $('#main-content').html('FENCE configuration is found in the `overrides/login.js` file. ');
+                    overrides.fence_provider_call(overrides);
+                    return null;
+                }
+			} else {
+				$('#main-content').html('This branch is for FENCE authentication only. Please change or set the `idp_provider` field in `overrides/login.js` file. ');
+				return null;
+			}
             var queryObject = parseQueryString();
             if (queryObject.redirection_url) sessionStorage.redirection_url = queryObject.redirection_url.trim();
             if (queryObject.not_authorized_url) sessionStorage.not_authorized_url = queryObject.not_authorized_url.trim();
@@ -130,5 +179,5 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
         }
     };
-	return login;
+	return settings.fenceEnabled ? fenceLogin : login;
 });

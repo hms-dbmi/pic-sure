@@ -28,4 +28,10 @@ public class AuthService {
     public Response authentication(Map<String, String> authRequest){
         return authenticationService.getToken(authRequest);
     }
+
+    @POST
+    @Path("/authentication-fence")
+    public Response authenticationWithFence(Map<String, String> authRequest){
+        return authenticationService.getFENCEProfile(authRequest);
+    }
 }

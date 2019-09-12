@@ -20,6 +20,11 @@ RUN sed -i '/^#LoadModule rewrite_module modules\/mod_rewrite.so/s/^#//' ${HTTPD
 RUN sed -i '/^#LoadModule socache_shmcb_module modules\/mod_socache_shmcb.so/s/^#//' ${HTTPD_PREFIX}/conf/httpd.conf
 RUN mkdir /usr/local/apache2/logs/ssl_mutex
 
+COPY ./httpd_conf/cert/server.key ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.chain.crt ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.crt ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.chain ${HTTPD_PREFIX}/cert/
+
 COPY ./src/main/webapp /usr/local/apache2/htdocs
 COPY ./target/webjars/META-INF/resources/webjars /usr/local/apache2/htdocs/psamaui/webjars
 COPY ./src/main/resources /usr/local/apache2/htdocs/settings

@@ -38,7 +38,7 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/client_secret")
     public static String clientSecret;
-    
+
     @Resource(mappedName = "java:global/clientSecretIsBase64")
     public static String clientSecretIsBase64;
 
@@ -69,6 +69,15 @@ public class JAXRSConfiguration extends Application {
     @Resource(lookup = "java:global/deniedEmailEnabled")
     public static String deniedEmailEnabled;
 
+    @Resource(lookup = "java:global/fence_client_id")
+    public static String fence_client_id;
+
+    @Resource(lookup = "java:global/fence_client_secret")
+    public static String fence_client_secret;
+
+    @Resource(lookup = "java:global/idp_provider")
+    public static String idp_provider;
+
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
     @Inject
@@ -92,7 +101,6 @@ public class JAXRSConfiguration extends Application {
         logger.info("Start initializing admin role in database");
         initializeDefaultAdminRole();
         logger.info("Finished initializing admin role.");
-
 
         logger.info("Auth micro app has been successfully started");
 
@@ -211,7 +219,7 @@ public class JAXRSConfiguration extends Application {
     public static String getPrincipalName(SecurityContext securityContext){
         if (securityContext.getUserPrincipal() == null)
             return "No security context set, ";
-
+        LoggerFactory.getLogger(JAXRSConfiguration.class).debug("getPrincipalName() returning:"+securityContext.getUserPrincipal().getName());
         return securityContext.getUserPrincipal().getName();
     }
 

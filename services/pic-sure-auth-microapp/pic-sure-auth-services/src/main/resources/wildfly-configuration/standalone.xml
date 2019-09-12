@@ -446,6 +446,12 @@
                 <simple name="java:global/tosEnabled" value="${env.TOS_ENABLED:true}"/>
                 <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
                 <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS}"/>
+
+                <!-- Configure Identity Provider Parameters, with defaults-->
+                <simple name="java:global/idp_provider" value="${env.IDP_PROVIDER:auth0}"/>
+                <simple name="java:global/fence_client_id" value="${env.FENCE_CLIENT_ID:no_fence_client_id}"/>
+                <simple name="java:global/fence_client_secret" value="${env.FENCE_CLIENT_SECRET:no_fence_client_secret}"/>
+
             </bindings>
             <remote-naming/>
         </subsystem>
