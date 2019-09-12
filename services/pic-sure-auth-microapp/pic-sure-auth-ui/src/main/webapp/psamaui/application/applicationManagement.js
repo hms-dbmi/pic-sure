@@ -33,17 +33,23 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
 			"click #cancel-application-button":"closeDialog",
 			"click .application-row":          "showApplicationAction",
 			"click #delete-application-button":"deleteApplication",
-			"click #token-refresh-button":"refreshApplicationToken",
-			"click #token-copy-button":"copyApplicationToken",
+			"click #app-token-refresh-button":"refreshApplicationToken",
+			"click #app-token-copy-button":"copyApplicationToken",
 			"submit":                   "saveApplicationAction"
 		},
         copyApplicationToken: function(){
+            var sel = getSelection();
             var range = document.createRange();
+
+            // this if for supporting chrome, since chrome will look for value instead of textContent
+            document.getElementById("application_token_textarea").value = document.getElementById("application_token_textarea").textContent;
+
             range.selectNode(document.getElementById("application_token_textarea"));
-            window.getSelection().addRange(range);
+            sel.removeAllRanges();
+            sel.addRange(range);
             document.execCommand("copy");
 
-			$("#token-copy-button").html("COPIED");
+			$("#app-token-copy-button").html("COPIED");
 		},
 		refreshApplicationToken: function(event){
 			var uuid = event.target.attributes.uuid.value;
@@ -52,7 +58,7 @@ define(["backbone","handlebars",  "application/addApplication", "text!applicatio
                 applicationFunctions.refreshToken(uuid,function(response){
                     var token = response.token;
                     $("#application_token_textarea", this.$el).html(token);
-                    $("#token-copy-button").html("COPY");
+                    $("#app-token-copy-button").html("COPY");
                 }.bind(this));
 			}.bind(this), 'center', 'Refresh will inactivate the old token!! Do you want to continue?');
 

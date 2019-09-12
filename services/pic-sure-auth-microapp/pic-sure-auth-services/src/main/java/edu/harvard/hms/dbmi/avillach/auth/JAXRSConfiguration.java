@@ -16,6 +16,9 @@ import javax.annotation.Resource;
 import javax.ejb.Startup;
 import javax.inject.Inject;
 import javax.mail.Session;
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
@@ -38,7 +41,6 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/client_secret")
     public static String clientSecret;
-
     @Resource(mappedName = "java:global/clientSecretIsBase64")
     public static String clientSecretIsBase64;
 
@@ -56,6 +58,9 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/emailTemplatePath")
     public static String emailTemplatePath;
+
+    @Resource(mappedName = "java:global/accessGrantEmailSubject")
+    public static String accessGrantEmailSubject;
 
     @Resource(mappedName = "java:global/userActivationReplyTo")
 	public static String userActivationReplyTo;
@@ -80,6 +85,14 @@ public class JAXRSConfiguration extends Application {
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
+    public static long tokenExpirationTime;
+    // default expiration time is 15 minutes
+    private static long defaultTokenExpirationTime = 1000L * 60 * 15;
+
+    public static long longTermTokenExpirationTime;
+    // default long term token expiration time is 1 day
+    private static long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24;
+
     @Inject
     RoleRepository roleRepo;
 
@@ -102,9 +115,38 @@ public class JAXRSConfiguration extends Application {
         initializeDefaultAdminRole();
         logger.info("Finished initializing admin role.");
 
-        logger.info("Auth micro app has been successfully started");
+        logger.info("Start initializing tokens expiration time.");
+        initializeTokenExpirationTime();
+        initializeLongTermTokenExpirationTime();
+        logger.info("Finished initializing token expiration time.");
 
         mailSession.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
+
+        logger.info("Auth micro app has been successfully started");
+
+    }
+
+    private void initializeTokenExpirationTime(){
+        try {
+            Context ctx = new InitialContext();
+            tokenExpirationTime = Long.parseLong((String)ctx.lookup("java:global/tokenExpirationTime"));
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
+            tokenExpirationTime = defaultTokenExpirationTime;
+        }
+
+        logger.info("Set token expiration time to " + tokenExpirationTime + " milliseconds");
+
+    }
+
+    private void initializeLongTermTokenExpirationTime(){
+        try {
+            Context ctx = new InitialContext();
+            longTermTokenExpirationTime = Long.parseLong((String)ctx.lookup("java:global/longTermTokenExpirationTime"));
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
+            longTermTokenExpirationTime = defaultLongTermTokenExpirationTime;
+        }
+
+        logger.info("Set long term token expiration time to " + longTermTokenExpirationTime + " milliseconds");
 
     }
 
@@ -219,7 +261,7 @@ public class JAXRSConfiguration extends Application {
     public static String getPrincipalName(SecurityContext securityContext){
         if (securityContext.getUserPrincipal() == null)
             return "No security context set, ";
-        LoggerFactory.getLogger(JAXRSConfiguration.class).debug("getPrincipalName() returning:"+securityContext.getUserPrincipal().getName());
+
         return securityContext.getUserPrincipal().getName();
     }
 

@@ -14,19 +14,27 @@ import java.util.stream.Collectors;
 public class Privilege extends BaseEntity {
 
     @Column(unique = true)
-    String name;
+    private String name;
 
-    String description;
+    private String description;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "application_id")
-    Application application;
+    private Application application;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "accessRule_privilege",
             joinColumns = {@JoinColumn(name = "privilege_id")},
             inverseJoinColumns = {@JoinColumn(name = "accessRule_id")})
-    Set<AccessRule> accessRules;
+    private Set<AccessRule> accessRules;
+
+    /**
+     * We only support a JSON Object format for now,
+     * since it will return a merged JSON in the end,
+     * if saving as a JSON array, later processing will
+     * throw exception
+     */
+    private String queryTemplate;
 
     public String getName() {
         return name;
@@ -60,6 +68,14 @@ public class Privilege extends BaseEntity {
 
     public void setAccessRules(Set<AccessRule> accessRules) {
         this.accessRules = accessRules;
+    }
+
+    public String getQueryTemplate() {
+        return queryTemplate;
+    }
+
+    public void setQueryTemplate(String queryTemplate) {
+        this.queryTemplate = queryTemplate;
     }
 
     @JsonProperty("application")

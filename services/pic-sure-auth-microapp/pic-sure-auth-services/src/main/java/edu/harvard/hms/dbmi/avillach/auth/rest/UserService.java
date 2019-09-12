@@ -1,39 +1,39 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
-
+import javax.ws.rs.core.*;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.*;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
+import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
  * Service handling business logic for CRUD on users
@@ -54,6 +54,9 @@ public class UserService extends BaseEntityService<User> {
 
     @Inject
     ConnectionRepository connectionRepo;
+
+    @Inject
+    ApplicationRepository applicationRepo;
 
     public UserService() {
         super(User.class);
@@ -80,8 +83,21 @@ public class UserService extends BaseEntityService<User> {
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addUser(List<User> users){
+        User currentUser = (User)securityContext.getUserPrincipal();
+        if (currentUser == null || currentUser.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
         checkAssociation(users);
+
+        boolean allowAdd = true;
         for(User user : users) {
+            if (!allowUpdateSuperAdminRole(currentUser, user, null)){
+                allowAdd = false;
+                break;
+            }
+
             if(user.getEmail() == null) {
 	        		HashMap<String, String> metadata;
 				try {
@@ -91,43 +107,131 @@ public class UserService extends BaseEntityService<User> {
 		        			user.setEmail(metadata.get(emailKeys.get(0)));
 		        		}
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 	        }
         }
-	
-        return addEntity(users, userRepo);
+
+	    if (allowAdd){
+            return addEntity(users, userRepo);
+        } else {
+            logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant "
+                    + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " role when adding a user.");
+            throw new ProtocolException(Response.Status.BAD_REQUEST, "Not allowed to add a user with a " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege associated.");
+        }
     }
 
-    @POST
-    @RolesAllowed({ADMIN})
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/{uuid}/role/{role}")
-    public Response changeRole(
-            @PathParam("uuid") String uuid,
-            @PathParam("role") String role){
-        User user = userRepo.getById(UUID.fromString(uuid));
-        if (user == null)
-            return PICSUREResponse.protocolError("User is not found by given user ID: " + uuid);
-
-//        User updatedUser = userRepo.changeRole(user, role);
-
-        return PICSUREResponse.success("User has new role: "); //+ updatedUser.getRoles(), updatedUser);
-    }
-
+    @Transactional
     @PUT
     @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateUser(List<User> users){
+        User currentUser = (User)securityContext.getUserPrincipal();
+        if (currentUser == null || currentUser.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
         checkAssociation(users);
-        return updateEntity(users, userRepo);
+
+        boolean allowUpdate = true;
+        for (User user : users) {
+
+            User originalUser = userRepo.getById(user.getUuid());
+            if (allowUpdateSuperAdminRole(currentUser, user, originalUser)){
+                continue;
+            } else {
+                allowUpdate = false;
+                break;
+            }
+        }
+
+        if (allowUpdate){
+            return updateEntity(users, userRepo);
+        }
+        else {
+            logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant or remove "
+                    + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege.");
+            throw new ProtocolException(Response.Status.BAD_REQUEST, "Not allowed to update a user with changes associated to " + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " privilege.");
+        }
     }
 
+    /**
+     * This check is to prevent non-admin user to create/remove a super admin role
+     * against a user. Only super admin could perform such actions.
+     *
+     * <p>
+     *     if no super admin role updates, this will return true.
+     * </p>
+     *
+     *
+     * @param currentUser the user trying to perform the action
+     * @param inputUser
+     * @param originalUser there could be no original user when adding a new user
+     * @return
+     */
+    private boolean allowUpdateSuperAdminRole(
+            @NotNull User currentUser,
+            @NotNull User inputUser,
+            User originalUser){
+
+        // if current user is a super admin, this check will return true
+        for (Role role : currentUser.getRoles()) {
+            for (Privilege privilege : role.getPrivileges()){
+                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)) {
+                    return true;
+                }
+            }
+        }
+
+        boolean inputUserHasSuperAdmin = false;
+        boolean originalUserHasSuperAdmin = false;
+
+        for (Role role : inputUser.getRoles()){
+            for (Privilege privilege : role.getPrivileges()){
+                if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)){
+                    inputUserHasSuperAdmin = true;
+                    break;
+                }
+            }
+        }
+
+        if (originalUser != null){
+            for (Role role : originalUser.getRoles()){
+                for (Privilege privilege : role.getPrivileges()){
+                    if (privilege.getName().equals(AuthNaming.AuthRoleNaming.SUPER_ADMIN)){
+                        originalUserHasSuperAdmin = true;
+                        break;
+                    }
+                }
+            }
+
+            // when they equals, nothing has changed, a non super admin user could perform the action
+            return inputUserHasSuperAdmin == originalUserHasSuperAdmin;
+        } else {
+            // if inputUser has super admin, it should return false
+            return !inputUserHasSuperAdmin;
+        }
+
+    }
+
+    /**
+     * For the long term token, current logic is,
+     * every time a user hit this endpoint /me
+     * with the query parameter ?hasToken presented,
+     * it will refresh the long term token.
+     *
+     * @param httpHeaders
+     * @param hasToken
+     * @return
+     */
+    @Transactional
     @GET
     @Path("/me")
-    public Response getCurrentUser(){
+    public Response getCurrentUser(
+            @Context HttpHeaders httpHeaders,
+            @QueryParam("hasToken") Boolean hasToken){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
             logger.error("Security context didn't have a user stored.");
@@ -140,10 +244,172 @@ public class UserService extends BaseEntityService<User> {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
 
-        return PICSUREResponse.success(new User.UserForDisaply()
+        User.UserForDisaply userForDisaply = new User.UserForDisaply()
                 .setEmail(user.getEmail())
-                .setPrivileges(user.getPrivilegeNameSet()));
+                .setPrivileges(user.getPrivilegeNameSet())
+                .setUuid(user.getUuid().toString());
+
+        if (hasToken!=null){
+
+            if (user.getToken() != null && !user.getToken().isEmpty()){
+                userForDisaply.setToken(user.getToken());
+            } else {
+                user.setToken(generateUserLongTermToken(httpHeaders));
+                userRepo.merge(user);
+                userForDisaply.setToken(user.getToken());
+            }
+        }
+
+        return PICSUREResponse.success(userForDisaply);
     }
+
+    @Transactional
+    @GET
+    @Path("/me/queryTemplate/{applicationId}")
+    public Response getQueryTemplate(
+            @PathParam("applicationId") String applicationId){
+
+        if (applicationId == null || applicationId.trim().isEmpty()){
+            logger.error("getQueryTemplate() input application UUID is null or empty.");
+            throw new ProtocolException("Input application UUID is incorrect.");
+        }
+
+        User user = (User) securityContext.getUserPrincipal();
+        if (user == null || user.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        user = userRepo.getById(user.getUuid());
+        if (user == null){
+            logger.error("When retrieving current user, it returned null");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        Application application = applicationRepo.getById(UUID.fromString(applicationId));
+
+        if (application == null){
+            logger.error("getQueryTemplate() cannot find corresponding application by UUID: " + applicationId);
+            throw new ProtocolException("Cannot find application by input UUID: " + applicationId);
+        }
+
+        return PICSUREResponse.success(
+                Map.of("queryTemplate", mergeTemplate(user, application)));
+
+    }
+
+
+    private String mergeTemplate(User user, Application application) {
+        String resultJSON = null;
+        Map mergedTemplateMap = null;
+        for (Privilege privilege : user.getPrivilegesByApplication(application)){
+            String template = privilege.getQueryTemplate();
+
+            if (template == null || template.trim().isEmpty()){
+                continue;
+            }
+
+            Map<String, Object> templateMap = null;
+
+            try {
+                templateMap = JAXRSConfiguration.objectMapper.readValue(template, Map.class);
+            } catch (IOException ex){
+                logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: " + template);
+                throw new ApplicationException("Inner application error, please contact admin.");
+            }
+
+            if (templateMap == null) {
+                continue;
+            }
+
+            if (mergedTemplateMap == null){
+                mergedTemplateMap = templateMap;
+                continue;
+            }
+
+            mergedTemplateMap = JsonUtils.mergeTemplateMap(mergedTemplateMap, templateMap);
+        }
+
+        try {
+            resultJSON = JAXRSConfiguration.objectMapper.writeValueAsString(mergedTemplateMap);
+        } catch (JsonProcessingException ex) {
+            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is.");
+            throw new ApplicationException("Inner application error, please contact admin.");
+        }
+
+        return resultJSON;
+
+    }
+
+    /**
+     * For the long term token, current logic is,
+     * every time a user hit this endpoint /me
+     * with the query parameter ?hasToken presented,
+     * it will refresh the long term token.
+     *
+     * @param httpHeaders
+     * @param hasToken
+     * @return
+     */
+    @Transactional
+    @GET
+    @Path("/me/refresh_long_term_token")
+    public Response refreshUserToken(
+            @Context HttpHeaders httpHeaders,
+            @QueryParam("hasToken") Boolean hasToken){
+        User user = (User) securityContext.getUserPrincipal();
+        if (user == null || user.getUuid() == null){
+            logger.error("Security context didn't have a user stored.");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        user = userRepo.getById(user.getUuid());
+        if (user == null){
+            logger.error("When retrieving current user, it returned null");
+            return PICSUREResponse.applicationError("Inner application error, please contact admin.");
+        }
+
+        String longTermToken = generateUserLongTermToken(httpHeaders);
+        user.setToken(longTermToken);
+
+        userRepo.merge(user);
+
+        return PICSUREResponse.success(Map.of("userLongTermToken", longTermToken));
+    }
+
+    private String generateUserLongTermToken(HttpHeaders httpHeaders) throws ProtocolException{
+        // grant the long term token
+        Jws<Claims> jws;
+        try {
+            jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+                    // the original token should be able to grab from header, otherwise, it should be stopped
+                    // at JWTFilter level
+                    httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
+                            .substring(6)
+                            .trim());
+        } catch (NotAuthorizedException ex) {
+            throw new ProtocolException("Cannot parse token in header");
+        }
+
+        Claims claims = jws.getBody();
+        String tokenSubject = claims.getSubject();
+
+        if (tokenSubject.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX+"|")) {
+            // considering the subject already contains a "|"
+            // to prevent infinitely adding the long term token prefix
+            // we will grab the real subject here
+            tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+        }
+
+        return JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+                claims.getId(),
+                claims.getIssuer(),
+                claims,
+                AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
+                JAXRSConfiguration.longTermTokenExpirationTime);
+    }
+
+
     /**
      * check all referenced field if they are already in database. If
      * they are in database, then retrieve it by id, and attach it to

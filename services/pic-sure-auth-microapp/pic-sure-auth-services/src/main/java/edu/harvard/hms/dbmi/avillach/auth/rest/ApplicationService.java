@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +24,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 import java.util.*;
 
-import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("/application")
@@ -48,7 +48,6 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("/{applicationId}")
-	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationById(
 			@PathParam("applicationId") String applicationId) {
 		return getEntityById(applicationId,applicationRepo);
@@ -56,7 +55,6 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	@GET
 	@Path("")
-	@RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getApplicationAll() {
 		return getEntityAll(applicationRepo);
 	}
@@ -157,9 +155,9 @@ public class ApplicationService extends BaseEntityService<Application> {
 				JAXRSConfiguration.clientSecret, null, null,
 				new HashMap<>(
 						Map.of(
-								"user_id","PSAMA_APPLICATION|" + application.getName()
+								"user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName()
 						)
 				),
-				"PSAMA_APPLICATION|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24);
+				AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24);
 	}
 }

@@ -108,7 +108,7 @@ public class Auth0UserMatchingService {
 						u.setAuth0metadata(userInfoString);
 						u.setMatched(true);
 						u.setSubject(userId);
-						userService.updateUser(Arrays.asList(u));
+						userService.updateEntity(Arrays.asList(u), userRepo);
 						return u;
 					}
 				}

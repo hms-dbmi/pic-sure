@@ -42,14 +42,14 @@ define(["backbone","handlebars",  "privilege/addPrivilege", "text!privilege/priv
 
 		},
 		addPrivilegeMenu: function (result) {
-			privilegeFunctions.fetchPrivileges(this, function(privileges,view){
-				view.showAddPrivilegeMenu({privileges : privileges}, view);
+			applicationFunctions.fetchApplications(this, function(applications,view){
+				view.showAddPrivilegeMenu({applications : applications}, view);
 			});
 		},
 		showAddPrivilegeMenu: function(result, view) {
             $("#modal-window", this.$el).html(this.modalTemplate({title: "Add Privilege"}));
             $("#modalDialog", this.$el).show();
-            var addPrivilegeView = new AddPrivilegeView({el:$('.modal-body'), managementConsole: this, privileges:result}).render();
+            var addPrivilegeView = new AddPrivilegeView({el:$('.modal-body'), managementConsole: this, applications:result.applications}).render();
 		},
 		editPrivilegeMenu: function (events) {
 			applicationFunctions.fetchApplications(this, function(applications){

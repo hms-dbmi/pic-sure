@@ -1,6 +1,6 @@
-<?xml version="1.0" encoding='UTF-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 
-<server xmlns="urn:jboss:domain:7.0">
+<server xmlns="urn:jboss:domain:9.0">
     <extensions>
         <extension module="org.jboss.as.clustering.infinispan"/>
         <extension module="org.jboss.as.connector"/>
@@ -29,6 +29,10 @@
         <extension module="org.wildfly.extension.ee-security"/>
         <extension module="org.wildfly.extension.elytron"/>
         <extension module="org.wildfly.extension.io"/>
+        <extension module="org.wildfly.extension.microprofile.config-smallrye"/>
+        <extension module="org.wildfly.extension.microprofile.health-smallrye"/>
+        <extension module="org.wildfly.extension.microprofile.metrics-smallrye"/>
+        <extension module="org.wildfly.extension.microprofile.opentracing-smallrye"/>
         <extension module="org.wildfly.extension.request-controller"/>
         <extension module="org.wildfly.extension.security.manager"/>
         <extension module="org.wildfly.extension.undertow"/>
@@ -89,7 +93,7 @@
         </access-control>
     </management>
     <profile>
-        <subsystem xmlns="urn:jboss:domain:logging:5.0">
+        <subsystem xmlns="urn:jboss:domain:logging:6.0">
             <console-handler name="CONSOLE">
                 <level name="INFO"/>
                 <formatter>
@@ -105,6 +109,9 @@
                 <append value="true"/>
             </periodic-rotating-file-handler>
             <logger category="com.arjuna">
+                <level name="WARN"/>
+            </logger>
+            <logger category="io.jaegertracing.Configuration">
                 <level name="WARN"/>
             </logger>
             <logger category="org.jboss.as.config">
@@ -150,15 +157,30 @@
                         <password>sa</password>
                     </security>
                 </datasource>
-                <datasource jndi-name="java:/PicsureDS" pool-name="PicsureDS" enabled="true" use-java-context="true">
-                    <connection-url>jdbc:h2:mem:picsure;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url>
-                    <driver>h2</driver>
+                <datasource jndi-name="java:jboss/datasources/AuthDS" pool-name="AuthDS" use-java-context="true">
+                    <connection-url>jdbc:mysql://${env.AUTH_MYSQLADDRESS}:${env.AUTH_DB_PORT}/auth?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true</connection-url>
+                    <driver>mysql</driver>
+                    <pool>
+                        <min-pool-size>5</min-pool-size>
+                        <max-pool-size>50</max-pool-size>
+                        <prefill>true</prefill>
+                    </pool>
                     <security>
-                        <user-name>sa</user-name>
-                        <password>sa</password>
+                        <user-name>${env.AUTH_DB_CONNECTION_USER}</user-name>
+                        <password>${env.AUTH_MYSQLPASS}</password>
                     </security>
+                    <validation>
+                        <valid-connection-checker class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLValidConnectionChecker"/>
+                        <check-valid-connection-sql>SELECT 1</check-valid-connection-sql>
+                        <validate-on-match>true</validate-on-match>
+                        <background-validation>false</background-validation>
+                        <exception-sorter class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLExceptionSorter"/>
+                    </validation>
                 </datasource>
                 <drivers>
+                    <driver name="mysql" module="com.sql.mysql">
+                        <driver-class>com.mysql.jdbc.Driver</driver-class>
+                    </driver>
                     <driver name="h2" module="com.h2database.h2">
                         <xa-datasource-class>org.h2.jdbcx.JdbcDataSource</xa-datasource-class>
                     </driver>
@@ -231,7 +253,7 @@
             <default-missing-method-permissions-deny-access value="true"/>
             <log-system-exceptions value="true"/>
         </subsystem>
-        <subsystem xmlns="urn:wildfly:elytron:3.0" final-providers="combined-providers" disallowed-providers="OracleUcrypto">
+        <subsystem xmlns="urn:wildfly:elytron:5.0" final-providers="combined-providers" disallowed-providers="OracleUcrypto">
             <providers>
                 <aggregate-providers name="combined-providers">
                     <providers name="elytron"/>
@@ -292,14 +314,6 @@
                 </permission-set>
             </permission-sets>
             <http>
-                <http-authentication-factory name="application-http-authentication" security-domain="ApplicationDomain" http-server-mechanism-factory="global">
-                    <mechanism-configuration>
-                        <mechanism mechanism-name="BASIC">
-                            <mechanism-realm realm-name="Application Realm"/>
-                        </mechanism>
-                        <mechanism mechanism-name="FORM"/>
-                    </mechanism-configuration>
-                </http-authentication-factory>
                 <http-authentication-factory name="management-http-authentication" security-domain="ManagementDomain" http-server-mechanism-factory="global">
                     <mechanism-configuration>
                         <mechanism mechanism-name="DIGEST">
@@ -339,7 +353,7 @@
                 <provider-sasl-server-factory name="global"/>
             </sasl>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:infinispan:6.0">
+        <subsystem xmlns="urn:jboss:domain:infinispan:7.0">
             <cache-container name="server" default-cache="default" module="org.wildfly.clustering.server">
                 <local-cache name="default">
                     <transaction mode="BATCH"/>
@@ -410,14 +424,37 @@
             <mail-session name="default" jndi-name="java:jboss/mail/Default">
                 <smtp-server outbound-socket-binding-ref="mail-smtp"/>
             </mail-session>
+            <mail-session name="java:jboss/mail/gmail" from="${env.MAIL_USERNAME:username@gmail.com}" jndi-name="java:jboss/mail/gmail" debug="false">
+                <smtp-server tls="true" outbound-socket-binding-ref="mail-smtp-gmail" password="${env.MAIL_PASSWORD:YourSecretPassword}" username="${env.MAIL_USERNAME:username@gmail.com}"/>
+            </mail-session>
         </subsystem>
+        <subsystem xmlns="urn:wildfly:microprofile-config-smallrye:1.0"/>
+        <subsystem xmlns="urn:wildfly:microprofile-health-smallrye:1.0" security-enabled="false"/>
+        <subsystem xmlns="urn:wildfly:microprofile-metrics-smallrye:1.0" security-enabled="false" exposed-subsystems="*"/>
+        <subsystem xmlns="urn:wildfly:microprofile-opentracing-smallrye:1.0"/>
         <subsystem xmlns="urn:jboss:domain:naming:2.0">
             <bindings>
-                <simple name="java:global/client_secret" value="${env.PICSURE2_CLIENT_SECRET}"/>
-                <simple name="java:global/user_id_claim" value="${env.PICSURE2_USER_ID_CLAIM}"/>
-                <simple name="java:global/verify_user_method" value="${env.VERIFY_USER_METHOD}"/>
-                <simple name="java:global/token_introspection_url" value="${env.TOKEN_INTROSPECTION_URL}"/>
-                <simple name="java:global/token_introspection_token" value="${env.TOKEN_INTROSPECTION_TOKEN}"/>
+                <simple name="java:global/client_secret" value="${env.AUTH_CLIENT_SECRET}"/>
+                <simple name="java:global/client_id" value="${env.AUTH_CLIENT_ID}"/>
+                <simple name="java:global/user_id_claim" value="${env.AUTH_USER_ID_CLAIM:sub}"/>
+                <simple name="java:global/auth0token" value="${env.AUTH0TOKEN}"/>
+                <simple name="java:global/auth0host" value="${env.AUTH0HOST:https://avillachlab.auth0.com}"/>
+                <simple name="java:global/systemName" value="${env.SYSTEM_NAME:psama}"/>
+                <simple name="java:global/clientSecretIsBase64" value="${env.CLIENT_SECRET_IS_BASE_64:true}"/>
+                <simple name="java:global/emailTemplatePath" value="${env.EMAIL_TEMPLATE_PATH:none}"/>
+                <simple name="java:global/userActivationReplyTo" value="${env.USER_ACTIVATION_REPLY_TO:none}"/>
+                <simple name="java:global/tosEnabled" value="${env.TOS_ENABLED:true}"/>
+                <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
+                <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS}"/>
+
+                <simple name="java:global/accessGrantEmailSubject" value="${env.accessGrantEmailSubject:none}"/>
+                <simple name="java:global/tokenExpirationTime" value="${env.tokenExpriationTime:900000}" />
+
+                <!-- Configure Identity Provider Parameters, with defaults-->
+                <simple name="java:global/idp_provider" value="${env.IDP_PROVIDER:auth0}"/>
+                <simple name="java:global/fence_client_id" value="${env.FENCE_CLIENT_ID:no_fence_client_id}"/>
+                <simple name="java:global/fence_client_secret" value="${env.FENCE_CLIENT_SECRET:no_fence_client_secret}"/>
+
             </bindings>
             <remote-naming/>
         </subsystem>
@@ -445,11 +482,6 @@
                         <policy-module code="Delegating" flag="required"/>
                     </authorization>
                 </security-domain>
-                <security-domain name="jboss-ejb-policy" cache-type="default">
-                    <authorization>
-                        <policy-module code="Delegating" flag="required"/>
-                    </authorization>
-                </security-domain>
                 <security-domain name="jaspitest" cache-type="default">
                     <authentication-jaspi>
                         <login-module-stack name="dummy">
@@ -457,6 +489,11 @@
                         </login-module-stack>
                         <auth-module code="Dummy"/>
                     </authentication-jaspi>
+                </security-domain>
+                <security-domain name="jboss-ejb-policy" cache-type="default">
+                    <authorization>
+                        <policy-module code="Delegating" flag="required"/>
+                    </authorization>
                 </security-domain>
             </security-domains>
         </subsystem>
@@ -467,8 +504,8 @@
                 </maximum-set>
             </deployment-permissions>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:transactions:4.0">
-            <core-environment>
+        <subsystem xmlns="urn:jboss:domain:transactions:5.0">
+            <core-environment node-identifier="${jboss.tx.node.id:1}">
                 <process-id>
                     <uuid/>
                 </process-id>
@@ -476,7 +513,7 @@
             <recovery-environment socket-binding="txn-recovery-environment" status-socket-binding="txn-status-manager"/>
             <object-store path="tx-object-store" relative-to="jboss.server.data.dir"/>
         </subsystem>
-        <subsystem xmlns="urn:jboss:domain:undertow:6.0" default-server="default-server" default-virtual-host="default-host" default-servlet-container="default" default-security-domain="other">
+        <subsystem xmlns="urn:jboss:domain:undertow:8.0" default-server="default-server" default-virtual-host="default-host" default-servlet-container="default" default-security-domain="other">
             <buffer-cache name="default"/>
             <server name="default-server">
                 <http-listener name="default" socket-binding="http" redirect-socket="https" enable-http2="true"/>
@@ -524,6 +561,9 @@
         <socket-binding name="txn-status-manager" port="4713"/>
         <outbound-socket-binding name="mail-smtp">
             <remote-destination host="localhost" port="25"/>
+        </outbound-socket-binding>
+        <outbound-socket-binding name="mail-smtp-gmail" source-port="0" fixed-source-port="false">
+            <remote-destination host="smtp.gmail.com" port="587"/>
         </outbound-socket-binding>
     </socket-binding-group>
 </server>

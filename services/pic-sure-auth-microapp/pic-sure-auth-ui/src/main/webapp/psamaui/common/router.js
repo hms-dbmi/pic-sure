@@ -17,6 +17,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "psamaui/privilegeManagement(/)" : "displayPrivilegeManagement",
             "psamaui/applicationManagement(/)" : "displayApplicationManagement",
             "psamaui/accessRuleManagement(/)" : "displayAccessRuleManagement",
+            "psamaui/userProfile(/)" : "showUserProfileHeader",
             "*path" : "displayUserManagement"
         },
         initialize: function(){
@@ -71,7 +72,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(userMngmt.$el);
             });
         },
-
         displayTOS : function() {
             var headerView = header.View;
             headerView.render();
@@ -81,7 +81,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
         },
-
         displayApplicationManagement : function(){
             var headerView = header.View;
             headerView.render();
@@ -99,7 +98,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
         },
-
         displayRoleManagement : function(){
             var headerView = header.View;
             headerView.render();
@@ -135,7 +133,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
         },
-            
         displayAccessRuleManagement : function() {
             var headerView = header.View;
             headerView.render();
@@ -153,7 +150,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
         },
-
         displayConnectionManagement : function() {
             var headerView = header.View;
             headerView.render();
@@ -170,7 +166,15 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
             });
+        },
+        showUserProfileHeader : function() {
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
+            $('#user-profile-btn', headerView.$el).click();
+            $('#main-content').html("<div class='row'><div id='modal-window'></div></div>");
         }
+
     });
     return new Router();
 });

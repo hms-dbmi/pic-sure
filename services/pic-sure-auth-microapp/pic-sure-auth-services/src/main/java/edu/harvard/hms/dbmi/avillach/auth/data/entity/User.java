@@ -61,6 +61,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Column(name = "is_active")
 	private boolean active = true;
 
+	@Column(name = "long_term_token")
+	private String token;
+
 	public String getSubject() {
 		return subject;
 	}
@@ -151,6 +154,32 @@ public class User extends BaseEntity implements Serializable, Principal {
 		return nameSet;
 	}
 
+	/**
+	 * return privileges in each role as a set based on Application given.
+	 *
+	 * @return
+	 */
+	@JsonIgnore
+	public Set<Privilege> getPrivilegesByApplication(Application application){
+		if (application == null || application.getUuid() == null){
+			return getTotalPrivilege();
+		}
+
+		if (roles == null)
+			return null;
+
+		Set<Privilege> privileges = new HashSet<>();
+		roles.stream().
+				forEach(r -> privileges.addAll(r.getPrivileges()
+						.stream()
+						.filter(p -> application.getUuid()
+                                .equals((p.getApplication()==null)?
+                                        null:
+                                        p.getApplication().getUuid()))
+						.collect(Collectors.toSet())));
+		return privileges;
+	}
+
 	@JsonIgnore
 	public String getPrivilegeString(){
 		Set<Privilege> totalPrivilegeSet = getTotalPrivilege();
@@ -232,11 +261,21 @@ public class User extends BaseEntity implements Serializable, Principal {
 		this.active = active;
 	}
 
+	public String getToken() {
+		return token;
+	}
+
+	public void setToken(String token) {
+		this.token = token;
+	}
+
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	public static class UserForDisaply {
 		String uuid;
 		String email;
 		Set<String> privileges;
+		String token;
+		String queryTemplate;
 
 		public UserForDisaply() {
 		}
@@ -267,7 +306,24 @@ public class User extends BaseEntity implements Serializable, Principal {
 			this.uuid = uuid;
 			return this;
 		}
-	}
+
+		public String getToken() {
+			return token;
+		}
+
+		public UserForDisaply setToken(String token) {
+			this.token = token;
+			return this;
+		}
+
+        public String getQueryTemplate() {
+            return queryTemplate;
+        }
+
+        public void setQueryTemplate(String queryTemplate) {
+            this.queryTemplate = queryTemplate;
+        }
+    }
 
 	public String toString() {
 		return uuid.toString() + " ___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
