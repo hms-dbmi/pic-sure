@@ -21,56 +21,69 @@ define(["picSure/settings", "handlebars", 'text!overrides/not_authorized.hbs'], 
 		 * authentication service.
 		 *
 		 */
-		fence_provider_call: function(override_config) {
-			window.location = "https://staging.datastage.io/user/oauth2/authorize"+
-				"?response_type=code&scope=user+openid"+
-				"&client_id=" + override_config.fence_client_id +
-				"&redirect_uri="+override_config.fence_redirect_url;
+		/*fence_get_token: function(fence_code) {
+			console.log("fence_get_token() starting....");
+			var client_id = '3YkHUAoPSwaRWzSuNN0DyDbJeU1AxrMVkXBczDo6';
+			var client_secret = 'W7JGecNQ91fMFRb0YVTRnqJ6fytPK4FIK2ZCsAbiQMbHaoTENHGzLFD';
 
-/*
-				$.ajax({
-					url: "https://staging.datastage.io/user/oauth2/token",
-					type: 'POST',
-					headers: {
-						"Authorization" : "Basic " + btoa(client_id + ":" + client_secret)
-					},
-					data: {
-						grant_type: "authorization_code",
-						code: code,
-						redirect_uri: redirect_back_url
-					},
-					success: function(tokens){
-						// This logic should be done on the backend.
-						console.log("/user/oauth2/token response...");
-						console.log(tokens);
-
-						var id_token = tokens.id_token;
-						var access_token = tokens.access_token;
-						$('body').append("<pre>"+JSON.stringify(JSON.parse(atob(id_token.split('.')[1])),null, 2)+"</pre>");
-					}
-				});
-*/
-		},
-
-		fence_get_user_profile: function(access_token) {
 			$.ajax({
-				url: "https://staging.datastage.io/user/user",
-				type: 'GET',
+				url: "https://staging.datastage.io/user/oauth2/token",
+				type: 'POST',
 				headers: {
-					"Authorization" : "Bearer " + access_token
+					"Authorization" : "Basic " + btoa(client_id + ":" + client_secret)
 				},
-				success: function(userProfile){
-					console.log("/user/user success response...");
-					// The user's roles will come from this reponse.
-					$('body').append("<pre>"+JSON.stringify(userProfile)+"</pre>");
+				data: {
+					grant_type: "authorization_code",
+					code: fence_code,
+					redirect_uri: "https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/"
+				},
+				success: function(tokens){
+					// This logic should be done on the backend.
+					console.log("/user/oauth2/token response...");
+					console.log(tokens);
+
+					var id_token = tokens.id_token;
+					var access_token = tokens.access_token;
+					console.log("fence_get_token() tokens....");
+					console.log(JSON.stringify(JSON.parse(atob(id_token.split('.')[1])),null, 2));
 				},
 				error: function(data) {
-					console.log("/user/user error response...");
+					console.log("fence_get_token() ERROR");
 					console.log(data);
-					$('body').append("<div style='color:red'>"+data+"</div>");
 				}
 			});
+			console.log("fence_get_token() finished");
+		},*/
+
+		fence_provider_call: function(override_config) {
+			console.log("fence_provider_call() redirect to datastage.io");
+			window.location = "https://staging.datastage.io/user/oauth2/authorize"+
+				"?response_type=code"+
+				"&scope=user+openid"+
+				"&client_id=" + override_config.fence_client_id +
+				"&redirect_uri="+override_config.fence_redirect_url;
 		},
+		//
+		// fence_get_user_profile: function(access_token) {
+		// 	console.log("fence_get_user_profile() calling DataStage /user/user endpoint");
+		// 	$.ajax({
+		// 		url: "https://staging.datastage.io/user/user",
+		// 		type: 'GET',
+		// 		headers: {
+		// 			"Authorization" : "Bearer " + access_token
+		// 		},
+		// 		success: function(userProfile){
+		// 			console.log("/user/user success response...");
+		// 			// The user's roles will come from this reponse.
+		// 			$('body').append("<pre>"+JSON.stringify(userProfile)+"</pre>");
+		// 		},
+		// 		error: function(data) {
+		// 			console.log("/user/user error response...");
+		// 			console.log(data);
+		// 			$('body').append("<div style='color:red'>"+data+"</div>");
+		// 		}
+		// 	});
+		// },
 		/*
 		 * This allows you to build any authorization logic you wish.
 		 *

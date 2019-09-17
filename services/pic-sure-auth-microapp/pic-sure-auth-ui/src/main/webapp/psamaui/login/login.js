@@ -26,28 +26,66 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     params[temp[0]] = temp[1];
                 }
                 var code = params['code'];
-
                 if (code) {
+                    console.log('showLoginPage() redirecting to fence-authentication, with code from FENCE');
                     $('#main-content').html('Got a code back: '+code);
+
+                    // Use the `code` received from FENCE to call the PSAMA back-end service, to retrieve the
+                    // user information, based on the code. User information will be stored in the browser's
+                    // session storage, for later use. Note: The response will be PSAMA specific information,
+                    // and NOT FENCE information
                     $.ajax({
-                        url: '/psama/authentication-fence',
+                        url: '/psama/fence-authentication',
                         type: 'post',
                         data: JSON.stringify({
                             "code":code
                         }),
                         contentType: 'application/json',
                         success: function(data){
-                           // Redirect to picsureui
+                            console.log('showLoginPage() psama fence-authentication is successful.');
                             console.log(data);
+
+                            // If back-end response is success, we will get a PSAMA JWT token back, and some
+                            // other information. We will set the session variables for the user with our own
+                            // internal expiry, and other claims.
+                            session.authenticated(
+                                data.userId,
+                                data.token,
+                                data.email,
+                                data.permissions,
+                                data.acceptedTOS,
+                                this.handleNotAuthorizedResponse
+                            );
+                            if (data.acceptedTOS !== 'true'){
+                                history.pushState({}, "", "/psamaui/tos");
+                            } else {
+                                if (sessionStorage.redirection_url) {
+                                    window.location = sessionStorage.redirection_url;
+                                } else {
+                                    history.pushState({}, "", "/psamaui/userManagement");
+                                }
+                            }
+
+                            // Once all the session information is stored in the browser, we can redirect to the
+                            // real destination
+                            console.log('showLoginPage() redirecting to /picsureui page...');
                             window.location = '/picsureui';
-                        },
+
+                        }.bind(this),
                         error: function(data){
-                            console.log("ERROR");
+                            console.log("showLoginPage() could not authenticate with the FENCE IDP");
                             console.log(data);
-                            notification.showFailureMessage("Failed to authenticate with provider. Try again or contact administrator if error persists.")
-                            history.pushState({}, "", sessionStorage.not_authorized_url? sessionStorage.not_authorized_url : "/psamaui/not_authorized?redirection_url=/picsureui");
+
+                            notification.showFailureMessage("Failed to authenticate with DataStage FENCE protocol. "+
+                                "Try again or contact administrator if error persists.");
+                            history.pushState(
+                                {},
+                                "",
+                                sessionStorage.not_authorized_url? sessionStorage.not_authorized_url : "/psamaui/not_authorized?redirection_url=/picsureui"
+                            );
                         }
                     });
+                    console.log("showLoginPage() returning null?!");
                     return null;
                 } else {
                     // This is the initial login, when there is no code present

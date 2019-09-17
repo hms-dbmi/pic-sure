@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.auth.AuthorizationService;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ public class AuthService {
     }
 
     @POST
-    @Path("/authentication-fence")
+    @Path("/fence-authentication")
     public Response authenticationWithFence(Map<String, String> authRequest){
         return authenticationService.getFENCEProfile(authRequest);
     }

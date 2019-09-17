@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
@@ -432,6 +433,44 @@ public class UserService extends BaseEntityService<User> {
                 user.setConnection(connection);
             }
         }
+    }
+
+    public User createUserFromFENCEProfile(JsonNode node) {
+        User actual_user = null;
+        try {
+            actual_user = userRepo.findOrCreate(new User().setSubject("fence|"+node.get("user_id")));
+            actual_user.setEmail(node.get("email").asText());
+            actual_user.setGeneralMetadata(node.asText());
+            userRepo.persist(actual_user);
+        } catch (Exception ex) {
+            logger.error("createUserFromFENCEProfile() ERROR:"+ex.getMessage());
+        }
+        return actual_user;
+    }
+
+    public boolean upsertRole(User u,  String roleName, String roleDescription) {
+        logger.debug("upsertRole() starting for user subject:"+u.getSubject());
+
+        Role r = null;
+        try {
+            r = new Role();
+            r.setName(roleName);
+            r.setDescription(roleDescription);
+            roleRepo.persist(r);
+
+            logger.debug("upsertRole() created new role");
+        } catch (Exception ex) {
+            logger.error("upserRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
+        }
+
+        try {
+            u.getRoles().add(r);
+        } catch (Exception ex) {
+            logger.error("upsertRole() Could not add role to user, because "+ex.getMessage());
+        }
+
+        logger.debug("upsertRole() finished");
+        return true;
     }
 
 }
