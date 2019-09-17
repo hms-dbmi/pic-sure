@@ -260,14 +260,14 @@ public abstract class AbstractProcessor {
 			System.out.println("or'd masks : " + bitmaskString);
 			PhenoCube<String> idCube;
 			try {
-				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
+				idCube = ID_CUBE_NAME.contentEquals("NONE") ? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
 				// TODO : This is much less efficient than using bitmask.testBit(x)
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
 						// Minor hack here to deal with Baylor not sticking to one file naming convention
 						String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
 						try{
-							ids.add(idCube.getKeysForValue(patientId).iterator().next());
+							ids.add(idCube == null ? Integer.parseInt(patientId) : idCube.getKeysForValue(patientId).iterator().next());
 						}catch(NullPointerException e) {
 							log.error(ID_CUBE_NAME + " has no value for patientId : " + patientId);
 						}
@@ -475,13 +475,13 @@ public abstract class AbstractProcessor {
 							Set<Integer> ids = new TreeSet<Integer>();
 							String bitmaskString = matchingPatients.toString(2);
 							log.info("or'd masks : " + bitmaskString);
-							PhenoCube<String> patientIdCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
+							PhenoCube<String> patientIdCube = ID_CUBE_NAME.contentEquals("NONE")? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
 							for(int x = 2;x < bitmaskString.length()-2;x++) {
 								if('1'==bitmaskString.charAt(x)) {
 									// Minor hack here to deal with Baylor not sticking to one file naming convention
 									String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
 									try {
-										ids.add(patientIdCube.getKeysForValue(patientId).iterator().next());
+										ids.add(patientIdCube == null ? Integer.parseInt(patientId) : patientIdCube.getKeysForValue(patientId).iterator().next());
 									}catch(NullPointerException e) {
 										System.out.println("Could not find id for patient " + patientId);
 									}
