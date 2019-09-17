@@ -33,7 +33,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	public Set<K> keys(){
 		return index.keySet();
 	}
-	
+
 	public void put(K key, V value) throws IOException {
 		if(completed) {
 			throw new RuntimeException("A completed FileBackedByteIndexedStorage cannot be modified.");
@@ -59,7 +59,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	public void open() throws FileNotFoundException {
 		this.storage = new RandomAccessFile(this.storageFile, "rwd");
 	}
-	
+
 	public void complete() {
 		this.completed = true;
 	}
@@ -80,17 +80,23 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		Long[] offsetsInStorage = index.get(key);
 		if(offsetsInStorage != null) {
 			Long offsetInStorage = index.get(key)[0];
-			storage.seek(offsetInStorage);
-			byte[] buffer = new byte[index.get(key)[1].intValue()];
-			storage.readFully(buffer);
-			ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new ByteArrayInputStream(buffer)));
-			try {
-				V readObject = (V) in.readObject();
-				return readObject;
-			} catch (ClassNotFoundException e) {
-				throw new RuntimeException("This should never happen.");
-			} finally {
-				in.close();
+			int offsetLength = index.get(key)[1].intValue();
+			if(offsetInStorage > 0 && offsetLength>0) {
+				storage.seek(offsetInStorage);
+				byte[] buffer = new byte[offsetLength];
+				storage.readFully(buffer);
+
+				ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new ByteArrayInputStream(buffer)));
+				try {
+					V readObject = (V) in.readObject();
+					return readObject;
+				} catch (ClassNotFoundException e) {
+					throw new RuntimeException("This should never happen.");
+				} finally {
+					in.close();
+				}
+			}else {
+				return null;
 			}
 		} else {
 			return null;
