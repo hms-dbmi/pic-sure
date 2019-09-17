@@ -158,13 +158,15 @@ public class UserService extends BaseEntityService<User> {
     }
 
     /**
-     * This check is to prevent non-admin user to create/remove a super admin role
-     * against a user. Only super admin could perform such actions.
+     * This check is to prevent non-super-admin user to create/remove a super admin role
+     * against a user(include themselves). Only super admin user could perform such actions.
      *
      * <p>
-     *     if no super admin role updates, this will return true.
+     *     if operations not related to super admin role updates, this will return true.
      * </p>
      *
+     * The logic here is checking the state of the super admin role in the input and output users,
+     * if the state is changed, check if the user is a super admin to determine if the user could perform the action.
      *
      * @param currentUser the user trying to perform the action
      * @param inputUser
@@ -218,8 +220,7 @@ public class UserService extends BaseEntityService<User> {
 
     /**
      * For the long term token, current logic is,
-     * every time a user hit this endpoint /me
-     * with the query parameter ?hasToken presented,
+     * every time a user hit this endpoint <code>/me</code> with the query parameter ?hasToken presented,
      * it will refresh the long term token.
      *
      * @param httpHeaders
@@ -249,6 +250,9 @@ public class UserService extends BaseEntityService<User> {
                 .setPrivileges(user.getPrivilegeNameSet())
                 .setUuid(user.getUuid().toString());
 
+        // currently, the queryScopes are simple combination of queryScope string together as a set.
+        // We are expecting the queryScope string as plain string. If it is a JSON, we could change the
+        // code to use JsonUtils.mergeTemplateMap(Map, Map)
         Set<Privilege> privileges = user.getTotalPrivilege();
         if (privileges != null && !privileges.isEmpty()){
             userForDisplay.setQueryScopes(privileges.stream()
@@ -341,7 +345,7 @@ public class UserService extends BaseEntityService<User> {
         try {
             resultJSON = JAXRSConfiguration.objectMapper.writeValueAsString(mergedTemplateMap);
         } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is.");
+            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: " + mergedTemplateMap);
             throw new ApplicationException("Inner application error, please contact admin.");
         }
 
@@ -385,8 +389,15 @@ public class UserService extends BaseEntityService<User> {
         return PICSUREResponse.success(Map.of("userLongTermToken", longTermToken));
     }
 
+    /**
+     * Logic here is, retrieve the subject of the user from httpHeader. Then generate a long term one
+     * with LONG_TERM_TOKEN_PREFIX| in front of the subject to be able to distinguish with regular ones, since
+     * long term token only generated for accessing certain things to, in some degrees, decrease the insecurity.
+     * @param httpHeaders
+     * @return
+     * @throws ProtocolException
+     */
     private String generateUserLongTermToken(HttpHeaders httpHeaders) throws ProtocolException{
-        // grant the long term token
         Jws<Claims> jws;
         try {
             jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
