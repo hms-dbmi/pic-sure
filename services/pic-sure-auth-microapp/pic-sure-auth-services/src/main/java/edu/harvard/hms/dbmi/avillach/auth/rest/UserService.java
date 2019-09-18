@@ -435,42 +435,86 @@ public class UserService extends BaseEntityService<User> {
         }
     }
 
+    /**
+     * Create or update a user record, based on the FENCE user profile, which is in JSON format.
+     *
+     * @param node User profile, as it is received from Gen3 FENCE, in JSON format
+     * @return User The actual entity, as it is persisted (if no errors) in the PSAMA database
+     */
     public User createUserFromFENCEProfile(JsonNode node) {
         User actual_user = null;
         try {
-            actual_user = userRepo.findOrCreate(new User().setSubject("fence|"+node.get("user_id")));
+            User user_to_look_up = new User().setSubject("fence|"+node.get("user_id"));
+
+            if (userRepo == null) {
+                throw new RuntimeException("User repo is null");
+
+            }
+
+            actual_user = userRepo.findOrCreate(user_to_look_up);
+
+            actual_user.setSubject("fence|"+node.get("user_id"));
             actual_user.setEmail(node.get("email").asText());
             actual_user.setGeneralMetadata(node.asText());
+
+            // Clear current set of roles every time we
+            actual_user.setRoles(new HashSet<>());
             userRepo.persist(actual_user);
         } catch (Exception ex) {
-            logger.error("createUserFromFENCEProfile() ERROR:"+ex.getMessage());
+            logger.error("createUserFromFENCEProfile() ERROR:"+ex.getClass().getName());
+            ex.printStackTrace();
         }
         return actual_user;
     }
 
+    /**
+     * Insert or Update the User object's list of Roles in the database.
+     *
+     * @param u The User object the generated Role will be added to
+     * @param roleName Name of the Role
+     * @param roleDescription Description of the Role
+     * @return boolean Whether the Role was successfully added to the User or not
+     */
     public boolean upsertRole(User u,  String roleName, String roleDescription) {
+        boolean status = false;
         logger.debug("upsertRole() starting for user subject:"+u.getSubject());
 
-        Role r = null;
+        // Get the User's list of Roles. The first time, this will be an empty Set.
+        // This method is called for every Role, and the User's list of Roles will
+        // be updated for all subsequent calls.
+        Set<Role> users_roles = u.getRoles();
         try {
-            r = new Role();
-            r.setName(roleName);
-            r.setDescription(roleDescription);
-            roleRepo.persist(r);
-
-            logger.debug("upsertRole() created new role");
+            Role r = null;
+            // Create the Role in the repository, if it does not exist. Otherwise, add it.
+            Role existing_role = roleRepo.getUniqueResultByColumn("name", roleName);
+            if (existing_role != null) {
+                // Role already exists
+                logger.debug("upsertRole() role already exists");
+                r = existing_role;
+            } else {
+                // This is a new Role
+                r = new Role();
+                r.setName(roleName);
+                r.setDescription(roleDescription);
+                roleRepo.persist(r);
+                logger.debug("upsertRole() created new role");
+            }
+            users_roles.add(r);
+            logger.debug("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
         } catch (Exception ex) {
             logger.error("upserRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
         }
 
         try {
-            u.getRoles().add(r);
+            userRepo.changeRole(u, users_roles);
+            logger.debug("upsertRole() updated user, who now has "+users_roles.size()+" roles.");
+            status = true;
         } catch (Exception ex) {
-            logger.error("upsertRole() Could not add role to user, because "+ex.getMessage());
+            logger.error("upsertRole() Could not add roles to user, because "+ex.getMessage());
         }
 
         logger.debug("upsertRole() finished");
-        return true;
+        return status;
     }
 
 }

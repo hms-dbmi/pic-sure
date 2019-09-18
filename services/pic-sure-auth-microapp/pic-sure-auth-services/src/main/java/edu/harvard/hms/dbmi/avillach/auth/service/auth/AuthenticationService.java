@@ -104,9 +104,6 @@ public class AuthenticationService {
         logger.debug("getFENCEProfile() starting...");
         String fence_code  = authRequest.get("code");
 
-        // The response will contain user information, like token, subject and email
-        HashMap<String, String> responseMap = new HashMap<String, String>();
-
         JsonNode fence_user_profile = null;
         // Get the Gen3/FENCE user profile. It is a JsonNode object
         try {
@@ -146,33 +143,71 @@ public class AuthenticationService {
 
                 if (userService.upsertRole(current_user, access_role_name, "FENCE role "+access_role_name)) {
                     logger.info("getFENCEProfile() Updated user role. Now it includes `"+access_role_name+"`");
+                } else {
+                    logger.error("getFENCEProfile() could not add roles to user's profile");
                 }
 
-                //Application a = new Application();
-                //a.setName('FENCE');
-                //Privilege p = new Privilege();
-                //p.setName("FENCE_");
-                //p.setApplication(a);
-                //r.setPrivileges(p);
-
                 JsonNode role_object = fence_user_profile.get("project_access").get(access_role_name);
-                logger.debug("getFENCEProfile() object:"+role_object.asText());
+                logger.debug("getFENCEProfile() object:"+role_object.toString());
         }
 
-        // Set the expiration date, based on parameters.
-        Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
+        HashMap<String, Object> claims = new HashMap<String,Object>();
+        claims.put("user_id", fence_user_profile.get("user_id"));
+        claims.put("name", fence_user_profile.get("tags").get("name"));
+        claims.put("email", current_user.getEmail());
+        claims.put("userId", current_user.getUuid().toString());
+        claims.put("subject", current_user.getSubject());
+        HashMap<String, String> responseMap = getUserProfileResponse(claims);
+        logger.debug("getFENCEProfile() UserProfile response object has been generated");
 
-        logger.debug("getFENCEToken() processed FENCE user profile response, convert it to PIC-SURE user stuff");
-        responseMap.put("status","ok");
-        responseMap.put("token", current_user.getToken());
-        responseMap.put("userId", current_user.getUuid().toString());
-        responseMap.put("email", current_user.getEmail());
-        responseMap.put("message", "User record has been created/update");
-        responseMap.put("pic-sure-token", "pic-sure-jwt-token");
-        responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
+        responseMap.put("status", "ok");
+        responseMap.put("message", "user profile JSON has been generated");
 
         logger.debug("getFENCEToken() finished");
         return PICSUREResponse.success(responseMap);
+    }
+
+    /*
+     * Generate a HashMap of all the information used in the JSON response back to the UI client, while also
+     * package the same information inside a valid PSAMA JWT token
+     *
+     */
+    private HashMap<String, String> getUserProfileResponse(Map<String, Object> claims) {
+        logger.debug("getUserProfileResponse() starting...");
+
+        HashMap<String, String> responseMap = new HashMap<String, String>();
+        logger.debug("getUserProfileResponse() initialized map");
+
+        logger.debug("getUserProfileResponse() using claims:"+claims.toString());
+
+        String token = JWTUtil.createJwtToken(
+                JAXRSConfiguration.clientSecret,
+                "whatever",
+                "edu.harvard.hms.dbmi.psama",
+                claims,
+                claims.get("userId").toString(),
+                JAXRSConfiguration.tokenExpirationTime
+        );
+        logger.debug("getUserProfileResponse() PSAMA JWT token has been generated. Token:"+token);
+        responseMap.put("token", token);
+
+        logger.debug("getUserProfileResponse() .usedId field is set");
+        responseMap.put("userId", claims.get("userId").toString());
+
+        logger.debug("getUserProfileResponse() .email field is set");
+        responseMap.put("email", claims.get("email").toString());
+
+        logger.debug("getUserProfileResponse() acceptedTOS is set");
+        boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ?
+                tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("subject").toString()) : true;
+        responseMap.put("acceptedTOS", ""+acceptedTOS);
+
+        logger.debug("getUserProfileResponse() expirationDate is set");
+        Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
+        responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
+
+        logger.debug("getUserProfileResponse() finished");
+        return responseMap;
     }
 
     public Response getToken(Map<String, String> authRequest){
@@ -214,27 +249,15 @@ public class AuthenticationService {
             }
         }
 
-        Map<String, Object> claims = generateClaims(userInfo, new String[]{"user_id","name" });
-        claims.put("email",user.getEmail());
+        HashMap<String, String> responseMap = getUserProfileResponse(Map.of(
+                "user_id", userId,
+                "name", user.getName(),
+                "email",user.getEmail(),
+                "userId", user.getUuid().toString(),
+                "subject", user.getSubject()
+        ));
+        responseMap.put("status", "ok");
 
-        Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
-        String token = JWTUtil.createJwtToken(
-                JAXRSConfiguration.clientSecret, null, null,
-                claims,
-                userId, JAXRSConfiguration.tokenExpirationTime);
-
-        boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ? 
-        		tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject()) : true;
-
-        HashMap<String, String> responseMap = new HashMap<String, String>();
-        
-        responseMap.put("token", token);
-        responseMap.put("name", (userInfo.has("name")?userInfo.get("name").asText():null));
-        responseMap.put("email", user.getEmail());
-        responseMap.put("userId", user.getUuid().toString());
-        responseMap.put("acceptedTOS", ""+acceptedTOS);
-        responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
-        
         return PICSUREResponse.success(responseMap);
     }
 

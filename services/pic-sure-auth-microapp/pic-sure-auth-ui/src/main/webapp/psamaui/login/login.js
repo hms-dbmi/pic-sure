@@ -10,93 +10,8 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
 
 	var login = {
 		showLoginPage : function(){
-			if (overrides.idp_provider == 'fence') {
+		    console.log("Auth0-showLoginPage()");
 
-                //var code = window.location.search.slice(6);
-
-                // Check if the `code` parameter is set in the URL, as it would be, when
-                // FENCE redirects back after authentication.
-                var queryString = window.location.search.substring(1);
-                var params = {}, queries, temp, i, l;
-                // Split into key/value pairs
-                queries = queryString.split("&");
-                // Convert the array of strings into an object
-                for ( i = 0, l = queries.length; i < l; i++ ) {
-                    temp = queries[i].split('=');
-                    params[temp[0]] = temp[1];
-                }
-                var code = params['code'];
-                if (code) {
-                    console.log('showLoginPage() redirecting to fence-authentication, with code from FENCE');
-                    $('#main-content').html('Got a code back: '+code);
-
-                    // Use the `code` received from FENCE to call the PSAMA back-end service, to retrieve the
-                    // user information, based on the code. User information will be stored in the browser's
-                    // session storage, for later use. Note: The response will be PSAMA specific information,
-                    // and NOT FENCE information
-                    $.ajax({
-                        url: '/psama/fence-authentication',
-                        type: 'post',
-                        data: JSON.stringify({
-                            "code":code
-                        }),
-                        contentType: 'application/json',
-                        success: function(data){
-                            console.log('showLoginPage() psama fence-authentication is successful.');
-                            console.log(data);
-
-                            // If back-end response is success, we will get a PSAMA JWT token back, and some
-                            // other information. We will set the session variables for the user with our own
-                            // internal expiry, and other claims.
-                            session.authenticated(
-                                data.userId,
-                                data.token,
-                                data.email,
-                                data.permissions,
-                                data.acceptedTOS,
-                                this.handleNotAuthorizedResponse
-                            );
-                            if (data.acceptedTOS !== 'true'){
-                                history.pushState({}, "", "/psamaui/tos");
-                            } else {
-                                if (sessionStorage.redirection_url) {
-                                    window.location = sessionStorage.redirection_url;
-                                } else {
-                                    history.pushState({}, "", "/psamaui/userManagement");
-                                }
-                            }
-
-                            // Once all the session information is stored in the browser, we can redirect to the
-                            // real destination
-                            console.log('showLoginPage() redirecting to /picsureui page...');
-                            window.location = '/picsureui';
-
-                        }.bind(this),
-                        error: function(data){
-                            console.log("showLoginPage() could not authenticate with the FENCE IDP");
-                            console.log(data);
-
-                            notification.showFailureMessage("Failed to authenticate with DataStage FENCE protocol. "+
-                                "Try again or contact administrator if error persists.");
-                            history.pushState(
-                                {},
-                                "",
-                                sessionStorage.not_authorized_url? sessionStorage.not_authorized_url : "/psamaui/not_authorized?redirection_url=/picsureui"
-                            );
-                        }
-                    });
-                    console.log("showLoginPage() returning null?!");
-                    return null;
-                } else {
-                    // This is the initial login, when there is no code present
-                    $('#main-content').html('FENCE configuration is found in the `overrides/login.js` file. ');
-                    overrides.fence_provider_call(overrides);
-                    return null;
-                }
-			} else {
-				$('#main-content').html('This branch is for FENCE authentication only. Please change or set the `idp_provider` field in `overrides/login.js` file. ');
-				return null;
-			}
             var queryObject = parseQueryString();
             if (queryObject.redirection_url) sessionStorage.redirection_url = queryObject.redirection_url.trim();
             if (queryObject.not_authorized_url) sessionStorage.not_authorized_url = queryObject.not_authorized_url.trim();
@@ -200,6 +115,8 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
             }
 		},
         handleNotAuthorizedResponse : function () {
+            console.log("Auth0-handleNotAuthorizedResponse()");
+
             if (JSON.parse(sessionStorage.session).token) {
                 if (sessionStorage.not_authorized_url)
                     window.location = sessionStorage.not_authorized_url;
@@ -207,15 +124,18 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     window.location = "/psamaui/not_authorized" + window.location.search;
             }
             else {
-                window.location = "/psamaui/logout" + window.location.search;
+                console.log("No token in session, so redirect to logout...");
+                return null; //window.location = "/psamaui/logout" + window.location.search;
             }
         },
         displayNotAuthorized : function () {
+            console.log("Auth0-displayNotAuthorized()");
+
             if (overrides.displayNotAuthorized)
                 overrides.displayNotAuthorized()
             else
                 $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
         }
     };
-	return settings.fenceEnabled ? fenceLogin : login;
+	return settings.idp_provider == "fence" ? fenceLogin : login;
 });

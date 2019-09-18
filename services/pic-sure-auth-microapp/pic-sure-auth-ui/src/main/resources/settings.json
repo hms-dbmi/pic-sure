@@ -2,5 +2,6 @@
   "helpLink": "",
   "customizeAuth0Login": true,
   "client_id": "ywAq4Xu4Kl3uYNdm3m05Cc5ow0OibvXt",
-  "basePath": "/psama"
+  "basePath": "/psama",
+  "idp_provider": "fence"
 }
