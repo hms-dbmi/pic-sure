@@ -245,23 +245,31 @@ public class UserService extends BaseEntityService<User> {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
 
-        User.UserForDisaply userForDisaply = new User.UserForDisaply()
+        User.UserForDisaply userForDisplay = new User.UserForDisaply()
                 .setEmail(user.getEmail())
                 .setPrivileges(user.getPrivilegeNameSet())
                 .setUuid(user.getUuid().toString());
 
+        Set<Privilege> privileges = user.getTotalPrivilege();
+        if (privileges != null && !privileges.isEmpty()){
+            userForDisplay.setQueryScopes(privileges.stream()
+                    .map(privilege -> privilege.getQueryScope())
+                    .filter(q -> q!=null && !q.isEmpty())
+                    .collect(Collectors.toSet()));
+        }
+
         if (hasToken!=null){
 
             if (user.getToken() != null && !user.getToken().isEmpty()){
-                userForDisaply.setToken(user.getToken());
+                userForDisplay.setToken(user.getToken());
             } else {
                 user.setToken(generateUserLongTermToken(httpHeaders));
                 userRepo.merge(user);
-                userForDisaply.setToken(user.getToken());
+                userForDisplay.setToken(user.getToken());
             }
         }
 
-        return PICSUREResponse.success(userForDisaply);
+        return PICSUREResponse.success(userForDisplay);
     }
 
     @Transactional
