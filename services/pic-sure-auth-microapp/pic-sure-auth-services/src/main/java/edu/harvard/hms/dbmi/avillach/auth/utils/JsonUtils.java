@@ -10,10 +10,11 @@ import java.util.stream.Collectors;
 
 /**
  * <p>
- *     The scope of this class is only for operations on string, list, map that are converted from JSONs, which means
- *     the keys of the map will only be String, and there are only three type of data, string, list, map.
+ *     The scope of this class is only for operations on string, list, map that are converted from JSONs, which means all
+ *     the keys of the maps here we deal with will only be String. Also there are only three types of data: string, list, map,
+ *     since input maps are converted from JSONs.
  * </p>
- *
+ * <br>
  * Originally the class is designed for merging two JSON maps (inputs are two Maps),
  * only mergeTemplateMap class is public. But afterwards, the methods inside which are private
  * at the beginning, seems could be used as utility methods as well, so they became public.
