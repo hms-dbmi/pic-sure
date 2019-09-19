@@ -130,7 +130,6 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
         },
         displayNotAuthorized : function () {
             console.log("Auth0-displayNotAuthorized()");
-
             if (overrides.displayNotAuthorized)
                 overrides.displayNotAuthorized()
             else

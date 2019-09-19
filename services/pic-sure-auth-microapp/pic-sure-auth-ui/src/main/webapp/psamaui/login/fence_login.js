@@ -41,6 +41,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                                 data.acceptedTOS,
                                 this.handleNotAuthorizedResponse
                             );
+
                             if (data.acceptedTOS !== 'true'){
                                 history.pushState({}, "", "/psamaui/tos");
                             } else {
@@ -59,10 +60,14 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     });
                     return null;
                 } else {
+                    console.log("FENCE-showLoginPage() no code in query string, redirecting to FENCE");
                     // This is the initial login, when there is no code present
                     $('#main-content').html('Authentication will be performed via DataStage FENCE pseudo-protocol.');
-                    overrides.fence_provider_call(overrides);
-                    console.log("FENCE-showLoginPage() returning null");
+                    window.location = "https://staging.datastage.io/user/oauth2/authorize"+
+                        "?response_type=code"+
+                        "&scope=user+openid"+
+                        "&client_id=" + settings.fence_client_id +
+                        "&redirect_uri="+settings.fence_redirect_url;
                     return null;
                 }
                 console.log("FENCE-showLoginPage() finished");

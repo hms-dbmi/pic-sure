@@ -52,17 +52,19 @@ public class AuthenticationService {
 
     private JsonNode getFENCEUserProfile(String access_token) {
         logger.debug("getFENCEUserProfile() starting");
-
         List<Header> headers = new ArrayList<>();
         headers.add(new BasicHeader("Authorization", "Bearer " + access_token));
 
-        logger.debug("getFENCEUserProfile() finished, returning user profile");
-        return HttpClientUtil.simpleGet(
-                "https://staging.datastage.io/user/user",
+        logger.debug("getFENCEUserProfile() getting user profile from uri:"+JAXRSConfiguration.idp_provider_uri+"/user/user");
+        JsonNode fence_user_profile_response = HttpClientUtil.simpleGet(
+                JAXRSConfiguration.idp_provider_uri+"/user/user",
                 JAXRSConfiguration.client,
                 JAXRSConfiguration.objectMapper,
                 headers.toArray(new Header[headers.size()])
         );
+
+        logger.debug("getFENCEUserProfile() finished, returning user profile"+fence_user_profile_response.asText());
+        return fence_user_profile_response;
     }
 
     private JsonNode getFENCEAccessToken(String fence_code) {
@@ -95,7 +97,7 @@ public class AuthenticationService {
         } catch (Exception ex) {
             logger.error("getFENCEAccessToken() failed to call FENCE token service, "+ex.getMessage());
         }
-        logger.debug("getFENCEAccessToken() finished.");
+        logger.debug("getFENCEAccessToken() finished. "+resp.asText());
         return resp;
     }
 
@@ -160,9 +162,6 @@ public class AuthenticationService {
         HashMap<String, String> responseMap = getUserProfileResponse(claims);
         logger.debug("getFENCEProfile() UserProfile response object has been generated");
 
-        responseMap.put("status", "ok");
-        responseMap.put("message", "user profile JSON has been generated");
-
         logger.debug("getFENCEToken() finished");
         return PICSUREResponse.success(responseMap);
     }
@@ -211,6 +210,9 @@ public class AuthenticationService {
     }
 
     public Response getToken(Map<String, String> authRequest){
+
+
+
         String accessToken = authRequest.get("access_token");
         String redirectURI = authRequest.get("redirectURI");
 
@@ -249,14 +251,13 @@ public class AuthenticationService {
             }
         }
 
-        HashMap<String, String> responseMap = getUserProfileResponse(Map.of(
-                "user_id", userId,
-                "name", user.getName(),
-                "email",user.getEmail(),
-                "userId", user.getUuid().toString(),
-                "subject", user.getSubject()
-        ));
-        responseMap.put("status", "ok");
+        HashMap<String, Object> claims = new HashMap<String,Object>();
+        claims.put("user_id", userId);
+        claims.put("name", user.getName());
+        claims.put("email", user.getEmail());
+        claims.put("userId", user.getUuid().toString());
+        claims.put("subject", user.getSubject());
+        HashMap<String, String> responseMap = getUserProfileResponse(claims);
 
         return PICSUREResponse.success(responseMap);
     }

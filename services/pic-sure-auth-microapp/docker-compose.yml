@@ -33,6 +33,7 @@ services:
       - DENIED_EMAIL_ENABLED=${DENIED_EMAIL_ENABLED:-false}
       - COMMA_SEPARATED_EMAILS=${COMMA_SEPARATED_EMAILS:-dummyemail}
       - accessGrantEmailSubject=Testing
+      - IDP_PROVIDER_URI=https://staging.datastage.io
       - FENCE_CLIENT_ID=${FENCE_CLIENT_ID:-no_fence_client_id}
       - FENCE_CLIENT_SECRET=${FENCE_CLIENT_SECRET:-no_fence_client_secret}
       - MAIL_USERNAME=${MAIL_USERNAME:-emailuser@avillach.lab}

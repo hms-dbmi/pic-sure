@@ -450,28 +450,16 @@ public class UserService extends BaseEntityService<User> {
      * @return User The actual entity, as it is persisted (if no errors) in the PSAMA database
      */
     public User createUserFromFENCEProfile(JsonNode node) {
-        User actual_user = null;
-        try {
-            User user_to_look_up = new User().setSubject("fence|"+node.get("user_id"));
 
-            if (userRepo == null) {
-                throw new RuntimeException("User repo is null");
+        User actual_user = userRepo.findOrCreate(new User().setSubject("fence|"+node.get("user_id")));
+        actual_user.setSubject("fence|"+node.get("user_id"));
+        actual_user.setEmail(node.get("email").asText());
+        actual_user.setGeneralMetadata(node.asText());
 
-            }
+        // Clear current set of roles every time we
+        actual_user.setRoles(new HashSet<>());
+        userRepo.persist(actual_user);
 
-            actual_user = userRepo.findOrCreate(user_to_look_up);
-
-            actual_user.setSubject("fence|"+node.get("user_id"));
-            actual_user.setEmail(node.get("email").asText());
-            actual_user.setGeneralMetadata(node.asText());
-
-            // Clear current set of roles every time we
-            actual_user.setRoles(new HashSet<>());
-            userRepo.persist(actual_user);
-        } catch (Exception ex) {
-            logger.error("createUserFromFENCEProfile() ERROR:"+ex.getClass().getName());
-            ex.printStackTrace();
-        }
         return actual_user;
     }
 

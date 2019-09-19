@@ -83,6 +83,9 @@ public class JAXRSConfiguration extends Application {
     @Resource(lookup = "java:global/idp_provider")
     public static String idp_provider;
 
+    @Resource(lookup = "java:global/idp_provider_uri")
+    public static String idp_provider_uri;
+
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
     public static long tokenExpirationTime;

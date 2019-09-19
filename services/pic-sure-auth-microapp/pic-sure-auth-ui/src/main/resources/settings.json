@@ -3,5 +3,7 @@
   "customizeAuth0Login": true,
   "client_id": "ywAq4Xu4Kl3uYNdm3m05Cc5ow0OibvXt",
   "basePath": "/psama",
-  "idp_provider": "fence"
+  "idp_provider": "fence",
+  "fence_client_id": "3YkHUAoPSwaRWzSuNN0DyDbJeU1AxrMVkXBczDo6",
+  "fence_redirect_url": "https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/"
 }
