@@ -74,17 +74,11 @@ public class JAXRSConfiguration extends Application {
     @Resource(lookup = "java:global/deniedEmailEnabled")
     public static String deniedEmailEnabled;
 
-    @Resource(lookup = "java:global/fence_client_id")
-    public static String fence_client_id;
-
-    @Resource(lookup = "java:global/fence_client_secret")
-    public static String fence_client_secret;
-
-    @Resource(lookup = "java:global/idp_provider")
+    // See checkIDPProvider method for setting these variables
     public static String idp_provider;
-
-    @Resource(lookup = "java:global/idp_provider_uri")
     public static String idp_provider_uri;
+    public static String fence_client_id;
+    public static String fence_client_secret;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
@@ -123,10 +117,59 @@ public class JAXRSConfiguration extends Application {
         initializeLongTermTokenExpirationTime();
         logger.info("Finished initializing token expiration time.");
 
+        logger.info("Determine IDP provider");
+        checkIDPProvider();
+
         mailSession.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
 
         logger.info("Auth micro app has been successfully started");
 
+    }
+
+    /*
+     * Check if the IDP provider is set, and if it is, then determine additional
+     * settings.
+     *
+     * If flag is missing, or empty, the default is Auth0 configuration.
+     *
+     * This is currently only works for FENCE integration.
+     *
+     */
+    public void checkIDPProvider() {
+        logger.debug("checkIDPProvider() starting....");
+
+        Context ctx = null;
+        try {
+            ctx = new InitialContext();
+        } catch (NamingException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            idp_provider = (String)ctx.lookup("java:global/idp_provider");
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
+            idp_provider = "default";
+        }
+        logger.info("checkIDPProvider() idp provider is now :"+idp_provider);
+
+        if (idp_provider.equalsIgnoreCase("fence")) {
+            try {
+                idp_provider_uri = (String)ctx.lookup("java:global/idp_provider_uri");
+                logger.info("checkIDPProvider() idp provider uri is "+idp_provider_uri);
+
+                fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
+                fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
+                logger.info("checkIDPProvider() idp provider FENCE is configured");
+
+                logger.info("checkIDPProvider() fence_client_id is "+fence_client_id);
+                logger.info("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
+
+            } catch (Exception ex) {
+                logger.error("Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
+                        "Check configuration in standalone.xml");
+            }
+        }
+        logger.debug("checkIDPProvider() finished");
     }
 
     private void initializeTokenExpirationTime(){
@@ -191,8 +234,6 @@ public class JAXRSConfiguration extends Application {
             roleRepo.persist(role);
             logger.info("Finished creating an admin role, roleId: " + role.getUuid());
         }
-
-
     }
 
     private void checkAndAddAdminPrivileges(){

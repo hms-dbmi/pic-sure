@@ -9,6 +9,5 @@
   <modules>
     <module>pic-sure-auth-ui</module>
     <module>pic-sure-auth-services</module>
-    <module>fence-test-app</module>
   </modules>
 </project>

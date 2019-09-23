@@ -20,7 +20,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 if (code) {
                     $('#main-content').html('DataStage authentication is successful. Processing UserProfile information...');
                     $.ajax({
-                        url: '/psama/fence-authentication',
+                        url: '/psama/authentication',
                         type: 'post',
                         data: JSON.stringify({
                            code: code
