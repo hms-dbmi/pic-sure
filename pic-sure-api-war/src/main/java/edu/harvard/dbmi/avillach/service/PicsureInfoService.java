@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class PicsureInfoService {
 
@@ -53,9 +54,10 @@ public class PicsureInfoService {
 	 *
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
-	public List<Resource> resources() {
+	public List<UUID> resources() {
 		//TODO Need to limit the metadata returned
-		return resourceRepo.list();
+		// DONE: nbenik 2019-08-23
+		return resourceRepo.list().stream().map(Resource::getUuid).collect(Collectors.toList());
 	}
 
 }
