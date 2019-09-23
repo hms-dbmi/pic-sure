@@ -108,6 +108,11 @@ public class AccessRule extends BaseEntity {
     @Transient
     private Set<String> mergedValues = new HashSet<>();
 
+    /**
+     * This attribute will not be seen by either endpoint users or database.
+     * It is a intermediate product that generated on the fly for supporting
+     * auto-merging functionality of accessRules when doing authorization.
+     */
     @JsonIgnore
     @Transient
     private String mergedName = "";
@@ -159,14 +164,14 @@ public class AccessRule extends BaseEntity {
     /**
      * NOTICE: please don't change this back to boolean
      * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapNode;
 
     /**
      * NOTICE: please don't change this back to boolean
      * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapKeyOnly;
 

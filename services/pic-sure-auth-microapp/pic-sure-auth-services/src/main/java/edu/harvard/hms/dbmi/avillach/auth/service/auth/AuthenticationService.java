@@ -25,6 +25,13 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
 
+/**
+ * This class is designed for providing authentication functionality. This will implement an authenticationService interface
+ * in the future to support different authentication mode.
+ *
+ * <h3>Thoughts of design</h3>
+ * The main purpose of this class is returns a token that includes information of the roles of users.
+ */
 public class AuthenticationService {
     private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
 

@@ -29,6 +29,21 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * TokenService implements endpoints related to tokens. Currently this class contains introspect an incoming token,
+ * and respond to a refresh token request from a user.
+ *
+ * <h3>Thoughts of design</h3>
+ * This class is one of the restful endpoints that token introspection resides.
+ * <h3>Token introspection endpoint</h3>
+ * This endpoint should simply provide a feature that a registered application could ask if the user behind
+ * this token is allowed to do certain activities by showing this endpoint the token and where the user wants to go.
+ * <br><br>
+ * To accomplish this, this endpoint should be able to validate the incoming token, then check if the user behind the token
+ * is authorized to hit what urls they want to hit and send the data along with. The authorization part (accessRules related)
+ * will be handled by class {@link AuthorizationService}, but the token validation and pre-check at the privilege level
+ * will be handled by this endpoint
+ */
 @Path("/token")
 public class TokenService {
 
@@ -49,8 +64,7 @@ public class TokenService {
 	@POST
 	@Path("/inspect")
 	@Consumes("application/json")
-	public Response inspectToken(Map<String, Object> inputMap,
-			@QueryParam(value = "applicationId") String applicationId){
+	public Response inspectToken(Map<String, Object> inputMap){
 		logger.info("TokenInspect starting...");
 		TokenInspection tokenInspection = _inspectToken(inputMap);
 		if (tokenInspection.message != null)
