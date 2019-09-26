@@ -83,12 +83,12 @@ public class FENCEAuthenticationService {
                 .append("code").append('=').append(fence_code).append('&')
                 .append("redirect_uri").append('=').append("https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/");
 
-        String fence_url_token = "https://staging.datastage.io/user/oauth2/token";
+        String fence_token_url = JAXRSConfiguration.idp_provider_uri+"/user/oauth2/token";
 
         JsonNode resp = null;
         try {
             resp = HttpClientUtil.simplePost(
-                    fence_url_token,
+                    fence_token_url,
                     new StringEntity(query_string.toString()),
                     JAXRSConfiguration.client,
                     JAXRSConfiguration.objectMapper,
