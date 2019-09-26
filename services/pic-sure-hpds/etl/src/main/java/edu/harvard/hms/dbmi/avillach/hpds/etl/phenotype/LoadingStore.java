@@ -11,6 +11,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -56,6 +57,7 @@ public class LoadingStore {
 
 						columnMeta.setAllObservationsOffset(allObservationsStore.getFilePointer());
 						columnMeta.setObservationCount(arg0.getValue().sortedByKey().length);
+						columnMeta.setPatientCount(Arrays.stream(arg0.getValue().sortedByKey()).map((kv)->{return kv.getKey();}).collect(Collectors.toSet()).size());
 						if(columnMeta.isCategorical()) {
 							columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>(arg0.getValue().keyBasedArray())));
 						} else {

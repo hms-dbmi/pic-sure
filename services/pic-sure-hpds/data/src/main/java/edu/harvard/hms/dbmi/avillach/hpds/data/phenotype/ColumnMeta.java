@@ -19,6 +19,7 @@ public class ColumnMeta implements Serializable{
 	private long allObservationsOffset;
 	private long allObservationsLength;
 	private int observationCount;
+	private int patientCount;
 	
 	public String getName() {
 		return name;
@@ -77,6 +78,14 @@ public class ColumnMeta implements Serializable{
 	}
 	public ColumnMeta setObservationCount(int length) {
 		this.observationCount = length;
+		return this;
+	}
+
+	public long getPatientCount() {
+		return patientCount;
+	}
+	public ColumnMeta setPatientCount(int length) {
+		this.patientCount = length;
 		return this;
 	}
 
