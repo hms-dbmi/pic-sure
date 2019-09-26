@@ -19,6 +19,7 @@ public class Query {
 		this.crossCountFields = new ArrayList<String> (query.crossCountFields);
 		this.fields = new ArrayList<String> (query.fields);
 		this.requiredFields = new ArrayList<String> (query.requiredFields);
+		this.anyRecordOf = new ArrayList<String> (query.anyRecordOf);
 		this.numericFilters = new TreeMap<String, DoubleFilter> (query.numericFilters);
 		this.categoryFilters = new TreeMap<String, String[]> (query.categoryFilters);
 		this.variantInfoFilters = new ArrayList<VariantInfoFilter>();
@@ -32,6 +33,7 @@ public class Query {
 	public List<String> crossCountFields = new ArrayList<String>();
 	public List<String> fields = new ArrayList<String>();
 	public List<String> requiredFields;
+	public List<String> anyRecordOf;
 	public Map<String, DoubleFilter> numericFilters;
 	public Map<String, String[]> categoryFilters;
 	public List<VariantInfoFilter> variantInfoFilters;

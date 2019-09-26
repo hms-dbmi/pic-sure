@@ -54,7 +54,10 @@ public abstract class AbstractProcessor {
 		File variantStorageFolder = new File("/opt/local/hpds/all/");
 		if(variantStorageFolder.exists()) {
 			infoStoreColumns = Arrays.stream(variantStorageFolder.list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-					.map((String filename)->{return filename.split("_")[0];}).collect(Collectors.toList());
+					.map((String filename)->{
+						String[] segments = filename.split("_");
+						return String.join("_", Arrays.copyOfRange(segments, 0, segments.length-2));
+					}).collect(Collectors.toList());
 		}else {
 			infoStoreColumns = new ArrayList<String>();
 		}
@@ -178,6 +181,8 @@ public abstract class AbstractProcessor {
 	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) throws TooManyVariantsException {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
+		addIdSetsForAnyRecordOf(query, filteredIdSets);
+		
 		addIdSetsForRequiredFields(query, filteredIdSets);
 
 		addIdSetsForNumericFilters(query, filteredIdSets);
@@ -216,6 +221,18 @@ public abstract class AbstractProcessor {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.requiredFields.parallelStream().map(path->{
 				return new TreeSet<Integer>(getCube(path).keyBasedIndex()) ;
 			}).collect(Collectors.toSet()))); 
+		}
+	}
+
+	private void addIdSetsForAnyRecordOf(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+		if(query.anyRecordOf != null && !query.anyRecordOf.isEmpty()) {
+			Set<Integer> patientsInScope = new TreeSet<Integer>();
+			query.anyRecordOf.parallelStream().forEach(path->{
+				if(patientsInScope.size()<allIds.size()) {
+					patientsInScope.addAll(getCube(path).keyBasedIndex());					
+				}
+			});
+			filteredIdSets.add(patientsInScope);
 		}
 	}
 
