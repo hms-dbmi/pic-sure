@@ -1,16 +1,9 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.UniqueConstraint;
-
-@Entity(name = "user")
 public class User extends BaseEntity {
 
-	@Column(unique = true)
 	private String userId;
 
-	@Column(unique = true)
 	private String subject;
 	
 	private String roles;
