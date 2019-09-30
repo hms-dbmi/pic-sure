@@ -89,7 +89,7 @@ public class AccessRule extends BaseEntity {
     private Integer type;
 
     /**
-     * The jsonpath rule to retrieve values
+     * The jsonpath rule to retrieve values, kind of the route to the data.
      * The possible value will be String, JSONObject, JSONArray, etc.
      */
     private String rule;

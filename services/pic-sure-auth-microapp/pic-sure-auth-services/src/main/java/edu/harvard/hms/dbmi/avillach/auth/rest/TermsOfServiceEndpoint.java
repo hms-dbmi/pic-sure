@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 
 import javax.annotation.security.RolesAllowed;
@@ -15,14 +15,14 @@ import javax.ws.rs.core.SecurityContext;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 @Path("tos")
-public class TermsOfServiceWebService extends BaseEntityService<TermsOfService> {
+public class TermsOfServiceEndpoint extends BaseEntityService<TermsOfService> {
 
-    public TermsOfServiceWebService() {
+    public TermsOfServiceEndpoint() {
         super(TermsOfService.class);
     }
 
     @Inject
-    TermsOfServiceService tosService;
+    TOSService tosService;
 
     @Path("/latest")
     @GET

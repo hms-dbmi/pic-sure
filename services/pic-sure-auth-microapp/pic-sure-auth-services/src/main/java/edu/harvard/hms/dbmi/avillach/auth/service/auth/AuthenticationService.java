@@ -10,7 +10,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.message.BasicHeader;
@@ -42,7 +42,7 @@ public class AuthenticationService {
     UserRepository userRepository;
 
     @Inject
-    TermsOfServiceService tosService;
+    TOSService tosService;
 
     @Inject
     MailService mailService;

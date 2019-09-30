@@ -7,6 +7,11 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.transaction.Transactional;
 import java.util.UUID;
 
+/**
+ * Provides CRUD for Application entity to database
+ *
+ * @see Application
+ */
 @ApplicationScoped
 @Transactional
 public class ApplicationRepository extends BaseRepository<Application, UUID> {
