@@ -9,11 +9,11 @@ logger() {
 # This script will NOT push the generated images automatically.
 # This script will tag the generated images as:
 #    "dbmi/pic-sure-auth-services:${GITHUB_BRANCH}_${GIT_COMMIT_HASH}"
-# for the PSAMA back-end image and 
+# for the PSAMA back-end image and
 #    "dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}_${GIT_COMMIT_HASH}"
 # for the PSAMA UI (front-end) image
 #
-# Currently, the script requires Java 11 (11.0.2-open) and Maven to be 
+# Currently, the script requires Java 11 (11.0.2-open) and Maven to be
 # installed on the machine that is executing the build process.
 
 # Check if Java is 11.0.2
@@ -31,6 +31,9 @@ fi
 
 # Do the build from the root directory of the repo
 cd ..
+# Just in case this is built on a Mac
+find ./ -name ".DS_Store" -exec rm -f {} \; 2>/dev/null
+
 mvn clean install
 MAVEN_COMPLETION_STATUS=$?
 
@@ -57,6 +60,7 @@ else
 	logger "Failed to build PSAMA back-end docker image locally."
 	exit 255
 fi
+cd ..
 
 # Build the PSAMA UI front-end docker image.
 #    sub-task 1., Get the current GitHub branch and commit hash
