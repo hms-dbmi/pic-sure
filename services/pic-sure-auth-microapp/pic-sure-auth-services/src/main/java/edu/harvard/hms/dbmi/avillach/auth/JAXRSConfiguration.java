@@ -30,6 +30,9 @@ import java.util.Set;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * Initial configuration class that will be called when the WAR file got deployed to the server
+ */
 @Startup
 @ApplicationPath("auth")
 public class JAXRSConfiguration extends Application {
