@@ -51,7 +51,7 @@ fi
 GITHUB_BRANCH=$(git branch | grep "*" | cut -d " " -f 2)
 GITHUB_COMMIT_HASH=$(git log | head -1 | cut -d " " -f 2 | cut -c 1-12)
 cd pic-sure-auth-services
-docker build . --tag "dbmi/pic-sure-auth-services:${GITHUB_BRANCH}_${GITHUB_COMMIT_HASH}"
+docker build . --rm --tag "dbmi/pic-sure-auth-services:${GITHUB_BRANCH}_${GITHUB_COMMIT_HASH}"
 CMD_STATUS=$?
 if [ $CMD_STATUS -eq 0 ];
 then
@@ -65,7 +65,7 @@ cd ..
 # Build the PSAMA UI front-end docker image.
 #    sub-task 1., Get the current GitHub branch and commit hash
 cd pic-sure-auth-ui
-docker build . --tag "dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}_${GITHUB_COMMIT_HASH}"
+docker build . --rm --tag "dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}_${GITHUB_COMMIT_HASH}"
 CMD_STATUS=$?
 if [ $CMD_STATUS -eq 0 ];
 then
