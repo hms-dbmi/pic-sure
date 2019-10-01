@@ -16,7 +16,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             "psamaui/roleManagement(/)" : "displayRoleManagement",
             "psamaui/privilegeManagement(/)" : "displayPrivilegeManagement",
             "psamaui/applicationManagement(/)" : "displayApplicationManagement",
-            "psamaui/accessRuleManagement(/)" : "displayAccessRuleManagement",
+            "psamaui/accessRuleManagement(/)": "displayAccessRuleManagement",
             "psamaui/userProfile(/)" : "showUserProfileHeader",
             "*path" : "displayUserManagement"
         },
