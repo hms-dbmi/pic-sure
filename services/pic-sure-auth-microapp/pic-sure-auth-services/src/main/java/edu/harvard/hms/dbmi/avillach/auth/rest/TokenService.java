@@ -249,7 +249,7 @@ public class TokenService {
         } else if (user != null
                 && !isLongTermTokenCompromised
                 && user.getRoles() != null
-				&& authorizationService.isAuthorized(application, inputMap, user)) {
+				&& authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
 			isAuthorizationPassed = true;
 		} else {
             // if isLongTermTokenCompromised flag is true,
