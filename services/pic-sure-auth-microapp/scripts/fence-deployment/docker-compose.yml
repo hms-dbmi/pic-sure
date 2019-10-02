@@ -1,0 +1,110 @@
+version: '3.3'
+services:
+
+  httpd:
+    build:
+      context: ./httpd
+      dockerfile: Dockerfile
+    ports:
+      - 80:80
+      - 443:443
+    depends_on:
+      - wildfly
+    volumes:
+      - ./httpd/psamaui_settings.json:/usr/local/apache2/htdocs/psamaui/settings/settings.json
+      - ./httpd/psamaui_settings.json:/usr/local/apache2/htdocs/picsureui/settings/settings.json
+    networks:
+      - public
+
+  wildfly:
+    image: jboss/wildfly:17.0.0.Final
+    environment:
+      - JAVA_OPTS=-Xms1024m -Xmx2g -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true
+    restart: always
+    environment:
+      - AUTH_CLIENT_ID=ywAq4Xu4Kl3uYNdm3m05Cc5ow0OibvXt
+      - AUTH_CLIENT_SECRET=nQWNixJHJ_jRWd6ZuFY9XJNdt9-gDvqBkpN9b80qHn7ySpCUfTdwIm0F85UZgbB4
+      - RESULT_FORMAT=JSON
+      - IRCT_TARGET_URL=http://httpd/irct
+      - PSAMA_DB_HOST=psamadb
+      - PSAMA_DB_NAME=auth
+      - PSAMA_DB_USERNAME=root
+      - PSAMA_DB_PASSWORD=password
+      - IDP_PROVIDER=fence
+      - IDP_PROVIDER_URI=https://datastage.io
+      - FENCE_CLIENT_ID=3YkHUAoPSwaRWzSuNN0DyDbJeU1AxrMVkXBczDo6
+      - FENCE_CLIENT_SECRET=W7JGecNQ91fMFRb0YVTRnqJ6fytPK4FIK2ZCsAbiQMbHaoTENHGzLFD
+      - SYSTEM_NAME=DataStageDev2
+      - IDP_PROVIDER_URI=https://staging.datastage.io
+      - EMAIL_TEMPLATE_PATH=/tmp/config/emailTemplates
+    expose:
+      - 8080
+      - 8787
+    ports:
+      - 8787:8787
+      - 8080:8080
+    networks:
+      - public
+    entrypoint: /opt/jboss/wildfly/bin/standalone.sh -b 0.0.0.0 -bmanagement 0.0.0.0 --debug 0.0.0.0:8787
+    user: root
+    volumes:
+      - ./wildfly/standalone.xml:/opt/jboss/wildfly/standalone/configuration/standalone.xml
+      - /tmp/config/wildfly/modules/system/layers/base/com/sql/:/opt/jboss/wildfly/modules/system/layers/base/com/sql/
+      - /tmp/config/wildfly/modules/system/layers/base/com/oracle/:/opt/jboss/wildfly/modules/system/layers/base/com/oracle/
+      - ./wildfly/emailTemplates/:/tmp/config/emailTemplates/
+      - ./wildfly/deployments:/opt/jboss/wildfly/standalone/deployments
+    depends_on:
+      - psamadb
+      - copy-pic-sure-auth-war
+
+  copy-pic-sure-auth-war:
+    image: dbmi/pic-sure-auth-services:fence-integration_e55da771c1c5
+    user: root
+    volumes:
+      - ./wildfly/deployments:/var/tmp
+    entrypoint: cp /opt/jboss/wildfly/standalone/deployments/pic-sure-auth-services.war /var/tmp/pic-sure-auth-services.war
+    networks:
+      - public
+
+#  hpds:
+#    image: dbmi/pic-sure-hpds:master_fbf04e7
+#   entrypoint: java  -Xdebug -Xrunjdwp:transport=dt_socket,address=0.0.0.0:8000,server=y,suspend=n -XX:+UseParallelGC -XX:SurvivorRatio=250 -Xms1g -Xmx2g -server -jar hpds.jar -httpPort 8080 -DCACHE_SIZE=10 -DSMALL_TASK_THREADS=1 -DLARGE_TASK_THREADS=1 -DSMALL_JOB_LIMIT=100 -DID_BATCH_SIZE=2000
+#    environment:
+#      - CACHESIZE=500
+#      - HEAPSIZE=2048
+#      - ID_BATCH_SIZE=50000
+#      - LARGE_TASK_THREADS=1
+#      - SMALL_JOB_LIMIT=100
+#      - SMALL_TASK_THREADS=1
+#      - SURVIVOR_RATIO=255
+#    volumes:
+#      - /scratch/hpds_symlink/:/opt/local/phenocube
+#      - /scratch/hpds_symlink/:/opt/local/hpds
+#      - /scratch/hpds_symlink/:/opt/local/hpds/variants
+#      - /scratch/hpds_symlink/:/opt/local/hpds/all
+#    restart: always
+#    networks:
+#      - public
+#    expose:
+#      - 8080
+#    ports:
+#      - 8080:8080
+
+  psamadb:
+    build:
+      context: psamadb
+      dockerfile: Dockerfile
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
+      - MYSQL_DATABASE=auth
+    restart: always
+    expose:
+      - 3306
+    ports:
+      - 3306:3306
+    networks:
+      - public
+
+networks:
+  public:
