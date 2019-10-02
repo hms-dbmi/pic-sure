@@ -68,7 +68,9 @@ public class JWTFilter implements ContainerRequestFilter {
 		/**
 		 * skip the filter in certain cases
 		 */
-		if (uriInfo.getPath().endsWith("authentication")) {
+		if (uriInfo.getPath().endsWith("authentication")
+				|| uriInfo.getPath().endsWith("/swagger.yaml")
+				|| uriInfo.getPath().endsWith("/swagger.json")) {
 			return;
 		}
 

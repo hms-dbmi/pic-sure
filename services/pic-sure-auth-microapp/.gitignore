@@ -21,3 +21,4 @@ httpd/pic-sure-auth-ui-webapp.zip
 .classpath
 
 .env
+.DS_Store

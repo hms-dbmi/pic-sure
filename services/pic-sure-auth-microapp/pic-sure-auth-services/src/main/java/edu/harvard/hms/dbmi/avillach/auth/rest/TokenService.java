@@ -164,7 +164,7 @@ public class TokenService {
 		TokenInspection tokenInspection = new TokenInspection();
 
 		String token = (String)inputMap.get("token");
-		logger.debug("getting token: " + token);
+//		logger.debug("getting token: " + token); <- in any cases, token should not be shown in log if the token could be a valid token.
 		if (token == null || token.isEmpty()){
 			logger.error("Token - "+ token + " is blank");
 			tokenInspection.message = "Token not found";
@@ -176,10 +176,19 @@ public class TokenService {
 		Jws<Claims> jws;
 		try {
 			jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret, token);
+
+			/**
+             * token has been verified, now we remove it from inputMap, so further logs will not be able to log
+             * the token accidentally!
+             */
+			inputMap.remove("token");
 		} catch (NotAuthorizedException ex) {
+		    // only when the token is for sure invalid, we can dump it into the log.
+		    logger.error("_inspectToken() the token - " + token + " - is invalid with exception: " + ex.getChallenges());
 			tokenInspection.message = ex.getChallenges().toString();
 			return tokenInspection;
 		}
+
 
 		Application application;
 
@@ -254,6 +263,9 @@ public class TokenService {
         } else if (user != null
                 && !isLongTermTokenCompromised
                 && user.getRoles() != null
+                // The protocol between applications and PSAMA is application will
+                // attach everything that needs to be verified in request field of inputMap
+                // besides token. So here we should attach everything in request.
 				&& authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
 			isAuthorizationPassed = true;
 		} else {
