@@ -13,12 +13,12 @@ import java.util.Set;
 
 /**
  * <p>
- * <h3>Thoughts of design:</h3> the AccessRule is designed to fulfilled the requirements
+ * <h3>Thoughts on design:</h3> the AccessRule is designed to fulfilled the requirements
  * of complicated scenarios that includes AND/OR or nested AND/OR cases of jsonPath authorization
  *</p>
  * <br>
  * <br>
- * <b>Explanation on several attributes</b>:
+ * <b>Attribute Explanations</b>:
  *     <li><b>checkMapNode</b> - after retrieving the value by jsonPath rule, if the value is a map,
  *     this flag will let the evaluation go through all the map nodes and their children nodes</li>
  *     <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will

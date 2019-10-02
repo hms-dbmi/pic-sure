@@ -16,6 +16,10 @@ import javax.transaction.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * <p>Provides operations for the UserMetadataMapping entity to interact with a database.</p>
+ * @see UserMetadataMapping
+ */
 @Transactional
 @ApplicationScoped
 public class UserMetadataMappingRepository extends BaseRepository<UserMetadataMapping, UUID> {

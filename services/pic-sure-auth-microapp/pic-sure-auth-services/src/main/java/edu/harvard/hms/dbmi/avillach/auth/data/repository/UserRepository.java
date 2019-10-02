@@ -19,6 +19,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * <p>Provides operations for the User entity to interact with a database.</p>
+ * @see User
+ */
 @Transactional
 @ApplicationScoped
 public class UserRepository extends BaseRepository<User, UUID> {

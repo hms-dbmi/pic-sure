@@ -4,6 +4,9 @@ import edu.harvard.dbmi.avillach.data.entity.BaseEntity;
 
 import javax.persistence.*;
 
+/**
+ * <p>Model defining how to map an admin added user to an Oauth user profile.</p>
+ */
 @Entity(name="userMetadataMapping")
 public class UserMetadataMapping extends BaseEntity {
 

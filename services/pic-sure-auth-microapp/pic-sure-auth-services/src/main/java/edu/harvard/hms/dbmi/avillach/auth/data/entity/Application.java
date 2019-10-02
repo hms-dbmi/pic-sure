@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * The purpose of this class is to provide an application level privileges management
+ * <p>Defines a model for a registered application's behavior and provides application-level privilege management.</p>
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "application")
@@ -77,6 +77,9 @@ public class Application extends BaseEntity implements Principal {
         this.url = url;
     }
 
+    /**
+     * <p>Inner class that returns limited attributes back to an application user.</p>
+     */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class ApplicationForDisplay {
         String uuid;

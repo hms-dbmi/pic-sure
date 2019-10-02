@@ -31,7 +31,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * Initial configuration class that will be called when the WAR file got deployed to the server
+ *<p>When you deploy the PSAMA application WAR file to a new server, this class is called to supply basic configuration information.</p>
  */
 @Startup
 @ApplicationPath("auth")

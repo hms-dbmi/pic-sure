@@ -6,6 +6,9 @@ import javax.persistence.Entity;
 import javax.persistence.PrePersist;
 import java.util.Date;
 
+/**
+ * <p>Defines a model for terms of service.</p>
+ */
 @Entity(name = "termsOfService")
 public class TermsOfService extends BaseEntity {
 

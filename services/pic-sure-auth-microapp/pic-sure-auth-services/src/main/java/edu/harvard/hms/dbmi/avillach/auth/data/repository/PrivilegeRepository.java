@@ -8,6 +8,10 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.transaction.Transactional;
 import java.util.UUID;
 
+/**
+ * <p>Provides operations for the Privilege entity to interact with a database.</p>
+ * @see Privilege
+ */
 @ApplicationScoped
 @Transactional
 public class PrivilegeRepository extends BaseRepository<Privilege, UUID> {

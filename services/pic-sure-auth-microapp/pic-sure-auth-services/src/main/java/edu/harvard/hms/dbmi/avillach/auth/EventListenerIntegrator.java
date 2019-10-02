@@ -10,7 +10,7 @@ import org.hibernate.integrator.spi.Integrator;
 import org.hibernate.service.spi.SessionFactoryServiceRegistry;
 
 /**
- * implement Integrator for post user data changes to trigger sending notification emails
+ * Implements an integrator after user data changes and triggers email notifications.
  */
 public class
 EventListenerIntegrator implements Integrator

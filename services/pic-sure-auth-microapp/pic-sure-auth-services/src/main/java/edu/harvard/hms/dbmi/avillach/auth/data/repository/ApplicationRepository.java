@@ -8,7 +8,7 @@ import javax.transaction.Transactional;
 import java.util.UUID;
 
 /**
- * Provides CRUD for Application entity to database
+ * <p>Provides operations for the Application entity to interact with a database.</p>>
  *
  * @see Application
  */

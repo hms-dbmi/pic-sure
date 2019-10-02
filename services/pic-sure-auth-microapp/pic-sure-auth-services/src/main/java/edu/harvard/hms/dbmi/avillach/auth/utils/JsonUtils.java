@@ -10,18 +10,15 @@ import java.util.stream.Collectors;
 
 /**
  * <p>
- *     The scope of this class is only for operations on string, list, map that are converted from JSONs, which means all
- *     the keys of the maps here we deal with will only be String. Also there are only three types of data: string, list, map,
+ *     The scope of this class is only for operations on string, list, map that are converted from JSONs. All
+ *     map keys we deal with will only be String. There are only three types of data: string, list, map,
  *     since input maps are converted from JSONs.
  * </p>
- * <br>
- * Originally the class is designed for merging two JSON maps (inputs are two Maps),
- * only mergeTemplateMap class is public. But afterwards, the methods inside which are private
- * at the beginning, seems could be used as utility methods as well, so they became public.
- * <b>However,</b> one thing that needs to be noticed when using these newborn public methods is that these
- * methods are not designed for general usage, but specifically for query template merging use cases, which means might not fit into
- * other use cases. So be careful!!
- *
+ * <p> * Originally this class was designed for merging two JSON maps (inputs are two Maps),
+ * only the mergeTemplateMap class is public. Now, the private methods could be used as utility methods as well,
+ * so they were made public.
+ * However, these methods are not designed for general usage, but specifically for query template merging use cases.
+ * Use caution when using these methods for other use cases.</p>
  * <p>
  *     Notice: the input Map or list are from the conversion of JSONs, which means only three possible formats
  *     will appear here: string, list, map.

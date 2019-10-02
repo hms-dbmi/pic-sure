@@ -13,6 +13,10 @@ import javax.persistence.criteria.Root;
 import javax.transaction.Transactional;
 import java.util.UUID;
 
+/**
+ * <p>Provides operations for the Connection entity to interact with a database.</p>
+ * @see Connection
+ */
 @Transactional
 @ApplicationScoped
 public class ConnectionRepository extends BaseRepository<Connection, UUID> {

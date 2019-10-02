@@ -26,7 +26,7 @@ import java.time.ZonedDateTime;
 import java.util.*;
 
 /**
- * This class is designed for providing authentication functionality. This will implement an authenticationService interface
+ * This class is designed to provide authentication functionality. This implements an authenticationService interface
  * in the future to support different authentication mode.
  *
  * <h3>Thoughts of design</h3>

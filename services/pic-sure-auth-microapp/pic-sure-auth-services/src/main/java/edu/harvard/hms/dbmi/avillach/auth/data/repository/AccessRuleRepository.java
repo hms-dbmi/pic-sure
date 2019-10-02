@@ -8,7 +8,7 @@ import javax.transaction.Transactional;
 import java.util.UUID;
 
 /**
- * Provides CRUD for AccessRule entity to database
+ * <p>Provides operations for the AccessRule entity to interact with a database.</p>
  *
  * @see AccessRule
  */

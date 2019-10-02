@@ -26,6 +26,11 @@ import java.util.*;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for registering and administering applications.
+ * <br>
+ * Note: Only users with the super admin role can access this endpoint.</p>
+ */
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
 

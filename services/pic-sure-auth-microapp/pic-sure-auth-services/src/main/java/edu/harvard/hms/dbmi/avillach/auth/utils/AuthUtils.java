@@ -10,6 +10,9 @@ import javax.validation.constraints.NotNull;
 import javax.ws.rs.NotAuthorizedException;
 import java.io.UnsupportedEncodingException;
 
+/**
+ * <p>Contains common methods for authentication and authorization.</p>
+ */
 public class AuthUtils {
 
 	private static Logger logger = LoggerFactory.getLogger(AuthUtils.class);
