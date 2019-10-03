@@ -1,6 +1,6 @@
 FROM mysql:5.7.24
 
-COPY psama_fence_setup.sql /tmp/fence_db_setup.sql
+COPY fence_db_setup.sql /tmp/fence_db_setup.sql
 
 EXPOSE 3306
 
