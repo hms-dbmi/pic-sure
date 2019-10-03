@@ -26,6 +26,10 @@ import java.util.UUID;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for service handling business logic for user roles.
+ * <br>Note: Users with admin level access can view roles, but only super admin users can modify them.</p>
+ */
 @Path("/role")
 public class RoleService extends BaseEntityService<Role> {
 

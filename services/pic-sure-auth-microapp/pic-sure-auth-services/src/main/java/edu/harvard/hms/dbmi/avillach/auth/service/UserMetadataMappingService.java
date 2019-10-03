@@ -12,7 +12,7 @@ import javax.ws.rs.core.Response;
 import java.util.List;
 
 /**
- * Service handling business logic for UserMetadataMappings.
+ * <p>Provides business logic for UserMetadataMapping endpoint.</p>
  */
 public class UserMetadataMappingService extends BaseEntityService<UserMetadataMapping>{
 

@@ -22,6 +22,10 @@ import java.util.UUID;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for service handling business logic for privileges.
+ * <br>Note: Only users with the super admin role can access this endpoint.</p>
+ */
 @Path("/privilege")
 public class PrivilegeService extends BaseEntityService<Privilege> {
 

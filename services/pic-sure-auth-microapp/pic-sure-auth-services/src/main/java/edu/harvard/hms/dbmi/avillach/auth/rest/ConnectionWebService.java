@@ -16,6 +16,10 @@ import java.util.List;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for service handling business logic for connections to PSAMA. <br>
+ *    Note: Only users with the super admin role can access this endpoint.</p>
+ */
 @Path("connection")
 public class ConnectionWebService extends BaseEntityService<Connection> {
 

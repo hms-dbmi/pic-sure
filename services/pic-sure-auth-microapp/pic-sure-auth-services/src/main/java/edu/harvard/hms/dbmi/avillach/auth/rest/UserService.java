@@ -36,7 +36,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * Service handling business logic for CRUD on users
+ * <p>Endpoint for service handling business logic for users.</p>
  */
 @Path("/user")
 public class UserService extends BaseEntityService<User> {

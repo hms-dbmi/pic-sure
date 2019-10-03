@@ -23,6 +23,9 @@ import java.io.FileReader;
 import java.io.StringWriter;
 import java.util.Map;
 
+/**
+ * <p>Service class for sending email notifications.</p>
+ */
 public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();

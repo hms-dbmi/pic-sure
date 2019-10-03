@@ -7,7 +7,7 @@ import javax.ws.rs.core.SecurityContext;
 import java.security.Principal;
 
 /**
- * customized Security Context
+ * <p>Implements the SecurityContext interface for JWTFilter to use.</p>
  */
 public class AuthSecurityContext implements SecurityContext {
 

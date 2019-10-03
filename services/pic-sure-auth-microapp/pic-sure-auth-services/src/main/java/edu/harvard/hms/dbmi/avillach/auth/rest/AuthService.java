@@ -10,6 +10,9 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 import java.util.Map;
 
+/**
+ * <p>The authentication endpoint for PSAMA.</p>
+ */
 @Path("/")
 @Consumes("application/json")
 @Produces("application/json")
