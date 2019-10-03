@@ -52,16 +52,8 @@ public abstract class AbstractProcessor {
 		metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
 		File variantStorageFolder = new File("/opt/local/hpds/all/");
-		if(variantStorageFolder.exists()) {
-			infoStoreColumns = Arrays.stream(variantStorageFolder.list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-					.map((String filename)->{
-						String[] segments = filename.split("_");
-						return String.join("_", Arrays.copyOfRange(segments, 0, segments.length-2));
-					}).collect(Collectors.toList());
-		}else {
-			infoStoreColumns = new ArrayList<String>();
-		}
 		loadAllDataFiles();
+		infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 	}
 
 	private static final String HOMOZYGOUS_VARIANT = "1/1";
@@ -630,28 +622,29 @@ public abstract class AbstractProcessor {
 				}
 
 			}
-			infoStores = new HashMap<>();
-			Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-			.forEach((String filename)->{
-				try (
-						FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
-						GZIPInputStream gis = new GZIPInputStream(fis);
-						ObjectInputStream ois = new ObjectInputStream(gis)
-						){
-					FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-					infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (ClassNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			});
+			
 		}
+		infoStores = new HashMap<>();
+		Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
+		.forEach((String filename)->{
+			try (
+					FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
+					GZIPInputStream gis = new GZIPInputStream(fis);
+					ObjectInputStream ois = new ObjectInputStream(gis)
+					){
+				FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+				infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		});
 	}
 
 	@SuppressWarnings("rawtypes")
