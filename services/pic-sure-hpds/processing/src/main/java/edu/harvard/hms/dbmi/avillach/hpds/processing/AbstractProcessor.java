@@ -110,7 +110,13 @@ public abstract class AbstractProcessor {
 			return new Object[] {metastoreScrubbed, allIds};
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();
-			throw new RuntimeException("Could not load metastore");
+			log.warn("************************************************");
+			log.warn("************************************************");
+			log.warn("Could not load metastore");
+			log.warn("If you meant to include phenotype data of any kind, please check that the file /opt/local/hpds/columnMeta.javabin exists and is readable by the service.");
+			log.warn("************************************************");
+			log.warn("************************************************");
+			return new Object[] {new TreeMap<String, ColumnMeta>(), new TreeSet<Integer>()};
 		} 
 	}
 
