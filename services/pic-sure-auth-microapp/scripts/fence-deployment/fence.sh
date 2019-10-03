@@ -1,5 +1,7 @@
 #!/bin/sh
 
+export REF_REPO_DIR=/Users/gabor/pic-sure-i2b2-transmart
+
 config() {
 	# Create directory for HPDS container
 	mkdir -p /scratch/hpds_symlink/
@@ -29,7 +31,7 @@ ps() {
 
 rebuild() {
 	docker-compose down
-	docker system prune --force --all --volumes
+	#docker system prune --force --all --volumes
 	docker-compose pull
 	docker-compose build
 	docker-compose up -d

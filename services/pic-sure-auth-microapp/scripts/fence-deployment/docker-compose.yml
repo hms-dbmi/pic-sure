@@ -36,7 +36,7 @@ services:
       - FENCE_CLIENT_SECRET=W7JGecNQ91fMFRb0YVTRnqJ6fytPK4FIK2ZCsAbiQMbHaoTENHGzLFD
       - SYSTEM_NAME=DataStageDev2
       - IDP_PROVIDER_URI=https://staging.datastage.io
-      - EMAIL_TEMPLATE_PATH=/tmp/config/emailTemplates
+      - EMAIL_TEMPLATE_PATH=/tmp/config/emailTemplates/
     expose:
       - 8080
       - 8787
@@ -49,13 +49,15 @@ services:
     user: root
     volumes:
       - ./wildfly/standalone.xml:/opt/jboss/wildfly/standalone/configuration/standalone.xml
-      - /tmp/config/wildfly/modules/system/layers/base/com/sql/:/opt/jboss/wildfly/modules/system/layers/base/com/sql/
-      - /tmp/config/wildfly/modules/system/layers/base/com/oracle/:/opt/jboss/wildfly/modules/system/layers/base/com/oracle/
+      - ./wildfly/modules/system/layers/base/com/sql/:/opt/jboss/wildfly/modules/system/layers/base/com/sql/
+      - ./wildfly/modules/system/layers/base/com/oracle/:/opt/jboss/wildfly/modules/system/layers/base/com/oracle/
       - ./wildfly/emailTemplates/:/tmp/config/emailTemplates/
       - ./wildfly/deployments:/opt/jboss/wildfly/standalone/deployments
     depends_on:
       - psamadb
       - copy-pic-sure-auth-war
+      - copy-pic-sure-backend-war
+      - copy-pic-sure-resource-war
 
   copy-pic-sure-auth-war:
     image: dbmi/pic-sure-auth-services:fence-integration_e55da771c1c5
@@ -65,6 +67,20 @@ services:
     entrypoint: cp /opt/jboss/wildfly/standalone/deployments/pic-sure-auth-services.war /var/tmp/pic-sure-auth-services.war
     networks:
       - public
+
+  copy-pic-sure-backend-war:
+    image: dbmi/picsure2:picsure375.1a0b1a8
+    user: root
+    volumes:
+      - ./wildfly/deployments:/var/tmp
+    entrypoint: cp /opt/jboss/wildfly/standalone/deployments/pic-sure-api-2.war /var/tmp/pic-sure-api-2.war
+
+  copy-pic-sure-resource-war:
+    image: dbmi/pic-sure-irct-resource:picsure310.ef69613
+    user: root
+    volumes:
+      - ./wildfly/deployments:/var/tmp
+    entrypoint: cp /opt/jboss/wildfly/standalone/deployments/pic-sure-irct-resource.war /var/tmp/pic-sure-irct-resource.war
 
 #  hpds:
 #    image: dbmi/pic-sure-hpds:master_fbf04e7
