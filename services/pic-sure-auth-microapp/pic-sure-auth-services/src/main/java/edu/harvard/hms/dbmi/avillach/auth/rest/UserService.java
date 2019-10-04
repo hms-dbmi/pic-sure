@@ -19,6 +19,9 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +41,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 /**
  * Service handling business logic for CRUD on users
  */
+@Api
 @Path("/user")
 public class UserService extends BaseEntityService<User> {
 
@@ -62,14 +66,17 @@ public class UserService extends BaseEntityService<User> {
         super(User.class);
     }
 
+    @ApiOperation(value = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
     @GET
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("/{userId}")
     public Response getUserById(
+            @ApiParam(required = true, value="The UUID of the user to fetch information about")
             @PathParam("userId") String userId) {
         return getEntityById(userId,userRepo);
     }
 
+    @ApiOperation(value = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
     @GET
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @Path("")
@@ -77,12 +84,15 @@ public class UserService extends BaseEntityService<User> {
         return getEntityAll(userRepo);
     }
 
+    @ApiOperation(value = "POST a list of users, requires ADMIN role")
     @Transactional
     @POST
     @RolesAllowed({ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
-    public Response addUser(List<User> users){
+    public Response addUser(
+            @ApiParam(required = true, value = "A list of user in JSON format")
+            List<User> users){
         User currentUser = (User)securityContext.getUserPrincipal();
         if (currentUser == null || currentUser.getUuid() == null){
             logger.error("Security context didn't have a user stored.");
@@ -121,6 +131,7 @@ public class UserService extends BaseEntityService<User> {
         }
     }
 
+    @ApiOperation(value = "Update a list of users, will only update the fields listed, requires ADMIN role")
     @Transactional
     @PUT
     @RolesAllowed({ADMIN})
@@ -227,11 +238,13 @@ public class UserService extends BaseEntityService<User> {
      * @param hasToken
      * @return
      */
+    @ApiOperation(value = "Retrieve information of current user")
     @Transactional
     @GET
     @Path("/me")
     public Response getCurrentUser(
             @Context HttpHeaders httpHeaders,
+            @ApiParam(required = false, value = "Attribute that represents if a long term token will attach to the response")
             @QueryParam("hasToken") Boolean hasToken){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
@@ -275,10 +288,12 @@ public class UserService extends BaseEntityService<User> {
         return PICSUREResponse.success(userForDisplay);
     }
 
+    @ApiOperation(value = "Retrieve the queryTemplate of certain application by given application Id for the currentUser ")
     @Transactional
     @GET
     @Path("/me/queryTemplate/{applicationId}")
     public Response getQueryTemplate(
+            @ApiParam(required = false, value = "Application Id for the returning queryTemplate")
             @PathParam("applicationId") String applicationId){
 
         if (applicationId == null || applicationId.trim().isEmpty()){
@@ -363,11 +378,13 @@ public class UserService extends BaseEntityService<User> {
      * @param hasToken
      * @return
      */
+    @ApiOperation(value = "refresh the long term tokne of current user")
     @Transactional
     @GET
     @Path("/me/refresh_long_term_token")
     public Response refreshUserToken(
             @Context HttpHeaders httpHeaders,
+            @ApiParam(required = false, value = "A flag represents if the long term token will be returned or not")
             @QueryParam("hasToken") Boolean hasToken){
         User user = (User) securityContext.getUserPrincipal();
         if (user == null || user.getUuid() == null){
