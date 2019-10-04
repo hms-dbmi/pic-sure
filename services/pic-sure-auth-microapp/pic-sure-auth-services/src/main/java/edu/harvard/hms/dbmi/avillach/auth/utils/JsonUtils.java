@@ -9,21 +9,29 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Originally the class is designed for merging two JSON maps (input as two Map), there
- * is only mergeTemplateMap class is public. But afterwards, the methods inside which are private
- * at the beginning, seems could be used as utility methods as well, so they became public.
- * <b>However,</b> there is one thing that needs to be noticed when using these methods that these
- * methods are designed specifically for query template merging use cases, which means might not fit into
- * other use cases. So be careful!!
+ * <p>
+ *     The scope of this class is only for operations on string, list, map that are converted from JSONs. All
+ *     map keys we deal with will only be String. There are only three types of data: string, list, map,
+ *     since input maps are converted from JSONs.
+ * </p>
+ * <p> * Originally this class was designed for merging two JSON maps (inputs are two Maps),
+ * only the mergeTemplateMap class is public. Now, the private methods could be used as utility methods as well,
+ * so they were made public.
+ * However, these methods are not designed for general usage, but specifically for query template merging use cases.
+ * Use caution when using these methods for other use cases.</p>
+ * <p>
+ *     Notice: the input Map or list are from the conversion of JSONs, which means only three possible formats
+ *     will appear here: string, list, map.
+ * </p>
  */
 public class JsonUtils {
 
     static Logger logger = LoggerFactory.getLogger(JsonUtils.class);
 
     /**
-     * The logic here are:
+     * The logic for this method here is:
      * <li>
-     *     Only takes JSON map as input - this could be extended as take any JSON format as input
+     *     Only takes JSON map as input - this could be extended as take any JSON format as input in the future
      * </li>
      * <li>
      *     When a JSON map merge with another map, it will recursively merge every level of JSON Objects.
@@ -34,10 +42,10 @@ public class JsonUtils {
      * </li>
      * <li>
      *     When a JSONArray element merges with another JSONArray element, only the data in the same corresponding
-     *     location will be merged, and the rest of elements in the longer array will be attached to the shorter one.
+     *     location will be merged, and the rest of elements in the longer array will be simply attached.
      * </li>
      * <li>
-     *     When a JSON Map merge into an Json Array, it will be either append or merge into one of the element that is a
+     *     When a JSON Map merge into a Json Array, it will be either append or merge into one of the element that is a
      *     Json Map as well and has the same structure based on isMapMergeable method
      * </li>
      * @param originMap
@@ -101,6 +109,13 @@ public class JsonUtils {
         return mergedMap;
     }
 
+    /**
+     * merge two JSON into a new list. Example use case: merge two string together
+     *
+     * @param a
+     * @param b
+     * @return a new list that contains two input JSONs
+     */
     public static List mergeToNewList(Object a, Object b){
         List list = new ArrayList();
         list.add(a);
@@ -108,6 +123,18 @@ public class JsonUtils {
         return list;
     }
 
+    /**
+     * merge a string into a list.
+     * <p>
+     *     Notice: the list could include JSON string, array, or map.
+     * </p>
+     * The logic here is, before merging, it will check if the list already contains the same string, if not,
+     * will merge.
+     *
+     * @param s
+     * @param list
+     * @return
+     */
     public static List mergeStringToList(String s, List list){
         boolean isExist = false;
         for (Object object: list){
@@ -126,7 +153,7 @@ public class JsonUtils {
     /**
      * will merge the two elements in the same location.
      * meaning baseList(0) will merge with incomingList(0) ...
-     * So if two same-location elements are not in the same type, will only keep the element in baseList
+     * And if two same-location elements are not in the same type, only the element in baseList will be kept
      *
      * @param baseList
      * @param incomingList
@@ -157,8 +184,9 @@ public class JsonUtils {
     }
 
     /**
-     *  attach or merge a map to a list, the list might contain many elements that are JSON Object,
-     *  JSON Array, JSON map, or a JSON string. To attach or to merge, depends on the method <code>isMapMergeable<code/>
+     *  attach or merge a map to a list, the list might contain many elements that are string, list or map that are converted from JSONs.
+     *  The logic here is first check if there is any map element that has the same structure based on the method <code>isMapMergeable<code/>,
+     *  if true, merge, if false, simply attach.
      *
      * @param map
      * @param list
@@ -187,7 +215,8 @@ public class JsonUtils {
     }
 
     /**
-     * only use for checking JSON, so the map keys will always be String
+     * only use for checking if two maps have the same keys. All keys will only be string. Otherwise, the map is not
+     * converted from a JSON, which is not in the scope of this util class.
      * @param baseMap
      * @param incomingMap
      * @return

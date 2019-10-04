@@ -7,7 +7,8 @@ import javax.persistence.Entity;
 import java.io.Serializable;
 
 /**
- * This class will eventually reflect the changes in the page of ConnectionManagement in UI
+ * <p>Defines a model of different supporting connections for the login process.</p>
+ * <p>This class will eventually reflect changes in the ConnectionManagement page.</p>
  */
 @Entity(name = "connection")
 public class Connection extends BaseEntity implements Serializable {

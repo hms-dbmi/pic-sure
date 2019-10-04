@@ -8,9 +8,9 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.message.BasicHeader;
@@ -25,17 +25,24 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
 
+/**
+ * This class is designed to provide authentication functionality. This implements an authenticationService interface
+ * in the future to support different authentication mode.
+ *
+ * <h3>Thoughts of design</h3>
+ * The main purpose of this class is returns a token that includes information of the roles of users.
+ */
 public class AuthenticationService {
     private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
 
     @Inject
-    Auth0UserMatchingService matchingService;
+    OauthUserMatchingService matchingService;
 
     @Inject
     UserRepository userRepository;
 
     @Inject
-    TermsOfServiceService tosService;
+    TOSService tosService;
 
     @Inject
     MailService mailService;

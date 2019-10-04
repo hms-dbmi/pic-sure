@@ -11,6 +11,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +29,12 @@ import java.util.*;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for registering and administering applications.
+ * <br>
+ * Note: Only users with the super admin role can access this endpoint.</p>
+ */
+@Api
 @Path("/application")
 public class ApplicationService extends BaseEntityService<Application> {
 
@@ -46,25 +55,31 @@ public class ApplicationService extends BaseEntityService<Application> {
 		super(Application.class);
 	}
 
+	@ApiOperation(value = "GET information of one Application with the UUID, no role restrictions")
 	@GET
 	@Path("/{applicationId}")
 	public Response getApplicationById(
-			@PathParam("applicationId") String applicationId) {
+            @ApiParam(required = true, value="The UUID of the application to fetch information about")
+            @PathParam("applicationId") String applicationId) {
 		return getEntityById(applicationId,applicationRepo);
 	}
 
-	@GET
+    @ApiOperation(value = "GET a list of existing Applications, no role restrictions")
+    @GET
 	@Path("")
 	public Response getApplicationAll() {
 		return getEntityAll(applicationRepo);
 	}
 
-	@Transactional
+    @ApiOperation(value = "POST a list of Applications, requires SUPER_ADMIN role")
+    @Transactional
 	@POST
 	@RolesAllowed({SUPER_ADMIN})
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/")
-	public Response addApplication(List<Application> applications){
+	public Response addApplication(
+            @ApiParam(required = true, value = "A list of AccessRule in JSON format")
+            List<Application> applications){
 		checkAssociation(applications);
 		List<Application> appEntities = addOrUpdate(applications, true, applicationRepo);
 		for(Application application : appEntities) {
@@ -80,19 +95,25 @@ public class ApplicationService extends BaseEntityService<Application> {
 		return updateEntity(appEntities, applicationRepo);
 	}
 
-	@PUT
+    @ApiOperation(value = "Update a list of Applications, will only update the fields listed, requires SUPER_ADMIN role")
+    @PUT
 	@RolesAllowed({SUPER_ADMIN})
 	@Consumes(MediaType.APPLICATION_JSON)
 	@Path("/")
-	public Response updateApplication(List<Application> applications){
+	public Response updateApplication(
+            @ApiParam(required = true, value = "A list of AccessRule with fields to be updated in JSON format")
+            List<Application> applications){
 		checkAssociation(applications);
 		return updateEntity(applications, applicationRepo);
 	}
 
+	@ApiOperation(value = "Refresh a token of an application by application Id, requires SUPER_ADMIN role")
 	@GET
 	@RolesAllowed({SUPER_ADMIN})
 	@Path("/refreshToken/{applicationId}")
-	public Response refreshApplicationToken(@PathParam("applicationId") String applicationId){
+	public Response refreshApplicationToken(
+	        @ApiParam(required = true, value = "A valid application Id")
+	        @PathParam("applicationId") String applicationId){
 		Application application = applicationRepo.getById(UUID.fromString(applicationId));
 
 		if (application == null){
@@ -116,11 +137,14 @@ public class ApplicationService extends BaseEntityService<Application> {
 
 	}
 
-	@Transactional
+    @ApiOperation(value = "DELETE an Application by Id only if the application is not associated by others, requires SUPER_ADMIN role")
+    @Transactional
 	@DELETE
 	@RolesAllowed({SUPER_ADMIN})
 	@Path("/{applicationId}")
-	public Response removeById(@PathParam("applicationId") final String applicationId) {
+	public Response removeById(
+            @ApiParam(required = true, value = "A valid accessRule Id")
+            @PathParam("applicationId") final String applicationId) {
 		Application application = applicationRepo.getById(UUID.fromString(applicationId));
 		return removeEntityById(applicationId, applicationRepo);
 	}

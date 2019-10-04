@@ -5,6 +5,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserMetadataMappingRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.UserMetadataMappingService;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -17,6 +20,7 @@ import java.util.List;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+@Api
 @Path("mapping")
 public class UserMetadataMappingWebService  extends BaseEntityService<UserMetadataMapping>{
 	
@@ -32,7 +36,8 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 
 	@Inject
 	ConnectionRepository connectionRepo;
-	
+
+	@ApiOperation(value = "GET information of one UserMetadataMapping with the UUID, requires ADMIN or SUPER_ADMIN role")
 	@GET
 	@Produces("application/json")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
@@ -43,36 +48,46 @@ public class UserMetadataMappingWebService  extends BaseEntityService<UserMetada
 						.getUniqueResultByColumn("id", connection)))
 				.build();
 	}
-	
-	@GET
+
+    @ApiOperation(value = "GET a list of existing UserMetadataMappings, requires ADMIN or SUPER_ADMIN role")
+    @GET
 	@Produces("application/json")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
 	public Response getAllMappings() {
 		return Response.ok(mappingService.getAllMappings()).build();
 	}
 
-	@Transactional
+    @ApiOperation(value = "POST a list of UserMetadataMappings, requires SUPER_ADMIN role")
+    @Transactional
 	@POST
 	@Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed({SUPER_ADMIN})
 	@Path("/")
-	public Response addMapping(List<UserMetadataMapping> mappings) {
+	public Response addMapping(
+            @ApiParam(required = true, value = "A list of UserMetadataMapping in JSON format")
+            List<UserMetadataMapping> mappings) {
 		return mappingService.addMappings(mappings);
 	}
 
-	@PUT
+    @ApiOperation(value = "Update a list of UserMetadataMappings, will only update the fields listed, requires SUPER_ADMIN role")
+    @PUT
 	@Consumes(MediaType.APPLICATION_JSON)
     @RolesAllowed({SUPER_ADMIN})
 	@Path("/")
-	public Response updateMapping(List<UserMetadataMapping> mappings) {
+	public Response updateMapping(
+            @ApiParam(required = true, value = "A list of UserMetadataMapping with fields to be updated in JSON format")
+            List<UserMetadataMapping> mappings) {
 		return updateEntity(mappings, mappingRepo);
 	}
 
-	@Transactional
+    @ApiOperation(value = "DELETE an UserMetadataMapping by Id only if the UserMetadataMapping is not associated by others, requires SUPER_ADMIN role")
+    @Transactional
 	@DELETE
     @RolesAllowed({SUPER_ADMIN})
 	@Path("/{mappingId}")
-	public Response removeById(@PathParam("mappingId") final String mappingId) {
+	public Response removeById(
+            @ApiParam(required = true, value = "A valid UserMetadataMapping Id")
+            @PathParam("mappingId") final String mappingId) {
 		return removeEntityById(mappingId, mappingRepo);
 	}
 }

@@ -7,7 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import io.jsonwebtoken.Claims;
@@ -31,6 +31,17 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * The main gate for PSAMA that filters all incoming requests against PSAMA.
+ * <h2>Logic of design</h3>
+ * <ul>
+ *     <li>All incoming requests will come to this filter</li>
+ *     <li>To pass this filter, the incoming request first needs to have a valid Bearer token in Http Authorization Header
+ *     to represent a valid identity behind the token </li>
+ *     <li>In some cases, the incoming request doesn't need to hold a token with, which are the path to <code>authentication</code>
+ *     endpoint, or to <code>swagger.json</code> or <code>swagger.html</code></li>
+ * </ul>
+ */
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
 
@@ -49,7 +60,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	ApplicationRepository applicationRepo;
 
 	@Inject
-	TermsOfServiceService tosService;
+	TOSService tosService;
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {

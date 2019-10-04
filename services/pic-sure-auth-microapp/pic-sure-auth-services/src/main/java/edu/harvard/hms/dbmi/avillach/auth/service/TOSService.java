@@ -15,9 +15,14 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
-public class TermsOfServiceService {
+/**
+ * Business Logic for TermsOfServiceEndpoint
+ *
+ * @see edu.harvard.hms.dbmi.avillach.auth.rest.TermsOfServiceEndpoint
+ */
+public class TOSService {
 
-    Logger logger = LoggerFactory.getLogger(TermsOfServiceService.class);
+    Logger logger = LoggerFactory.getLogger(TOSService.class);
 
     @Inject
     TermsOfServiceRepository termsOfServiceRepo;
