@@ -14,6 +14,9 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +41,7 @@ import java.util.stream.Collectors;
  * is authorized to access the URLs they queried and send data along with them. The AuthorizationService class handles authorization
  * {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the privilege level.</p>
  */
+@Api
 @Path("/token")
 public class TokenService {
 
@@ -55,10 +59,14 @@ public class TokenService {
 	@Context
 	SecurityContext securityContext;
 
+	@ApiOperation(value = "Token introspection endpoint for user to retrieve a valid token")
 	@POST
 	@Path("/inspect")
 	@Consumes("application/json")
-	public Response inspectToken(Map<String, Object> inputMap){
+	public Response inspectToken(
+			@ApiParam(required = true, value = "A json object that at least" +
+					" include a user the token for validation")
+			Map<String, Object> inputMap){
 		logger.info("TokenInspect starting...");
 		TokenInspection tokenInspection = _inspectToken(inputMap);
 		if (tokenInspection.message != null)
@@ -74,6 +82,7 @@ public class TokenService {
 	 *
 	 * @return
 	 */
+	@ApiOperation(value = "To refresh current user's token if the user is an active user")
 	@GET
 	@Path("/refresh")
 	public Response refreshToken(@Context HttpHeaders httpHeaders){

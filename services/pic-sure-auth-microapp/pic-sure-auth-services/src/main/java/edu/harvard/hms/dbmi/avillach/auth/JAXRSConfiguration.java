@@ -6,6 +6,8 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.rest.TokenService;
+import io.swagger.jaxrs.config.BeanConfig;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
@@ -119,6 +121,15 @@ public class JAXRSConfiguration extends Application {
 
         logger.info("Auth micro app has been successfully started");
 
+        //Set info for the swagger.json
+        BeanConfig beanConfig = new BeanConfig();
+        beanConfig.setVersion("1.0.0");
+        beanConfig.setSchemes(new String[] { "https" });
+        beanConfig.setDescription("APIs for accessing PIC-SURE-AUTH-MICROAPP - a centralized authentication/authorization micro services");
+        beanConfig.setTitle("PIC-SURE-AUTH-MICROAPP");
+        beanConfig.setBasePath("/psama");
+        beanConfig.setResourcePackage(TokenService.class.getPackageName());
+        beanConfig.setScan(true);
     }
 
     private void initializeTokenExpirationTime(){

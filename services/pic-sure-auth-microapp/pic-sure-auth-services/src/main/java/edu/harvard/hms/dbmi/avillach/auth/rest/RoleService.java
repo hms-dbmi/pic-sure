@@ -7,6 +7,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +33,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  * <p>Endpoint for service handling business logic for user roles.
  * <br>Note: Users with admin level access can view roles, but only super admin users can modify them.</p>
  */
+@Api
 @Path("/role")
 public class RoleService extends BaseEntityService<Role> {
 
@@ -48,14 +52,17 @@ public class RoleService extends BaseEntityService<Role> {
         super(Role.class);
     }
 
+    @ApiOperation(value = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
     @GET
     @Path("/{roleId}")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     public Response getRoleById(
+            @ApiParam(value="The UUID of the Role to fetch information about")
             @PathParam("roleId") String roleId) {
         return getEntityById(roleId,roleRepo);
     }
 
+    @ApiOperation(value = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
     @GET
     @Path("")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
@@ -63,31 +70,40 @@ public class RoleService extends BaseEntityService<Role> {
         return getEntityAll(roleRepo);
     }
 
+    @ApiOperation(value = "POST a list of Roles, requires SUPER_ADMIN role")
     @Transactional
     @POST
     @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
-    public Response addRole(List<Role> roles){
+    public Response addRole(
+            @ApiParam(required = true, value = "A list of Roles in JSON format")
+            List<Role> roles){
         checkPrivilegeAssociation(roles);
         return addEntity(roles, roleRepo);
     }
 
+    @ApiOperation(value = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role")
     @Transactional
     @PUT
     @RolesAllowed({SUPER_ADMIN})
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
-    public Response updateRole(List<Role> roles){
+    public Response updateRole(
+            @ApiParam(required = true, value = "A list of Roles with fields to be updated in JSON format")
+            List<Role> roles){
         checkPrivilegeAssociation(roles);
         return updateEntity(roles, roleRepo);
     }
-    
+
+    @ApiOperation(value = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role")
     @Transactional
     @DELETE
     @RolesAllowed({SUPER_ADMIN})
     @Path("/{roleId}")
-    public Response removeById(@PathParam("roleId") final String roleId) {
+    public Response removeById(
+            @ApiParam(required = true, value = "A valid Role Id")
+            @PathParam("roleId") final String roleId) {
         Role role = roleRepo.getById(UUID.fromString(roleId));
         if (JAXRSConfiguration.defaultAdminRoleName.equals(role.getName())){
             logger.info("User: " + JAXRSConfiguration.getPrincipalName(securityContext)

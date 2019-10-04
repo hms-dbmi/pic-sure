@@ -4,6 +4,8 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -27,6 +29,7 @@ public class TermsOfServiceEndpoint extends BaseEntityService<TermsOfService> {
     @Inject
     TOSService tosService;
 
+    @ApiOperation(value = "GET the latest Terms of Service")
     @Path("/latest")
     @GET
     @Produces("text/html")
@@ -34,14 +37,17 @@ public class TermsOfServiceEndpoint extends BaseEntityService<TermsOfService> {
         return Response.ok(tosService.getLatest()).build();
     }
 
+    @ApiOperation(value = "Update the Terms of Service html body")
     @POST
     @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @Consumes("text/html")
     @Produces("application/json")
-    public Response updateTermsOfService(String html){
+    public Response updateTermsOfService(
+            @ApiParam(required = true, value = "A html page for updating") String html){
         return Response.status(201).entity(tosService.updateTermsOfService(html)).build();
     }
 
+    @ApiOperation(value = "GET if current user has acceptted his TOS or not")
     @Path("/")
     @GET
     @Produces("text/plain")
@@ -50,6 +56,7 @@ public class TermsOfServiceEndpoint extends BaseEntityService<TermsOfService> {
         return Response.ok(tosService.hasUserAcceptedLatest(userSubject)).build();
     }
 
+    @ApiOperation(value = "Endpoint for current user to accept his terms of service")
     @Path("/accept")
     @POST
     @Produces("application/json")
