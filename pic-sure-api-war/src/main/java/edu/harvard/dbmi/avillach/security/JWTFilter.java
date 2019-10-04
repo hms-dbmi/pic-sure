@@ -74,7 +74,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 
 			if (authenticatedUser == null) {
-				logger.error("Cannot extract a user from token: " + token + ", verify method: " + picSureWarInit.getVerify_user_method());
+				logger.error("Cannot extract a user from token: " + token);
 				throw new NotAuthorizedException("Cannot find or create a user");
 			}
 
