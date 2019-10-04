@@ -8,28 +8,21 @@ import org.apache.http.impl.conn.SystemDefaultRoutePlanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.PostConstruct;
-import javax.ejb.ApplicationException;
+import javax.annotation.Resource;
 import javax.ejb.Singleton;
-import javax.ejb.Startup;
 import javax.enterprise.context.ApplicationScoped;
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import java.net.ProxySelector;
 
 @Singleton
-@Startup
 @ApplicationScoped
 public class PicSureWarInit {
 
     Logger logger = LoggerFactory.getLogger(PicSureWarInit.class);
 
-    // decide which authentication method is going to be used
-    private String verify_user_method;
-    public static final String VERIFY_METHOD_LOCAL="local";
-    public static final String VERIFY_METHOD_TOKEN_INTRO="tokenIntrospection";
+    @Resource(mappedName = "java:global/token_introspection_url")
     private String token_introspection_url;
+
+    @Resource(mappedName = "global/token_introspection_token")
     private String token_introspection_token;
 
     //to be able to pre modified
@@ -55,47 +48,12 @@ public class PicSureWarInit {
                 .build();
     }
 
-    @PostConstruct
-    public void init() {
-        loadTokenIntrospection();
-    }
-
-    private void loadTokenIntrospection(){
-        logger.info("start loading token introspection...");
-        try {
-            Context ctx = new InitialContext();
-            verify_user_method = (String) ctx.lookup("global/verify_user_method");
-            token_introspection_url = (String) ctx.lookup("global/token_introspection_url");
-            token_introspection_token = (String) ctx.lookup("global/token_introspection_token");
-            ctx.close();
-        } catch (NamingException e) {
-            verify_user_method = VERIFY_METHOD_LOCAL;
-        }
-
-        logger.info("verify_user_method setup as: " + verify_user_method);
-    }
 
     public String getToken_introspection_url() {
         return token_introspection_url;
     }
 
-    public void setToken_introspection_url(String token_introspection_url) {
-        this.token_introspection_url = token_introspection_url;
-    }
-
     public String getToken_introspection_token() {
         return token_introspection_token;
-    }
-
-    public void setToken_introspection_token(String token_introspection_token) {
-        this.token_introspection_token = token_introspection_token;
-    }
-
-    public String getVerify_user_method() {
-        return verify_user_method;
-    }
-
-    public void setVerify_user_method(String verify_user_method) {
-        this.verify_user_method = verify_user_method;
     }
 }
