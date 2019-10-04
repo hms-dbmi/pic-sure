@@ -1,4 +1,4 @@
-FROM jboss/wildfly:15.0.1.Final
+FROM jboss/wildfly:17.0.0.Final
 
 LABEL maintainer="avillach_lab_developers@googlegroups.com"
 
@@ -22,8 +22,8 @@ COPY src/main/resources/wildfly-configuration/standalone.xml wildfly/standalone/
 # Copy war file
 COPY target/pic-sure-api-war.war wildfly/standalone/deployments/pic-sure-api-2.war
 
-# install modules
-RUN wildfly/bin/jboss-cli.sh --command="module add --name=com.sql.mysql \
-    --resources=/modules/mysql-connector-java-5.1.38.jar --dependencies=javax.api"
+## install modules
+#RUN wildfly/bin/jboss-cli.sh --command="module add --name=com.sql.mysql \
+#    --resources=/modules/mysql-connector-java-5.1.38.jar --dependencies=javax.api"
 
 ENTRYPOINT ["/opt/jboss/wildfly/bin/standalone.sh", "-b", "0.0.0.0"]
