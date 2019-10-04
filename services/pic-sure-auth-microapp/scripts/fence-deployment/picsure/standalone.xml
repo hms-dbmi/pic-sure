@@ -95,7 +95,7 @@
     <profile>
         <subsystem xmlns="urn:jboss:domain:logging:6.0">
             <console-handler name="CONSOLE">
-                <level name="DEBUG"/>
+                <level name="INFO"/>
                 <formatter>
                     <named-formatter name="COLOR-PATTERN"/>
                 </formatter>
@@ -121,7 +121,7 @@
                 <level name="WARN"/>
             </logger>
             <root-logger>
-                <level name="DEBUG"/>
+                <level name="INFO"/>
                 <handlers>
                     <handler name="CONSOLE"/>
                     <handler name="FILE"/>
@@ -157,30 +157,15 @@
                         <password>sa</password>
                     </security>
                 </datasource>
-                <datasource jndi-name="java:jboss/datasources/AuthDS" pool-name="AuthDS" use-java-context="true">
-                    <connection-url>jdbc:mysql://${env.PSAMA_DB_HOST}/${env.PSAMA_DB_NAME}?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true</connection-url>
-                    <driver>mysql</driver>
-                    <pool>
-                        <min-pool-size>5</min-pool-size>
-                        <max-pool-size>50</max-pool-size>
-                        <prefill>true</prefill>
-                    </pool>
+                <datasource jndi-name="java:/PicsureDS" pool-name="PicsureDS" enabled="true" use-java-context="true">
+                    <connection-url>jdbc:h2:mem:picsure;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE</connection-url>
+                    <driver>h2</driver>
                     <security>
-                        <user-name>${env.PSAMA_DB_USERNAME}</user-name>
-                        <password>${env.PSAMA_DB_PASSWORD}</password>
+                        <user-name>sa</user-name>
+                        <password>sa</password>
                     </security>
-                    <validation>
-                        <valid-connection-checker class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLValidConnectionChecker"/>
-                        <check-valid-connection-sql>SELECT 1</check-valid-connection-sql>
-                        <validate-on-match>true</validate-on-match>
-                        <background-validation>false</background-validation>
-                        <exception-sorter class-name="org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLExceptionSorter"/>
-                    </validation>
                 </datasource>
                 <drivers>
-                    <driver name="mysql" module="com.sql.mysql">
-                        <driver-class>com.mysql.jdbc.Driver</driver-class>
-                    </driver>
                     <driver name="h2" module="com.h2database.h2">
                         <xa-datasource-class>org.h2.jdbcx.JdbcDataSource</xa-datasource-class>
                     </driver>
@@ -424,9 +409,6 @@
             <mail-session name="default" jndi-name="java:jboss/mail/Default">
                 <smtp-server outbound-socket-binding-ref="mail-smtp"/>
             </mail-session>
-            <mail-session name="java:jboss/mail/gmail" from="${env.MAIL_USERNAME:username@gmail.com}" jndi-name="java:jboss/mail/gmail" debug="false">
-                <smtp-server tls="true" outbound-socket-binding-ref="mail-smtp-gmail" password="${env.MAIL_PASSWORD:YourSecretPassword}" username="${env.MAIL_USERNAME:username@gmail.com}"/>
-            </mail-session>
         </subsystem>
         <subsystem xmlns="urn:wildfly:microprofile-config-smallrye:1.0"/>
         <subsystem xmlns="urn:wildfly:microprofile-health-smallrye:1.0" security-enabled="false"/>
@@ -434,28 +416,12 @@
         <subsystem xmlns="urn:wildfly:microprofile-opentracing-smallrye:1.0"/>
         <subsystem xmlns="urn:jboss:domain:naming:2.0">
             <bindings>
-                <simple name="java:global/client_secret" value="${env.AUTH_CLIENT_SECRET:secret}"/>
-                <simple name="java:global/client_id" value="${env.AUTH_CLIENT_ID:notused}"/>
-                <simple name="java:global/user_id_claim" value="${env.AUTH_USER_ID_CLAIM:sub}"/>
-                <simple name="java:global/auth0token" value="${env.AUTH0TOKEN:notused_auth0token}"/>
-                <simple name="java:global/auth0host" value="${env.AUTH0HOST:notused_auth0host}"/>
-                <simple name="java:global/systemName" value="${env.SYSTEM_NAME:DataStage}"/>
-                <simple name="java:global/clientSecretIsBase64" value="${env.CLIENT_SECRET_IS_BASE_64:true}"/>
-                <simple name="java:global/emailTemplatePath" value="${env.EMAIL_TEMPLATE_PATH:none}"/>
-                <simple name="java:global/userActivationReplyTo" value="${env.USER_ACTIVATION_REPLY_TO:none}"/>
-                <simple name="java:global/tosEnabled" value="${env.TOS_ENABLED:false}"/>
-                <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
-                <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS:none}"/>
-                <simple name="java:global/accessGrantEmailSubject" value="${env.accessGrantEmailSubject:none}"/>
-                <simple name="java:global/tokenExpirationTime" value="${env.tokenExpriationTime:900000}" />
-
-                <!-- Configure Identity Provider Parameters, with defaults-->
-                <simple name="java:global/idp_provider" value="${env.IDP_PROVIDER:auth0}"/>
-                <simple name="java:global/idp_provider_uri" value="${env.IDP_PROVIDER_URI:https://idphost}" />
-
-                <simple name="java:global/fence_client_id" value="${env.FENCE_CLIENT_ID:no_fence_client_id}"/>
-                <simple name="java:global/fence_client_secret" value="${env.FENCE_CLIENT_SECRET:no_fence_client_secret}"/>
-
+                <simple name="java:global/target_url_pic-sure-irct-resource-2.0.0-SNAPSHOT" value="${env.IRCT_TARGET_URL}"/>
+                <simple name="java:global/client_secret" value="${env.PICSURE_CLIENT_SECRET}"/>
+                <simple name="java:global/user_id_claim" value="${env.PICSURE_USER_ID_CLAIM}"/>
+                <simple name="java:global/verify_user_method" value="tokenIntrospection"/>
+                <simple name="java:global/token_introspection_url" value="${env.PICSURE_INTROSPECTION_URL}"/>
+                <simple name="java:global/token_introspection_token" value="${env.PICSURE_INTROSPECTION_TOKEN}"/>
             </bindings>
             <remote-naming/>
         </subsystem>
@@ -562,9 +528,6 @@
         <socket-binding name="txn-status-manager" port="4713"/>
         <outbound-socket-binding name="mail-smtp">
             <remote-destination host="localhost" port="25"/>
-        </outbound-socket-binding>
-        <outbound-socket-binding name="mail-smtp-gmail" source-port="0" fixed-source-port="false">
-            <remote-destination host="smtp.gmail.com" port="587"/>
         </outbound-socket-binding>
     </socket-binding-group>
 </server>

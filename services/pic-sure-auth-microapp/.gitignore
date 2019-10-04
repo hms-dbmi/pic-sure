@@ -25,3 +25,6 @@ httpd/pic-sure-auth-ui-webapp.zip
 .docker-compose.yml.swp
 pic-sure-auth-services.war
 pic-sure-auth-services.war.deployed
+*.war
+*.deployed
+*.failed

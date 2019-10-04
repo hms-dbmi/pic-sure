@@ -164,6 +164,18 @@ CREATE TABLE `application` (
   PRIMARY KEY (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
+INSERT INTO `application` (`uuid`, `description`, `enable`, `name`, `token`, `url`)
+VALUES
+	(
+		X'8B5722C962FD48D6B0BF4F67E53EFB2B', 
+		X'5049432D53555245206D756C7469706C6520646174612061636365737320415049', 
+		1, 
+		X'50494353555245', 
+		NULL, 
+		X'2F706963737572657569'
+);
+
+
 CREATE TABLE `access_rule` (
   `uuid` binary(16) NOT NULL,
   `name` varchar(255) COLLATE utf8_bin DEFAULT NULL,
@@ -198,6 +210,7 @@ CREATE TABLE `accessRule_gate` (
   CONSTRAINT `FK6re4kcq9tyl45jv9yg584doem` FOREIGN KEY (`gate_id`) REFERENCES `access_rule` (`uuid`),
   CONSTRAINT `FKe6l5ee7f207958mm3anpsmqom` FOREIGN KEY (`accessRule_id`) REFERENCES `access_rule` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
@@ -298,7 +311,7 @@ START TRANSACTION;
 
 DELETE FROM `resource` WHERE `name` = 'hpds';
 
-SET @uuidResource = REPLACE(uuid(),'-','');
+SET @uuidResource = REPLACE('02e23f52-f354-4e8b-992c-d37c8b9ba140','-','');
 
 INSERT INTO `resource` (
   `uuid`,
@@ -317,3 +330,8 @@ INSERT INTO `resource` (
 );
 
 COMMIT;
+
+
+
+
+
