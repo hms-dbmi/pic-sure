@@ -1,6 +1,7 @@
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY 'password';
 
-CREATE DATABASE  IF NOT EXISTS `auth` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */;
+DROP DATABASE IF EXISTS `auth`;
+CREATE DATABASE IF NOT EXISTS `auth` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */;
 USE `auth`;
 -- MySQL dump 10.13  Distrib 5.7.17, for macos10.12 (x86_64)
 --
@@ -219,6 +220,34 @@ CREATE TABLE `accessRule_gate` (
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Add temporary config user
+
+SET @uuidUser = REPLACE(uuid(),'-','');
+
+INSERT INTO user (
+	`uuid`,
+	`general_metadata`,
+	`subject`,
+  `email`
+) VALUES (
+	unhex(@uuidUser),
+	'{"description":"Temporary user entry, for configuraiton"}',
+  'configurator|temporary_account',
+  'configurator@avillach.lab'
+);
+
+# Add the initial ADMIN role for the user.
+# Assuming, that all superuser privileges have been
+# assigned to this role, already, during creation
+# of the database.
+INSERT INTO user_role (
+	`user_id`,
+	`role_id`
+) VALUES (
+	UNHEX(@uuidUser),
+	(SELECT uuid FROM role WHERE name = 'PIC-SURE Top Admin')
+);
 
 
 DROP DATABASE IF EXISTS `picsure`;
