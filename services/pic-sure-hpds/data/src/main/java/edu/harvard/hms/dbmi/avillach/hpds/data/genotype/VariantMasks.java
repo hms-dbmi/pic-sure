@@ -10,7 +10,10 @@ public class VariantMasks implements Serializable {
 	private static final char zero = '0';
 	private static final String hetero = "0/1";
 	private static final String heteroDel = "1/0";
+	private static final String heteroPhased = "0|1";
+	private static final String heteroPhased2 = "1|0";
 	private static final String homo = "1/1";
+	private static final String homoPhased = "1|1";
 	private static final String homoNoCall = "./.";
 	private static final String heteroNoCall = "./1";
 
@@ -36,12 +39,27 @@ public class VariantMasks implements Serializable {
 					hasHetero = true;
 					break;
 				}
+				case heteroPhased:{
+					heterozygousBits[x] = one;
+					hasHetero = true;
+					break;
+				}
+				case heteroPhased2:{
+					heterozygousBits[x] = one;
+					hasHetero = true;
+					break;
+				}
 				case heteroDel:{
 					heterozygousBits[x] = one;
 					hasHetero = true;
 					break;
 				}
 				case homo:{
+					homozygousBits[x] = one;
+					hasHomo = true;
+					break;			
+				}
+				case homoPhased:{
 					homozygousBits[x] = one;
 					hasHomo = true;
 					break;			

@@ -42,7 +42,7 @@ public class IndexedVCFLocalLoader {
 
 	public static void main(String[] args) throws FileNotFoundException, IOException {
 		File indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
-		File storageDir = new File("/opt/local/hpds/vcfOutput");
+		File storageDir = new File("/opt/local/hpds/all");
 
 		loadVCFs(indexFile, storageDir);
 	}
@@ -198,7 +198,7 @@ public class IndexedVCFLocalLoader {
 			}
 		}
 		if(producer.processAnnotations && !lastLineProcessed.info.contentEquals(lastInfoLineProcessed)) {
-			String[] infoValues = (lastLineProcessed.info).split(";");
+			String[] infoValues = (lastLineProcessed.info).split("[;&]");
 			infoStores.values().parallelStream().forEach(infoStore->{
 				try {
 					infoStore.processRecord(specNotation, infoValues);

@@ -388,7 +388,7 @@ public abstract class AbstractProcessor {
 
 			});
 		} catch (IOException e) {
-			log.error(e);
+			e.printStackTrace();
 		}
 		return variantBitmasks;
 	}
