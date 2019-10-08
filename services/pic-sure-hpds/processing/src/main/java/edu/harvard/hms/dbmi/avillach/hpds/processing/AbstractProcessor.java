@@ -17,6 +17,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
@@ -224,10 +225,14 @@ public abstract class AbstractProcessor {
 
 	private void addIdSetsForAnyRecordOf(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.anyRecordOf != null && !query.anyRecordOf.isEmpty()) {
-			Set<Integer> patientsInScope = new TreeSet<Integer>();
+			Set<Integer> patientsInScope = new ConcurrentSkipListSet<Integer>();
 			query.anyRecordOf.parallelStream().forEach(path->{
 				if(patientsInScope.size()<allIds.size()) {
-					patientsInScope.addAll(getCube(path).keyBasedIndex());					
+					if(pathIsVariantSpec(path)) {
+						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
+					} else {
+						patientsInScope.addAll(getCube(path).keyBasedIndex());
+					}
 				}
 			});
 			filteredIdSets.add(patientsInScope);
@@ -248,7 +253,7 @@ public abstract class AbstractProcessor {
 			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
 				Set<Integer> ids = new TreeSet<Integer>();
 				if(pathIsVariantSpec(key)) {
-					addIdSetsForVariantSpecCategoryFilters(query, key, ids);
+					addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids);
 				} else {
 					String[] categoryFilter = query.categoryFilters.get(key);
 					for(String category : categoryFilter) {
@@ -261,8 +266,8 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private void addIdSetsForVariantSpecCategoryFilters(Query query, String key, Set<Integer> ids) {
-		ArrayList<BigInteger> variantBitmasks = getBitmasksForVariantSpecCategoryFilter(query, key);
+	private void addIdSetsForVariantSpecCategoryFilters(String[] zygosities, String key, Set<Integer> ids) {
+		ArrayList<BigInteger> variantBitmasks = getBitmasksForVariantSpecCategoryFilter(zygosities, key);
 		if( ! variantBitmasks.isEmpty()) {
 			BigInteger bitmask = variantBitmasks.get(0);
 			if(variantBitmasks.size()>1) {
@@ -293,6 +298,10 @@ public abstract class AbstractProcessor {
 				e.printStackTrace();
 			}
 		}
+		// *****
+		// This code is a more efficient way to query on gene names, 
+		// look at the history from Dec 2018 for the rest of the implementation
+		//
 		//				} else if(pathIsGeneName(key)) {
 		//					try {
 		//						List<VCFPerPatientVariantMasks> matchingMasks = 
@@ -360,14 +369,14 @@ public abstract class AbstractProcessor {
 		//					} 
 	}
 
-	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(Query query, String key) {
+	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(String[] zygosities, String variantName) {
 		ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
-		String variantName = key.replaceAll(",\\d/\\d$", "");
-		System.out.println("looking up masks : " + key + " to " + variantName);
+		variantName = variantName.replaceAll(",\\d/\\d$", "");
+		System.out.println("looking up mask for : " + variantName);
 		VariantMasks masks;
 		try {
 			masks = variantStore.getMasks(variantName);
-			Arrays.stream(query.categoryFilters.get(key)).forEach((zygosity) -> {
+			Arrays.stream(zygosities).forEach((zygosity) -> {
 				if(masks!=null) {
 					if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
 						BigInteger homozygousReferenceBitmask = calculateIndiscriminateBitmask(masks);
