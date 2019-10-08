@@ -218,7 +218,13 @@ public abstract class AbstractProcessor {
 	private void addIdSetsForRequiredFields(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.requiredFields != null && !query.requiredFields.isEmpty()) {
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.requiredFields.parallelStream().map(path->{
-				return new TreeSet<Integer>(getCube(path).keyBasedIndex()) ;
+				if(pathIsVariantSpec(path)) {
+					TreeSet<Integer> patientsInScope = new TreeSet<Integer>();
+					addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
+					return patientsInScope;
+				} else {
+					return new TreeSet<Integer>(getCube(path).keyBasedIndex());
+				}
 			}).collect(Collectors.toSet()))); 
 		}
 	}
