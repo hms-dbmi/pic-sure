@@ -38,11 +38,7 @@ public class AuthService {
     @ApiOperation(value = "The authentication endpoint for retrieving a valid user token")
     @POST
     @Path("/authentication")
-    public Response authentication(
-            @ApiParam(
-              required = true,
-              value = "A json object that includes all Oauth authentication needs, for example, " +
-                            "access_token and redirectURI") Map<String, String> authRequest)
+    public Response authentication(@ApiParam(required = true, value = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI") Map<String, String> authRequest) {
         logger.debug("authentication() starting...");
         if (JAXRSConfiguration.idp_provider.equalsIgnoreCase("fence")) {
             logger.debug("authentication() FENCE authentication");

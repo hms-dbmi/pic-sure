@@ -89,7 +89,7 @@ services:
       - copy-pic-sure-auth-war
 
   copy-pic-sure-auth-war:
-    image: dbmi/pic-sure-auth-services:fence-integration_e55da771c1c5
+    image: dbmi/pic-sure-auth-services:fence-integration_68bf7566add0
     user: root
     volumes:
       - ./wildfly/deployments:/var/tmp

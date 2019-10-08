@@ -10,9 +10,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
-import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.OauthUserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import org.apache.http.Header;
 import org.apache.http.message.BasicHeader;
@@ -23,9 +23,10 @@ import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * This class is designed to provide authentication functionality. This implements an authenticationService interface
@@ -47,7 +48,7 @@ public class AuthenticationService {
     RoleRepository roleRepo;
 
     @Inject
-    TermsOfServiceService tosService;
+    TOSService tosService;
 
     @Inject
     MailService mailService;

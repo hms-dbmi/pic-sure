@@ -2,19 +2,14 @@ package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
-import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
-import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.apache.http.Header;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
@@ -23,17 +18,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.*;
 
 public class FENCEAuthenticationService {
     private Logger logger = LoggerFactory.getLogger(FENCEAuthenticationService.class);
-
-    @Inject
-    Auth0UserMatchingService matchingService;
 
     @Inject
     UserRepository userRepository;

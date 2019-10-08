@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
-import edu.harvard.hms.dbmi.avillach.auth.service.TermsOfServiceService;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
@@ -26,7 +26,7 @@ public class AuthUtils {
 	private static Logger logger = LoggerFactory.getLogger(AuthUtils.class);
 
 	@Inject
-	TermsOfServiceService tosService;
+	TOSService tosService;
 
 	/**
 	 * support both Base64 encrypted and non-Base64 encrypted

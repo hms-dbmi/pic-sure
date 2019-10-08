@@ -1,5 +1,5 @@
 FROM dbmi/pic-sure-hpds-ui:master.0800720 AS picsureui
-FROM dbmi/pic-sure-auth-ui:fence-integration_e55da771c1c5 AS psamaui
+FROM dbmi/pic-sure-auth-ui:fence-integration_68bf7566add0 AS psamaui
 FROM httpd:2.4.27-alpine
 
 RUN apk add --update openssl sed curl jq python3
