@@ -64,7 +64,7 @@ public class TokenService {
 	@Path("/inspect")
 	@Consumes("application/json")
 	public Response inspectToken(
-			@ApiParam(required = true, value = "A json object that at least" +
+			@ApiParam(required = true, value = "A JSON object that at least" +
 					" include a user the token for validation")
 			Map<String, Object> inputMap){
 		logger.info("TokenInspect starting...");
