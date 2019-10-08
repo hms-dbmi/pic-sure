@@ -12,6 +12,10 @@ import javax.persistence.criteria.Root;
 import javax.transaction.Transactional;
 import java.util.UUID;
 
+/**
+ * <p>Provides operations for the TermsOfService  entity to interact with a database.</p>
+ * @see TermsOfService
+ */
 @Transactional
 @ApplicationScoped
 public class TermsOfServiceRepository extends BaseRepository<TermsOfService, UUID> {

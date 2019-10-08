@@ -12,8 +12,8 @@ import java.util.Date;
 import java.util.Map;
 
 /**
- * This is a class for generating jwt token,
- * which is from <url>https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java<url/>
+ * <p>This class is for generating a JWT token and contains common methods for operations on JWT tokens.</p>
+ * <p>For more information on JWT tokens, see <url>https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java<url/></p>
  */
 public class JWTUtil {
     private static Logger logger = LoggerFactory.getLogger(JWTUtil.class);

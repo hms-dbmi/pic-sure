@@ -13,12 +13,12 @@ import java.util.Set;
 
 /**
  * <p>
- * <h3>Thoughts of design:</h3> the AccessRule is designed to fulfilled the requirements
+ * <h3>Thoughts on design:</h3> the AccessRule is designed to fulfilled the requirements
  * of complicated scenarios that includes AND/OR or nested AND/OR cases of jsonPath authorization
  *</p>
  * <br>
  * <br>
- * <b>Explanation on several attributes</b>:
+ * <b>Attribute Explanations</b>:
  *     <li><b>checkMapNode</b> - after retrieving the value by jsonPath rule, if the value is a map,
  *     this flag will let the evaluation go through all the map nodes and their children nodes</li>
  *     <li><b>checkMapKeyOnly</b> - only take effective when checkMapNode flag is turned on. This flag will
@@ -89,7 +89,7 @@ public class AccessRule extends BaseEntity {
     private Integer type;
 
     /**
-     * The jsonpath rule to retrieve values
+     * The jsonpath rule to retrieve values, kind of the route to the data.
      * The possible value will be String, JSONObject, JSONArray, etc.
      */
     private String rule;
@@ -108,6 +108,11 @@ public class AccessRule extends BaseEntity {
     @Transient
     private Set<String> mergedValues = new HashSet<>();
 
+    /**
+     * This attribute will not be seen by either endpoint users or database.
+     * It is a intermediate product that generated on the fly for supporting
+     * auto-merging functionality of accessRules when doing authorization.
+     */
     @JsonIgnore
     @Transient
     private String mergedName = "";
@@ -159,14 +164,14 @@ public class AccessRule extends BaseEntity {
     /**
      * NOTICE: please don't change this back to boolean
      * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapNode;
 
     /**
      * NOTICE: please don't change this back to boolean
      * we need to support a null input,
-     * otherwise, the update mechanism will be broken
+     * otherwise, the auto update mechanism will be broken
      */
     private Boolean checkMapKeyOnly;
 

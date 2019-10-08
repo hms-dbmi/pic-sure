@@ -14,6 +14,9 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +32,22 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * TokenService implements endpoints related to tokens. Currently this class contains introspect an incoming token,
+ * and respond to a refresh token request from a user.
+ *
+ * <h3>Thoughts of design</h3>
+ * This class is one of the restful endpoints that token introspection resides.
+ * <h3>Token introspection endpoint</h3>
+ * This endpoint should simply provide a feature that a registered application could ask if the user behind
+ * this token is allowed to do certain activities by showing this endpoint the token and where the user wants to go.
+ * <br><br>
+ * To accomplish this, this endpoint should be able to validate the incoming token, then check if the user behind the token
+ * is authorized to hit what urls they want to hit and send the data along with. The authorization part (accessRules related)
+ * will be handled by class {@link AuthorizationService}, but the token validation and pre-check at the privilege level
+ * will be handled by this endpoint
+ */
+@Api
 @Path("/token")
 public class TokenService {
 
@@ -46,11 +65,14 @@ public class TokenService {
 	@Context
 	SecurityContext securityContext;
 
+	@ApiOperation(value = "Token introspection endpoint for user to retrieve a valid token")
 	@POST
 	@Path("/inspect")
 	@Consumes("application/json")
-	public Response inspectToken(Map<String, Object> inputMap,
-			@QueryParam(value = "applicationId") String applicationId){
+	public Response inspectToken(
+			@ApiParam(required = true, value = "A json object that at least" +
+					" include a user the token for validation")
+			Map<String, Object> inputMap){
 		logger.info("TokenInspect starting...");
 		TokenInspection tokenInspection = _inspectToken(inputMap);
 		if (tokenInspection.message != null)
@@ -66,6 +88,7 @@ public class TokenService {
 	 *
 	 * @return
 	 */
+	@ApiOperation(value = "To refresh current user's token if the user is an active user")
 	@GET
 	@Path("/refresh")
 	public Response refreshToken(@Context HttpHeaders httpHeaders){
@@ -249,7 +272,10 @@ public class TokenService {
         } else if (user != null
                 && !isLongTermTokenCompromised
                 && user.getRoles() != null
-				&& authorizationService.isAuthorized(application, inputMap, user)) {
+                // The protocol between applications and PSAMA is application will
+                // attach everything that needs to be verified in request field of inputMap
+                // besides token. So here we should attach everything in request.
+				&& authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
 			isAuthorizationPassed = true;
 		} else {
             // if isLongTermTokenCompromised flag is true,

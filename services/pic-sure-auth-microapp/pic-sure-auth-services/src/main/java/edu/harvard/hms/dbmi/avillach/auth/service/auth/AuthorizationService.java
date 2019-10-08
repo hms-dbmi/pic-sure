@@ -14,6 +14,26 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Designed for handling authorization activities in the project, will decide
+ * if a user will be allow to send the request to certain applications based on
+ * what endpoint they are trying to hit and what request body (in HTTP POST method)
+ * they send along with.
+ *     <h3>Thoughts of design:</h3>
+ *     The core technology used here is jsonpath.
+ *     In {@link edu.harvard.hms.dbmi.avillach.auth.rest.TokenService#inspectToken(Map)} class, other registered applications
+ *     will be able to hit tokenIntrospection endpoint with a token that they want PSAMA to introspect along
+ *     with what url the token holder is trying to hit and what data this token holder is trying to send. After
+ *     checking if the token is valid or not, the authorization check in this class will start.
+ *     <br><br>
+ *     <p>
+ *     Whether users will be allowed access or not, will depend on their privileges, privileges will depend on
+ *     the accessRules underneath, then this AuthorizationService class will eventually use  jsonpath to check if
+ *     certain places of the incoming JSON meets the requirement of the preset rules in accessRules to determine
+ *     if the token holder is authorized or not.
+ *     </p>
+ *
+ */
 public class AuthorizationService {
 	private Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
 

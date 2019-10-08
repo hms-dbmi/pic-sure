@@ -8,6 +8,9 @@ import javax.persistence.*;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * <p>Models the authorization layer along with Privilege/AccessRule.</p>
+ */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "role")
 public class Role extends BaseEntity {

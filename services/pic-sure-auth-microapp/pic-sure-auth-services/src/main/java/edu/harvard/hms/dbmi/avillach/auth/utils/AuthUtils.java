@@ -18,6 +18,9 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * <p>Contains common methods for authentication and authorization.</p>
+ */
 public class AuthUtils {
 
 	private static Logger logger = LoggerFactory.getLogger(AuthUtils.class);

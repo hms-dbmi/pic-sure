@@ -12,6 +12,9 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Defines a model of User behavior.
+ */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Entity(name = "user")
 public class User extends BaseEntity implements Serializable, Principal {
@@ -29,19 +32,15 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 
 	/**
-	 * <p>NOTICE!!!!!!!!!!!!!!!!!!!!!!!</p>
+	 * <p>NOTICE</p>
 	 * <br><p>
-	 *
-	 * please note: when update or create a user,
-	 * please give connection.id as input, for some reason,
-	 * the UserService is specifically using connection.id for input
-	 *
+	 * When you update or create a user,
+	 * please use connection.id as the input. The UserService is specifically using connection.id.
 	 * </p>
 	 * <br>
 	 * <p><b>
-	 *     This is because of the method checkAssociation() in UserService
+	 * Note: This is because of the checkAssociation() method in UserService.
 	 * </b></p><br>
-	 *
 	 * @see edu.harvard.hms.dbmi.avillach.auth.rest.UserService
 	 */
 	@ManyToOne
@@ -269,6 +268,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 		this.token = token;
 	}
 
+	/**
+	 * <p>Inner class defining limited user attributes returned from the User endpoint.</p>
+	 */
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
 	public static class UserForDisaply {
 		String uuid;

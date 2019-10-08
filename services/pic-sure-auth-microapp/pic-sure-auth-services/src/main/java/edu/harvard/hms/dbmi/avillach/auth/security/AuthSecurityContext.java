@@ -7,7 +7,7 @@ import javax.ws.rs.core.SecurityContext;
 import java.security.Principal;
 
 /**
- * custom Security Context
+ * customized Security Context
  */
 public class AuthSecurityContext implements SecurityContext {
 

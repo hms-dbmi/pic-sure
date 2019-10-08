@@ -19,7 +19,7 @@ import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.List;
 
-public class Auth0UserMatchingService {
+public class OauthUserMatchingService {
 
 	@Inject
 	UserRepository userRepo;
@@ -33,7 +33,7 @@ public class Auth0UserMatchingService {
 	@Inject
 	ConnectionRepository connectionRepo;
 
-	private Logger logger = LoggerFactory.getLogger(Auth0UserMatchingService.class);
+	private Logger logger = LoggerFactory.getLogger(OauthUserMatchingService.class);
 
 	private ObjectMapper mapper = new ObjectMapper();
 

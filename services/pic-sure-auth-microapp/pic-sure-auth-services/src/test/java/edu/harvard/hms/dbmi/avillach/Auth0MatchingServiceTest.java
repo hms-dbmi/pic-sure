@@ -9,7 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
-import edu.harvard.hms.dbmi.avillach.auth.service.Auth0UserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.UserMetadataMappingService;
 import org.junit.Before;
 import org.junit.Test;
@@ -44,7 +44,7 @@ public class Auth0MatchingServiceTest {
     UserService userService = mock(UserService.class);
 
     @InjectMocks
-    Auth0UserMatchingService cut = new Auth0UserMatchingService();
+    OauthUserMatchingService cut = new OauthUserMatchingService();
 
     User persistedUser;
     ObjectMapper mapper = new ObjectMapper();
