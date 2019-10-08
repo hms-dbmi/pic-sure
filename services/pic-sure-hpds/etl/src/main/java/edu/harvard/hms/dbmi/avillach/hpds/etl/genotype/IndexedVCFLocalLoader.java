@@ -173,6 +173,9 @@ public class IndexedVCFLocalLoader {
 				if(variantValues==null) {
 					variantValues = new String[patientIds.size()];
 					loadingMap.put(specNotation, variantValues);
+					if(!(lastLineProcessed.name == null || lastLineProcessed.name.contentEquals("."))) {
+						loadingMap.put(lastLineProcessed.name, variantValues);
+					}
 				}
 				lastSpecNotation = specNotation;
 			}
