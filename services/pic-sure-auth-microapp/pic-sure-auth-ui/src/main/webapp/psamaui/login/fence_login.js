@@ -57,13 +57,15 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     return null;
                 } else {
                     console.log("FENCE-showLoginPage() no code in query string, redirecting to FENCE");
-                    // This is the initial login, when there is no code present
-                    $('#main-content').html('Authentication will be performed via DataStage FENCE pseudo-protocol.');
-                    window.location = settings.idp_provider_uri + "/user/oauth2/authorize"+
-                        "?response_type=code"+
-                        "&scope=user+openid"+
-                        "&client_id=" + settings.fence_client_id +
-                        "&redirect_uri="+settings.fence_redirect_url;
+
+                    // Show the fence_login template, with the generated fenceLoginURL
+                    $('#main-content').html(loginTemplate({
+                        fenceURL : settings.idp_provider_uri + "/user/oauth2/authorize"+
+                            "?response_type=code"+
+                            "&scope=user+openid"+
+                            "&client_id=" + settings.fence_client_id +
+                            "&redirect_uri="+settings.fence_redirect_url
+                    }));
                     return null;
                 }
                 console.log("FENCE-showLoginPage() finished");
