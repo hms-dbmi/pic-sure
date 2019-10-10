@@ -95,7 +95,7 @@ public class PicsureRS {
 
 	@GET
 	@Path("/query/{queryId}/metadata")
-	public QueryStatus queryMetdata(@PathParam("queryId") UUID queryId){
+	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId){
 		return queryService.queryMetadata(queryId);
 	}
 	
