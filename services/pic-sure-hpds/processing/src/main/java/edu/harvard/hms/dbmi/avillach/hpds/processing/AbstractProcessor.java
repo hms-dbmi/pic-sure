@@ -421,9 +421,10 @@ public abstract class AbstractProcessor {
 			indiscriminateVariantBitmask = masks.heterozygousMask;
 		}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
 			indiscriminateVariantBitmask = masks.heterozygousMask.or(masks.homozygousMask);
+		}else {
+			indiscriminateVariantBitmask = variantStore.emptyBitmask;			
 		}
-		throw new RuntimeException("This is a bug, but we can't handle it here because we have no way "
-				+ "to know how many bits should be in the answer.");
+		return indiscriminateVariantBitmask;
 	}
 
 	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets)
