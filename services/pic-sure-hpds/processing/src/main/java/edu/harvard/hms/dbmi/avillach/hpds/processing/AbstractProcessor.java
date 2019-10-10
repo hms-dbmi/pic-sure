@@ -233,7 +233,7 @@ public abstract class AbstractProcessor {
 		if(query.anyRecordOf != null && !query.anyRecordOf.isEmpty()) {
 			Set<Integer> patientsInScope = new ConcurrentSkipListSet<Integer>();
 			query.anyRecordOf.parallelStream().forEach(path->{
-				if(patientsInScope.size()<allIds.size()) {
+				if(patientsInScope.size()<Math.max(allIds.size(),variantStore.getPatientIds().length)) {
 					if(pathIsVariantSpec(path)) {
 						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
 					} else {
