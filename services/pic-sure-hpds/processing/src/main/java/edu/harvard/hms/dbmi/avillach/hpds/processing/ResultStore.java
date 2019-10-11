@@ -27,7 +27,7 @@ public class ResultStore {
 	
 	public ResultStore(String resultId, String queryId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		this.columns = new ArrayList<ColumnMeta>();
-		this.numRows = ids.size() + 1;
+		this.numRows = ids.size();
 		this.getColumns().add(PATIENT_ID_COLUMN_META);
 		int rowWidth = Integer.BYTES;
 		for(ColumnMeta column : columns) {
