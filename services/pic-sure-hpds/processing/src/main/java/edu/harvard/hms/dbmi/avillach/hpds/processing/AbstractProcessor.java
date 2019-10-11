@@ -283,7 +283,7 @@ public abstract class AbstractProcessor {
 			}
 			// TODO : This is probably not necessary, see TODO below. 
 			String bitmaskString = bitmask.toString(2);
-			//System.out.println("or'd masks : " + bitmaskString);
+			log.debug("or'd masks : " + bitmaskString);
 			PhenoCube<String> idCube;
 			try {
 				idCube = ID_CUBE_NAME.contentEquals("NONE") ? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
@@ -378,7 +378,7 @@ public abstract class AbstractProcessor {
 	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(String[] zygosities, String variantName) {
 		ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
 		variantName = variantName.replaceAll(",\\d/\\d$", "");
-		System.out.println("looking up mask for : " + variantName);
+		log.debug("looking up mask for : " + variantName);
 		VariantMasks masks;
 		try {
 			masks = variantStore.getMasks(variantName);
@@ -505,7 +505,7 @@ public abstract class AbstractProcessor {
 							}
 							Set<Integer> ids = new TreeSet<Integer>();
 							String bitmaskString = matchingPatients.toString(2);
-							//log.info("or'd masks : " + bitmaskString);
+							log.debug("or'd masks : " + bitmaskString);
 							PhenoCube<String> patientIdCube = ID_CUBE_NAME.contentEquals("NONE")? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
 							for(int x = 2;x < bitmaskString.length()-2;x++) {
 								if('1'==bitmaskString.charAt(x)) {
