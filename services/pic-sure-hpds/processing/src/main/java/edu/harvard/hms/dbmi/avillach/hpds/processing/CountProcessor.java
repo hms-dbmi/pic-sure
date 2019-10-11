@@ -4,6 +4,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import com.google.common.collect.Sets;
@@ -37,8 +39,8 @@ public class CountProcessor extends AbstractProcessor {
 	 * @return
 	 * @throws TooManyVariantsException
 	 */
-	public HashMap<String, Integer> runCrossCounts(Query query) throws TooManyVariantsException {
-		HashMap<String, Integer> counts = new HashMap<>();
+	public Map<String, Integer> runCrossCounts(Query query) throws TooManyVariantsException {
+		TreeMap<String, Integer> counts = new TreeMap<>();
 		TooManyVariantsException[] exceptions = new TooManyVariantsException[1];
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
