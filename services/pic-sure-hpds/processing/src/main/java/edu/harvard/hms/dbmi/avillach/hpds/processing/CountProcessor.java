@@ -3,6 +3,9 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.TreeSet;
+
+import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -36,11 +39,12 @@ public class CountProcessor extends AbstractProcessor {
 	public HashMap<String, Integer> runCrossCounts(Query query) throws TooManyVariantsException {
 		HashMap<String, Integer> counts = new HashMap<>();
 		TooManyVariantsException[] exceptions = new TooManyVariantsException[1];
+		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
-			Query safeCopy = new Query(query);
+			Query safeCopy = new Query();
 			safeCopy.requiredFields.add(concept);
 			try {
-				counts.put(concept, runCounts(safeCopy));
+				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
 			} catch (TooManyVariantsException e) {
 				exceptions[0] = e;
 			}
