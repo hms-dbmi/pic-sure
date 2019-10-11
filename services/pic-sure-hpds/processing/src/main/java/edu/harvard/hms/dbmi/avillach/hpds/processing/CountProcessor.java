@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.TreeSet;
 
@@ -42,6 +43,7 @@ public class CountProcessor extends AbstractProcessor {
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
 			Query safeCopy = new Query();
+			safeCopy.requiredFields = new ArrayList<String>();
 			safeCopy.requiredFields.add(concept);
 			try {
 				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
