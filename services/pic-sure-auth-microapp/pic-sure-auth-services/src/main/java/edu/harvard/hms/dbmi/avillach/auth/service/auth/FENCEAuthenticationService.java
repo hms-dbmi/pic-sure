@@ -70,7 +70,7 @@ public class FENCEAuthenticationService {
         StringBuilder query_string = new StringBuilder()
                 .append("grant_type").append('=').append("authorization_code").append('&')
                 .append("code").append('=').append(fence_code).append('&')
-                .append("redirect_uri").append('=').append("https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/");
+                .append("redirect_uri").append('=').append(JAXRSConfiguration.fence_redirect_back_url);
 
         String fence_token_url = JAXRSConfiguration.idp_provider_uri+"/user/oauth2/token";
 

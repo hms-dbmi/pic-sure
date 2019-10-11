@@ -54,7 +54,7 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/auth0host")
     public static String auth0host;
-    
+
     @Resource(mappedName = "java:global/tosEnabled")
     public static String tosEnabled;
 
@@ -84,6 +84,7 @@ public class JAXRSConfiguration extends Application {
     public static String idp_provider_uri;
     public static String fence_client_id;
     public static String fence_client_secret;
+    public static String fence_redirect_back_url;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
@@ -174,10 +175,11 @@ public class JAXRSConfiguration extends Application {
                 fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
                 fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
                 logger.info("checkIDPProvider() idp provider FENCE is configured");
-
                 logger.info("checkIDPProvider() fence_client_id is "+fence_client_id);
                 logger.info("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
 
+                fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
+                logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
             } catch (Exception ex) {
                 logger.error("Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
                         "Check configuration in standalone.xml");
