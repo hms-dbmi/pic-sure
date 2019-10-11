@@ -70,23 +70,29 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		oos.writeObject(value);
 		oos.flush();
 		oos.close();
-		storage.write(out.toByteArray());
+		synchronized(storage) {
+			storage.write(out.toByteArray());			
+		}
 	}
 
 	public V get(K key) throws IOException {
 		if(this.storage==null) {
-			this.open();
+			synchronized(storage) {
+				this.open();
+			}
 		}
 		Long[] offsetsInStorage = index.get(key);
 		if(offsetsInStorage != null) {
 			Long offsetInStorage = index.get(key)[0];
 			int offsetLength = index.get(key)[1].intValue();
 			if(offsetInStorage > 0 && offsetLength>0) {
-				storage.seek(offsetInStorage);
 				byte[] buffer = new byte[offsetLength];
-				storage.readFully(buffer);
-
 				ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new ByteArrayInputStream(buffer)));
+				synchronized(storage) {
+					storage.seek(offsetInStorage);
+					storage.readFully(buffer);					
+				}
+
 				try {
 					V readObject = (V) in.readObject();
 					return readObject;
