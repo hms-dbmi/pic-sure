@@ -208,7 +208,7 @@ public abstract class AbstractProcessor {
 
 		TreeSet<Integer> idList;
 		if(filteredIdSets.isEmpty()) {
-			idList = allIds;
+			idList = new TreeSet(Sets.intersection(allIds, new TreeSet(Arrays.asList(variantStore.getPatientIds()))));
 		}else {
 			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
 		}
