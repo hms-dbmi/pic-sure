@@ -114,6 +114,14 @@ public class ResultStoreStream extends InputStream {
 		return entries;
 	}
 
+	public void close() {
+		try {
+			in.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
 	public void open() {
 		try {
 			in = new BufferedInputStream(new FileInputStream(new File(tempFile.getAbsolutePath())), 1024 * 1024 * 8);

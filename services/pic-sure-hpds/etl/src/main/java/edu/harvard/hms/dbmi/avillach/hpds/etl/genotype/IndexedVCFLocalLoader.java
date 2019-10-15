@@ -411,7 +411,7 @@ public class IndexedVCFLocalLoader {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		System.out.println("Converted" + (System.currentTimeMillis() - startTime) + " seconds");
+		System.out.println("Converted " + ((System.currentTimeMillis() - startTime)/1000) + " seconds");
 	}
 
 	static boolean[] infoStoreFlipped = new boolean[24];
