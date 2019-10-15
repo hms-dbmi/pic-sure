@@ -85,7 +85,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		if(offsetsInStorage != null) {
 			Long offsetInStorage = index.get(key)[0];
 			int offsetLength = index.get(key)[1].intValue();
-			if(offsetInStorage > 0 && offsetLength>0) {
+			if(offsetInStorage != null && offsetLength>0) {
 				byte[] buffer = new byte[offsetLength];
 				synchronized(storage) {
 					storage.seek(offsetInStorage);
