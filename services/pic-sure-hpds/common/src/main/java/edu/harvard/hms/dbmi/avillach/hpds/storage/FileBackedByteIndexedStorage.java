@@ -77,7 +77,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 
 	public V get(K key) throws IOException {
 		if(this.storage==null) {
-			synchronized(storage) {
+			synchronized(this) {
 				this.open();
 			}
 		}
