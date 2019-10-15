@@ -177,12 +177,14 @@ public class PicSureService implements IResourceRS {
 				AbstractProcessor.infoStoreColumns.parallelStream().forEach((String infoColumn)->{
 					FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
 					if(store!=null) {
-						List<String> searchResults = store.search(searchJson.getQuery().toString());
+						String query = searchJson.getQuery().toString();
+						List<String> searchResults = store.search(query);
 						boolean storeIsNumeric = store.isContinuous;
 						if( ! searchResults.isEmpty()) {
 							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", searchResults, "continuous", storeIsNumeric));
 						}
-						if(store.description.toLowerCase().contains(searchJson.getQuery().toString().toLowerCase())) {
+						String lowerCase = query.toLowerCase();
+						if(store.description.toLowerCase().contains(lowerCase) || store.column_key.contains(lowerCase)) {
 							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", store.isContinuous? new ArrayList<String>() : store.allValues.keys(), "continuous", storeIsNumeric));
 						}
 					}
