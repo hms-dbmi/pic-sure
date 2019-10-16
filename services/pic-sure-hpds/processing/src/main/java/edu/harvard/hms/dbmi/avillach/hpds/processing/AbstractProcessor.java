@@ -462,9 +462,6 @@ public abstract class AbstractProcessor {
 						TreeSet<String> variants = new TreeSet<String>();
 						for(String value : valuesInRange) {
 							try {
-								for(String variantName : infoStore.allValues.get(value)) {
-									System.out.println(variantName);
-								}
 								variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
 							} catch (IOException e) {
 								// TODO Auto-generated catch block
@@ -485,10 +482,7 @@ public abstract class AbstractProcessor {
 					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
 					log.info("Number of matching variants for all sets : " + stats);
 					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
-					if(intersectionOfInfoFilters.size() > 100000) {
-						log.info("Too many variants included in query, will not attempt to process");
-						throw new TooManyVariantsException();
-					}else if(!intersectionOfInfoFilters.isEmpty()) {
+					if(!intersectionOfInfoFilters.isEmpty()) {
 						try {
 							VariantMasks masks;
 							BigInteger heteroMask = variantStore.emptyBitmask();
