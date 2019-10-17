@@ -8,6 +8,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
@@ -24,6 +25,9 @@ public class PicsureQueryService {
 
 	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
+	@Inject
+	JWTFilter jwtFilter;
+	
 	@Inject
 	ResourceRepository resourceRepo;
 
@@ -162,7 +166,7 @@ public class PicsureQueryService {
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
-
+		
 		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);

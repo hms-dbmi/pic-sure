@@ -18,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
-import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
@@ -31,7 +30,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -72,24 +70,15 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
 
-
 			if (authenticatedUser == null) {
 				logger.error("Cannot extract a user from token: " + token);
 				throw new NotAuthorizedException("Cannot find or create a user");
 			}
 
-			// currently only user id will be logged, in the future, it might contain roles and other information,
-			// like xxxuser|roles|otherInfo
 			userForLogging = authenticatedUser.getUserId();
 
 			//The request context wants to remember who the user is
 			requestContext.setProperty("username", userForLogging);
-
-			// check authorization of the authenticated user
-			checkRoles(authenticatedUser, resourceInfo
-					.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
-					? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-							: new String[]{});
 
 			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
@@ -106,36 +95,6 @@ public class JWTFilter implements ContainerRequestFilter {
 			e.printStackTrace();
 			requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
 		}
-	}
-
-	/**
-	 * check if user contains the input list of roles
-	 *
-	 * @param authenticatedUser
-	 * @param rolesAllowed
-	 * @return
-	 */
-	private boolean checkRoles(User authenticatedUser, String[] rolesAllowed) throws NotAuthorizedException{
-
-		String logMsg = "The roles of the user - id: " + authenticatedUser.getUserId() + " - "; //doesn't match the required restrictions";
-		boolean b = true;
-		if (rolesAllowed.length < 1) {
-			return true;
-		}
-
-		if (authenticatedUser.getRoles() == null) {
-			logger.error(logMsg + "user doesn't have a role.");
-			throw new NotAuthorizedException("user doesn't have a role.");
-		}
-
-		for (String role : rolesAllowed) {
-			if(!authenticatedUser.getRoles().contains(role)) {
-				logger.error(logMsg + "doesn't match the required role restrictions, role from user: "
-						+ authenticatedUser.getRoles() + ", role required: " + Arrays.toString(rolesAllowed));
-				throw new NotAuthorizedException("doesn't match the required role restrictions.");
-			}
-		}
-		return b;
 	}
 
 	/**
@@ -221,7 +180,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 
 			String sub = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
-			User user = new User().setRoles(responseContent.get("roles").asText()).setSubject(sub).setUserId(sub);
+			User user = new User().setSubject(sub).setUserId(sub);
 			return user;
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post

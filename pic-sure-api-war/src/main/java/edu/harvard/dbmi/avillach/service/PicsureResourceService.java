@@ -52,7 +52,6 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
     }
 
     @POST
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response addResource(List<Resource> resources){
@@ -60,7 +59,6 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
     }
 
     @PUT
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Consumes(MediaType.APPLICATION_JSON)
     @Path("/")
     public Response updateResource(List<Resource> resources){
@@ -69,7 +67,6 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
 
     @Transactional
     @DELETE
-    @RolesAllowed(PicsureNaming.RoleNaming.ROLE_SYSTEM)
     @Path("/{resourceId}")
     public Response removeEntityById(@PathParam("resourceId") final String resourceId) {
         return removeEntityById(resourceId, resourceRepo);

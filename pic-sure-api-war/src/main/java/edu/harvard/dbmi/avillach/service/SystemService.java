@@ -10,7 +10,6 @@ public class SystemService {
     @GET
     @Path("/status")
     @Produces("text/plain")
-    @RolesAllowed("ROLE_SYSTEM")
     public String status() {
         return "RUNNING";
     }
