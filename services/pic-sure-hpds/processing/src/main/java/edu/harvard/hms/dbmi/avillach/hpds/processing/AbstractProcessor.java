@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IntSummaryStatistics;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -488,8 +489,9 @@ public abstract class AbstractProcessor {
 							BigInteger heteroMask = variantStore.emptyBitmask();
 							BigInteger homoMask = variantStore.emptyBitmask();
 							BigInteger matchingPatients = variantStore.emptyBitmask();
-							for(String variant : intersectionOfInfoFilters){
-								masks = variantStore.getMasks(variant);
+							Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
+							while(variantIterator.hasNext() && matchingPatients.bitCount() < matchingPatients.bitLength()) {
+								masks = variantStore.getMasks(variantIterator.next());
 								if(masks != null) {
 									heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 									homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
