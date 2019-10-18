@@ -490,8 +490,10 @@ public abstract class AbstractProcessor {
 							BigInteger homoMask = variantStore.emptyBitmask();
 							BigInteger matchingPatients = variantStore.emptyBitmask();
 							Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
-							while(variantIterator.hasNext() && matchingPatients.bitCount() < matchingPatients.bitLength()) {
+							int variantsProcessed = 0;
+							while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
 								masks = variantStore.getMasks(variantIterator.next());
+								variantsProcessed++;
 								if(masks != null) {
 									heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 									homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
