@@ -143,7 +143,7 @@ public class FENCEAuthenticationService {
         }
 
         HashMap<String, Object> claims = new HashMap<String,Object>();
-        claims.put("name", fence_user_profile.get("tags").get("name"));
+        claims.put("name", fence_user_profile.get("name"));
         claims.put("email", current_user.getEmail());
         claims.put("sub", current_user.getSubject());
         HashMap<String, String> responseMap = authUtil.getUserProfileResponse(claims);
