@@ -435,43 +435,7 @@ public abstract class AbstractProcessor {
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				// Add variant sets for each filter
-				if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
-					filter.categoryVariantInfoFilters.forEach((String column, String[] values)->{
-						Arrays.sort(values);
-						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-						List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
-							int insertionIndex = Arrays.binarySearch(values, key);
-							return insertionIndex > -1 && insertionIndex < values.length;
-						}).collect(Collectors.toList());
-						for(String key : infoKeys) {
-							try {
-								variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-					});
-				}
-				if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
-					filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
-						FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-						doubleFilter.getMax();
-						Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
-						List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-						TreeSet<String> variants = new TreeSet<String>();
-						for(String value : valuesInRange) {
-							try {
-								variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-						variantSets.add(new TreeSet<String>(variants));
-					});
-				}
+				addVariantsMatchingFilters(filter, variantSets);
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
@@ -483,49 +447,7 @@ public abstract class AbstractProcessor {
 					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
 					log.info("Number of matching variants for all sets : " + stats);
 					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
-					if(!intersectionOfInfoFilters.isEmpty()) {
-						try {
-							VariantMasks masks;
-							BigInteger heteroMask = variantStore.emptyBitmask();
-							BigInteger homoMask = variantStore.emptyBitmask();
-							BigInteger matchingPatients = variantStore.emptyBitmask();
-							Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
-							int variantsProcessed = 0;
-							while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
-								masks = variantStore.getMasks(variantIterator.next());
-								variantsProcessed++;
-								if(masks != null) {
-									heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
-									homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
-									BigInteger orMasks = heteroMask.or(homoMask);
-									matchingPatients = matchingPatients.or(orMasks);								
-								}
-							}
-							Set<Integer> ids = new TreeSet<Integer>();
-							String bitmaskString = matchingPatients.toString(2);
-							log.debug("or'd masks : " + bitmaskString);
-							PhenoCube<String> patientIdCube = ID_CUBE_NAME.contentEquals("NONE")? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
-							for(int x = 2;x < bitmaskString.length()-2;x++) {
-								if('1'==bitmaskString.charAt(x)) {
-									// Minor hack here to deal with Baylor not sticking to one file naming convention
-									String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
-									try {
-										ids.add(patientIdCube == null ? Integer.parseInt(patientId) : patientIdCube.getKeysForValue(patientId).iterator().next());
-									}catch(NullPointerException e) {
-										System.out.println("Could not find id for patient " + patientId);
-									}
-								}
-							}
-							filteredIdSets.add(ids);
-						} catch (IOException e) {
-							log.error(e);
-						} catch (ExecutionException e) {
-							log.error(e);
-						}					
-					}else {
-						log.error("No matches found for info filters.");
-						filteredIdSets.add(new TreeSet<>());
-					}
+					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
 				}else {
 					log.error("No info filters included in query.");
 				}
@@ -533,6 +455,93 @@ public abstract class AbstractProcessor {
 
 		}
 		/* END OF VARIANT INFO FILTER HANDLING */
+	}
+
+	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
+		// Add variant sets for each filter
+		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
+			filter.categoryVariantInfoFilters.forEach((String column, String[] values)->{
+				Arrays.sort(values);
+				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+				List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
+					int insertionIndex = Arrays.binarySearch(values, key);
+					return insertionIndex > -1 && insertionIndex < values.length;
+				}).collect(Collectors.toList());
+				for(String key : infoKeys) {
+					try {
+						variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			});
+		}
+		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
+			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
+				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+				doubleFilter.getMax();
+				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
+				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
+				TreeSet<String> variants = new TreeSet<String>();
+				for(String value : valuesInRange) {
+					try {
+						variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				variantSets.add(new TreeSet<String>(variants));
+			});
+		}
+	}
+
+	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
+			Set<String> intersectionOfInfoFilters) {
+		if(!intersectionOfInfoFilters.isEmpty()) {
+			try {
+				VariantMasks masks;
+				BigInteger heteroMask = variantStore.emptyBitmask();
+				BigInteger homoMask = variantStore.emptyBitmask();
+				BigInteger matchingPatients = variantStore.emptyBitmask();
+				Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
+				int variantsProcessed = 0;
+				while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
+					masks = variantStore.getMasks(variantIterator.next());
+					variantsProcessed++;
+					if(masks != null) {
+						heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
+						homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
+						BigInteger orMasks = heteroMask.or(homoMask);
+						matchingPatients = matchingPatients.or(orMasks);								
+					}
+				}
+				Set<Integer> ids = new TreeSet<Integer>();
+				String bitmaskString = matchingPatients.toString(2);
+				log.debug("or'd masks : " + bitmaskString);
+				PhenoCube<String> patientIdCube = ID_CUBE_NAME.contentEquals("NONE")? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
+				for(int x = 2;x < bitmaskString.length()-2;x++) {
+					if('1'==bitmaskString.charAt(x)) {
+						// Minor hack here to deal with Baylor not sticking to one file naming convention
+						String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
+						try {
+							ids.add(patientIdCube == null ? Integer.parseInt(patientId) : patientIdCube.getKeysForValue(patientId).iterator().next());
+						}catch(NullPointerException e) {
+							System.out.println("Could not find id for patient " + patientId);
+						}
+					}
+				}
+				filteredIdSets.add(ids);
+			} catch (IOException e) {
+				log.error(e);
+			} catch (ExecutionException e) {
+				log.error(e);
+			}					
+		}else {
+			log.error("No matches found for info filters.");
+			filteredIdSets.add(new TreeSet<>());
+		}
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
