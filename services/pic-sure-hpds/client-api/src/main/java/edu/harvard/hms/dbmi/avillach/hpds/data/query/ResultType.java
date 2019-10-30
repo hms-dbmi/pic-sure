@@ -1,11 +1,41 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 
 public enum ResultType {
+	/**
+	 * Just a patient count
+	 */
 	COUNT,
+	/**
+	 * Return a CSV with an observation for each concept for each
+	 * patient included in the query. If there are multiple facts
+	 * for a specific patient, you will get the one that happens
+	 * to resolve from a binary search of the facts for the patient
+	 * id.
+	 */
 	DATAFRAME,
-	VARIANT_SEARCH,
-	SUBSET,
-	DATAFRAME_SIZE,
-	SEARCH_RESULTS,
-	CROSS_COUNT, DATAFRAME_MERGED, VARIANTS_OF_INTEREST, INFO_COLUMN_LISTING
+	/**
+	 * Return one patient count for each concept path included in
+	 * the crossCountFields
+	 */
+	CROSS_COUNT,
+	/**
+	 * Return all variant info column metadata
+	 */
+	INFO_COLUMN_LISTING, 
+	/**
+	 * Return the number of total observations for included patients and
+	 * included fields.
+	 */
+	OBSERVATION_COUNT, 
+	/**
+	 * This was developed for UDN, but is completely useless and should
+	 * be deleted.
+	 */
+	DATAFRAME_MERGED, 
+	/**
+	 * Not completely implemented and currently dead code. Someone with 
+	 * statistics experience needs to develop a p-value based filter for
+	 * the subset of patients.
+	 */
+	VARIANTS_OF_INTEREST
 }
