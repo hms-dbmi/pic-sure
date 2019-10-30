@@ -143,7 +143,6 @@ public class CompressedIndex implements Serializable {
 					TreeMap<Double, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
 					continousValueMap.values().forEach(
 							variantSet->{
-								System.out.println("Adding : " + variantSet.first() + " : " + variantSet.last());
 								valuesInRange.addAll(variantSet);
 							});
 				});

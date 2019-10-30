@@ -134,10 +134,10 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		if(maxSearchIndex > sortedByValue.length - 1) {
 			return sortedByValue.length - 1;
 		}
-		while(maxSearchIndex > -1 && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])<=0) {
-			maxSearchIndex--;
+		while(maxSearchIndex > -1 && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
+			maxSearchIndex++;
 		}
-		return maxSearchIndex+1;
+		return maxSearchIndex;
 	}
 
 	public boolean isStringType() {
