@@ -338,9 +338,10 @@ public class PicSureService implements IResourceRS {
 					return queryResult(status.getResourceResultId(), null);
 				} else if (incomingQuery.expectedResultType == ResultType.CROSS_COUNT) {
 					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-//				} else if (incomingQuery.expectedResultType == ResultType.VARIANTS_OF_INTEREST) {
-//					return Response.ok(variantsOfInterestProcessor.runVariantsOfInterestQuery(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+				} else if(incomingQuery.expectedResultType==ResultType.OBSERVATION_COUNT) {
+					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
 				} else {
+					// The only thing left is counts, this is also the lowest security concern query type so we default to it
 					return Response.ok(countProcessor.runCounts(incomingQuery)).build();				
 				}
 			} catch (IOException e) {

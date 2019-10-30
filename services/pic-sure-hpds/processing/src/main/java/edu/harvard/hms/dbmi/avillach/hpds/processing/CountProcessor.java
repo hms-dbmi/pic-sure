@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.Sets;
 
@@ -29,6 +32,25 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public int runCounts(Query query) throws TooManyVariantsException {
 		return getPatientSubsetForQuery(query).size();
+	}
+
+	/**
+	 * Retrieves a list of patient ids that are valid for the query result and total number
+	 * of observations recorded for all concepts included in the fields array for those patients.
+	 * 
+	 * @param query
+	 * @return
+	 * @throws TooManyVariantsException
+	 */
+	public int runObservationCount(Query query) throws TooManyVariantsException {
+		TreeSet<Integer> patients = getPatientSubsetForQuery(query);
+		int[] observationCount = {0};
+		query.fields.stream().forEach(field -> {
+			observationCount[0] += Arrays.stream(getCube(field).sortedByKey()).filter(keyAndValue->{
+				return patients.contains(keyAndValue.getKey());
+			}).collect(Collectors.counting());
+		});
+		return observationCount[0];
 	}
 
 	/**
