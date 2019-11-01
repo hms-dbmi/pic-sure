@@ -1,4 +1,4 @@
-FROM mysql:5.7.24
+FROM mysql:5.7
 
 COPY fence_db_setup.sql /tmp/fence_db_setup.sql
 
