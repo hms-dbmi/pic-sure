@@ -9,10 +9,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.*;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
@@ -56,6 +53,9 @@ public class UserService extends BaseEntityService<User> {
 
     @Inject
     RoleRepository roleRepo;
+
+    @Inject
+    PrivilegeRepository privilegeRepo;
 
     @Inject
     ConnectionRepository connectionRepo;
@@ -528,8 +528,14 @@ public class UserService extends BaseEntityService<User> {
                 r = new Role();
                 r.setName(roleName);
                 r.setDescription(roleDescription);
+
                 roleRepo.persist(r);
                 logger.debug("upsertRole() created new role");
+
+                // Since this is a new Role, we need to ensure that the
+                // corresponding Privilege (with gates) and AccessRule is added.
+               upsertPrivilege(u, r);
+
             }
             users_roles.add(r);
             logger.debug("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
@@ -547,6 +553,26 @@ public class UserService extends BaseEntityService<User> {
 
         logger.debug("upsertRole() finished");
         return status;
+    }
+
+    private boolean upsertPrivilege(User u, Role r) {
+        // Get privilege and assign it to this role.
+        String privilegeName = r.getName().replaceFirst("FENCE_*","PRIV_FENCE_");
+        Privilege p = new Privilege();
+        privilegeRepo.getByColumn(privilegeName, p);
+        if (p != null) {
+            logger.debug("Assigning privilege "+privilegeName+" to role "+r.getName());
+            Set<Privilege> privs = r.getPrivileges();
+            privs.add(p);
+            logger.debug("Privilege has been assigned to role");
+            logger.debug(privs.toString());
+            r.setPrivileges(privs);
+            roleRepo.persist(r);
+            logger.debug("Role "+r.getName()+" has been updated with new privileges");
+        } else {
+            logger.error("Could not get privilege "+privilegeName);
+        }
+        return true;
     }
 
 }

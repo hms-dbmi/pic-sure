@@ -138,8 +138,10 @@ public class FENCEAuthenticationService {
                     logger.error("getFENCEProfile() could not add roles to user's profile");
                 }
 
-                JsonNode role_object = fence_user_profile.get("project_access").get(access_role_name);
-                logger.debug("getFENCEProfile() object:"+role_object.toString());
+                // TODO: In case we need to do something with this part, we can uncomment it.
+                //JsonNode role_object = fence_user_profile.get("project_access").get(access_role_name);
+                //It is a an array of strings, like this: ["read-storage","read"]
+                //logger.debug("getFENCEProfile() object:"+role_object.toString());
         }
 
         HashMap<String, Object> claims = new HashMap<String,Object>();
