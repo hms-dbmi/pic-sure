@@ -16,6 +16,9 @@ import javax.ws.rs.core.SecurityContext;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
+/**
+ * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
+ */
 @Path("tos")
 public class TermsOfServiceEndpoint extends BaseEntityService<TermsOfService> {
 

@@ -11,6 +11,9 @@ import org.hibernate.persister.entity.EntityPersister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * <p>Event listener that triggers email notifications a user is updated.</p>
+ */
 public class UpdateUserListener extends BaseEnversCollectionEventListener implements PostInsertEventListener,
         PostCollectionUpdateEventListener{
 

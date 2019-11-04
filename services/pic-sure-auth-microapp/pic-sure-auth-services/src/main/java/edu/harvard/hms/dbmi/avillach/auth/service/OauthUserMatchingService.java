@@ -19,6 +19,9 @@ import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * <p>Matches users created by admins with user profiles created by a 3rd party Oauth provider.</p>
+ */
 public class OauthUserMatchingService {
 
 	@Inject

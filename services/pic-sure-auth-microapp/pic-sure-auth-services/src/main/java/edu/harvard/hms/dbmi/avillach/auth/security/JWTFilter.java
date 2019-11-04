@@ -33,13 +33,13 @@ import java.util.UUID;
 
 /**
  * The main gate for PSAMA that filters all incoming requests against PSAMA.
- * <h2>Logic of design</h3>
+ * <h3>Design Logic</h3>
  * <ul>
- *     <li>All incoming requests will come to this filter</li>
- *     <li>To pass this filter, the incoming request first needs to have a valid Bearer token in Http Authorization Header
- *     to represent a valid identity behind the token </li>
- *     <li>In some cases, the incoming request doesn't need to hold a token with, which are the path to <code>authentication</code>
- *     endpoint, or to <code>swagger.json</code> or <code>swagger.html</code></li>
+ *     <li>All incoming requests pass through this filter.</li>
+ *     <li>To pass this filter, the incoming request needs a valid bearer token in its HTTP Authorization Header
+ *     to represent a valid identity behind the token. </li>
+ *     <li>In some cases, the incoming request doesn't need to hold a token. For example, when the request is to the <code>authentication</code>
+ *     endpoint, <code>swagger.json</code>, or <code>swagger.html</code>.</li>
  * </ul>
  */
 @Provider

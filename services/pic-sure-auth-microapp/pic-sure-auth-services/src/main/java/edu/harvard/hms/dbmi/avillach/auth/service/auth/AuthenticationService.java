@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * This class is designed to provide authentication functionality. This implements an authenticationService interface
- * in the future to support different authentication mode.
+ * This class provides authentication functionality. This implements an authenticationService interface
+ * in the future to support different modes of authentication.
  *
  * <h3>Thoughts of design</h3>
  * The main purpose of this class is returns a token that includes information of the roles of users.
