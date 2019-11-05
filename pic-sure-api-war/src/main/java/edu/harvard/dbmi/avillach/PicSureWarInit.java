@@ -22,7 +22,7 @@ public class PicSureWarInit {
     @Resource(mappedName = "java:global/token_introspection_url")
     private String token_introspection_url;
 
-    @Resource(mappedName = "global/token_introspection_token")
+    @Resource(mappedName = "java:global/token_introspection_token")
     private String token_introspection_token;
 
     //to be able to pre modified
