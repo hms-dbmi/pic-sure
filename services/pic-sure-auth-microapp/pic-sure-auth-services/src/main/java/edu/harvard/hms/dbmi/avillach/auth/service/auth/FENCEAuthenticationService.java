@@ -132,7 +132,7 @@ public class FENCEAuthenticationService {
             String access_role_name = access_role_names.next();
 
             logger.debug("getFENCEProfile() AccessRole:"+access_role_name);
-            String[] parts = access_role_name.split(".");
+            String[] parts = access_role_name.split("\\.");
             String newRoleName = "FENCE_"+parts[0]+"_"+parts[3];
             logger.info("getFENCEProfile() New PSAMA role name:"+newRoleName);
 
