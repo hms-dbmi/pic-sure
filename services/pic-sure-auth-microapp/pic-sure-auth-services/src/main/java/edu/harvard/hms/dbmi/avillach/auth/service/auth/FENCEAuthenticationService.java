@@ -132,15 +132,18 @@ public class FENCEAuthenticationService {
             String access_role_name = access_role_names.next();
 
             logger.debug("getFENCEProfile() AccessRole:"+access_role_name);
+            String[] parts = access_role_name.split(".");
+            String newRoleName = "FENCE_"+parts[0]+"_"+parts[3];
+            logger.info("getFENCEProfile() New PSAMA role name:"+newRoleName);
 
-                if (userService.upsertRole(current_user, access_role_name, "FENCE role "+access_role_name)) {
-                    logger.info("getFENCEProfile() Updated user role. Now it includes `"+access_role_name+"`");
+                if (userService.upsertRole(current_user, newRoleName, "FENCE role "+newRoleName)) {
+                    logger.info("getFENCEProfile() Updated user role. Now it includes `"+newRoleName+"`");
                 } else {
                     logger.error("getFENCEProfile() could not add roles to user's profile");
                 }
 
                 // TODO: In case we need to do something with this part, we can uncomment it.
-                //JsonNode role_object = fence_user_profile.get("project_access").get(access_role_name);
+                //JsonNode role_object = fence_user_profile.get("project_access").get(newRoleName);
                 //It is a an array of strings, like this: ["read-storage","read"]
                 //logger.debug("getFENCEProfile() object:"+role_object.toString());
         }

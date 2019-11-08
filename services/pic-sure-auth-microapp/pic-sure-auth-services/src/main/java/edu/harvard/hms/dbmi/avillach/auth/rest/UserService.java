@@ -524,11 +524,6 @@ public class UserService extends BaseEntityService<User> {
                 logger.debug("upsertRole() role already exists");
                 r = existing_role;
             } else {
-
-                String[] parts = roleName.split(".");
-                String uroleName = "FENCE_"+parts[0]+"_"+parts[3];
-
-
                 // This is a new Role
                 r = new Role();
                 r.setName(roleName);

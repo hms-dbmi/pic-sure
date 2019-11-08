@@ -100,4 +100,7 @@ logger "Saving current images to ${CONFIG_DIR}/images directory."
 #docker save dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH} | \
 #	gzip > ${CONFIG_DIR}/images/pic-sure-auth-ui_${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}.tar.gz
 
+echo "Images:"
+echo "dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}"
+echo "dbmi/pic-sure-auth-services:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}"
 logger "Done."
