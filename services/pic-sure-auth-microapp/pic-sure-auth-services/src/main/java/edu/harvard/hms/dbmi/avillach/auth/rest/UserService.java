@@ -524,6 +524,11 @@ public class UserService extends BaseEntityService<User> {
                 logger.debug("upsertRole() role already exists");
                 r = existing_role;
             } else {
+
+                String[] parts = roleName.split(".");
+                String uroleName = "FENCE_"+parts[0]+"_"+parts[3];
+
+
                 // This is a new Role
                 r = new Role();
                 r.setName(roleName);
@@ -534,7 +539,7 @@ public class UserService extends BaseEntityService<User> {
 
                 // Since this is a new Role, we need to ensure that the
                 // corresponding Privilege (with gates) and AccessRule is added.
-               upsertPrivilege(u, r);
+               //upsertPrivilege(u, r);
 
             }
             users_roles.add(r);
@@ -556,12 +561,16 @@ public class UserService extends BaseEntityService<User> {
     }
 
     private boolean upsertPrivilege(User u, Role r) {
+        logger.debug("upsertPrivilege() starting, adding privilege to role "+r.getName());
+
         // Get privilege and assign it to this role.
         String privilegeName = r.getName().replaceFirst("FENCE_*","PRIV_FENCE_");
+
+        logger.debug("upsertPrivilege() There should be a privilege with name: "+privilegeName);
         Privilege p = new Privilege();
         privilegeRepo.getByColumn(privilegeName, p);
         if (p != null) {
-            logger.debug("Assigning privilege "+privilegeName+" to role "+r.getName());
+            logger.debug("upsertPrivilege() Assigning privilege "+privilegeName+" to role "+r.getName());
             Set<Privilege> privs = r.getPrivileges();
             privs.add(p);
             logger.debug("Privilege has been assigned to role");
@@ -570,8 +579,9 @@ public class UserService extends BaseEntityService<User> {
             roleRepo.persist(r);
             logger.debug("Role "+r.getName()+" has been updated with new privileges");
         } else {
-            logger.error("Could not get privilege "+privilegeName);
+            logger.error("upsertPrivilege() Could not get privilege "+privilegeName);
         }
+        logger.debug("upsertPrivilege() ");
         return true;
     }
 

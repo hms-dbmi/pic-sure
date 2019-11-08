@@ -130,6 +130,7 @@ public class FENCEAuthenticationService {
         Iterator<String> access_role_names = fence_user_profile.get("project_access").fieldNames();
         while (access_role_names.hasNext()) {
             String access_role_name = access_role_names.next();
+
             logger.debug("getFENCEProfile() AccessRole:"+access_role_name);
 
                 if (userService.upsertRole(current_user, access_role_name, "FENCE role "+access_role_name)) {
