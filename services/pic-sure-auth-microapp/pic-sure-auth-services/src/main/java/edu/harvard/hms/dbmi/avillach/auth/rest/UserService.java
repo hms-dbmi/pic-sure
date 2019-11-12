@@ -486,6 +486,8 @@ public class UserService extends BaseEntityService<User> {
         new_user.setGeneralMetadata(node.toString());
         // This is a hack, but someone has to do it.
         new_user.setAcceptedTOS(new Date());
+        new_user.setConnection(connectionRepo.getUniqueResultByColumn("label", "fence"));
+        
         logger.debug("createUserFromFENCEProfile() finished setting fields");
 
         User actual_user = userRepo.findOrCreate(new_user);

@@ -2,8 +2,10 @@ package edu.harvard.hms.dbmi.avillach.auth;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenService;
@@ -102,6 +104,9 @@ public class JAXRSConfiguration extends Application {
     @Inject
     PrivilegeRepository privilegeRepo;
 
+    @Inject
+    ConnectionRepository connectionRepo;
+
     public final static ObjectMapper objectMapper = new ObjectMapper();
 
     public static final HttpClient client = HttpClientBuilder.create().build();
@@ -137,7 +142,7 @@ public class JAXRSConfiguration extends Application {
         beanConfig.setDescription("APIs for accessing PIC-SURE-AUTH-MICROAPP - a centralized authentication/authorization micro services");
         beanConfig.setTitle("PIC-SURE-AUTH-MICROAPP");
         beanConfig.setBasePath("/psama");
-        beanConfig.setResourcePackage(TokenService.class.getPackageName());
+        beanConfig.setResourcePackage(TokenService.class.getPackage().getName());
         beanConfig.setScan(true);
     }
 
@@ -180,6 +185,21 @@ public class JAXRSConfiguration extends Application {
 
                 fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
                 logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
+
+                // Upsert FENCE connection
+                Connection c = connectionRepo.findConnectionById("fence");
+                if (c != null) {
+                    logger.debug("FENCE connection already exists.");
+                } else {
+                    logger.debug("Create new FENCE connection");
+                    c = new Connection();
+                    c.setLabel("FENCE");
+                    c.setId("fence");
+                    c.setSubPrefix("fence|");
+                    c.setRequiredFields("[{\"label\":\"email\",\"id\":\"email\"}]");
+                    connectionRepo.persist(c);
+                    logger.debug("New FENCE connetion has been created");
+                }
             } catch (Exception ex) {
                 logger.error("Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
                         "Check configuration in standalone.xml");

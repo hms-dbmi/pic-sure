@@ -148,8 +148,10 @@ public class TokenService {
 				JAXRSConfiguration.tokenExpirationTime);
 
 		logger.debug("Finished RefreshToken and new token has been generated.");
-		return PICSUREResponse.success(Map.of("token", refreshedToken,
-				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()));
+		return PICSUREResponse.success(Map.of(
+				"token", refreshedToken,
+				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()
+		));
 	}
 
 
