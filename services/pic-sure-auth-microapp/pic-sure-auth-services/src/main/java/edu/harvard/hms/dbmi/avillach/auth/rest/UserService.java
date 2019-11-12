@@ -522,26 +522,24 @@ public class UserService extends BaseEntityService<User> {
             Role existing_role = roleRepo.getUniqueResultByColumn("name", roleName);
             if (existing_role != null) {
                 // Role already exists
-                logger.debug("upsertRole() role already exists");
+                logger.info("upsertRole() role already exists");
                 r = existing_role;
             } else {
                 // This is a new Role
                 r = new Role();
                 r.setName(roleName);
                 r.setDescription(roleDescription);
-
-                roleRepo.persist(r);
-                logger.debug("upsertRole() created new role");
-
                 // Since this is a new Role, we need to ensure that the
                 // corresponding Privilege (with gates) and AccessRule is added.
-               //upsertPrivilege(u, r);
+                r.setPrivileges(upsertPrivilege(u, r));
 
+                roleRepo.persist(r);
+                logger.info("upsertRole() created new role");
             }
             users_roles.add(r);
-            logger.debug("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
+            logger.info("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
         } catch (Exception ex) {
-            logger.error("upserRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
+            logger.error("upsertRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
         }
 
         try {
@@ -556,29 +554,63 @@ public class UserService extends BaseEntityService<User> {
         return status;
     }
 
-    private boolean upsertPrivilege(User u, Role r) {
-        logger.debug("upsertPrivilege() starting, adding privilege to role "+r.getName());
+    private Set<Privilege> upsertPrivilege(User u, Role r) {
+        String roleName = r.getName();
+        logger.info("upsertPrivilege() starting, adding privilege to role "+roleName);
+
+        Map<String, String> fenceMapping = new HashMap<>();
+        fenceMapping.put("phs000007", "Framingham Cohort");
+        fenceMapping.put("phs000179", "Genetic Epidemiology of COPD (COPDGene)");
+        fenceMapping.put("phs000209", "Multi-Ethnic Study of Atherosclerosis (MESA) Cohort");
+        fenceMapping.put("phs000286", "The Jackson Heart Study (JHS)");
+
+        String[] parts = roleName.split("_");
+        logger.info("upsertPrivilege() there are pieces "+parts.length);
+        for (String partp : parts) {
+            logger.debug("upsertPrivilege() part "+partp);
+        }
+        String project_name = parts[1];
+        String concent_group = parts[2];
+        String concept_path = fenceMapping.get(project_name);
+
+        String[] partst = roleName.split("\\_");
+        logger.info("upsertPrivilege() there are pieces "+partst.length);
 
         // Get privilege and assign it to this role.
         String privilegeName = r.getName().replaceFirst("FENCE_*","PRIV_FENCE_");
+        logger.info("upsertPrivilege() There should be a privilege with name: "+privilegeName);
 
-        logger.debug("upsertPrivilege() There should be a privilege with name: "+privilegeName);
-        Privilege p = new Privilege();
-        privilegeRepo.getByColumn(privilegeName, p);
+        Privilege p = privilegeRepo.getUniqueResultByColumn("name", privilegeName);
         if (p != null) {
-            logger.debug("upsertPrivilege() Assigning privilege "+privilegeName+" to role "+r.getName());
-            Set<Privilege> privs = r.getPrivileges();
-            privs.add(p);
-            logger.debug("Privilege has been assigned to role");
-            logger.debug(privs.toString());
-            r.setPrivileges(privs);
-            roleRepo.persist(r);
-            logger.debug("Role "+r.getName()+" has been updated with new privileges");
+            logger.info("upsertPrivilege() Assigning privilege "+p.getName()+" to role "+r.getName());
+
         } else {
-            logger.error("upsertPrivilege() Could not get privilege "+privilegeName);
+            logger.info("upsertPrivilege() This is a new privilege");
+            logger.info("upsertPrivilege() project:"+project_name+" concent_group:"+concent_group+" concept_path:"+concept_path);
+
+            // Build Privilege Object
+            try {
+                p = new Privilege();
+
+                p.setApplication(applicationRepo.getUniqueResultByColumn("name", "FENCE"));
+                p.setName("PRIV_"+r.getName());
+                p.setDescription(r.getName());
+                p.setQueryScope(concept_path);
+                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Study Accession with Consent Code\\\\\":[\""+project_name+"."+concent_group+"\"]},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
+                privilegeRepo.persist(p);
+                logger.debug(p.toString());
+                logger.info("upsertPrivilege() Added new privilege to DB");
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                logger.error("upsertPrivilege() could not save privilege");
+            }
         }
-        logger.debug("upsertPrivilege() ");
-        return true;
+
+        Set<Privilege> privs = r.getPrivileges();
+        if (privs == null) { privs = new HashSet<Privilege>(); privs.add(p); }
+
+        logger.info("upsertPrivilege() Finished");
+        return privs;
     }
 
 }

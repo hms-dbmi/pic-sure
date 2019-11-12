@@ -11,6 +11,7 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenService;
 import io.swagger.jaxrs.config.BeanConfig;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
@@ -27,7 +28,13 @@ import javax.naming.NamingException;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
+import javax.net.ssl.*;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
@@ -185,16 +192,64 @@ public class JAXRSConfiguration extends Application {
                 logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
 
                 // Create FENCE group mapping
-                String jsonString = "{\\\"phs000007\\\":\\\"Framingham Cohort\\\",\\\"phs000179\\\":\\\"Genetic Epidemiology of COPD (COPDGene)\\\",\\\"phs000209\\\":\\\"Multi-Ethnic Study of Atherosclerosis (MESA) Cohort\\\",\\\"phs000286\\\": \\\"The Jackson Heart Study (JHS)\\\",} ";
+                // String fenceMapping = Files.readString(Paths.get("/tmp/fence_mapping.json"));
+
+                /*
+                 *  fix for
+                 *    Exception in thread "main" javax.net.ssl.SSLHandshakeException:
+                 *       sun.security.validator.ValidatorException:
+                 *           PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException:
+                 *               unable to find valid certification path to requested target
+                 */
+                TrustManager[] trustAllCerts = new TrustManager[] {
+                        new X509TrustManager() {
+                            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                                return null;
+                            }
+
+                            public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
+
+                            public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
+
+                        }
+                };
+
+                SSLContext sc = SSLContext.getInstance("SSL");
+                sc.init(null, trustAllCerts, new java.security.SecureRandom());
+                HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+                // Create all-trusting host name verifier
+                HostnameVerifier allHostsValid = new HostnameVerifier() {
+                    public boolean verify(String hostname, SSLSession session) {
+                        return true;
+                    }
+                };
+                // Install the all-trusting host verifier
+                HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+                /*
+                 * end of the fix
+                 */
+
+
+                String fence_mapping_url = (String)ctx.lookup("java:global/fence_mapping_url");
+                String fence_mapping_json_string = null;
+                logger.debug("checkIDPProvider() Getting JSON from "+fence_mapping_url);
+                URL u = new URL(fence_mapping_url);
+                try (InputStream in = u.openStream()) {
+                    fence_mapping_json_string =  new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+                logger.debug("checkIDPProvider() Got JSON from "+fence_mapping_url);
+                
                 ObjectMapper mapper = new ObjectMapper();
-                MapType type = mapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class);
-                Map<String, Object> fence_mapping = mapper.readValue(jsonString, type);
+                MapType type = mapper.getTypeFactory().constructMapType(Map.class, String.class, String.class);
+                Map<String, Object> fence_mapping = mapper.readValue(fence_mapping_json_string, type);
                 for (String projectName : fence_mapping.keySet()) {
                     logger.debug("checkIDPProvider() projectName mapping "+projectName);
                 }
+                logger.debug("checkIDPProvider() Mapped fence project to concept path.");
 
                 // Upsert FENCE connection
-                Connection c = connectionRepo.getUniqueResultByColumn("label","fence");
+                Connection c = connectionRepo.getUniqueResultByColumn("label","FENCE");
                 if (c != null) {
                     logger.debug("checkIDPProvider() FENCE connection already exists.");
                 } else {
@@ -208,6 +263,7 @@ public class JAXRSConfiguration extends Application {
                     logger.debug("checkIDPProvider() New FENCE connetion has been created");
                 }
             } catch (Exception ex) {
+                logger.error("checkIDPProvider() "+ex.getMessage());
                 logger.error("checkIDPProvider() Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
                         "Check configuration in standalone.xml");
             }
