@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.MapType;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
@@ -26,10 +27,7 @@ import javax.naming.NamingException;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
@@ -185,6 +183,15 @@ public class JAXRSConfiguration extends Application {
 
                 fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
                 logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
+
+                // Create FENCE group mapping
+                String jsonString = "{\\\"phs000007\\\":\\\"Framingham Cohort\\\",\\\"phs000179\\\":\\\"Genetic Epidemiology of COPD (COPDGene)\\\",\\\"phs000209\\\":\\\"Multi-Ethnic Study of Atherosclerosis (MESA) Cohort\\\",\\\"phs000286\\\": \\\"The Jackson Heart Study (JHS)\\\",} ";
+                ObjectMapper mapper = new ObjectMapper();
+                MapType type = mapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class);
+                Map<String, Object> fence_mapping = mapper.readValue(jsonString, type);
+                for (String projectName : fence_mapping.keySet()) {
+                    logger.debug("checkIDPProvider() projectName mapping "+projectName);
+                }
 
                 // Upsert FENCE connection
                 Connection c = connectionRepo.getUniqueResultByColumn("label","fence");
