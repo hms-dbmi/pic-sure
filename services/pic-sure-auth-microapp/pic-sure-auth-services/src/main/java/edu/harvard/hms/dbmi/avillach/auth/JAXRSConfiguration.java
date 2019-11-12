@@ -187,21 +187,21 @@ public class JAXRSConfiguration extends Application {
                 logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
 
                 // Upsert FENCE connection
-                Connection c = connectionRepo.findConnectionById("fence");
+                Connection c = connectionRepo.getUniqueResultByColumn("label","fence");
                 if (c != null) {
-                    logger.debug("FENCE connection already exists.");
+                    logger.debug("checkIDPProvider() FENCE connection already exists.");
                 } else {
-                    logger.debug("Create new FENCE connection");
+                    logger.debug("checkIDPProvider() Create new FENCE connection");
                     c = new Connection();
                     c.setLabel("FENCE");
                     c.setId("fence");
                     c.setSubPrefix("fence|");
                     c.setRequiredFields("[{\"label\":\"email\",\"id\":\"email\"}]");
                     connectionRepo.persist(c);
-                    logger.debug("New FENCE connetion has been created");
+                    logger.debug("checkIDPProvider() New FENCE connetion has been created");
                 }
             } catch (Exception ex) {
-                logger.error("Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
+                logger.error("checkIDPProvider() Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
                         "Check configuration in standalone.xml");
             }
         }
