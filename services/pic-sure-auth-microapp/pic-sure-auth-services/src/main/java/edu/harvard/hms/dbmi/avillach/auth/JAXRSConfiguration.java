@@ -92,6 +92,7 @@ public class JAXRSConfiguration extends Application {
     public static String fence_client_id;
     public static String fence_client_secret;
     public static String fence_redirect_back_url;
+    public static String fence_mapping_url;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
@@ -184,69 +185,13 @@ public class JAXRSConfiguration extends Application {
 
                 fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
                 fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
-                logger.info("checkIDPProvider() idp provider FENCE is configured");
-                logger.info("checkIDPProvider() fence_client_id is "+fence_client_id);
-                logger.info("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
-
                 fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
-                logger.info("checkIDPProvider() fence_redirect_back_url is "+fence_redirect_back_url);
 
-                // Create FENCE group mapping
-                // String fenceMapping = Files.readString(Paths.get("/tmp/fence_mapping.json"));
+                logger.debug("checkIDPProvider() idp provider FENCE is configured");
+                logger.debug("checkIDPProvider() fence_client_id is "+fence_client_id);
+                logger.debug("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
 
-                /*
-                 *  fix for
-                 *    Exception in thread "main" javax.net.ssl.SSLHandshakeException:
-                 *       sun.security.validator.ValidatorException:
-                 *           PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException:
-                 *               unable to find valid certification path to requested target
-                 */
-                TrustManager[] trustAllCerts = new TrustManager[] {
-                        new X509TrustManager() {
-                            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                                return null;
-                            }
-
-                            public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
-
-                            public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
-
-                        }
-                };
-
-                SSLContext sc = SSLContext.getInstance("SSL");
-                sc.init(null, trustAllCerts, new java.security.SecureRandom());
-                HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-
-                // Create all-trusting host name verifier
-                HostnameVerifier allHostsValid = new HostnameVerifier() {
-                    public boolean verify(String hostname, SSLSession session) {
-                        return true;
-                    }
-                };
-                // Install the all-trusting host verifier
-                HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
-                /*
-                 * end of the fix
-                 */
-
-
-                String fence_mapping_url = (String)ctx.lookup("java:global/fence_mapping_url");
-                String fence_mapping_json_string = null;
-                logger.debug("checkIDPProvider() Getting JSON from "+fence_mapping_url);
-                URL u = new URL(fence_mapping_url);
-                try (InputStream in = u.openStream()) {
-                    fence_mapping_json_string =  new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                }
-                logger.debug("checkIDPProvider() Got JSON from "+fence_mapping_url);
-                
-                ObjectMapper mapper = new ObjectMapper();
-                MapType type = mapper.getTypeFactory().constructMapType(Map.class, String.class, String.class);
-                Map<String, Object> fence_mapping = mapper.readValue(fence_mapping_json_string, type);
-                for (String projectName : fence_mapping.keySet()) {
-                    logger.debug("checkIDPProvider() projectName mapping "+projectName);
-                }
-                logger.debug("checkIDPProvider() Mapped fence project to concept path.");
+                fence_mapping_url = "https://httpd/fence_mapping.json";
 
                 // Upsert FENCE connection
                 Connection c = connectionRepo.getUniqueResultByColumn("label","FENCE");

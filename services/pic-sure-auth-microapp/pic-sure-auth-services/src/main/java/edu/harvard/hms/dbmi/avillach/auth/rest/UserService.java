@@ -63,6 +63,9 @@ public class UserService extends BaseEntityService<User> {
     @Inject
     ApplicationRepository applicationRepo;
 
+    @Inject
+    AccessRuleRepository accessruleRepo;
+
     public UserService() {
         super(User.class);
     }
@@ -570,7 +573,7 @@ public class UserService extends BaseEntityService<User> {
             logger.debug("upsertPrivilege() part "+partp);
         }
         String project_name = parts[1];
-        String concent_group = parts[2];
+        String consent_group = parts[2];
         String concept_path = fenceMapping.get(project_name);
 
         String[] partst = roleName.split("\\_");
@@ -586,17 +589,30 @@ public class UserService extends BaseEntityService<User> {
 
         } else {
             logger.info("upsertPrivilege() This is a new privilege");
-            logger.info("upsertPrivilege() project:"+project_name+" concent_group:"+concent_group+" concept_path:"+concept_path);
-
+            logger.info("upsertPrivilege() project:"+project_name+" consent_group:"+consent_group+" concept_path:"+concept_path);
+            p = new Privilege();
             // Build Privilege Object
             try {
-                p = new Privilege();
-
-                p.setApplication(applicationRepo.getUniqueResultByColumn("name", "FENCE"));
+                Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
+                logger.debug("upsertPrivilege() Assigning privilege to application "+app.getName());
+                p.setApplication(app);
                 p.setName("PRIV_"+r.getName());
                 p.setDescription(r.getName());
                 p.setQueryScope(concept_path);
-                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Study Accession with Consent Code\\\\\":[\""+project_name+"."+concent_group+"\"]},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
+                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Study Accession with Consent Code\\\\\":[\""+project_name+"."+consent_group+"\"]},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
+
+                AccessRule ar = upsertAccessRule(project_name, consent_group);
+                if (ar != null) {
+                    Set<AccessRule> accessrules = new HashSet<AccessRule>();
+                    accessrules.add(ar);
+                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_INFO"));
+                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_QUERY"));
+                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_SEARCH"));
+
+                    p.setAccessRules(accessrules);
+                    logger.info("upsertPrivilege() Added AccessRule to privilege");
+                }
+
                 privilegeRepo.persist(p);
                 logger.debug(p.toString());
                 logger.info("upsertPrivilege() Added new privilege to DB");
@@ -606,11 +622,44 @@ public class UserService extends BaseEntityService<User> {
             }
         }
 
+
+
         Set<Privilege> privs = r.getPrivileges();
         if (privs == null) { privs = new HashSet<Privilege>(); privs.add(p); }
 
         logger.info("upsertPrivilege() Finished");
         return privs;
+    }
+
+    private AccessRule upsertAccessRule(String project_name, String consent_group) {
+        logger.debug("upsertAccessRule() starting");
+        String ar_name = "AR_"+project_name+"_"+consent_group;
+        AccessRule ar = accessruleRepo.getUniqueResultByColumn("name", ar_name);
+        if (ar != null) {
+            logger.info("upsertAccessRule() AccessRule "+ar_name+" already exists.");
+            return ar;
+        }
+
+        logger.info("upsertAccessRule() Creating new access rule "+ar_name);
+        ar = new AccessRule();
+        ar.setName(ar_name);
+        ar.setDescription("FENCE AR for "+project_name+"/"+consent_group);
+        ar.setRule("$..categoryFilters.['\\\\_Consents\\\\Short Study Accession with Consent code\\\\']");
+        ar.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        ar.setValue(project_name+"."+consent_group);
+        ar.setCheckMapKeyOnly(false);
+        ar.setCheckMapNode(true);
+        ar.setEvaluateOnlyByGates(false);
+        ar.setGateAnyRelation(false);
+
+        Set<AccessRule> gates = new HashSet<AccessRule>();
+        gates.add(accessruleRepo.getUniqueResultByColumn("name","GATE_FENCE_CONSENT_REQUIRED"));
+        ar.setGates(gates);
+
+        accessruleRepo.persist(ar);
+
+        logger.debug("upsertAccessRule() finished");
+        return ar;
     }
 
 }

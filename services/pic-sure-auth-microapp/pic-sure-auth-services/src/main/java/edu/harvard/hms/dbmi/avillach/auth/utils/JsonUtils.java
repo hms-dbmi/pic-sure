@@ -1,10 +1,21 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.type.MapType;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.*;
 import javax.validation.constraints.NotNull;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -241,5 +252,70 @@ public class JsonUtils {
         throw new ApplicationException("Inner application error, please contact admin.");
     }
 
+    public static Map<String, Object> getFENCEMapping() throws JsonProcessingException, KeyManagementException, NoSuchAlgorithmException {
+        // Create FENCE group mapping
+        // String fenceMapping = Files.readString(Paths.get("/tmp/fence_mapping.json"));
+
+        /*
+         *  fix for
+         *    Exception in thread "main" javax.net.ssl.SSLHandshakeException:
+         *       sun.security.validator.ValidatorException:
+         *           PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException:
+         *               unable to find valid certification path to requested target
+         */
+        TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
+
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {  }
+
+                }
+        };
+
+        SSLContext sc = SSLContext.getInstance("SSL");
+        sc.init(null, trustAllCerts, new java.security.SecureRandom());
+        HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+        // Create all-trusting host name verifier
+        HostnameVerifier allHostsValid = new HostnameVerifier() {
+            public boolean verify(String hostname, SSLSession session) {
+                return true;
+            }
+        };
+        // Install the all-trusting host verifier
+        HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+        /*
+         * end of the fix
+         */
+
+        String fence_mapping_json_string = null;
+        URL u = null;
+        try {
+            u = new URL(JAXRSConfiguration.fence_mapping_url);
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        }
+        try (InputStream in = u.openStream()) {
+            fence_mapping_json_string =  new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            e.printStackTrace();
+            logger.error("checkIDPProvider() Could not read data "+e.getMessage());
+        }
+        logger.debug("checkIDPProvider() Got JSON from FENCE_MAPPING_URL");
+
+        //ObjectMapper mapper = objectMapper; //new ObjectMapper();
+        MapType type = JAXRSConfiguration.objectMapper.getTypeFactory().constructMapType(Map.class, String.class, String.class);
+        Map<String, Object> fence_mapping = JAXRSConfiguration.objectMapper.readValue(fence_mapping_json_string, type);
+        for (String projectName : fence_mapping.keySet()) {
+            logger.debug("checkIDPProvider() projectName mapping "+projectName);
+        }
+        logger.debug("checkIDPProvider() Mapped fence project to concept path.");
+
+        return fence_mapping;
+    }
 
 }
