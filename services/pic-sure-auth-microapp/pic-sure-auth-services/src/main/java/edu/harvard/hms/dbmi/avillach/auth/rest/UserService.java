@@ -598,8 +598,8 @@ public class UserService extends BaseEntityService<User> {
                 p.setApplication(app);
                 p.setName("PRIV_"+r.getName());
                 p.setDescription(r.getName());
-                p.setQueryScope(concept_path);
-                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Study Accession with Consent Code\\\\\":[\""+project_name+"."+consent_group+"\"]},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
+                //p.setQueryScope(concept_path);
+                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Short Study Accession with Consent Code\\\\\":\""+project_name+"."+consent_group+"\"},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
 
                 AccessRule ar = upsertAccessRule(project_name, consent_group);
                 if (ar != null) {
@@ -608,7 +608,6 @@ public class UserService extends BaseEntityService<User> {
                     accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_INFO"));
                     accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_QUERY"));
                     accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_SEARCH"));
-
                     p.setAccessRules(accessrules);
                     logger.info("upsertPrivilege() Added AccessRule to privilege");
                 }
