@@ -252,7 +252,10 @@ public class JsonUtils {
         throw new ApplicationException("Inner application error, please contact admin.");
     }
 
-    public static Map<String, Object> getFENCEMapping() throws JsonProcessingException, KeyManagementException, NoSuchAlgorithmException {
+    /*
+     * Get the JSON string from a URL
+    */
+    public static Map<String, String> getFENCEMapping() throws JsonProcessingException, KeyManagementException, NoSuchAlgorithmException {
         // Create FENCE group mapping
         // String fenceMapping = Files.readString(Paths.get("/tmp/fence_mapping.json"));
 
@@ -309,7 +312,7 @@ public class JsonUtils {
 
         //ObjectMapper mapper = objectMapper; //new ObjectMapper();
         MapType type = JAXRSConfiguration.objectMapper.getTypeFactory().constructMapType(Map.class, String.class, String.class);
-        Map<String, Object> fence_mapping = JAXRSConfiguration.objectMapper.readValue(fence_mapping_json_string, type);
+        Map<String, String> fence_mapping = JAXRSConfiguration.objectMapper.readValue(fence_mapping_json_string, type);
         for (String projectName : fence_mapping.keySet()) {
             logger.debug("checkIDPProvider() projectName mapping "+projectName);
         }

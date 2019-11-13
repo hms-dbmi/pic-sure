@@ -20,6 +20,7 @@ import io.jsonwebtoken.Jws;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +31,8 @@ import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
 import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -561,17 +564,14 @@ public class UserService extends BaseEntityService<User> {
         String roleName = r.getName();
         logger.info("upsertPrivilege() starting, adding privilege to role "+roleName);
 
-        Map<String, String> fenceMapping = new HashMap<>();
-        fenceMapping.put("phs000007", "Framingham Cohort");
-        fenceMapping.put("phs000179", "Genetic Epidemiology of COPD (COPDGene)");
-        fenceMapping.put("phs000209", "Multi-Ethnic Study of Atherosclerosis (MESA) Cohort");
-        fenceMapping.put("phs000286", "The Jackson Heart Study (JHS)");
-
-        String[] parts = roleName.split("_");
-        logger.info("upsertPrivilege() there are pieces "+parts.length);
-        for (String partp : parts) {
-            logger.debug("upsertPrivilege() part "+partp);
+        Map<String, String> fenceMapping = null;
+        try {
+            fenceMapping = JsonUtils.getFENCEMapping();
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.error("upsertPrivilege() Could not process the JSON mapping project=>concept_path");
         }
+        String[] parts = roleName.split("_");
         String project_name = parts[1];
         String consent_group = parts[2];
         String concept_path = fenceMapping.get(project_name);
@@ -594,20 +594,31 @@ public class UserService extends BaseEntityService<User> {
             // Build Privilege Object
             try {
                 Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
-                logger.debug("upsertPrivilege() Assigning privilege to application "+app.getName());
                 p.setApplication(app);
                 p.setName("PRIV_"+r.getName());
                 p.setDescription(r.getName());
-                //p.setQueryScope(concept_path);
-                p.setQueryTemplate("{\"categoryFilters\": {\"\\\\_Consents\\\\Short Study Accession with Consent Code\\\\\":\""+project_name+"."+consent_group+"\"},\"numericFilters\":{},\"requiredFields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}");
+                p.setQueryScope(concept_path);
+
+                String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
+                // TOOD: Change this to a mustache template
+                String queryTemplateText = "{\"categoryFilters\": {\""
+                        +consent_concept_path
+                        +"\":\""
+                        +project_name+"."+consent_group
+                        +"\"},"
+                        +"\"numericFilters\":{},\"requiredFields\":[],"
+                        +"\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
+                        +"\"expectedResultType\": \"COUNT\""
+                        +"}";
+                p.setQueryTemplate(queryTemplateText);
 
                 AccessRule ar = upsertAccessRule(project_name, consent_group);
                 if (ar != null) {
                     Set<AccessRule> accessrules = new HashSet<AccessRule>();
                     accessrules.add(ar);
-                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_INFO"));
-                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_QUERY"));
-                    accessrules.add(accessruleRepo.getUniqueResultByColumn("name","AR_ONLY_SEARCH"));
+                    for(String arName: JAXRSConfiguration.fence_standard_access_rules.split(",")) {
+                        accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
+                    }
                     p.setAccessRules(accessrules);
                     logger.info("upsertPrivilege() Added AccessRule to privilege");
                 }
@@ -643,7 +654,11 @@ public class UserService extends BaseEntityService<User> {
         ar = new AccessRule();
         ar.setName(ar_name);
         ar.setDescription("FENCE AR for "+project_name+"/"+consent_group);
-        ar.setRule("$..categoryFilters.['\\\\_Consents\\\\Short Study Accession with Consent code\\\\']");
+        StringBuilder ruleText = new StringBuilder();
+        ruleText.append("$..categoryFilters.['");
+        ruleText.append(JAXRSConfiguration.fence_consent_group_concept_path);
+        ruleText.append("']");
+        ar.setRule(ruleText.toString());
         ar.setType(AccessRule.TypeNaming.ALL_EQUALS);
         ar.setValue(project_name+"."+consent_group);
         ar.setCheckMapKeyOnly(false);

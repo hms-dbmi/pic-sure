@@ -93,6 +93,8 @@ public class JAXRSConfiguration extends Application {
     public static String fence_client_secret;
     public static String fence_redirect_back_url;
     public static String fence_mapping_url;
+    public static String fence_consent_group_concept_path;
+    public static String fence_standard_access_rules;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
@@ -192,6 +194,8 @@ public class JAXRSConfiguration extends Application {
                 logger.debug("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
 
                 fence_mapping_url = "https://httpd/fence_mapping.json";
+                fence_consent_group_concept_path = "\\\\_Consents\\\\Short Study Accession with Consent code\\\\";
+                fence_standard_access_rules = "AR_ONLY_INFO,AR_ONLY_QUERY,AR_ONLY_SEARCH";
 
                 // Upsert FENCE connection
                 Connection c = connectionRepo.getUniqueResultByColumn("label","FENCE");
