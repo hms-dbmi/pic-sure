@@ -666,8 +666,15 @@ public class UserService extends BaseEntityService<User> {
         ar.setEvaluateOnlyByGates(false);
         ar.setGateAnyRelation(false);
 
+        // Assign all GATE_ access rules to this AR access rule.
         Set<AccessRule> gates = new HashSet<AccessRule>();
-        gates.add(accessruleRepo.getUniqueResultByColumn("name","GATE_FENCE_CONSENT_REQUIRED"));
+        for (String accessruleName : JAXRSConfiguration.fence_standard_access_rules.split("\\,")) {
+            if (accessruleName.startsWith("GATE_")) {
+                gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
+            } else {
+                continue;
+            }
+        }
         ar.setGates(gates);
 
         accessruleRepo.persist(ar);

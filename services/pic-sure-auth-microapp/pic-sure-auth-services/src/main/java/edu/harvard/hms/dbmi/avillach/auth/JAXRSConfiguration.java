@@ -183,19 +183,29 @@ public class JAXRSConfiguration extends Application {
         if (idp_provider.equalsIgnoreCase("fence")) {
             try {
                 idp_provider_uri = (String)ctx.lookup("java:global/idp_provider_uri");
-                logger.info("checkIDPProvider() idp provider uri is "+idp_provider_uri);
 
                 fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
                 fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
                 fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
 
-                logger.debug("checkIDPProvider() idp provider FENCE is configured");
-                logger.debug("checkIDPProvider() fence_client_id is "+fence_client_id);
-                logger.debug("checkIDPProvider() fence_client_secret is "+(fence_client_secret.isEmpty()?"empty":"not empty"));
+                fence_consent_group_concept_path = (String) ctx.lookup("java:global/fence_consent_group_concept_path");
+                if (fence_consent_group_concept_path == null) {
+                    logger.error("checkIDPProvider() Empty consent group concept path from standalone.xml. Using default!");
+                    fence_consent_group_concept_path = "\\\\_Consents\\\\Short Study Accession with Consent code\\\\";
+                }
 
-                fence_mapping_url = "https://httpd/fence_mapping.json";
-                fence_consent_group_concept_path = "\\\\_Consents\\\\Short Study Accession with Consent code\\\\";
-                fence_standard_access_rules = "AR_ONLY_INFO,AR_ONLY_QUERY,AR_ONLY_SEARCH";
+                fence_mapping_url = (String) ctx.lookup("java:global/fence_mapping_url");
+                if (fence_mapping_url == null) {
+                    logger.error("checkIDPProvider() Empty fence_mapping_url from standalone.xml. Using default!");
+                    fence_mapping_url = "https://httpd/fence_mapping.json";
+                }
+
+                fence_standard_access_rules = (String) ctx.lookup("java:global/fence_standard_access_rules");
+                if (fence_standard_access_rules.isEmpty()) {
+                    logger.error("checkIDPProvider() Empty access rules from standalone.xml. Using defaults.");
+                    fence_standard_access_rules = "GATE_ONLY_INFO,GATE_ONLY_QUERY,GATE_ONLY_SEARCH,GATE_FENCE_CONSENT_REQUIRED";
+                }
+                logger.debug("checkIDPProvider() idp provider FENCE is configured");
 
                 // Upsert FENCE connection
                 Connection c = connectionRepo.getUniqueResultByColumn("label","FENCE");
@@ -211,6 +221,12 @@ public class JAXRSConfiguration extends Application {
                     connectionRepo.persist(c);
                     logger.debug("checkIDPProvider() New FENCE connetion has been created");
                 }
+
+                // For debugging purposes, here is a dump of most of the FENCE variables
+                logger.info("checkIDPProvider() fence_standard_access_rules        "+fence_standard_access_rules);
+                logger.info("checkIDPProvider() fence_mapping_url                  "+fence_mapping_url);
+                logger.info("checkIDPProvider() fence_consent_group_concept_path   "+fence_consent_group_concept_path);
+
             } catch (Exception ex) {
                 logger.error("checkIDPProvider() "+ex.getMessage());
                 logger.error("checkIDPProvider() Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
