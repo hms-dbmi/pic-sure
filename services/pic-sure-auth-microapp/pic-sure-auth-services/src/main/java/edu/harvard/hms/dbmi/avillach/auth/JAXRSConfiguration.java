@@ -95,6 +95,7 @@ public class JAXRSConfiguration extends Application {
     public static String fence_mapping_url;
     public static String fence_consent_group_concept_path;
     public static String fence_standard_access_rules;
+    public static String fence_harmonized_concept_path;
 
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
@@ -204,6 +205,12 @@ public class JAXRSConfiguration extends Application {
                 if (fence_standard_access_rules.isEmpty()) {
                     logger.error("checkIDPProvider() Empty access rules from standalone.xml. Using defaults.");
                     fence_standard_access_rules = "GATE_ONLY_INFO,GATE_ONLY_QUERY,GATE_ONLY_SEARCH,GATE_FENCE_CONSENT_REQUIRED";
+                }
+
+                fence_harmonized_concept_path = (String) ctx.lookup("java:global/fence_harmonized_concept_path");
+                if (fence_harmonized_concept_path.isEmpty()) {
+                    logger.error("checkIDPProvider() Empty harmonized concept path. Not in use.");
+                    fence_harmonized_concept_path = "";
                 }
                 logger.debug("checkIDPProvider() idp provider FENCE is configured");
 

@@ -591,13 +591,15 @@ public class UserService extends BaseEntityService<User> {
             logger.info("upsertPrivilege() This is a new privilege");
             logger.info("upsertPrivilege() project:"+project_name+" consent_group:"+consent_group+" concept_path:"+concept_path);
             p = new Privilege();
+            String fence_harmonized_path = JAXRSConfiguration.fence_harmonized_concept_path;
+
             // Build Privilege Object
             try {
                 Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
                 p.setApplication(app);
                 p.setName("PRIV_"+r.getName());
                 p.setDescription(r.getName());
-                p.setQueryScope(concept_path);
+                p.setQueryScope(concept_path+(!fence_harmonized_path.isEmpty()?','+fence_harmonized_path:fence_harmonized_path));
 
                 String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
                 // TOOD: Change this to a mustache template
@@ -617,12 +619,14 @@ public class UserService extends BaseEntityService<User> {
                     Set<AccessRule> accessrules = new HashSet<AccessRule>();
                     accessrules.add(ar);
                     for(String arName: JAXRSConfiguration.fence_standard_access_rules.split(",")) {
-                        accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
+                        if (arName.startsWith("AR_")) {
+                            logger.info("Adding AccessRule "+arName+" to privilege "+p.getName());
+                            accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
+                        }
                     }
                     p.setAccessRules(accessrules);
                     logger.info("upsertPrivilege() Added AccessRule to privilege");
                 }
-
                 privilegeRepo.persist(p);
                 logger.debug(p.toString());
                 logger.info("upsertPrivilege() Added new privilege to DB");
@@ -631,9 +635,6 @@ public class UserService extends BaseEntityService<User> {
                 logger.error("upsertPrivilege() could not save privilege");
             }
         }
-
-
-
         Set<Privilege> privs = r.getPrivileges();
         if (privs == null) { privs = new HashSet<Privilege>(); privs.add(p); }
 
@@ -670,6 +671,7 @@ public class UserService extends BaseEntityService<User> {
         Set<AccessRule> gates = new HashSet<AccessRule>();
         for (String accessruleName : JAXRSConfiguration.fence_standard_access_rules.split("\\,")) {
             if (accessruleName.startsWith("GATE_")) {
+                logger.info("upsertAccessRule() Assign gate "+accessruleName+" to access_rule "+ar.getName());
                 gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
             } else {
                 continue;
