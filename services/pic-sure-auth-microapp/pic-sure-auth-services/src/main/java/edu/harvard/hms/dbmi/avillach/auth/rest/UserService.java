@@ -279,12 +279,6 @@ public class UserService extends BaseEntityService<User> {
                     .map(privilege -> privilege.getQueryScope())
                     .filter(q -> q!=null && !q.isEmpty())
                     .collect(Collectors.toSet()));
-
-            // if harmonized concept path is set, add it to the
-            // queryScope set
-            Set<String> qscopes = userForDisplay.getQueryScopes();
-            qscopes.add(JAXRSConfiguration.fence_harmonized_concept_path);
-            userForDisplay.setQueryScopes(qscopes);
         }
 
         if (hasToken!=null){
@@ -582,71 +576,77 @@ public class UserService extends BaseEntityService<User> {
         String consent_group = parts[2];
         String concept_path = fenceMapping.get(project_name);
 
-        String[] partst = roleName.split("\\_");
-        logger.info("upsertPrivilege() there are pieces "+partst.length);
-
         // Get privilege and assign it to this role.
         String privilegeName = r.getName().replaceFirst("FENCE_*","PRIV_FENCE_");
-        logger.info("upsertPrivilege() There should be a privilege with name: "+privilegeName);
+        logger.info("upsertPrivilege() Looking for privilege, with name : "+privilegeName);
+
+        Set<Privilege> privs = r.getPrivileges();
+        if (privs == null) { privs = new HashSet<Privilege>();}
 
         Privilege p = privilegeRepo.getUniqueResultByColumn("name", privilegeName);
         if (p != null) {
             logger.info("upsertPrivilege() Assigning privilege "+p.getName()+" to role "+r.getName());
+            privs.add(p);
 
         } else {
             logger.info("upsertPrivilege() This is a new privilege");
             logger.info("upsertPrivilege() project:"+project_name+" consent_group:"+consent_group+" concept_path:"+concept_path);
-            p = new Privilege();
-            String fence_harmonized_path = JAXRSConfiguration.fence_harmonized_concept_path;
 
-            // Build Privilege Object
-            try {
-                Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
-                p.setApplication(app);
-                p.setName("PRIV_"+r.getName());
-                p.setDescription(r.getName());
-
-                p.setQueryScope("[\""+concept_path+"\"]"); //+(!fence_harmonized_path.isEmpty()?','+"\""+fence_harmonized_path+"\"":' ')+"]");
-
-                String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
-                // TOOD: Change this to a mustache template
-                String queryTemplateText = "{\"categoryFilters\": {\""
-                        +consent_concept_path
-                        +"\":\""
-                        +project_name+"."+consent_group
-                        +"\"},"
-                        +"\"numericFilters\":{},\"requiredFields\":[],"
-                        +"\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-                        +"\"expectedResultType\": \"COUNT\""
-                        +"}";
-                p.setQueryTemplate(queryTemplateText);
-
-                AccessRule ar = upsertAccessRule(project_name, consent_group);
-                if (ar != null) {
-                    Set<AccessRule> accessrules = new HashSet<AccessRule>();
-                    accessrules.add(ar);
-                    for(String arName: JAXRSConfiguration.fence_standard_access_rules.split(",")) {
-                        if (arName.startsWith("AR_")) {
-                            logger.info("Adding AccessRule "+arName+" to privilege "+p.getName());
-                            accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
-                        }
-                    }
-                    p.setAccessRules(accessrules);
-                    logger.info("upsertPrivilege() Added AccessRule to privilege");
-                }
-                privilegeRepo.persist(p);
-                logger.debug(p.toString());
-                logger.info("upsertPrivilege() Added new privilege to DB");
-            } catch (Exception ex) {
-                ex.printStackTrace();
-                logger.error("upsertPrivilege() could not save privilege");
-            }
+            Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
+            // Add new privilege PRIV_FENCE_phs######_c# and PRIV_FENCE_phs######_c#_HARMONIZED
+            privs.add(createNewPrivilege(app, project_name, consent_group, concept_path, false));
+            privs.add(createNewPrivilege(app, project_name, consent_group, JAXRSConfiguration.fence_harmonized_concept_path, true));
         }
-        Set<Privilege> privs = r.getPrivileges();
-        if (privs == null) { privs = new HashSet<Privilege>(); privs.add(p); }
-
         logger.info("upsertPrivilege() Finished");
         return privs;
+    }
+
+    private Privilege createNewPrivilege(Application app, String project_name, String consent_group, String queryScopeConceptPath, boolean isHarmonized) {
+        Privilege priv = new Privilege();
+
+        // Build Privilege Object
+        try {
+            priv.setApplication(app);
+            priv.setName("PRIV_FENCE_"+project_name+"_"+consent_group+(isHarmonized?"_HARMONIZED":""));
+            priv.setDescription("FENCE privilege for "+project_name+"/"+consent_group);
+            priv.setQueryScope(queryScopeConceptPath);
+
+            String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
+            // TOOD: Change this to a mustache template
+            String queryTemplateText = "{\"categoryFilters\": {\""
+                    +consent_concept_path
+                    +"\":\""
+                    +project_name+"."+consent_group
+                    +"\"},"
+                    +"\"numericFilters\":{},\"requiredFields\":[],"
+                    +"\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
+                    +"\"expectedResultType\": \"COUNT\""
+                    +"}";
+            priv.setQueryTemplate(queryTemplateText);
+            priv.setQueryScope(queryScopeConceptPath);
+
+            AccessRule ar = upsertAccessRule(project_name, consent_group);
+            if (ar != null) {
+                Set<AccessRule> accessrules = new HashSet<AccessRule>();
+                accessrules.add(ar);
+                // Add additionanl access rules
+                for(String arName: JAXRSConfiguration.fence_standard_access_rules.split(",")) {
+                    if (arName.startsWith("AR_")) {
+                        logger.info("Adding AccessRule "+arName+" to privilege "+priv.getName());
+                        accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
+                    }
+                }
+                priv.setAccessRules(accessrules);
+                logger.info("createNewPrivilege() Added "+accessrules.size()+" access_rules to privilege");
+            }
+
+            privilegeRepo.persist(priv);
+            logger.info("createNewPrivilege() Added new privilege "+priv.getName()+" to DB");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            logger.error("createNewPrivilege() could not save privilege");
+        }
+        return priv;
     }
 
     private AccessRule upsertAccessRule(String project_name, String consent_group) {
