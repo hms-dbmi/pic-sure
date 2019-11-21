@@ -279,6 +279,12 @@ public class UserService extends BaseEntityService<User> {
                     .map(privilege -> privilege.getQueryScope())
                     .filter(q -> q!=null && !q.isEmpty())
                     .collect(Collectors.toSet()));
+
+            // if harmonized concept path is set, add it to the
+            // queryScope set
+            Set<String> qscopes = userForDisplay.getQueryScopes();
+            qscopes.add(JAXRSConfiguration.fence_harmonized_concept_path);
+            userForDisplay.setQueryScopes(qscopes);
         }
 
         if (hasToken!=null){
@@ -569,7 +575,7 @@ public class UserService extends BaseEntityService<User> {
             fenceMapping = JsonUtils.getFENCEMapping();
         } catch (Exception e) {
             e.printStackTrace();
-            logger.error("upsertPrivilege() Could not process the JSON mapping project=>concept_path");
+            logger.warn("upsertPrivilege() Could not process the JSON mapping project=>concept_path");
         }
         String[] parts = roleName.split("_");
         String project_name = parts[1];
@@ -599,7 +605,8 @@ public class UserService extends BaseEntityService<User> {
                 p.setApplication(app);
                 p.setName("PRIV_"+r.getName());
                 p.setDescription(r.getName());
-                p.setQueryScope(concept_path+(!fence_harmonized_path.isEmpty()?','+fence_harmonized_path:fence_harmonized_path));
+
+                p.setQueryScope("[\""+concept_path+"\"]"); //+(!fence_harmonized_path.isEmpty()?','+"\""+fence_harmonized_path+"\"":' ')+"]");
 
                 String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
                 // TOOD: Change this to a mustache template

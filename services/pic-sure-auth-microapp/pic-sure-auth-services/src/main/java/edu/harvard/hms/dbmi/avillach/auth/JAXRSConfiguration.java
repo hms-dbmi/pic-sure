@@ -233,6 +233,7 @@ public class JAXRSConfiguration extends Application {
                 logger.info("checkIDPProvider() fence_standard_access_rules        "+fence_standard_access_rules);
                 logger.info("checkIDPProvider() fence_mapping_url                  "+fence_mapping_url);
                 logger.info("checkIDPProvider() fence_consent_group_concept_path   "+fence_consent_group_concept_path);
+                logger.info("checkIDPProvider() fence_harmonized_concept_path      "+fence_harmonized_concept_path);
 
             } catch (Exception ex) {
                 logger.error("checkIDPProvider() "+ex.getMessage());
