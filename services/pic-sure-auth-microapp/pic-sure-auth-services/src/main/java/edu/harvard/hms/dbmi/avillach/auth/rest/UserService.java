@@ -537,7 +537,7 @@ public class UserService extends BaseEntityService<User> {
                 r.setDescription(roleDescription);
                 // Since this is a new Role, we need to ensure that the
                 // corresponding Privilege (with gates) and AccessRule is added.
-                r.setPrivileges(upsertPrivilege(u, r));
+                //r.setPrivileges(upsertPrivilege(u, r));
 
                 roleRepo.persist(r);
                 logger.info("upsertRole() created new role");
