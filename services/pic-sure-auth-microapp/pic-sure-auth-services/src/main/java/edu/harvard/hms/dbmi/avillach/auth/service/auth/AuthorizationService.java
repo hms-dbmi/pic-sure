@@ -316,6 +316,9 @@ public class AuthorizationService {
      * @return
      */
 	protected boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
+	    logger.info("evaluateAccessRule() starting with:");
+	    logger.info(parsedRequestBody.toString());
+	    logger.info(accessRule.toString());
 
 		Set<AccessRule> gates = accessRule.getGates();
 
@@ -336,6 +339,7 @@ public class AuthorizationService {
                 // means one fails all fail
                 for (AccessRule gate : gates){
                     if (!evaluateAccessRule(parsedRequestBody, gate)){
+                        logger.error("evaluateAccessRule() gate "+gate.getName()+" failed ");
                         gatesPassed = false;
                         break;
                     }
@@ -347,6 +351,7 @@ public class AuthorizationService {
 		        gatesPassed = false;
                 for (AccessRule gate : gates){
                     if (evaluateAccessRule(parsedRequestBody, gate)){
+                        logger.info("evaluateAccessRule() gate "+gate.getName()+" passed ");
                         gatesPassed = true;
                         break;
                     }
@@ -357,10 +362,12 @@ public class AuthorizationService {
 
 		// the result is based on if gates passed or not
 		if (accessRule.getEvaluateOnlyByGates() != null && accessRule.getEvaluateOnlyByGates()){
+            logger.info("evaluateAccessRule() eval only by gates");
 		    return gatesPassed;
         }
 
         if (gatesPassed) {
+            logger.info("evaluateAccessRule() gates passed");
             if (extractAndCheckRule(accessRule, parsedRequestBody) == false)
                 return false;
             else {
@@ -391,6 +398,7 @@ public class AuthorizationService {
      * @return
      */
 	private boolean extractAndCheckRule(AccessRule accessRule, Object parsedRequestBody){
+	    logger.info("extractAndCheckRule() starting");
         String rule = accessRule.getRule();
 
         if (rule == null || rule.isEmpty())
@@ -431,6 +439,8 @@ public class AuthorizationService {
 
 
     private boolean evaluateNode(Object requestBodyValue, AccessRule accessRule){
+	    logger.info("evaluateNode() starting...");
+
         /**
          * NOTE: if the path(driven by attribute rule) eventually leads to String values, we can do check,
          * otherwise, only means the path is not driving to useful places, just return true.
@@ -616,6 +626,11 @@ public class AuthorizationService {
     }
 
 	private boolean _decisionMaker(AccessRule accessRule, String requestBodyValue, String value){
+        logger.info("_decisionMaker() starting");
+        logger.info(accessRule.toString());
+        logger.info(requestBodyValue);
+        logger.info(value);
+
 
 	    switch (accessRule.getType()){
             case AccessRule.TypeNaming.NOT_CONTAINS:
