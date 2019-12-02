@@ -318,7 +318,7 @@ public class AuthorizationService {
 	protected boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
 	    logger.info("evaluateAccessRule() starting with:");
 	    logger.info(parsedRequestBody.toString());
-	    logger.info(accessRule.toString());
+	    logger.info("evaluateAccessRule()  access rule:"+accessRule.getName());
 
 		Set<AccessRule> gates = accessRule.getGates();
 
@@ -379,6 +379,7 @@ public class AuthorizationService {
                 }
             }
         } else {
+            logger.info("evaluateAccessRule() gates failed");
 		    // if gates not applied, this accessRule will consider deny
 		    return false;
         }
@@ -627,7 +628,7 @@ public class AuthorizationService {
 
 	private boolean _decisionMaker(AccessRule accessRule, String requestBodyValue, String value){
         logger.info("_decisionMaker() starting");
-        logger.info(accessRule.toString());
+        logger.info("_decisionMaker() access rule:"+accessRule.getName());
         logger.info(requestBodyValue);
         logger.info(value);
 
