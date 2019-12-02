@@ -91,7 +91,7 @@ public class JAXRSConfiguration extends Application {
     public static String idp_provider_uri;
     public static String fence_client_id;
     public static String fence_client_secret;
-    public static String fence_redirect_back_url;
+    public static String fence_redirect_url;
     public static String fence_mapping_url;
     public static String fence_consent_group_concept_path;
     public static String fence_standard_access_rules;
@@ -187,7 +187,7 @@ public class JAXRSConfiguration extends Application {
 
                 fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
                 fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
-                fence_redirect_back_url = (String) ctx.lookup("java:global/fence_redirect_back_url");
+                fence_redirect_url = (String) ctx.lookup("java:global/fence_redirect_url");
 
                 fence_consent_group_concept_path = (String) ctx.lookup("java:global/fence_consent_group_concept_path");
                 if (fence_consent_group_concept_path == null) {

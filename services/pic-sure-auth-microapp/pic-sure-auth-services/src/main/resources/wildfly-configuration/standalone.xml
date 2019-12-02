@@ -455,7 +455,7 @@
 
                 <simple name="java:global/fence_client_id" value="${env.FENCE_CLIENT_ID:no_fence_client_id}"/>
                 <simple name="java:global/fence_client_secret" value="${env.FENCE_CLIENT_SECRET:no_fence_client_secret}"/>
-                <simple name="java:global/fence_redirect_back_url" value="${env.FENCE_REDIRECT_BACK_URL:fence_redirect_back_url-is_not_set}"/>
+                <simple name="java:global/fence_redirect_url" value="${env.FENCE_REDIRECT_URL:fence_redirect_url-is_not_set}"/>
 
             </bindings>
             <remote-naming/>
