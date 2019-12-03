@@ -133,7 +133,13 @@ public class FENCEAuthenticationService {
 
             logger.debug("getFENCEProfile() AccessRole:"+access_role_name);
             String[] parts = access_role_name.split("\\.");
-            String newRoleName = "FENCE_"+parts[0]+"_"+parts[3];
+
+            String newRoleName;
+            if (parts.length > 1) {
+               newRoleName = "FENCE_"+parts[0]+"_"+parts[parts.length-1];
+            } else {
+              newRoleName = "FENCE_"+access_role_name;
+            }
             logger.info("getFENCEProfile() New PSAMA role name:"+newRoleName);
 
                 if (userService.upsertRole(current_user, newRoleName, "FENCE role "+newRoleName)) {

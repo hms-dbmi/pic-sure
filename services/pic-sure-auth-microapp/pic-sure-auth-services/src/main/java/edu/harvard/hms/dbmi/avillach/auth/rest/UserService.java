@@ -574,6 +574,7 @@ public class UserService extends BaseEntityService<User> {
         String[] parts = roleName.split("_");
         String project_name = parts[1];
         String consent_group = parts[2];
+        // TODO: How to alert when the mapping is not in the list.
         String concept_path = fenceMapping.get(project_name);
 
         // Get privilege and assign it to this role.
