@@ -131,6 +131,11 @@ public class FENCEAuthenticationService {
         while (access_role_names.hasNext()) {
             String access_role_name = access_role_names.next();
 
+            // These two special access does not matter. We are not using it.
+            if (access_role_name.equals("admin") || access_role_name.equals("parent")) {
+                continue;
+            }
+
             logger.debug("getFENCEProfile() AccessRole:"+access_role_name);
             String[] parts = access_role_name.split("\\.");
 
