@@ -173,9 +173,11 @@ public class JsonUtils {
     public static List mergeListToList(List baseList, List incomingList){
         List mergedList = new ArrayList();
 
-        // This will not work, since the first time around, baselist is null, if(baseList.get(0) instanceof String) {
-        if (true) {
-        	mergedList.addAll(baseList);
+        // incomingList should never be null
+        if (incomingList.get(0) instanceof String) {
+        	if(baseList!=null) {
+        		mergedList.addAll(baseList);
+        	}
         	mergedList.addAll(incomingList);
         }else {
             for (int i = 0 ; i < baseList.size() ; i++) {
