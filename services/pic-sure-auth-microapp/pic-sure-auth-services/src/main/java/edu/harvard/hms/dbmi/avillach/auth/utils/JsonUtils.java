@@ -172,7 +172,7 @@ public class JsonUtils {
 	 */
 	public static List mergeListToList(List baseList, List incomingList){    	
 		List mergedList = new ArrayList();
-		mergedList.addAll
+		
 		// incomingList should never be null
 		addElementsOfListToMergedList(mergedList, baseList);
 		if (incomingList.size()==0) {
