@@ -172,7 +172,7 @@ public class JsonUtils {
 	 */
 	public static List mergeListToList(List baseList, List incomingList){    	
 		List mergedList = new ArrayList();
-		
+
 		// incomingList should never be null
 		addElementsOfListToMergedList(mergedList, baseList);
 		if (incomingList.size()==0) {
@@ -181,19 +181,25 @@ public class JsonUtils {
 			addElementsOfListToMergedList(mergedList, incomingList);
 			addElementsOfListToMergedList(mergedList, baseList);        		
 		} else {
-			for (int i = 0 ; i < baseList.size() ; i++) {
-				Object baseElement = baseList.get(i);
-				Object incomingElement = incomingList.get(i);
-				if (baseElement.getClass() == incomingElement.getClass() ) {
-					if (baseElement instanceof List){
-						mergedList.add(mergeListToList((List)baseElement, (List)incomingElement));
-					} else if (baseElement instanceof Map){
-						mergedList.add(mergeTemplateMap((Map)baseElement, (Map)incomingElement));
+			List sourceList = baseList.size()>incomingList.size()?baseList:incomingList;
+			List targetList = baseList.size()<=incomingList.size()?baseList:incomingList;
+			for (int i = 0 ; i < sourceList.size() ; i++) {
+				Object sourceElement = sourceList.get(i);
+				if(targetList.size()<=i) {
+					mergedList.add(sourceList.get(i));
+				}else {
+					Object targetElement = targetList.get(i);
+					if (sourceElement.getClass() == targetElement.getClass() ) {
+						if (sourceElement instanceof List){
+							mergedList.add(mergeListToList((List)sourceElement, (List)targetElement));
+						} else if (sourceElement instanceof Map){
+							mergedList.add(mergeTemplateMap((Map)sourceElement, (Map)targetElement));
+						} else {
+							logJsonTypeException(sourceElement);
+						}
 					} else {
-						logJsonTypeException(baseElement);
+						mergedList.add(sourceElement);
 					}
-				} else {
-					mergedList.add(baseElement);
 				}
 			}
 		}
