@@ -172,22 +172,24 @@ public class JsonUtils {
      */
     public static List mergeListToList(List baseList, List incomingList){
         List mergedList = new ArrayList();
-        for (int i = 0 ; i < baseList.size() ; i++) {
-            Object baseElement = baseList.get(i);
-            Object incomingElement = incomingList.get(i);
-            if (baseElement.getClass() == incomingElement.getClass() ) {
-                if (baseElement instanceof String) {
-                    mergedList.add(baseElement);
-                    mergedList.add(incomingElement);
-                } else if (baseElement instanceof List){
-                    mergedList.add(mergeListToList((List)baseElement, (List)incomingElement));
-                } else if (baseElement instanceof Map){
-                    mergedList.add(mergeTemplateMap((Map)baseElement, (Map)incomingElement));
+        if(baseList.get(0) instanceof String) {
+        	mergedList.addAll(baseList);
+        	mergedList.addAll(incomingList);
+        }else {
+            for (int i = 0 ; i < baseList.size() ; i++) {
+                Object baseElement = baseList.get(i);
+                Object incomingElement = incomingList.get(i);
+                if (baseElement.getClass() == incomingElement.getClass() ) {
+                    if (baseElement instanceof List){
+                        mergedList.add(mergeListToList((List)baseElement, (List)incomingElement));
+                    } else if (baseElement instanceof Map){
+                        mergedList.add(mergeTemplateMap((Map)baseElement, (Map)incomingElement));
+                    } else {
+                        logJsonTypeException(baseElement);
+                    }
                 } else {
-                    logJsonTypeException(baseElement);
+                    mergedList.add(baseElement);
                 }
-            } else {
-                mergedList.add(baseElement);
             }
         }
 
