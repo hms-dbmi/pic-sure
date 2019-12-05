@@ -36,7 +36,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.objectMapper;
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.*;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
