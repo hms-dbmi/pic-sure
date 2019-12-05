@@ -36,6 +36,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.objectMapper;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
@@ -275,10 +276,16 @@ public class UserService extends BaseEntityService<User> {
         // code to use JsonUtils.mergeTemplateMap(Map, Map)
         Set<Privilege> privileges = user.getTotalPrivilege();
         if (privileges != null && !privileges.isEmpty()){
-            userForDisplay.setQueryScopes(privileges.stream()
-                    .map(privilege -> privilege.getQueryScope())
-                    .filter(q -> q!=null && !q.isEmpty())
-                    .collect(Collectors.toSet()));
+            Set<String> scopes = new TreeSet<>();
+            privileges.stream().forEach(privilege -> {
+                try {
+                    Arrays.stream(objectMapper.readValue(privilege.getQueryScope(), String[].class))
+                            .forEach(scopeList-> scopes.addAll(Arrays.asList(scopeList)));
+                } catch (JsonProcessingException e) {
+                    logger.error("Parsing issue for privilege " + privilege.getUuid() + " queryScope", e);
+                }
+            });
+            userForDisplay.setQueryScopes(scopes);
         }
 
         if (hasToken!=null){
@@ -344,7 +351,7 @@ public class UserService extends BaseEntityService<User> {
             }
             Map<String, Object> templateMap = null;
             try {
-                templateMap = JAXRSConfiguration.objectMapper.readValue(template, Map.class);
+                templateMap = objectMapper.readValue(template, Map.class);
             } catch (IOException ex){
                 logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: " + template);
                 throw new ApplicationException("Inner application error, please contact admin.");
@@ -363,7 +370,7 @@ public class UserService extends BaseEntityService<User> {
         }
 
         try {
-            resultJSON = JAXRSConfiguration.objectMapper.writeValueAsString(mergedTemplateMap);
+            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
         } catch (JsonProcessingException ex) {
             logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: " + mergedTemplateMap);
             throw new ApplicationException("Inner application error, please contact admin.");
@@ -422,7 +429,7 @@ public class UserService extends BaseEntityService<User> {
     private String generateUserLongTermToken(HttpHeaders httpHeaders) throws ProtocolException{
         Jws<Claims> jws;
         try {
-            jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+            jws = AuthUtils.parseToken(clientSecret,
                     // the original token should be able to grab from header, otherwise, it should be stopped
                     // at JWTFilter level
                     httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
@@ -442,12 +449,12 @@ public class UserService extends BaseEntityService<User> {
             tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
         }
 
-        return JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+        return JWTUtil.createJwtToken(clientSecret,
                 claims.getId(),
                 claims.getIssuer(),
                 claims,
                 AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
-                JAXRSConfiguration.longTermTokenExpirationTime);
+                longTermTokenExpirationTime);
     }
 
 
@@ -594,7 +601,7 @@ public class UserService extends BaseEntityService<User> {
             Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
             // Add new privilege PRIV_FENCE_phs######_c# and PRIV_FENCE_phs######_c#_HARMONIZED
             privs.add(createNewPrivilege(app, project_name, consent_group, concept_path, false));
-            privs.add(createNewPrivilege(app, project_name, consent_group, JAXRSConfiguration.fence_harmonized_concept_path, true));
+            privs.add(createNewPrivilege(app, project_name, consent_group, fence_harmonized_concept_path, true));
         }
         logger.info("upsertPrivilege() Finished");
         return privs;
@@ -610,7 +617,7 @@ public class UserService extends BaseEntityService<User> {
             priv.setDescription("FENCE privilege for "+project_name+"/"+consent_group);
             priv.setQueryScope(queryScopeConceptPath);
 
-            String consent_concept_path = JAXRSConfiguration.fence_consent_group_concept_path;
+            String consent_concept_path = fence_consent_group_concept_path;
             // TOOD: Change this to a mustache template
             String queryTemplateText = "{\"categoryFilters\": {\""
                     +consent_concept_path
@@ -629,7 +636,7 @@ public class UserService extends BaseEntityService<User> {
                 Set<AccessRule> accessrules = new HashSet<AccessRule>();
                 accessrules.add(ar);
                 // Add additionanl access rules
-                for(String arName: JAXRSConfiguration.fence_standard_access_rules.split(",")) {
+                for(String arName: fence_standard_access_rules.split(",")) {
                     if (arName.startsWith("AR_")) {
                         logger.info("Adding AccessRule "+arName+" to privilege "+priv.getName());
                         accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
@@ -663,7 +670,7 @@ public class UserService extends BaseEntityService<User> {
         ar.setDescription("FENCE AR for "+project_name+"/"+consent_group);
         StringBuilder ruleText = new StringBuilder();
         ruleText.append("$..categoryFilters.['");
-        ruleText.append(JAXRSConfiguration.fence_consent_group_concept_path);
+        ruleText.append(fence_consent_group_concept_path);
         ruleText.append("']");
         ar.setRule(ruleText.toString());
         ar.setType(AccessRule.TypeNaming.ALL_EQUALS);
@@ -675,7 +682,7 @@ public class UserService extends BaseEntityService<User> {
 
         // Assign all GATE_ access rules to this AR access rule.
         Set<AccessRule> gates = new HashSet<AccessRule>();
-        for (String accessruleName : JAXRSConfiguration.fence_standard_access_rules.split("\\,")) {
+        for (String accessruleName : fence_standard_access_rules.split("\\,")) {
             if (accessruleName.startsWith("GATE_")) {
                 logger.info("upsertAccessRule() Assign gate "+accessruleName+" to access_rule "+ar.getName());
                 gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
