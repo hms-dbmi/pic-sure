@@ -19,6 +19,7 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                 var code = params['code'];
                 if (code) {
                     $('#main-content').html('DataStage authentication is successful. Processing UserProfile information...');
+
                     $.ajax({
                         url: '/psama/authentication',
                         type: 'post',
@@ -72,18 +73,14 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
             },
             handleNotAuthorizedResponse : function () {
                 console.log("FENCE-handleNotAuthorizedResponse() starting....");
-                console.log("FENCE-handleNotAuthorizedResponse() sessionStorage");
-                console.log(sessionStorage);
 
                 if (JSON.parse(sessionStorage.session).token) {
                     if (sessionStorage.not_authorized_url)
                         window.location = sessionStorage.not_authorized_url;
                     else
                         window.location = "/psamaui/not_authorized" + window.location.search;
-                }
-                else {
-                    console.log("fence_login!!!!!!!");console.log("fence_login!!!!!!!");console.log("fence_login!!!!!!!");
-                    //window.location = "/psamaui/logout" + window.location.search;
+                } else {
+                  // Do nothing if there is not token, and authorization failed.
                 }
             },
             displayNotAuthorized : function () {
