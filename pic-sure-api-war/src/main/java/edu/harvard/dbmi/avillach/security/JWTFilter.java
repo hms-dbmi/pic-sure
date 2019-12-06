@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
+import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.JwtException;
@@ -33,6 +35,7 @@ import java.io.InputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.applyProxySettings;
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
@@ -52,6 +55,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Inject
 	PicSureWarInit picSureWarInit;
+	
+	@Inject
+	QueryRepository queryRepo;
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
@@ -126,14 +132,35 @@ public class JWTFilter implements ContainerRequestFilter {
 
 		Map<String, Object> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
-		InputStream entityStream = requestContext.getEntityStream();
+		
+		
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		HashMap<String, Object> requestMap = new HashMap<String, Object>();
 		try {
-			IOUtils.copy(entityStream, buffer);
-			requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
-			requestMap.put("Target Service", requestContext.getUriInfo().getPath());
+
+			String requestPath = requestContext.getUriInfo().getPath();
+			requestMap.put("Target Service", requestPath);
+			
+			Query initialQuery = null;
+			//Read the query from the backing store if we are getting the results (full query may not be specified in request)
+			if(requestPath.startsWith("/query/") && requestPath.endsWith("result")) {
+				 //Path:   /query/{queryId}/result
+				String[] pathParts = requestPath.split("/");
+				UUID uuid = UUID.fromString(pathParts[2]);
+				initialQuery = queryRepo.getById(uuid);
+			}
+			
+			if(initialQuery != null) {
+				IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
+			} else {
+				//This stream is only consumable once, so we need to save & reset it.
+				InputStream entityStream = requestContext.getEntityStream();
+				IOUtils.copy(entityStream, buffer);
+				requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
+			}
+			
 			if(buffer.size()>0) {
+				//I think here we are removing any existing credentials from the query; PIC-SURE has it's own static token that will be used
 				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
 				if (queryObject instanceof Collection) {
 					for (Object query: (Collection)queryObject) {
