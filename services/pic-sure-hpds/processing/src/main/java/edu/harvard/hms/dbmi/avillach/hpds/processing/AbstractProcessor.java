@@ -209,7 +209,16 @@ public abstract class AbstractProcessor {
 
 		TreeSet<Integer> idList;
 		if(filteredIdSets.isEmpty()) {
-			idList = new TreeSet(Sets.union(allIds, new TreeSet(Arrays.asList(variantStore.getPatientIds()).stream().collect(Collectors.mapping((String id)->{return Integer.parseInt(id);}, Collectors.toList()))) ));
+			if(variantStore!=null) {
+				idList = new TreeSet(
+						Sets.union(allIds, 
+								new TreeSet(Arrays.asList(
+										variantStore.getPatientIds()).stream()
+										.collect(Collectors.mapping(
+												(String id)->{return Integer.parseInt(id);}, Collectors.toList()))) ));				
+			}else {
+				idList = allIds;
+			}
 		}else {
 			idList = new TreeSet<Integer>(applyBooleanLogic(filteredIdSets));
 		}
