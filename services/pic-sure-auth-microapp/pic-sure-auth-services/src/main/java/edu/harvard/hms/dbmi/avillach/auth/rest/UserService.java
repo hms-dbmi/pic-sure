@@ -526,7 +526,7 @@ public class UserService extends BaseEntityService<User> {
         // Get the User's list of Roles. The first time, this will be an empty Set.
         // This method is called for every Role, and the User's list of Roles will
         // be updated for all subsequent calls.
-        Set<Role> users_roles = u.getRoles();
+        Set<Role> users_roles = new HashSet<Role>(); //u.getRoles();
         try {
             Role r = null;
             // Create the Role in the repository, if it does not exist. Otherwise, add it.
@@ -543,7 +543,6 @@ public class UserService extends BaseEntityService<User> {
                 // Since this is a new Role, we need to ensure that the
                 // corresponding Privilege (with gates) and AccessRule is added.
                 //r.setPrivileges(upsertPrivilege(u, r));
-
                 roleRepo.persist(r);
                 logger.info("upsertRole() created new role");
             }
