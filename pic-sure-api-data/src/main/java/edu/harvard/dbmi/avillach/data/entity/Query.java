@@ -89,9 +89,9 @@ public class Query extends BaseEntity {
         }
 		
 		String outStr = "";
-		try {
-	        GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(this.query));
-	        BufferedReader bf = new BufferedReader(new InputStreamReader(gis, "UTF-8"));
+		try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(this.query));
+	        BufferedReader bf = new BufferedReader(new InputStreamReader(gis, "UTF-8"));){
+	        
 	        String line;
 	        while ((line=bf.readLine())!=null) {
 	          outStr += line;
@@ -109,9 +109,8 @@ public class Query extends BaseEntity {
             return;
         }
        
-		try {
-			ByteArrayOutputStream obj=new ByteArrayOutputStream();
-			GZIPOutputStream gzip = new GZIPOutputStream(obj);
+		try (ByteArrayOutputStream obj=new ByteArrayOutputStream();
+			GZIPOutputStream gzip = new GZIPOutputStream(obj);){
 			gzip.write(queryStr.getBytes("UTF-8"));
 	        gzip.close();
 	        this.query = obj.toByteArray();

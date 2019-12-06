@@ -141,13 +141,17 @@ public class JWTFilter implements ContainerRequestFilter {
 			String requestPath = requestContext.getUriInfo().getPath();
 			requestMap.put("Target Service", requestPath);
 			
+			Query initialQuery = null;
 			//Read the query from the backing store if we are getting the results (full query may not be specified in request)
 			if(requestPath.startsWith("/query/") && requestPath.endsWith("result")) {
 				 //Path:   /query/{queryId}/result
 				String[] pathParts = requestPath.split("/");
 				UUID uuid = UUID.fromString(pathParts[2]);
-				Query query = queryRepo.getById(uuid);
-				IOUtils.copy(new ByteArrayInputStream(query.getQuery().getBytes()), buffer);
+				initialQuery = queryRepo.getById(uuid);
+			}
+			
+			if(initialQuery != null) {
+				IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
 			} else {
 				//This stream is only consumable once, so we need to save & reset it.
 				InputStream entityStream = requestContext.getEntityStream();
