@@ -38,7 +38,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
  
 public class LoadingStore {
  
-	RandomAccessFile allObservationsStore;
+	public RandomAccessFile allObservationsStore;
 
 	TreeMap<String, ColumnMeta> metadataMap = new TreeMap<>();
 	
@@ -125,7 +125,7 @@ public class LoadingStore {
 						}
 					});
 
-	TreeSet<Integer> allIds = new TreeSet<Integer>();
+	public TreeSet<Integer> allIds = new TreeSet<Integer>();
 	
 	public void saveStore() throws FileNotFoundException, IOException {
 		System.out.println("Invalidating store");
