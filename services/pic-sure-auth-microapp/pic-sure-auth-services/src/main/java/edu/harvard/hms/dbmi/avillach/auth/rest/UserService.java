@@ -546,7 +546,6 @@ public class UserService extends BaseEntityService<User> {
                 logger.info("upsertRole() created new role");
             }
             u.getRoles().add(r);
-            logger.info("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
             status = true;
         } catch (Exception ex) {
             logger.error("upsertRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
