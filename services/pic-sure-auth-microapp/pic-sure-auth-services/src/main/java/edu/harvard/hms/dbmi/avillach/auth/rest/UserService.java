@@ -526,7 +526,6 @@ public class UserService extends BaseEntityService<User> {
         // Get the User's list of Roles. The first time, this will be an empty Set.
         // This method is called for every Role, and the User's list of Roles will
         // be updated for all subsequent calls.
-        Set<Role> users_roles = new HashSet<Role>(); //u.getRoles();
         try {
             Role r = null;
             // Create the Role in the repository, if it does not exist. Otherwise, add it.
@@ -546,19 +545,13 @@ public class UserService extends BaseEntityService<User> {
                 roleRepo.persist(r);
                 logger.info("upsertRole() created new role");
             }
-            users_roles.add(r);
+            u.getRoles().add(r);
             logger.info("upsertRole() added to new set of roles. Now there are "+users_roles.size()+" roles.");
+            status = true;
         } catch (Exception ex) {
             logger.error("upsertRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
         }
 
-        try {
-            userRepo.changeRole(u, users_roles);
-            logger.debug("upsertRole() updated user, who now has "+users_roles.size()+" roles.");
-            status = true;
-        } catch (Exception ex) {
-            logger.error("upsertRole() Could not add roles to user, because "+ex.getMessage());
-        }
 
         logger.debug("upsertRole() finished");
         return status;

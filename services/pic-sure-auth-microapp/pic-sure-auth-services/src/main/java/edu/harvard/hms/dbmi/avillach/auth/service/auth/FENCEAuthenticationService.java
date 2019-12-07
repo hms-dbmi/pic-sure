@@ -37,6 +37,9 @@ public class FENCEAuthenticationService {
     UserService userService;
 
     @Inject
+    UserRepository userRole;
+
+    @Inject
     AuthUtils authUtil;
 
     private JsonNode getFENCEUserProfile(String access_token) {
@@ -158,7 +161,12 @@ public class FENCEAuthenticationService {
                 //It is a an array of strings, like this: ["read-storage","read"]
                 //logger.debug("getFENCEProfile() object:"+role_object.toString());
         }
-
+        try {
+            userRepository.changeRole(current_user, current_user.getRoles());
+            logger.debug("upsertRole() updated user, who now has "+current_user.getRoles().size()+" roles.");
+        } catch (Exception ex) {
+            logger.error("upsertRole() Could not add roles to user, because "+ex.getMessage());
+        }
         HashMap<String, Object> claims = new HashMap<String,Object>();
         claims.put("name", fence_user_profile.get("name"));
         claims.put("email", current_user.getEmail());
