@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
@@ -8,6 +7,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
@@ -17,7 +17,6 @@ import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 
 import org.apache.http.Header;
@@ -26,6 +25,7 @@ import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
@@ -34,8 +34,8 @@ import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_consen
 import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_harmonized_concept_path;
 import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_standard_access_rules;
 
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
+import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 public class FENCEAuthenticationService {
@@ -52,9 +52,6 @@ public class FENCEAuthenticationService {
 
     @Inject
     AccessRuleRepository accessruleRepo;
-    
-    @Inject
-    MailService mailService;
 
     @Inject
     UserRepository userRole;
@@ -67,6 +64,17 @@ public class FENCEAuthenticationService {
     
     @Inject
     AuthUtils authUtil;
+
+    private Application picSureApp;
+    private Connection fenceConnection;
+    private Map<String, String> fenceMapping;
+
+    @PostConstruct
+	public void initializeFenceService() {
+		 picSureApp = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
+		 fenceConnection = connectionRepo.getUniqueResultByColumn("label", "FENCE");
+		 fenceMapping = getFENCEMapping();
+    }
 
     private JsonNode getFENCEUserProfile(String access_token) {
         logger.debug("getFENCEUserProfile() starting");
@@ -96,10 +104,10 @@ public class FENCEAuthenticationService {
         headers.add(new BasicHeader("Content-type", "application/x-www-form-urlencoded; charset=UTF-8"));
 
         // Build the request body, as JSON
-        StringBuilder query_string = new StringBuilder()
-                .append("grant_type").append('=').append("authorization_code").append('&')
-                .append("code").append('=').append(fence_code).append('&')
-                .append("redirect_uri").append('=').append(JAXRSConfiguration.fence_redirect_url);
+        String query_string = 
+        		"grant_type=authorization_code"
+        				+ "&code=" + fence_code 
+        				+ "&redirect_uri=" + JAXRSConfiguration.fence_redirect_url;
 
         String fence_token_url = JAXRSConfiguration.idp_provider_uri+"/user/oauth2/token";
 
@@ -107,7 +115,7 @@ public class FENCEAuthenticationService {
         try {
             resp = HttpClientUtil.simplePost(
                     fence_token_url,
-                    new StringEntity(query_string.toString()),
+                    new StringEntity(query_string),
                     JAXRSConfiguration.client,
                     JAXRSConfiguration.objectMapper,
                     headers.toArray(new Header[headers.size()])
@@ -220,7 +228,7 @@ public class FENCEAuthenticationService {
         new_user.setGeneralMetadata(node.toString());
         // This is a hack, but someone has to do it.
         new_user.setAcceptedTOS(new Date());
-        new_user.setConnection(connectionRepo.getUniqueResultByColumn("label", "FENCE"));
+        new_user.setConnection(fenceConnection);
         logger.debug("createUserFromFENCEProfile() finished setting fields");
 
         User actual_user = userRepo.findOrCreate(new_user);
@@ -283,13 +291,6 @@ public class FENCEAuthenticationService {
         String roleName = r.getName();
         logger.info("upsertPrivilege() starting, adding privilege to role "+roleName);
 
-        Map<String, String> fenceMapping = null;
-        try {
-            fenceMapping = getFENCEMapping();
-        } catch (Exception e) {
-            e.printStackTrace();
-            logger.warn("upsertPrivilege() Could not process the JSON mapping project=>concept_path");
-        }
         String[] parts = roleName.split("_");
         String project_name = parts[1];
         String consent_group = parts[2];
@@ -312,21 +313,20 @@ public class FENCEAuthenticationService {
             logger.info("upsertPrivilege() This is a new privilege");
             logger.info("upsertPrivilege() project:"+project_name+" consent_group:"+consent_group+" concept_path:"+concept_path);
 
-            Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
             // Add new privilege PRIV_FENCE_phs######_c# and PRIV_FENCE_phs######_c#_HARMONIZED
-            privs.add(createNewPrivilege(app, project_name, consent_group, concept_path, false));
-            privs.add(createNewPrivilege(app, project_name, consent_group, fence_harmonized_concept_path, true));
+            privs.add(createNewPrivilege(project_name, consent_group, concept_path, false));
+            privs.add(createNewPrivilege(project_name, consent_group, fence_harmonized_concept_path, true));
         }
         logger.info("upsertPrivilege() Finished");
         return privs;
     }
 
-    private Privilege createNewPrivilege(Application app, String project_name, String consent_group, String queryScopeConceptPath, boolean isHarmonized) {
+    private Privilege createNewPrivilege(String project_name, String consent_group, String queryScopeConceptPath, boolean isHarmonized) {
         Privilege priv = new Privilege();
 
         // Build Privilege Object
         try {
-            priv.setApplication(app);
+            priv.setApplication(picSureApp);
             priv.setName("PRIV_FENCE_"+project_name+"_"+consent_group+(isHarmonized?"_HARMONIZED":""));
             priv.setDescription("FENCE privilege for "+project_name+"/"+consent_group);
             priv.setQueryScope(queryScopeConceptPath);
@@ -398,7 +398,8 @@ public class FENCEAuthenticationService {
         Set<AccessRule> gates = new HashSet<AccessRule>();
         for (String accessruleName : fence_standard_access_rules.split("\\,")) {
             if (accessruleName.startsWith("GATE_")) {
-                logger.info("upsertAccessRule() Assign gate "+accessruleName+" to access_rule "+ar.getName());
+                logger.info("upsertAccessRule() Assign gate " + accessruleName + 
+                		" to access_rule "+ar.getName());
                 gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
             } else {
                 continue;
@@ -416,8 +417,16 @@ public class FENCEAuthenticationService {
 	 * Get the mappings of fence privileges to paths
 	 */
 	@SuppressWarnings("unchecked")
-	private Map<String, String> getFENCEMapping() throws JsonProcessingException, KeyManagementException, NoSuchAlgorithmException {
-		return JAXRSConfiguration.objectMapper.readValue("/usr/local/docker-config/wildfly/fence_mapping.json", Map.class);
+	private Map<String, String> getFENCEMapping() {
+		try {
+			return JAXRSConfiguration.objectMapper.readValue(
+					new File(String.join(File.separator, 
+							new String[] {JAXRSConfiguration.emailTemplatePath ,"fence_mapping.json"}))
+					, Map.class);
+		} catch (IOException e) {
+			logger.error("fence-mapping.json not found at /usr/local/docker-config/wildfly/fence_mapping.json");
+		}
+		return Map.of();
 	}
 
 }
