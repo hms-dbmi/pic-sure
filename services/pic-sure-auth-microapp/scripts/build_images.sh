@@ -30,18 +30,9 @@ fi
 if [ "${CONFIG_DIR}" == "" ];
 then
 	logger "CONFIG_DIR environment variable is not set. Using default /usr/local/docker-config"
-	mkdir -p /usr/local/docker-config/images
 	export CONFIG_DIR=/usr/local/docker-config
 else
 	logger "Using CONFIG_DIR variable, with value ${CONFIG_DIR}"
-fi
-
-if [ -d ${CONFIG_DIR}/images ];
-then
-	logger "images subdirectory exists"
-else
-	logger "images subdirectory does not exist. creating it"
-	mkdir -p ${CONFIG_DIR}/images
 fi
 
 # TODO: Could use a check on the docker version and wether it is running or not.
@@ -91,14 +82,6 @@ else
 	logger "Failed to build PSAMA UI docker image locally."
 	exit 255
 fi
-
-logger "Saving current images to ${CONFIG_DIR}/images directory."
-
-#docker save dbmi/pic-sure-auth-services:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH} | \
-#	gzip > ${CONFIG_DIR}/images/pic-sure-auth-services_${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}.tar.gz
-
-#docker save dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH} | \
-#	gzip > ${CONFIG_DIR}/images/pic-sure-auth-ui_${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}.tar.gz
 
 echo "Images:"
 echo "dbmi/pic-sure-auth-ui:${GITHUB_BRANCH}.${GITHUB_COMMIT_HASH}"
