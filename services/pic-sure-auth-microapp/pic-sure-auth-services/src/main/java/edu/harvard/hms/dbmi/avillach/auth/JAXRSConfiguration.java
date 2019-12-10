@@ -68,8 +68,8 @@ public class JAXRSConfiguration extends Application {
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;
 
-    @Resource(mappedName = "java:global/emailTemplatePath")
-    public static String emailTemplatePath;
+    @Resource(mappedName = "java:global/templatePath")
+    public static String templatePath;
 
     @Resource(mappedName = "java:global/accessGrantEmailSubject")
     public static String accessGrantEmailSubject;

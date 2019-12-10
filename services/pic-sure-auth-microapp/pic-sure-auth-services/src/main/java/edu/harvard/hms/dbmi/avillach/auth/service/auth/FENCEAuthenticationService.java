@@ -421,7 +421,7 @@ public class FENCEAuthenticationService {
 		try {
 			return JAXRSConfiguration.objectMapper.readValue(
 					new File(String.join(File.separator, 
-							new String[] {JAXRSConfiguration.emailTemplatePath ,"fence_mapping.json"}))
+							new String[] {JAXRSConfiguration.templatePath ,"fence_mapping.json"}))
 					, Map.class);
 		} catch (IOException e) {
 			logger.error("fence-mapping.json not found at /usr/local/docker-config/wildfly/fence_mapping.json");
