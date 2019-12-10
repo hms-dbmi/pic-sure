@@ -92,7 +92,6 @@ public class JAXRSConfiguration extends Application {
     public static String fence_client_id;
     public static String fence_client_secret;
     public static String fence_redirect_url;
-    public static String fence_mapping_url;
     public static String fence_consent_group_concept_path;
     public static String fence_standard_access_rules;
     public static String fence_harmonized_concept_path;
@@ -195,12 +194,6 @@ public class JAXRSConfiguration extends Application {
                     fence_consent_group_concept_path = "\\\\_Consents\\\\Short Study Accession with Consent code\\\\";
                 }
 
-                fence_mapping_url = (String) ctx.lookup("java:global/fence_mapping_url");
-                if (fence_mapping_url == null) {
-                    logger.error("checkIDPProvider() Empty fence_mapping_url from standalone.xml. Using default!");
-                    fence_mapping_url = "https://httpd/fence_mapping.json";
-                }
-
                 fence_standard_access_rules = (String) ctx.lookup("java:global/fence_standard_access_rules");
                 if (fence_standard_access_rules.isEmpty()) {
                     logger.error("checkIDPProvider() Empty access rules from standalone.xml. Using defaults.");
@@ -231,7 +224,6 @@ public class JAXRSConfiguration extends Application {
 
                 // For debugging purposes, here is a dump of most of the FENCE variables
                 logger.info("checkIDPProvider() fence_standard_access_rules        "+fence_standard_access_rules);
-                logger.info("checkIDPProvider() fence_mapping_url                  "+fence_mapping_url);
                 logger.info("checkIDPProvider() fence_consent_group_concept_path   "+fence_consent_group_concept_path);
                 logger.info("checkIDPProvider() fence_harmonized_concept_path      "+fence_harmonized_concept_path);
 
