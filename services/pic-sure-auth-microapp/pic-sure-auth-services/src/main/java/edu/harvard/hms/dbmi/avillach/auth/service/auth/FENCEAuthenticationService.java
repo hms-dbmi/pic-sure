@@ -1,15 +1,25 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.AccessRule;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.AccessRuleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
+
 import org.apache.http.Header;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
@@ -19,26 +29,42 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.Response;
+
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_consent_group_concept_path;
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_harmonized_concept_path;
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.fence_standard_access_rules;
+
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 public class FENCEAuthenticationService {
     private Logger logger = LoggerFactory.getLogger(FENCEAuthenticationService.class);
 
     @Inject
-    UserRepository userRepository;
+    UserRepository userRepo;
 
     @Inject
     RoleRepository roleRepo;
 
     @Inject
-    MailService mailService;
+    ConnectionRepository connectionRepo;
 
     @Inject
-    UserService userService;
+    AccessRuleRepository accessruleRepo;
+    
+    @Inject
+    MailService mailService;
 
     @Inject
     UserRepository userRole;
 
+    @Inject
+    ApplicationRepository applicationRepo;
+    
+    @Inject
+    PrivilegeRepository privilegeRepo;
+    
     @Inject
     AuthUtils authUtil;
 
@@ -117,7 +143,7 @@ public class FENCEAuthenticationService {
         try {
             // Create or retrieve the user profile from our database, based on the the key
             // in the Gen3/FENCE profile
-            current_user = userService.createUserFromFENCEProfile(fence_user_profile);
+            current_user = createUserFromFENCEProfile(fence_user_profile);
             logger.info("getFENCEProfile() saved details for user with e-mail:"
                     +current_user.getEmail()
                     +" and subject:"
@@ -150,7 +176,7 @@ public class FENCEAuthenticationService {
             }
             logger.info("getFENCEProfile() New PSAMA role name:"+newRoleName);
 
-                if (userService.upsertRole(current_user, newRoleName, "FENCE role "+newRoleName)) {
+                if (upsertRole(current_user, newRoleName, "FENCE role "+newRoleName)) {
                     logger.info("getFENCEProfile() Updated user role. Now it includes `"+newRoleName+"`");
                 } else {
                     logger.error("getFENCEProfile() could not add roles to user's profile");
@@ -162,7 +188,7 @@ public class FENCEAuthenticationService {
                 //logger.debug("getFENCEProfile() object:"+role_object.toString());
         }
         try {
-            userRepository.changeRole(current_user, current_user.getRoles());
+            userRepo.changeRole(current_user, current_user.getRoles());
             logger.debug("upsertRole() updated user, who now has "+current_user.getRoles().size()+" roles.");
         } catch (Exception ex) {
             logger.error("upsertRole() Could not add roles to user, because "+ex.getMessage());
@@ -177,4 +203,221 @@ public class FENCEAuthenticationService {
         logger.debug("getFENCEToken() finished");
         return PICSUREResponse.success(responseMap);
     }
+    
+
+    /**
+     * Create or update a user record, based on the FENCE user profile, which is in JSON format.
+     *
+     * @param node User profile, as it is received from Gen3 FENCE, in JSON format
+     * @return User The actual entity, as it is persisted (if no errors) in the PSAMA database
+     */
+    private User createUserFromFENCEProfile(JsonNode node) {
+        logger.debug("createUserFromFENCEProfile() starting...");
+
+        User new_user = new User();
+        new_user.setSubject("fence|"+node.get("user_id").asText());
+        new_user.setEmail(node.get("email").asText());
+        new_user.setGeneralMetadata(node.toString());
+        // This is a hack, but someone has to do it.
+        new_user.setAcceptedTOS(new Date());
+        new_user.setConnection(connectionRepo.getUniqueResultByColumn("label", "FENCE"));
+        logger.debug("createUserFromFENCEProfile() finished setting fields");
+
+        User actual_user = userRepo.findOrCreate(new_user);
+
+        // Clear current set of roles every time we create or retrieve a user
+        actual_user.setRoles(new HashSet<>());
+        logger.debug("createUserFromFENCEProfile() cleared roles");
+
+        userRepo.persist(actual_user);
+        logger.debug("createUserFromFENCEProfile() finished, user record inserted");
+        return actual_user;
+    }
+    
+    /**
+     * Insert or Update the User object's list of Roles in the database.
+     *
+     * @param u The User object the generated Role will be added to
+     * @param roleName Name of the Role
+     * @param roleDescription Description of the Role
+     * @return boolean Whether the Role was successfully added to the User or not
+     */
+    private boolean upsertRole(User u,  String roleName, String roleDescription) {
+        boolean status = false;
+        logger.debug("upsertRole() starting for user subject:"+u.getSubject());
+
+        // Get the User's list of Roles. The first time, this will be an empty Set.
+        // This method is called for every Role, and the User's list of Roles will
+        // be updated for all subsequent calls.
+        try {
+            Role r = null;
+            // Create the Role in the repository, if it does not exist. Otherwise, add it.
+            Role existing_role = roleRepo.getUniqueResultByColumn("name", roleName);
+            if (existing_role != null) {
+                // Role already exists
+                logger.info("upsertRole() role already exists");
+                r = existing_role;
+            } else {
+                // This is a new Role
+                r = new Role();
+                r.setName(roleName);
+                r.setDescription(roleDescription);
+                // Since this is a new Role, we need to ensure that the
+                // corresponding Privilege (with gates) and AccessRule is added.
+                //r.setPrivileges(upsertPrivilege(u, r));
+                roleRepo.persist(r);
+                logger.info("upsertRole() created new role");
+            }
+            u.getRoles().add(r);
+            status = true;
+        } catch (Exception ex) {
+            logger.error("upsertRole() Could not inser/update role "+roleName+" to repo, because "+ex.getMessage());
+        }
+
+
+        logger.debug("upsertRole() finished");
+        return status;
+    }
+
+    private Set<Privilege> upsertPrivilege(User u, Role r) {
+        String roleName = r.getName();
+        logger.info("upsertPrivilege() starting, adding privilege to role "+roleName);
+
+        Map<String, String> fenceMapping = null;
+        try {
+            fenceMapping = getFENCEMapping();
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.warn("upsertPrivilege() Could not process the JSON mapping project=>concept_path");
+        }
+        String[] parts = roleName.split("_");
+        String project_name = parts[1];
+        String consent_group = parts[2];
+        // TODO: How to alert when the mapping is not in the list.
+        String concept_path = fenceMapping.get(project_name);
+
+        // Get privilege and assign it to this role.
+        String privilegeName = r.getName().replaceFirst("FENCE_*","PRIV_FENCE_");
+        logger.info("upsertPrivilege() Looking for privilege, with name : "+privilegeName);
+
+        Set<Privilege> privs = r.getPrivileges();
+        if (privs == null) { privs = new HashSet<Privilege>();}
+
+        Privilege p = privilegeRepo.getUniqueResultByColumn("name", privilegeName);
+        if (p != null) {
+            logger.info("upsertPrivilege() Assigning privilege "+p.getName()+" to role "+r.getName());
+            privs.add(p);
+
+        } else {
+            logger.info("upsertPrivilege() This is a new privilege");
+            logger.info("upsertPrivilege() project:"+project_name+" consent_group:"+consent_group+" concept_path:"+concept_path);
+
+            Application app = applicationRepo.getUniqueResultByColumn("name", "PICSURE");
+            // Add new privilege PRIV_FENCE_phs######_c# and PRIV_FENCE_phs######_c#_HARMONIZED
+            privs.add(createNewPrivilege(app, project_name, consent_group, concept_path, false));
+            privs.add(createNewPrivilege(app, project_name, consent_group, fence_harmonized_concept_path, true));
+        }
+        logger.info("upsertPrivilege() Finished");
+        return privs;
+    }
+
+    private Privilege createNewPrivilege(Application app, String project_name, String consent_group, String queryScopeConceptPath, boolean isHarmonized) {
+        Privilege priv = new Privilege();
+
+        // Build Privilege Object
+        try {
+            priv.setApplication(app);
+            priv.setName("PRIV_FENCE_"+project_name+"_"+consent_group+(isHarmonized?"_HARMONIZED":""));
+            priv.setDescription("FENCE privilege for "+project_name+"/"+consent_group);
+            priv.setQueryScope(queryScopeConceptPath);
+
+            String consent_concept_path = fence_consent_group_concept_path;
+            // TOOD: Change this to a mustache template
+            String queryTemplateText = "{\"categoryFilters\": {\""
+                    +consent_concept_path
+                    +"\":\""
+                    +project_name+"."+consent_group
+                    +"\"},"
+                    +"\"numericFilters\":{},\"requiredFields\":[],"
+                    +"\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
+                    +"\"expectedResultType\": \"COUNT\""
+                    +"}";
+            priv.setQueryTemplate(queryTemplateText);
+            priv.setQueryScope(queryScopeConceptPath);
+
+            AccessRule ar = upsertAccessRule(project_name, consent_group);
+            if (ar != null) {
+                Set<AccessRule> accessrules = new HashSet<AccessRule>();
+                accessrules.add(ar);
+                // Add additionanl access rules
+                for(String arName: fence_standard_access_rules.split(",")) {
+                    if (arName.startsWith("AR_")) {
+                        logger.info("Adding AccessRule "+arName+" to privilege "+priv.getName());
+                        accessrules.add(accessruleRepo.getUniqueResultByColumn("name",arName));
+                    }
+                }
+                priv.setAccessRules(accessrules);
+                logger.info("createNewPrivilege() Added "+accessrules.size()+" access_rules to privilege");
+            }
+
+            privilegeRepo.persist(priv);
+            logger.info("createNewPrivilege() Added new privilege "+priv.getName()+" to DB");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            logger.error("createNewPrivilege() could not save privilege");
+        }
+        return priv;
+    }
+
+    private AccessRule upsertAccessRule(String project_name, String consent_group) {
+        logger.debug("upsertAccessRule() starting");
+        String ar_name = "AR_"+project_name+"_"+consent_group;
+        AccessRule ar = accessruleRepo.getUniqueResultByColumn("name", ar_name);
+        if (ar != null) {
+            logger.info("upsertAccessRule() AccessRule "+ar_name+" already exists.");
+            return ar;
+        }
+
+        logger.info("upsertAccessRule() Creating new access rule "+ar_name);
+        ar = new AccessRule();
+        ar.setName(ar_name);
+        ar.setDescription("FENCE AR for "+project_name+"/"+consent_group);
+        StringBuilder ruleText = new StringBuilder();
+        ruleText.append("$..categoryFilters.['");
+        ruleText.append(fence_consent_group_concept_path);
+        ruleText.append("']");
+        ar.setRule(ruleText.toString());
+        ar.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        ar.setValue(project_name+"."+consent_group);
+        ar.setCheckMapKeyOnly(false);
+        ar.setCheckMapNode(true);
+        ar.setEvaluateOnlyByGates(false);
+        ar.setGateAnyRelation(false);
+
+        // Assign all GATE_ access rules to this AR access rule.
+        Set<AccessRule> gates = new HashSet<AccessRule>();
+        for (String accessruleName : fence_standard_access_rules.split("\\,")) {
+            if (accessruleName.startsWith("GATE_")) {
+                logger.info("upsertAccessRule() Assign gate "+accessruleName+" to access_rule "+ar.getName());
+                gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
+            } else {
+                continue;
+            }
+        }
+        ar.setGates(gates);
+
+        accessruleRepo.persist(ar);
+
+        logger.debug("upsertAccessRule() finished");
+        return ar;
+    }
+
+	/*
+	 * Get the mappings of fence privileges to paths
+	 */
+	@SuppressWarnings("unchecked")
+	private Map<String, String> getFENCEMapping() throws JsonProcessingException, KeyManagementException, NoSuchAlgorithmException {
+		return JAXRSConfiguration.objectMapper.readValue("/usr/local/docker-config/wildfly/fence_mapping.json", Map.class);
+	}
+
 }
