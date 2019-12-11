@@ -58,10 +58,10 @@ public class FENCEAuthenticationService {
 
     @Inject
     ApplicationRepository applicationRepo;
-    
+
     @Inject
     PrivilegeRepository privilegeRepo;
-    
+
     @Inject
     AuthUtils authUtil;
 
@@ -104,9 +104,9 @@ public class FENCEAuthenticationService {
         headers.add(new BasicHeader("Content-type", "application/x-www-form-urlencoded; charset=UTF-8"));
 
         // Build the request body, as JSON
-        String query_string = 
+        String query_string =
         		"grant_type=authorization_code"
-        				+ "&code=" + fence_code 
+        				+ "&code=" + fence_code
         				+ "&redirect_uri=" + JAXRSConfiguration.fence_redirect_url;
 
         String fence_token_url = JAXRSConfiguration.idp_provider_uri+"/user/oauth2/token";
@@ -211,7 +211,7 @@ public class FENCEAuthenticationService {
         logger.debug("getFENCEToken() finished");
         return PICSUREResponse.success(responseMap);
     }
-    
+
 
     /**
      * Create or update a user record, based on the FENCE user profile, which is in JSON format.
@@ -241,7 +241,7 @@ public class FENCEAuthenticationService {
         logger.debug("createUserFromFENCEProfile() finished, user record inserted");
         return actual_user;
     }
-    
+
     /**
      * Insert or Update the User object's list of Roles in the database.
      *
@@ -398,7 +398,7 @@ public class FENCEAuthenticationService {
         Set<AccessRule> gates = new HashSet<AccessRule>();
         for (String accessruleName : fence_standard_access_rules.split("\\,")) {
             if (accessruleName.startsWith("GATE_")) {
-                logger.info("upsertAccessRule() Assign gate " + accessruleName + 
+                logger.info("upsertAccessRule() Assign gate " + accessruleName +
                 		" to access_rule "+ar.getName());
                 gates.add(accessruleRepo.getUniqueResultByColumn("name",accessruleName));
             } else {
@@ -420,11 +420,11 @@ public class FENCEAuthenticationService {
 	private Map<String, String> getFENCEMapping() {
 		try {
 			return JAXRSConfiguration.objectMapper.readValue(
-					new File(String.join(File.separator, 
+					new File(String.join(File.separator,
 							new String[] {JAXRSConfiguration.templatePath ,"fence_mapping.json"}))
 					, Map.class);
 		} catch (IOException e) {
-			logger.error("fence-mapping.json not found at /usr/local/docker-config/wildfly/fence_mapping.json");
+			logger.error("fence-mapping.json not found at "+JAXRSConfiguration.templatePath);
 		}
 		return Map.of();
 	}
