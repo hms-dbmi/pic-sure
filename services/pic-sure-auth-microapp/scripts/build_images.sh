@@ -27,14 +27,6 @@ else
 	logger "Current Java version has been verified. Proceed with Maven build"
 fi
 
-if [ "${CONFIG_DIR}" == "" ];
-then
-	logger "CONFIG_DIR environment variable is not set. Using default /usr/local/docker-config"
-	export CONFIG_DIR=/usr/local/docker-config
-else
-	logger "Using CONFIG_DIR variable, with value ${CONFIG_DIR}"
-fi
-
 # TODO: Could use a check on the docker version and wether it is running or not.
 
 # Do the build from the root directory of the repo
