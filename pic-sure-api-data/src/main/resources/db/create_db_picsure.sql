@@ -26,7 +26,7 @@ USE `picsure`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `query` (
   `uuid` binary(16) NOT NULL,
-  `query` blob,
+  `query` longblob,
   `readyTime` date DEFAULT NULL,
   `resourceResultId` varchar(255) COLLATE utf8_bin DEFAULT NULL,
   `startTime` date DEFAULT NULL,
