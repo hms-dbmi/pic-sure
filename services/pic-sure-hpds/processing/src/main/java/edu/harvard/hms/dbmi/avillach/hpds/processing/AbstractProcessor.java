@@ -649,7 +649,7 @@ public abstract class AbstractProcessor {
 					}else {
 						store.get(cubes.get(x));
 						log.debug("loaded: " + cubes.get(x));
-						if((conceptsToCache * .1) % 0 == 0) {
+						if(x % (conceptsToCache * .1)== 0) {
 							log.info("cached: " + x + " out of " + conceptsToCache);	
 						}
 					}
