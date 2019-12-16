@@ -641,13 +641,17 @@ public abstract class AbstractProcessor {
 	public void loadAllDataFiles() {
 		if(Crypto.hasKey()) {
 			List<String> cubes = new ArrayList<String>(metaStore.keySet());
-			for(int x = 0;x<Math.min(metaStore.size(), CACHE_SIZE);x++){
+			int conceptsToCache = Math.min(metaStore.size(), CACHE_SIZE);
+			for(int x = 0;x<conceptsToCache;x++){
 				try {
 					if(metaStore.get(cubes.get(x)).getObservationCount() == 0){
 						log.info("Rejecting : " + cubes.get(x) + " because it has no entries.");
 					}else {
 						store.get(cubes.get(x));
-						log.info("loaded: " + cubes.get(x));					
+						log.debug("loaded: " + cubes.get(x));
+						if((conceptsToCache * .1) % 0 = 0) {
+							log.info("cached: " + x + " out of " + conceptsToCache);	
+						}
 					}
 				} catch (ExecutionException e) {
 					log.error(e);
