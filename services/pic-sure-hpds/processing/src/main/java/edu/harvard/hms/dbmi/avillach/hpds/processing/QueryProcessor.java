@@ -46,10 +46,36 @@ public class QueryProcessor extends AbstractProcessor {
 		}).collect(Collectors.toList()), ids);
 
 		columnIndex.parallelStream().forEach((column)->{
+			clearColumn(paths, ids, results, column);
 			processColumn(paths, ids, results, column);
 		});
 
 		return results;
+	}
+
+	private void clearColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results, Integer x) {
+		try{
+			String path = paths.get(x-1);
+			if(pathIsVariantSpec(path)) {
+				ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
+				int idInSubsetPointer = 0;
+				for(int id : ids) {
+					writeVariantNullResultField(results, x, doubleBuffer, idInSubsetPointer);
+					idInSubsetPointer++;
+				}
+			}else {
+				PhenoCube<?> cube = getCube(path);
+				ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
+				int idInSubsetPointer = 0;
+				for(int id : ids) {
+					writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
+					idInSubsetPointer++;
+				}
+			}
+		}catch(Exception e) {
+			e.printStackTrace();
+			return;
+		}
 	}
 
 	private void processColumn(List<String> paths, TreeSet<Integer> ids, ResultStore results,
