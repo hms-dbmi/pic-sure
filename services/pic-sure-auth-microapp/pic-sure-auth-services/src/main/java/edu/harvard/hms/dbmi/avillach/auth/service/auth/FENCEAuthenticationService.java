@@ -424,7 +424,7 @@ public class FENCEAuthenticationService {
 							new String[] {JAXRSConfiguration.templatePath ,"fence_mapping.json"}))
 					, Map.class);
 		} catch (IOException e) {
-			logger.error("fence-mapping.json not found at "+JAXRSConfiguration.templatePath);
+			logger.error("fence_mapping.json not found at "+JAXRSConfiguration.templatePath);
 		}
 		return Map.of();
 	}
