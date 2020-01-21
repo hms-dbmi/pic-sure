@@ -1,22 +1,19 @@
 package edu.harvard.dbmi.avillach;
 
-import edu.harvard.dbmi.avillach.data.entity.Resource;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import java.util.List;
+import java.util.UUID;
+
+import javax.inject.Inject;
+import javax.ws.rs.*;
+import javax.ws.rs.core.Response;
+
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
-
-import javax.inject.Inject;
-import javax.ws.rs.*;
-import javax.ws.rs.core.Response;
-import java.util.List;
-import java.util.UUID;
 
 @Path("/")
 @Produces("application/json")
@@ -91,6 +88,14 @@ public class PicsureRS {
 	public Response querySync(@ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
 										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
 		return queryService.querySync(credentialsQueryRequest);
+	}
+	
+	@POST
+	@Path("/query/format")
+	@ApiOperation(value = "Returns a formatted string describing the given query")
+	public Response queryFormat(@ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
+										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+		return queryService.queryFormat(credentialsQueryRequest);
 	}
 
 	@GET
