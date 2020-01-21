@@ -48,6 +48,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 
 public abstract class AbstractProcessor {
 
+	private static boolean dataFilesLoaded = false;
+
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
 		Object[] metadata = loadMetadata();
@@ -82,7 +84,7 @@ public abstract class AbstractProcessor {
 
 	protected static HashMap<String, FileBackedByteIndexedInfoStore> infoStores;
 
-	protected LoadingCache<String, PhenoCube<?>> store;
+	protected static LoadingCache<String, PhenoCube<?>> store;
 
 	protected static VariantStore variantStore;
 
@@ -182,7 +184,7 @@ public abstract class AbstractProcessor {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
 		addIdSetsForAnyRecordOf(query, filteredIdSets);
-		
+
 		addIdSetsForRequiredFields(query, filteredIdSets);
 
 		addIdSetsForNumericFilters(query, filteredIdSets);
@@ -243,7 +245,10 @@ public abstract class AbstractProcessor {
 		if(query.anyRecordOf != null && !query.anyRecordOf.isEmpty()) {
 			Set<Integer> patientsInScope = new ConcurrentSkipListSet<Integer>();
 			query.anyRecordOf.parallelStream().forEach(path->{
-				if(patientsInScope.size()<Math.max(allIds.size(),variantStore.getPatientIds().length)) {
+				if(patientsInScope.size()<Math.max(
+						allIds.size(),
+						(variantStore==null || variantStore.getPatientIds()==null) ? 
+								0 : variantStore.getPatientIds().length)) {
 					if(pathIsVariantSpec(path)) {
 						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
 					} else {
@@ -639,48 +644,50 @@ public abstract class AbstractProcessor {
 	 * 
 	 */
 	public void loadAllDataFiles() {
-		if(Crypto.hasKey()) {
-			List<String> cubes = new ArrayList<String>(metaStore.keySet());
-			int conceptsToCache = Math.min(metaStore.size(), CACHE_SIZE);
-			for(int x = 0;x<conceptsToCache;x++){
-				try {
-					if(metaStore.get(cubes.get(x)).getObservationCount() == 0){
-						log.info("Rejecting : " + cubes.get(x) + " because it has no entries.");
-					}else {
-						store.get(cubes.get(x));
-						log.debug("loaded: " + cubes.get(x));
-						if(x % (conceptsToCache * .1)== 0) {
-							log.info("cached: " + x + " out of " + conceptsToCache);	
+		if(!dataFilesLoaded) {
+			if(Crypto.hasKey()) {
+				List<String> cubes = new ArrayList<String>(metaStore.keySet());
+				int conceptsToCache = Math.min(metaStore.size(), CACHE_SIZE);
+				for(int x = 0;x<conceptsToCache;x++){
+					try {
+						if(metaStore.get(cubes.get(x)).getObservationCount() == 0){
+							log.info("Rejecting : " + cubes.get(x) + " because it has no entries.");
+						}else {
+							store.get(cubes.get(x));
+							log.debug("loaded: " + cubes.get(x));
+							if(x % (conceptsToCache * .1)== 0) {
+								log.info("cached: " + x + " out of " + conceptsToCache);	
+							}
 						}
+					} catch (ExecutionException e) {
+						log.error(e);
 					}
-				} catch (ExecutionException e) {
-					log.error(e);
+
 				}
 
 			}
-			
+			infoStores = new HashMap<>();
+			Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
+			.forEach((String filename)->{
+				try (
+						FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
+						GZIPInputStream gis = new GZIPInputStream(fis);
+						ObjectInputStream ois = new ObjectInputStream(gis)
+						){
+					FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+					infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			});
 		}
-		infoStores = new HashMap<>();
-		Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-		.forEach((String filename)->{
-			try (
-					FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
-					GZIPInputStream gis = new GZIPInputStream(fis);
-					ObjectInputStream ois = new ObjectInputStream(gis)
-					){
-				FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-				infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
-			} catch (FileNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (ClassNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		});
 	}
 
 	@SuppressWarnings("rawtypes")
