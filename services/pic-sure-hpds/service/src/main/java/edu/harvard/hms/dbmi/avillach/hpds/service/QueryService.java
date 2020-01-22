@@ -146,6 +146,7 @@ public class QueryService {
 			}
 			fields.addAll(categoryFilters);
 		}
+		if(query.anyRecordOf != null)fields.addAll(query.anyRecordOf);
 		if(query.requiredFields != null)fields.addAll(query.requiredFields);
 		if(query.numericFilters != null)fields.addAll(query.numericFilters.keySet());
 		query.fields = new ArrayList<String>(fields);
