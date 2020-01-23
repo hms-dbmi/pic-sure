@@ -432,6 +432,7 @@ public abstract class AbstractProcessor {
 			throws TooManyVariantsException {
 
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
+		// NC - no kidding!
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();

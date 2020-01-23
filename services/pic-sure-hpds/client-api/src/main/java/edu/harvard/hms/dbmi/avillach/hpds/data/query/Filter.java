@@ -35,6 +35,20 @@ public interface Filter<T> {
 		public boolean apply(Double value) {
 			return value >= min && value <= max;
 		}
+		
+		public String toString() {
+			String strVal = "";
+			if(min != null) {
+				strVal = "Greater than " + min;
+				if(max != null) {
+					strVal += " and ";
+				}
+			}
+			if(max != null) {
+				strVal += "Less than " + max;
+			}
+			return strVal;
+		}
 	}
 	public static class FloatFilter implements Filter<Float> {
 		
@@ -67,6 +81,20 @@ public interface Filter<T> {
 
 		public boolean apply(Float value) {
 			return value >= min && value <= max;
+		}
+		
+		public String toString() {
+			String strVal = "";
+			if(min != null) {
+				strVal = "Greater than " + min;
+				if(max != null) {
+					strVal += " and ";
+				}
+			}
+			if(max != null) {
+				strVal += "Less than " + max;
+			}
+			return strVal;
 		}
 	}
 
