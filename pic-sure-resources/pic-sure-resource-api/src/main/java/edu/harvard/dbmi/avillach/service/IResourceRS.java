@@ -1,7 +1,5 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.util.Map;
-
 import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 
@@ -49,4 +47,9 @@ public interface IResourceRS
 		throw new NotSupportedException("Query Sync is not implemented in this resource.  Please use query");
 	}
 
+	@POST
+	@Path("/query/format")
+	default Response queryFormat(QueryRequest resultRequest) {
+		throw new NotSupportedException("Query formatting is not implemented in this resource.");
+	}
 }

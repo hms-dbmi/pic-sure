@@ -182,6 +182,35 @@ public class ResourceWebClient {
             throw new ResourceInterfaceException("Error getting results", e);
         }
     }
+    
+
+    public Response queryFormat(String rsURL, QueryRequest queryRequest){
+        logger.debug("Calling ResourceWebClient queryFormat()");
+        try {
+            if (queryRequest == null){
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
+            }
+            if (queryRequest.getResourceCredentials() == null){
+                throw new NotAuthorizedException("Missing credentials");
+            }
+            if (rsURL == null){
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+            }
+            String pathName = "/query/format";
+            String body = json.writeValueAsString(queryRequest);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
+            }
+            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+        } catch (JsonProcessingException e){
+            logger.error("Unable to encode resource credentials");
+            throw new NotAuthorizedException("Unable to encode resource credentials", e);
+        } catch (IOException e){
+            throw new ResourceInterfaceException("Error getting results", e);
+        }
+    }
 
     public Response querySync(String rsURL, QueryRequest queryRequest){
         logger.debug("Calling ResourceWebClient querySync()");
