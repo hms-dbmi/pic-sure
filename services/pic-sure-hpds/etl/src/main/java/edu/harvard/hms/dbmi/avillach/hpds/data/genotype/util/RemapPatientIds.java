@@ -71,6 +71,7 @@ public class RemapPatientIds {
 				}
 			}
 		}
+		variantStore.setPatientIds(newPatientIds);
 		
 		ObjectOutputStream out = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream("/opt/local/hpds/all/variantStoreRemapped.javabin")));
 		out.writeObject(variantStore);
