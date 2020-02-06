@@ -142,7 +142,7 @@ public class FENCEAuthenticationService {
             logger.debug("getFENCEProfile() .user_id:" + fence_user_profile.get("user_id"));
             logger.debug("getFENCEProfile() .email:" + fence_user_profile.get("email"));
         } catch (Exception ex) {
-            logger.error("getFENCEToken() could not retrieve the user profile from the auth provider, because "+ex.getMessage());
+            logger.error("getFENCEToken() could not retrieve the user profile from the auth provider, because "+ex.getMessage(), ex);
             throw new NotAuthorizedException("Could not get the user profile "+
                     "from the Gen3 authentication provider."+ex.getMessage());
         }
