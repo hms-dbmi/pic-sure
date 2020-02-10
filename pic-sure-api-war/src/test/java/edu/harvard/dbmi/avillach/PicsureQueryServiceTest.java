@@ -19,6 +19,9 @@ import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.ws.rs.core.Response;
 import java.util.Date;
 import java.util.HashMap;
@@ -98,6 +101,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         dataQueryRequest.setResourceCredentials(clientCredentials);
 
         //Test missing resourceId
+        
         dataQueryRequest.setQuery(queryString);
         try {
             QueryStatus result = queryService.query(dataQueryRequest);
@@ -153,7 +157,17 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         //Make sure the query is persisted
         assertNotNull("Query Entity should have been persisted", queryEntity);
         assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
-        assertEquals("Query Entity should have query stored", queryEntity.getQuery(), queryString);
+        
+        String queryJson = null;
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			queryJson = mapper.writeValueAsString( queryString );
+		} catch (JsonProcessingException e) {
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
+		
+		
+        assertEquals("Query Entity should have query stored", queryJson, queryEntity.getQuery());
         assertEquals("Resource result id and Picsure result id should match in case of no resource result id", queryEntity.getResourceResultId(), queryEntity.getUuid().toString());
 
     }
@@ -386,7 +400,18 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         //Make sure the query is persisted
         assertNotNull("Query Entity should have been persisted", queryEntity);
         assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
-        assertEquals("Query Entity should have query stored", queryEntity.getQuery(), queryString);
+       
+
+        String queryJson = null;
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			queryJson = mapper.writeValueAsString( queryString );
+		} catch (JsonProcessingException e) {
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
+		
+		
+        assertEquals("Query Entity should have query stored", queryJson, queryEntity.getQuery());
         assertEquals("Resource result id and Picsure result id should match in case of no resource result id", queryEntity.getResourceResultId(), queryEntity.getUuid().toString());
 
     }

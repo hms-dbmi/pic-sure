@@ -96,7 +96,6 @@ public class Query extends BaseEntity {
 	        while ((line=bf.readLine())!=null) {
 	          outStr += line;
 	        }
-	        System.out.println("Output String lenght : " + outStr.length());
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -117,7 +116,6 @@ public class Query extends BaseEntity {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-        
 	}
 
 	public byte[] getMetadata() {
