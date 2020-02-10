@@ -14,6 +14,9 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.core.Response;
@@ -74,7 +77,19 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		queryEntity.setQuery(dataQueryRequest.getQuery() == null ? null : dataQueryRequest.getQuery().toString());
+		
+		
+		String queryJson = null;
+		if( dataQueryRequest.getQuery() != null) {
+			try {
+				ObjectMapper mapper = new ObjectMapper();
+				queryJson = mapper.writeValueAsString( dataQueryRequest.getQuery());
+			} catch (JsonProcessingException e) {
+				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+			}
+		}
+		
+		queryEntity.setQuery(queryJson);
 		queryEntity.setMetadata(results.getResultMetadata());
 		queryRepo.persist(queryEntity);
 
@@ -236,7 +251,20 @@ public class PicsureQueryService {
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
 		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
-		queryEntity.setQuery(queryRequest.getQuery().toString());
+		
+
+		String queryJson = null;
+		if( queryRequest.getQuery() != null) {
+			try {
+				ObjectMapper mapper = new ObjectMapper();
+				queryJson = mapper.writeValueAsString( queryRequest.getQuery());
+			} catch (JsonProcessingException e) {
+				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+			}
+		}
+		
+		queryEntity.setQuery(queryJson);
+		
 		queryRepo.persist(queryEntity);
 		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
