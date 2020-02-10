@@ -98,6 +98,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				 * If super admin want to access the psama through APIs, the token should
 				 * be grabbed from psamaui as well to prevent the token leakage.
 				 */
+				logger.debug("filter() "+uriInfo.getPath());
 				logger.error("filter() the long term token with subject, " + userId + ", cannot access to PSAMA.");
 				throw new NotAuthorizedException("Long term tokens cannot be used to access to PSAMA.");
 
