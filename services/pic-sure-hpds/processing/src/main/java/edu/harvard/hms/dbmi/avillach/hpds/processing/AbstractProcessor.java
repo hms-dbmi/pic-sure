@@ -599,6 +599,10 @@ public abstract class AbstractProcessor {
 		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
 			variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin"))).readObject();
 			variantStore.open();			
+		} else {
+			//we still need an object to reference when checking the variant store, even if it's empty.
+			variantStore = new VariantStore();
+			variantStore.setPatientIds(new String[0]);
 		}
 		return CacheBuilder.newBuilder()
 				.maximumSize(CACHE_SIZE)
