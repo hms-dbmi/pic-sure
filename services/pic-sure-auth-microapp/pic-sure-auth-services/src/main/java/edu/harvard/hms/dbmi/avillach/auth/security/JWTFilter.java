@@ -64,6 +64,8 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
+		logger.debug("starting...");
+		logger.debug(" for path:"+uriInfo.getPath()+" and requested URI:"+uriInfo.getRequestUri());
 
 		/**
 		 * skip the filter in certain cases
@@ -74,22 +76,30 @@ public class JWTFilter implements ContainerRequestFilter {
 			return;
 		}
 
-		logger.debug("Entered jwtfilter.filter()...");
-
 		try {
 			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
 			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
 				throw new NotAuthorizedException("No authorization header found.");
 			}
 			String token = authorizationHeader.substring(6).trim();
+			logger.debug(" token:"+token);
 
 			String userForLogging = null;
-
 			Jws<Claims> jws = parseToken(token);
-
 			String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
 
 			if(userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
+				// For profile information, we do indeed allow long term token
+				// to be a valid token.
+				if (uriInfo.getPath().equals("/user/me")) {
+					// Get the subject claim, remove the LONG_TERM_TOKEN_PREFIX, and use that String value to
+					// look up the existing user.
+					String realClaimsSubject = jws.getBody().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
+					setSecurityContextForUser(requestContext, realClaimsSubject);
+				} else {
+					logger.error("the long term token with subject, " + userId + ", cannot access to PSAMA.");
+					throw new NotAuthorizedException("Long term tokens cannot be used to access to PSAMA.");
+				}
 				/**
 				 * authenticate if a long term token is presented.
 				 * PSAMA activities should not be able to execute under this token.
@@ -98,11 +108,11 @@ public class JWTFilter implements ContainerRequestFilter {
 				 * If super admin want to access the psama through APIs, the token should
 				 * be grabbed from psamaui as well to prevent the token leakage.
 				 */
-				logger.debug("filter() "+uriInfo.getPath());
-				logger.error("filter() the long term token with subject, " + userId + ", cannot access to PSAMA.");
-				throw new NotAuthorizedException("Long term tokens cannot be used to access to PSAMA.");
+
 
 			} else if(userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
+				logger.debug(" userId starts with PSAMA_APPLICATION_TOKEN_PREFIX");
+
 				/**
 				 * authenticate as Application, we might need to extract this blob out to an separate function
 				 */
@@ -126,44 +136,11 @@ public class JWTFilter implements ContainerRequestFilter {
 				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedApplication,
 						uriInfo.getRequestUri().getScheme()));
 			} else {
+				logger.debug(" userId is not longterm and not psamaapp either.");
 				/**
-				 * authenticate as User, we might need to extract this blob out to an separate function
+				 * authenticate as User
 				 */
-
-				User authenticatedUser = callLocalAuthentication(requestContext, jws);
-
-				/**
-				 * This TOSService code will hit to the database to retrieve a user once again
-				 */
-				if (!uriInfo.getPath().contains("/tos")){
-					if (JAXRSConfiguration.tosEnabled.startsWith("true") && tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
-						//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
-						requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
-						return;
-					}
-				}
-				if (authenticatedUser == null) {
-					logger.error("Cannot extract a user from token: " + token);
-					throw new NotAuthorizedException("Cannot find or create a user");
-				}
-				// Check whether user is active
-				if (!authenticatedUser.isActive()) {
-					logger.warn("User with ID: " + authenticatedUser.getUuid() + " is deactivated.");
-					throw new NotAuthorizedException("User is deactivated");
-				}
-				// currently only user id will be logged, in the future, it might contain roles and other information,
-				// like xxxuser|roles|otherInfo
-				userForLogging = authenticatedUser.getSubject();
-				// check authorization of the authenticated user
-				checkRoles(authenticatedUser, resourceInfo
-						.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
-						? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
-								: new String[]{});
-
-				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
-
-				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
-						uriInfo.getRequestUri().getScheme()));
+				setSecurityContextForUser(requestContext, jws.getBody().getSubject());
 
 			}
 
@@ -180,6 +157,58 @@ public class JWTFilter implements ContainerRequestFilter {
 			e.printStackTrace();
 			requestContext.abortWith(PICSUREResponse.applicationError(e.getMessage()));
 		}
+		logger.debug("finished.");
+	}
+
+	/**
+	 * Validate the user information, stored in the token, that was passed in the HTTPRequest header.
+	 *
+	 * @param requestContext The request that has the information
+	 * @param token The token to be parsed
+	 * @param jws The claims stored in the token
+	 * @return
+	 */
+	private void setSecurityContextForUser(ContainerRequestContext requestContext, String claimsSubject) throws NotAuthorizedException {
+		logger.debug("starting...");
+		String userForLogging;
+
+		// Find the user when checking the claims
+		User authenticatedUser = userRepo.findBySubject(claimsSubject);
+
+		if (authenticatedUser == null) {
+			logger.error("Cannot validate user claims, based on information stored in the JWT token.");
+			throw new NotAuthorizedException("Cannot validate user claims, based on information stored in the JWT token.");
+		}
+		// Check whether user is active
+		if (!authenticatedUser.isActive()) {
+			logger.warn("User with ID: " + authenticatedUser.getUuid() + " is deactivated.");
+			throw new NotAuthorizedException("User is deactivated");
+		}
+
+		/**
+		 * This TOSService code will hit to the database to retrieve a user once again
+		 */
+		if (!uriInfo.getPath().contains("/tos")){
+			if (JAXRSConfiguration.tosEnabled.startsWith("true") && tosService.getLatest() != null && !tosService.hasUserAcceptedLatest(authenticatedUser.getSubject())){
+				//If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
+				requestContext.abortWith(Response.status(Response.Status.FORBIDDEN).entity("User must accept terms of service").build());
+				return;
+			}
+		}
+
+		// currently only user id will be logged, in the future, it might contain roles and other information,
+		// like xxxuser|roles|otherInfo
+		userForLogging = authenticatedUser.getSubject();
+		// check authorization of the authenticated user
+		checkRoles(authenticatedUser, resourceInfo
+				.getResourceMethod().isAnnotationPresent(RolesAllowed.class)
+				? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
+						: new String[]{});
+
+		logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+
+		requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
+				uriInfo.getRequestUri().getScheme()));
 	}
 
 	/**
@@ -222,19 +251,6 @@ public class JWTFilter implements ContainerRequestFilter {
 			throw new NotAuthorizedException("doesn't match the required role restrictions.");
 		}
 		return b;
-	}
-
-	/**
-	 *
-	 * @param requestContext
-	 * @return
-	 * @throws NotAuthorizedException
-	 */
-	private User callLocalAuthentication(ContainerRequestContext requestContext, Jws<Claims> jws) throws NotAuthorizedException{
-		String subject = jws.getBody().getSubject();
-		String userId = jws.getBody().get(JAXRSConfiguration.userIdClaim, String.class);
-
-		return userRepo.findOrCreate(new User().setSubject(subject));
 	}
 
 	private Jws<Claims> parseToken(String token) {
