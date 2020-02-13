@@ -22,6 +22,7 @@ httpd/pic-sure-auth-ui-webapp.zip
 
 .env
 .DS_Store
+
 .docker-compose.yml.swp
 pic-sure-auth-services.war
 pic-sure-auth-services.war.deployed
