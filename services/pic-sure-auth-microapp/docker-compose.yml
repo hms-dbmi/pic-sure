@@ -42,7 +42,7 @@ services:
     networks:
       - public
     env_file:
-      - .env
+      - .env_nhanes
 
   picsureauthdb:
     build:

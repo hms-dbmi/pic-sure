@@ -5,5 +5,5 @@ set @subprefix='google-oauth2|';
 set @requiredFields='[{\"label\":\"Email\", \"id\":\"email\"}]';
 
 begin;
-insert into `connection` values (@uuid, @lable, @id, @subprefix, @requiredFields);
+insert into `connection` values (@uuid, @label, @id, @subprefix, @requiredFields);
 commit;
