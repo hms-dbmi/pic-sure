@@ -33,13 +33,13 @@ import java.util.UUID;
 
 /**
  * The main gate for PSAMA that filters all incoming requests against PSAMA.
- * <h2>Logic of design</h3>
+ * <h3>Design Logic</h3>
  * <ul>
- *     <li>All incoming requests will come to this filter</li>
- *     <li>To pass this filter, the incoming request first needs to have a valid Bearer token in Http Authorization Header
- *     to represent a valid identity behind the token </li>
- *     <li>In some cases, the incoming request doesn't need to hold a token with, which are the path to <code>authentication</code>
- *     endpoint, or to <code>swagger.json</code> or <code>swagger.html</code></li>
+ *     <li>All incoming requests pass through this filter.</li>
+ *     <li>To pass this filter, the incoming request needs a valid bearer token in its HTTP Authorization Header
+ *     to represent a valid identity behind the token. </li>
+ *     <li>In some cases, the incoming request doesn't need to hold a token. For example, when the request is to the <code>authentication</code>
+ *     endpoint, <code>swagger.json</code>, or <code>swagger.html</code>.</li>
  * </ul>
  */
 @Provider
@@ -127,7 +127,7 @@ public class JWTFilter implements ContainerRequestFilter {
 					throw new NotAuthorizedException("Your token doesn't contain valid identical information, please contact admin.");
 				}
 
-				if (!authenticatedApplication.getToken().equals(token)) {
+					if (!authenticatedApplication.getToken().equals(token)) {
 					logger.error("filter() incoming application token - " + token +
 							" - is not the same as record, might because the token has been refreshed. Subject: " + userId);
 					throw new NotAuthorizedException("Your token has been inactivated, please contact admin to grab you the latest one.");

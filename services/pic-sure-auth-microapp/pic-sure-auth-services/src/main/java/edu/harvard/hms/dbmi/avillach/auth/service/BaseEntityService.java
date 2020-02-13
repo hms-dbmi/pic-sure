@@ -18,6 +18,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * <p>Template for basic operations for REST entity classes.</p>
+ * @param <T>
+ */
 public abstract class BaseEntityService<T extends BaseEntity> {
 
     private Logger logger;

@@ -33,19 +33,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * TokenService implements endpoints related to tokens. Currently this class contains introspect an incoming token,
- * and respond to a refresh token request from a user.
+ * <p>Token introspection endpoint called by an application to validate a user's token and permissions by request.</p>
  *
- * <h3>Thoughts of design</h3>
- * This class is one of the restful endpoints that token introspection resides.
- * <h3>Token introspection endpoint</h3>
- * This endpoint should simply provide a feature that a registered application could ask if the user behind
- * this token is allowed to do certain activities by showing this endpoint the token and where the user wants to go.
- * <br><br>
- * To accomplish this, this endpoint should be able to validate the incoming token, then check if the user behind the token
- * is authorized to hit what urls they want to hit and send the data along with. The authorization part (accessRules related)
- * will be handled by class {@link AuthorizationService}, but the token validation and pre-check at the privilege level
- * will be handled by this endpoint
+ * <p>Here, a registered application asks if the user behind a token is allowed to perform certain activities by
+ * showing this endpoint the token and where the user wants to go.</p>
+ * <p>To accomplish this, this endpoint validates the incoming token, then checks if the user behind the token
+ * is authorized to access the URLs they queried and send data along with them. The AuthorizationService class handles authorization
+ * {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the privilege level.</p>
  */
 @Api
 @Path("/token")
@@ -70,7 +64,7 @@ public class TokenService {
 	@Path("/inspect")
 	@Consumes("application/json")
 	public Response inspectToken(
-			@ApiParam(required = true, value = "A json object that at least" +
+			@ApiParam(required = true, value = "A JSON object that at least" +
 					" include a user the token for validation")
 			Map<String, Object> inputMap){
 		logger.info("TokenInspect starting...");
@@ -154,8 +148,10 @@ public class TokenService {
 				JAXRSConfiguration.tokenExpirationTime);
 
 		logger.debug("Finished RefreshToken and new token has been generated.");
-		return PICSUREResponse.success(Map.of("token", refreshedToken,
-				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()));
+		return PICSUREResponse.success(Map.of(
+				"token", refreshedToken,
+				"expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()
+		));
 	}
 
 

@@ -6,6 +6,9 @@ import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 
 import java.util.Set;
 
+/**
+ * <p>Provides attributes for generating email notifications.</p>
+ */
 public class AccessEmail {
 
     private String systemName = JAXRSConfiguration.systemName;

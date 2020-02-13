@@ -15,21 +15,20 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Designed for handling authorization activities in the project, will decide
- * if a user will be allow to send the request to certain applications based on
- * what endpoint they are trying to hit and what request body (in HTTP POST method)
- * they send along with.
- *     <h3>Thoughts of design:</h3>
+ * This class handles authorization activities in the project. It decides
+ * if a user can send a request to certain applications based on
+ * what endpoint they are trying to hit and the content of the request body (in HTTP POST method).
+ *     <h3>Thoughts on design:</h3>
  *     The core technology used here is jsonpath.
- *     In {@link edu.harvard.hms.dbmi.avillach.auth.rest.TokenService#inspectToken(Map)} class, other registered applications
- *     will be able to hit tokenIntrospection endpoint with a token that they want PSAMA to introspect along
- *     with what url the token holder is trying to hit and what data this token holder is trying to send. After
+ *     In the {@link edu.harvard.hms.dbmi.avillach.auth.rest.TokenService#inspectToken(Map)} class, other registered applications
+ *     can hit the tokenIntrospection endpoint with a token they want PSAMA to introspect along
+ *     with the URL the token holder is trying to hit and what data this token holder is trying to send. After
  *     checking if the token is valid or not, the authorization check in this class will start.
  *     <br><br>
  *     <p>
- *     Whether users will be allowed access or not, will depend on their privileges, privileges will depend on
- *     the accessRules underneath, then this AuthorizationService class will eventually use  jsonpath to check if
- *     certain places of the incoming JSON meets the requirement of the preset rules in accessRules to determine
+ *     Whether users are allowed access or not depends on their privileges, which depends on
+ *     the accessRules underneath. AuthorizationService class will eventually use jsonpath to check if
+ *     certain places in the incoming JSON meet the requirement of the preset rules in accessRules to determine
  *     if the token holder is authorized or not.
  *     </p>
  *
@@ -40,22 +39,22 @@ public class AuthorizationService {
 	/**
 	 * Checking based on AccessRule in Privilege
      * <br><br>
-     * Thoughts of design:
+     * Thoughts on design:
      * <br>
      * <br>
      * We have three layers here: role, privilege, accessRule.
      * <br>
      * A role might have multiple privileges, a privilege might have multiple accessRules.
      * <br>
-     * Currently, we retrieve all accessRule together. Between AccessRules, they should be OR relationship, which means
-     * roles and privileges are OR relationship, pass one, you are good.
+     * Currently, we retrieve all accessRules together. Between AccessRules, they should be OR relationship, which means
+     * roles and privileges are OR relationship, pass one, and you are good.
      * <br>
      * <br>
-     * Inside each accessRule, it has subAccessRules and Gates.
+     * Inside each accessRule, there are  subAccessRules and Gates.
      * <br>
-     * Only if all gates applied, the accessRule will be checked.
+     * Only if all gates are applied will the accessRule be checked.
      * <br>
-     * the accessRule and subAccessRules are AND relationship
+     * The accessRule and subAccessRules are an AND relationship.
      *
 	 *
 	 * @param application
@@ -101,12 +100,12 @@ public class AuthorizationService {
 
 		Set<Privilege> privileges = user.getPrivilegesByApplication(application);
 
-		// if the user doesn't have any privileges associated to the application,
-        // will return false. The logic is if there are any privileges associated with the application,
-        // a user need to have at least one privilege under the same application,
+		// If the user doesn't have any privileges associated to the application,
+        // it will return false. The logic is if there are any privileges associated with the application,
+        // a user needs to have at least one privilege under the same application,
         // or be denied.
-        // The check if the application has privileges or not should be outside this function,
-        // here we assume that the application has at least one privilege
+        // The check if the application has privileges or not should be outside this function.
+        // Here we assume that the application has at least one privilege
 		if (privileges == null || privileges.isEmpty()) {
 		    logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() +
                     " ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName
@@ -317,6 +316,9 @@ public class AuthorizationService {
      * @return
      */
 	protected boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
+	    logger.info("evaluateAccessRule() starting with:");
+	    logger.info(parsedRequestBody.toString());
+	    logger.info("evaluateAccessRule()  access rule:"+accessRule.getName());
 
 		Set<AccessRule> gates = accessRule.getGates();
 
@@ -337,6 +339,7 @@ public class AuthorizationService {
                 // means one fails all fail
                 for (AccessRule gate : gates){
                     if (!evaluateAccessRule(parsedRequestBody, gate)){
+                        logger.error("evaluateAccessRule() gate "+gate.getName()+" failed ");
                         gatesPassed = false;
                         break;
                     }
@@ -348,6 +351,7 @@ public class AuthorizationService {
 		        gatesPassed = false;
                 for (AccessRule gate : gates){
                     if (evaluateAccessRule(parsedRequestBody, gate)){
+                        logger.info("evaluateAccessRule() gate "+gate.getName()+" passed ");
                         gatesPassed = true;
                         break;
                     }
@@ -358,10 +362,12 @@ public class AuthorizationService {
 
 		// the result is based on if gates passed or not
 		if (accessRule.getEvaluateOnlyByGates() != null && accessRule.getEvaluateOnlyByGates()){
+            logger.info("evaluateAccessRule() eval only by gates");
 		    return gatesPassed;
         }
 
         if (gatesPassed) {
+            logger.info("evaluateAccessRule() gates passed");
             if (extractAndCheckRule(accessRule, parsedRequestBody) == false)
                 return false;
             else {
@@ -373,6 +379,7 @@ public class AuthorizationService {
                 }
             }
         } else {
+            logger.info("evaluateAccessRule() gates failed");
 		    // if gates not applied, this accessRule will consider deny
 		    return false;
         }
@@ -392,6 +399,7 @@ public class AuthorizationService {
      * @return
      */
 	private boolean extractAndCheckRule(AccessRule accessRule, Object parsedRequestBody){
+	    logger.info("extractAndCheckRule() starting");
         String rule = accessRule.getRule();
 
         if (rule == null || rule.isEmpty())
@@ -432,6 +440,8 @@ public class AuthorizationService {
 
 
     private boolean evaluateNode(Object requestBodyValue, AccessRule accessRule){
+	    logger.info("evaluateNode() starting...");
+
         /**
          * NOTE: if the path(driven by attribute rule) eventually leads to String values, we can do check,
          * otherwise, only means the path is not driving to useful places, just return true.
@@ -617,6 +627,11 @@ public class AuthorizationService {
     }
 
 	private boolean _decisionMaker(AccessRule accessRule, String requestBodyValue, String value){
+        logger.info("_decisionMaker() starting");
+        logger.info("_decisionMaker() access rule:"+accessRule.getName());
+        logger.info(requestBodyValue);
+        logger.info(value);
+
 
 	    switch (accessRule.getType()){
             case AccessRule.TypeNaming.NOT_CONTAINS:

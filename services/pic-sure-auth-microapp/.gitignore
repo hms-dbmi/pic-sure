@@ -22,4 +22,10 @@ httpd/pic-sure-auth-ui-webapp.zip
 
 .env
 .DS_Store
-.env_nhanes
+
+.docker-compose.yml.swp
+pic-sure-auth-services.war
+pic-sure-auth-services.war.deployed
+*.war
+*.deployed
+*.failed

@@ -2,12 +2,16 @@ package edu.harvard.hms.dbmi.avillach.auth;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.MapType;
+import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenService;
 import io.swagger.jaxrs.config.BeanConfig;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
@@ -24,10 +28,13 @@ import javax.naming.NamingException;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.SecurityContext;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import javax.net.ssl.*;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
@@ -46,7 +53,6 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/client_secret")
     public static String clientSecret;
-    
     @Resource(mappedName = "java:global/clientSecretIsBase64")
     public static String clientSecretIsBase64;
 
@@ -55,15 +61,15 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/auth0host")
     public static String auth0host;
-    
+
     @Resource(mappedName = "java:global/tosEnabled")
     public static String tosEnabled;
 
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;
 
-    @Resource(mappedName = "java:global/emailTemplatePath")
-    public static String emailTemplatePath;
+    @Resource(mappedName = "java:global/templatePath")
+    public static String templatePath;
 
     @Resource(mappedName = "java:global/accessGrantEmailSubject")
     public static String accessGrantEmailSubject;
@@ -80,6 +86,16 @@ public class JAXRSConfiguration extends Application {
     @Resource(lookup = "java:global/deniedEmailEnabled")
     public static String deniedEmailEnabled;
 
+    // See checkIDPProvider method for setting these variables
+    public static String idp_provider;
+    public static String idp_provider_uri;
+    public static String fence_client_id;
+    public static String fence_client_secret;
+    public static String fence_redirect_url;
+    public static String fence_consent_group_concept_path;
+    public static String fence_standard_access_rules;
+    public static String fence_harmonized_concept_path;
+
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
     public static long tokenExpirationTime;
@@ -95,6 +111,9 @@ public class JAXRSConfiguration extends Application {
 
     @Inject
     PrivilegeRepository privilegeRepo;
+
+    @Inject
+    ConnectionRepository connectionRepo;
 
     public final static ObjectMapper objectMapper = new ObjectMapper();
 
@@ -117,6 +136,9 @@ public class JAXRSConfiguration extends Application {
         initializeLongTermTokenExpirationTime();
         logger.info("Finished initializing token expiration time.");
 
+        logger.info("Determine IDP provider");
+        checkIDPProvider();
+
         mailSession.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
 
         logger.info("Auth micro app has been successfully started");
@@ -128,8 +150,90 @@ public class JAXRSConfiguration extends Application {
         beanConfig.setDescription("APIs for accessing PIC-SURE-AUTH-MICROAPP - a centralized authentication/authorization micro services");
         beanConfig.setTitle("PIC-SURE-AUTH-MICROAPP");
         beanConfig.setBasePath("/psama");
-        beanConfig.setResourcePackage(TokenService.class.getPackageName());
+        beanConfig.setResourcePackage(TokenService.class.getPackage().getName());
         beanConfig.setScan(true);
+    }
+
+    /*
+     * Check if the IDP provider is set, and if it is, then determine additional
+     * settings.
+     *
+     * If flag is missing, or empty, the default is Auth0 configuration.
+     *
+     * This is currently only works for FENCE integration.
+     *
+     */
+    public void checkIDPProvider() {
+        logger.debug("checkIDPProvider() starting....");
+
+        Context ctx = null;
+        try {
+            ctx = new InitialContext();
+        } catch (NamingException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            idp_provider = (String)ctx.lookup("java:global/idp_provider");
+        } catch (NamingException | ClassCastException | NumberFormatException ex){
+            idp_provider = "default";
+        }
+        logger.info("checkIDPProvider() idp provider is now :"+idp_provider);
+
+        if (idp_provider.equalsIgnoreCase("fence")) {
+            try {
+                idp_provider_uri = (String)ctx.lookup("java:global/idp_provider_uri");
+
+                fence_client_id = (String) ctx.lookup("java:global/fence_client_id");
+                fence_client_secret = (String) ctx.lookup("java:global/fence_client_secret");
+                fence_redirect_url = (String) ctx.lookup("java:global/fence_redirect_url");
+
+                fence_consent_group_concept_path = (String) ctx.lookup("java:global/fence_consent_group_concept_path");
+                if (fence_consent_group_concept_path == null) {
+                    logger.error("checkIDPProvider() Empty consent group concept path from standalone.xml. Using default!");
+                    fence_consent_group_concept_path = "\\\\_Consents\\\\Short Study Accession with Consent code\\\\";
+                }
+
+                fence_standard_access_rules = (String) ctx.lookup("java:global/fence_standard_access_rules");
+                if (fence_standard_access_rules.isEmpty()) {
+                    logger.error("checkIDPProvider() Empty access rules from standalone.xml. Using defaults.");
+                    fence_standard_access_rules = "GATE_ONLY_INFO,GATE_ONLY_QUERY,GATE_ONLY_SEARCH,GATE_FENCE_CONSENT_REQUIRED";
+                }
+
+                fence_harmonized_concept_path = (String) ctx.lookup("java:global/fence_harmonized_concept_path");
+                if (fence_harmonized_concept_path.isEmpty()) {
+                    logger.error("checkIDPProvider() Empty harmonized concept path. Not in use.");
+                    fence_harmonized_concept_path = "";
+                }
+                logger.debug("checkIDPProvider() idp provider FENCE is configured");
+
+                // Upsert FENCE connection
+                Connection c = connectionRepo.getUniqueResultByColumn("label","FENCE");
+                if (c != null) {
+                    logger.debug("checkIDPProvider() FENCE connection already exists.");
+                } else {
+                    logger.debug("checkIDPProvider() Create new FENCE connection");
+                    c = new Connection();
+                    c.setLabel("FENCE");
+                    c.setId("fence");
+                    c.setSubPrefix("fence|");
+                    c.setRequiredFields("[{\"label\":\"email\",\"id\":\"email\"}]");
+                    connectionRepo.persist(c);
+                    logger.debug("checkIDPProvider() New FENCE connetion has been created");
+                }
+
+                // For debugging purposes, here is a dump of most of the FENCE variables
+                logger.info("checkIDPProvider() fence_standard_access_rules        "+fence_standard_access_rules);
+                logger.info("checkIDPProvider() fence_consent_group_concept_path   "+fence_consent_group_concept_path);
+                logger.info("checkIDPProvider() fence_harmonized_concept_path      "+fence_harmonized_concept_path);
+
+            } catch (Exception ex) {
+                logger.error("checkIDPProvider() "+ex.getMessage());
+                logger.error("checkIDPProvider() Invalid FENCE IDP Provider Setup. Mandatory fields are missing. "+
+                        "Check configuration in standalone.xml");
+            }
+        }
+        logger.debug("checkIDPProvider() finished");
     }
 
     private void initializeTokenExpirationTime(){
@@ -194,8 +298,6 @@ public class JAXRSConfiguration extends Application {
             roleRepo.persist(role);
             logger.info("Finished creating an admin role, roleId: " + role.getUuid());
         }
-
-
     }
 
     private void checkAndAddAdminPrivileges(){
