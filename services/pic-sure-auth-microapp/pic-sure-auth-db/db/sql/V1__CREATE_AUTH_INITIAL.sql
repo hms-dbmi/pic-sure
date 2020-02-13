@@ -76,8 +76,8 @@ CREATE TABLE `role_privilege` (
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `user` (
   `uuid` binary(16) NOT NULL,
-  `auth0_metadata` BLOB COLLATE utf8_bin DEFAULT NULL,
-  `general_metadata` BLOB COLLATE utf8_bin DEFAULT NULL,
+  `auth0_metadata` varchar(8000) COLLATE utf8_bin DEFAULT NULL,
+  `general_metadata` varchar(9000) COLLATE utf8_bin DEFAULT NULL,
   `acceptedTOS` datetime COLLATE utf8_bin DEFAULT NULL,
   `connectionId` binary(16) DEFAULT NULL,
   `email` varchar(255) COLLATE utf8_bin DEFAULT NULL,
