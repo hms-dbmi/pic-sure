@@ -43,7 +43,7 @@ INSERT INTO user_role (
 	`role_id`
 ) VALUES (
 	UNHEX(@uuidUser),
-	(SELECT MIN(uuid) FROM management_view WHERE role_name LIKE 'PIC-SURE Top Admin')
+	(SELECT `uuid` FROM `role` WHERE name = 'PIC-SURE Top Admin')
 );
 
 #### insert into userMetadataMapping
