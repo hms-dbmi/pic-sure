@@ -65,7 +65,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("starting...");
-		logger.debug(" for path:"+uriInfo.getPath()+" and requested URI:"+uriInfo.getRequestUri());
+		logger.debug("For path:{} and requested URI: {}", uriInfo.getPath(), uriInfo.getRequestUri());
 
 		/**
 		 * skip the filter in certain cases
@@ -82,7 +82,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				throw new NotAuthorizedException("No authorization header found.");
 			}
 			String token = authorizationHeader.substring(6).trim();
-			logger.debug(" token:"+token);
+			logger.debug(" token: {}", token);
 
 			String userForLogging = null;
 			Jws<Claims> jws = parseToken(token);
@@ -97,7 +97,7 @@ public class JWTFilter implements ContainerRequestFilter {
 					String realClaimsSubject = jws.getBody().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
 					setSecurityContextForUser(requestContext, realClaimsSubject);
 				} else {
-					logger.error("the long term token with subject, " + userId + ", cannot access to PSAMA.");
+					logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
 					throw new NotAuthorizedException("Long term tokens cannot be used to access to PSAMA.");
 				}
 				/**
@@ -205,7 +205,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				? resourceInfo.getResourceMethod().getAnnotation(RolesAllowed.class).value()
 						: new String[]{});
 
-		logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+		logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
 
 		requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser,
 				uriInfo.getRequestUri().getScheme()));
