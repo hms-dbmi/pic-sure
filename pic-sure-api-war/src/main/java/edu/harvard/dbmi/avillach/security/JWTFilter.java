@@ -7,10 +7,14 @@ import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.User;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.JwtException;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
@@ -27,15 +31,11 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.Provider;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+
+import java.io.*;
+import java.util.*;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.applyProxySettings;
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
@@ -47,6 +47,12 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
 	ResourceInfo resourceInfo;
+	
+	@Inject
+	ResourceRepository resourceRepo;
+	
+	@Inject
+	ResourceWebClient resourceWebClient;
 
 	@Resource(mappedName = "java:global/client_secret")
 	private String clientSecret;
@@ -137,7 +143,6 @@ public class JWTFilter implements ContainerRequestFilter {
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		HashMap<String, Object> requestMap = new HashMap<String, Object>();
 		try {
-
 			String requestPath = requestContext.getUriInfo().getPath();
 			requestMap.put("Target Service", requestPath);
 			
@@ -164,13 +169,36 @@ public class JWTFilter implements ContainerRequestFilter {
 				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
 				if (queryObject instanceof Collection) {
 					for (Object query: (Collection)queryObject) {
-						if (query instanceof Map)
+						if (query instanceof Map) {
 							((Map) query).remove("resourceCredentials");
+						}
 					}
 				} else if (queryObject instanceof Map){
 					((Map) queryObject).remove("resourceCredentials");
 				}
 				requestMap.put("query", queryObject);
+
+				if(requestPath.startsWith("/query/")) {
+					UUID resourceUUID = UUID.fromString((String) ((Map)queryObject).get("resourceUUID"));
+					//logger.info("QUERY OBJ: " + queryObject);
+					// QUERY OBJ: {resourceUUID=66343762-6666-6637-3532-346531316539, query={categoryFilters={}, numericFilters={}, requiredFields=[], variantInfoFilters=[{}], expectedResultType=COUNT}}
+
+					if(resourceUUID != null) {
+						edu.harvard.dbmi.avillach.data.entity.Resource resource = resourceRepo.getById(resourceUUID);
+						//logger.info("resource obj: " + resource + "    path: " + resource.getResourceRSPath());
+						if (resource != null && resource.getResourceRSPath() != null){
+							QueryRequest queryRequest = new QueryRequest();
+							queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+							queryRequest.setResourceUUID(resourceUUID);
+							queryRequest.setQuery(((Map)queryObject).get("query"));
+
+							Response formatResponse = resourceWebClient.queryFormat(resource.getResourceRSPath(), queryRequest);
+							String formattedQuery = IOUtils.toString((InputStream)formatResponse.getEntity(), "UTF-8");
+							logger.debug("Formatted response: " + formattedQuery); 
+							requestMap.put("formattedQuery", formattedQuery);
+						}
+					}
+				}
 			}
 			tokenMap.put("request", requestMap);
 		} catch (JsonParseException ex) {
