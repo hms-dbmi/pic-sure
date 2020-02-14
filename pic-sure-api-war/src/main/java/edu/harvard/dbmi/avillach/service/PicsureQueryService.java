@@ -188,39 +188,6 @@ public class PicsureQueryService {
 	}
 
 	/**
-	 * Formats the query object for human consumption
-	 *
-	 * @param queryId - id of target resource
-	 * @param queryRequest - contains resource specific credentials object
-	 * @return Response
-	 */
-	@Transactional
-	public Response queryFormat(QueryRequest queryRequest) {
-		if (queryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		
-		UUID resourceId = queryRequest.getResourceUUID();
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
-		Resource resource = resourceRepo.getById(resourceId);
-		
-		if (resource == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (queryRequest.getResourceCredentials() == null){
-			queryRequest.setResourceCredentials(new HashMap<>());
-		}
-		
-		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return resourceWebClient.queryFormat(resource.getResourceRSPath(), queryRequest);
-	}
-
-	/**
 	 * Streams the result for a query by looking up the target resource
 	 * from the database and calling the target resource for a result.
 	 *
