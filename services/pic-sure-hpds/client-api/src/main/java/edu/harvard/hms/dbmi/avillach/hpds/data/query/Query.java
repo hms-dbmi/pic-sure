@@ -1,10 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.DoubleFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
@@ -83,17 +79,17 @@ public class Query {
 		
 		case CROSS_COUNT:
 		case OBSERVATION_COUNT:
-			writePartFormat("Cross Count Fields", crossCountFields, builder);
+			writePartFormat("Cross Count Fields", crossCountFields, builder, true);
 		case DATAFRAME:
 		case DATAFRAME_MERGED:
-			writePartFormat("Data Export Fields", fields, builder);
+			writePartFormat("Data Export Fields", fields, builder, true);
 		case COUNT:
-			writePartFormat("Required Fields", requiredFields, builder);
+			writePartFormat("Required Fields", requiredFields, builder, false);
 			writePartFormat("Numeric filters", numericFilters, builder);
 			writePartFormat("Category filters", categoryFilters, builder);
-			writePartFormat("Variant Info filters", variantInfoFilters, builder);
-			writePartFormat("Any-Record-Of filters", anyRecordOf, builder);
-			
+			writePartFormat("Variant Info filters", variantInfoFilters, builder, false);
+			writePartFormat("Any-Record-Of filters", anyRecordOf, builder, true);
+			break;
 		default:
 			//no logic here; all enum values should be present above
 			System.out.println("Foratting not supported for type " + expectedResultType);
@@ -108,33 +104,55 @@ public class Query {
 	 * @param varList
 	 * @param builder
 	 */
-	private static void writePartFormat(String queryPart, Collection varList, StringBuilder builder) {
+	@SuppressWarnings("rawtypes")
+	private static void writePartFormat(String queryPart, Collection varList, StringBuilder builder, boolean allowRollup) {
 		if(varList == null || varList.isEmpty()) {
 			return;
 		}
-		if(varList.size() > 5) {
-			builder.append(varList.size() + " " + queryPart + "\n");
+		//same beginning
+		builder.append(queryPart + ": [");  
+		//if there are many elements, we want to truncate the display
+		if(allowRollup && varList.size() > 5) {
+			builder.append("\n");
+			showTopLevelValues(varList, builder);
 		}else {
-			builder.append(queryPart + ": [");  
-				for(Object val : varList) {
-					if(val instanceof String) {
-						String strVal = (String)val;
-						for(String part : strVal.split("\\\\")) {
-							if(part.length() > 13) {
-								builder.append(part.substring(0, 5) + "..." + part.substring(part.length() - 5) + "\\");
-							} else {
-								builder.append(part + "\\");
-							}
-						}
-						builder.append(", ");
-					} else {
-						builder.append(val + ", ");
-					}
-				}
-			builder.append("]\n");
+			String sep1 = "";
+			for(Object val : varList) {
+				builder.append(sep1 + val);
+				sep1 = ", ";
+			}
 		}
+		//same ending
+		builder.append("]\n");
 	}
 	
+	@SuppressWarnings("rawtypes")
+	private static void showTopLevelValues(Collection varList, StringBuilder builder) {
+
+		Map<String, Integer> countMap = new HashMap<String, Integer>();
+		
+		for(Object var : varList) {
+			if(var instanceof String) {
+				int index = ((String) var).startsWith("\\") ? 1 : 0;
+				String firstLevel = ((String)var).split("\\\\")[index];
+				
+				Integer count = countMap.get(firstLevel);
+				if(count == null) {
+					count = new Integer(1);
+				} else {
+					count = count + 1;
+				}
+				countMap.put(firstLevel, count);
+			} else {
+				System.out.println("Object is not string! " + var);
+			}
+		}
+		
+		for(String key : countMap.keySet()) {
+			builder.append("\t" + countMap.get(key) + " values under " + key + "\n");
+		}
+	}
+
 	/**
 	 * For other items that are mapped (e.g., 'variable -> range') we want to show both the name and the values requested (unless truncating)
 	 * We can't combine this with the List/Collection method, as the two classes are not compatible (even though the method names are the same)
@@ -142,29 +160,32 @@ public class Query {
 	 * @param varMap
 	 * @param builder
 	 */
+	@SuppressWarnings("rawtypes")
 	private static void writePartFormat(String queryPart, Map varMap, StringBuilder builder) {
 		if(varMap == null || varMap.isEmpty()) {
 			return;
 		}
-		if(varMap.size() > 5) {
-			builder.append(varMap.size() + " " + queryPart + "\n");
-		}else {
-			builder.append(queryPart + ": [");  
-				for(Object key : varMap.keySet()) {
-					builder.append(key + ": ");
-					
-					Object value = varMap.get(key);
-					if(value instanceof Object[]) {
-						builder.append("{");
-						for(Object val : (Object[])value) {
-							builder.append(val + ", ");
-						}
-						builder.append("}, ");
-					} else {
-						builder.append(value + ", ");
-					}
+
+		//for the mapped elements, we never want to roll up the values; always show
+		builder.append(queryPart + ": [");  
+		String sep1 = "";
+		for(Object key : varMap.keySet()) {
+			builder.append(sep1 + key + ": ");
+			Object value = varMap.get(key);
+			
+			if(value instanceof Object[]) {
+				builder.append("{");
+				String sep2 = "";
+				for(Object val : (Object[])value) {
+					builder.append(sep2 + val);
+					sep2 = ", ";
 				}
-			builder.append("]\n");
+				builder.append("}");
+			} else {
+				builder.append(value);
+			}
+			sep1 = ", ";
 		}
+		builder.append("]\n");
 	}
 }
