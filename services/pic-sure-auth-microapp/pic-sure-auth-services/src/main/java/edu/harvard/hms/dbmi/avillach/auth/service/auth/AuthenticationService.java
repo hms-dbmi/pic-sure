@@ -21,6 +21,7 @@ import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -98,6 +99,7 @@ public class AuthenticationService {
         boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ? 
         		tosService.getLatest() == null || tosService.hasUserAcceptedLatest(user.getSubject()) : true;
 
+        logger.info("LOGIN ___ " + user.getEmail() + ":" + user.getUuid().toString() + " ___ Authorization will expire at  ___ " + expirationDate + "___");
         HashMap<String, String> responseMap = new HashMap<String, String>();
         
         responseMap.put("token", token);
