@@ -1,14 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import io.jsonwebtoken.*;
 import org.apache.commons.codec.binary.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
 import javax.validation.constraints.NotNull;
 import javax.ws.rs.NotAuthorizedException;
 import java.io.UnsupportedEncodingException;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * <p>Contains common methods for authentication and authorization.</p>
@@ -16,6 +24,9 @@ import java.io.UnsupportedEncodingException;
 public class AuthUtils {
 
 	private static Logger logger = LoggerFactory.getLogger(AuthUtils.class);
+
+	@Inject
+	TOSService tosService;
 
 	/**
 	 * support both Base64 encrypted and non-Base64 encrypted
@@ -62,6 +73,52 @@ public class AuthUtils {
 
 		return jws;
 	}
+
+	/*
+	 * Generate a HashMap of all the information used in the JSON response back to the UI client, while also
+	 * package the same information inside a valid PSAMA JWT token
+	 *
+	 */
+	public HashMap<String, String> getUserProfileResponse(Map<String, Object> claims) {
+		logger.debug("getUserProfileResponse() starting...");
+
+		HashMap<String, String> responseMap = new HashMap<String, String>();
+		logger.debug("getUserProfileResponse() initialized map");
+
+		logger.debug("getUserProfileResponse() using claims:"+claims.toString());
+
+		String token = JWTUtil.createJwtToken(
+				JAXRSConfiguration.clientSecret,
+				"whatever",
+				"edu.harvard.hms.dbmi.psama",
+				claims,
+				claims.get("sub").toString(),
+				JAXRSConfiguration.tokenExpirationTime
+		);
+		logger.debug("getUserProfileResponse() PSAMA JWT token has been generated. Token:"+token);
+		responseMap.put("token", token);
+
+		logger.debug("getUserProfileResponse() .usedId field is set");
+		responseMap.put("userId", claims.get("sub").toString());
+
+		logger.debug("getUserProfileResponse() .email field is set");
+		responseMap.put("email", claims.get("email").toString());
+
+		logger.debug("getUserProfileResponse() acceptedTOS is set");
+
+		boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ?
+				tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("subject").toString()) : true;
+
+		responseMap.put("acceptedTOS", ""+acceptedTOS);
+
+		logger.debug("getUserProfileResponse() expirationDate is set");
+		Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + JAXRSConfiguration.tokenExpirationTime);
+		responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
+
+		logger.debug("getUserProfileResponse() finished");
+		return responseMap;
+	}
+
 
 
 }

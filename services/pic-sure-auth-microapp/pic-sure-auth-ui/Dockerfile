@@ -20,6 +20,17 @@ RUN sed -i '/^#LoadModule rewrite_module modules\/mod_rewrite.so/s/^#//' ${HTTPD
 RUN sed -i '/^#LoadModule socache_shmcb_module modules\/mod_socache_shmcb.so/s/^#//' ${HTTPD_PREFIX}/conf/httpd.conf
 RUN mkdir /usr/local/apache2/logs/ssl_mutex
 
-COPY ./src/main/webapp /usr/local/apache2/htdocs
-COPY ./target/webjars/META-INF/resources/webjars /usr/local/apache2/htdocs/psamaui/webjars
-COPY ./src/main/resources /usr/local/apache2/htdocs/settings
+COPY ./httpd_conf/cert/server.key ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.chain.crt ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.crt ${HTTPD_PREFIX}/cert/
+COPY ./httpd_conf/cert/server.chain ${HTTPD_PREFIX}/cert/
+
+COPY ./src/main/webapp/index.html                   ${HTTPD_PREFIX}/htdocs/
+
+COPY ./src/main/webapp/psamaui                      ${HTTPD_PREFIX}/htdocs/psamaui
+COPY ./target/webjars/META-INF/resources/webjars    ${HTTPD_PREFIX}/htdocs/psamaui/webjars
+
+# If testing FENCE login settings, you will need to uncomment the below commands
+# But note that this is only for local testing. In other environments, the docker-compose.yml file
+# will build a new settings.json and will owerwrite the one that is in the image, that this Dockerfile builds
+COPY ./src/main/webapp/psamaui/settings/fence_settings.json ${HTTPD_PREFIX}/htdocs/psamaui/settings/settings.json

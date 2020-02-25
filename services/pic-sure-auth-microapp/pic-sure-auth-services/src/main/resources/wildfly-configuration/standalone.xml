@@ -95,7 +95,7 @@
     <profile>
         <subsystem xmlns="urn:jboss:domain:logging:6.0">
             <console-handler name="CONSOLE">
-                <level name="INFO"/>
+                <level name="DEBUG"/>
                 <formatter>
                     <named-formatter name="COLOR-PATTERN"/>
                 </formatter>
@@ -121,7 +121,7 @@
                 <level name="WARN"/>
             </logger>
             <root-logger>
-                <level name="INFO"/>
+                <level name="DEBUG"/>
                 <handlers>
                     <handler name="CONSOLE"/>
                     <handler name="FILE"/>
@@ -441,13 +441,22 @@
                 <simple name="java:global/auth0host" value="${env.AUTH0HOST:https://avillachlab.auth0.com}"/>
                 <simple name="java:global/systemName" value="${env.SYSTEM_NAME:psama}"/>
                 <simple name="java:global/clientSecretIsBase64" value="${env.CLIENT_SECRET_IS_BASE_64:true}"/>
-                <simple name="java:global/emailTemplatePath" value="${env.EMAIL_TEMPLATE_PATH:none}"/>
+                <simple name="java:global/templatePath" value="${env.TEMPLATE_PATH:none}"/>
                 <simple name="java:global/userActivationReplyTo" value="${env.USER_ACTIVATION_REPLY_TO:none}"/>
                 <simple name="java:global/tosEnabled" value="${env.TOS_ENABLED:true}"/>
                 <simple name="java:global/deniedEmailEnabled" value="${env.DENIED_EMAIL_ENABLED:true}"/>
                 <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS:none}"/>
                 <simple name="java:global/accessGrantEmailSubject" value="${env.accessGrantEmailSubject:none}"/>
                 <simple name="java:global/tokenExpirationTime" value="${env.tokenExpriationTime:900000}" />
+
+                <!-- Configure Identity Provider Parameters, with defaults-->
+                <simple name="java:global/idp_provider" value="${env.IDP_PROVIDER:auth0}"/>
+                <simple name="java:global/idp_provider_uri" value="${env.IDP_PROVIDER_URI:https://idphost}" />
+
+                <simple name="java:global/fence_client_id" value="${env.FENCE_CLIENT_ID:no_fence_client_id}"/>
+                <simple name="java:global/fence_client_secret" value="${env.FENCE_CLIENT_SECRET:no_fence_client_secret}"/>
+                <simple name="java:global/fence_redirect_url" value="${env.FENCE_REDIRECT_URL:fence_redirect_url-is_not_set}"/>
+
             </bindings>
             <remote-naming/>
         </subsystem>

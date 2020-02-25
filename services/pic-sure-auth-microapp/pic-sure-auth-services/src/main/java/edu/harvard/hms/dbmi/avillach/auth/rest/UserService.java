@@ -5,13 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.ApplicationRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.data.repository.*;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
@@ -22,6 +18,7 @@ import io.jsonwebtoken.Jws;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,11 +32,12 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.*;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.SUPER_ADMIN;
 
 /**
- * Service handling business logic for CRUD on users
+ * <p>Endpoint for service handling business logic for users.</p>
  */
 @Api
 @Path("/user")
@@ -57,10 +55,16 @@ public class UserService extends BaseEntityService<User> {
     RoleRepository roleRepo;
 
     @Inject
+    PrivilegeRepository privilegeRepo;
+
+    @Inject
     ConnectionRepository connectionRepo;
 
     @Inject
     ApplicationRepository applicationRepo;
+
+    @Inject
+    AccessRuleRepository accessruleRepo;
 
     public UserService() {
         super(User.class);
@@ -268,10 +272,16 @@ public class UserService extends BaseEntityService<User> {
         // code to use JsonUtils.mergeTemplateMap(Map, Map)
         Set<Privilege> privileges = user.getTotalPrivilege();
         if (privileges != null && !privileges.isEmpty()){
-            userForDisplay.setQueryScopes(privileges.stream()
-                    .map(privilege -> privilege.getQueryScope())
-                    .filter(q -> q!=null && !q.isEmpty())
-                    .collect(Collectors.toSet()));
+            Set<String> scopes = new TreeSet<>();
+            privileges.stream().forEach(privilege -> {
+                try {
+                    Arrays.stream(objectMapper.readValue(privilege.getQueryScope(), String[].class))
+                            .forEach(scopeList-> scopes.addAll(Arrays.asList(scopeList)));
+                } catch (JsonProcessingException e) {
+                    logger.error("Parsing issue for privilege " + privilege.getUuid() + " queryScope", e);
+                }
+            });
+            userForDisplay.setQueryScopes(scopes);
         }
 
         if (hasToken!=null){
@@ -331,15 +341,13 @@ public class UserService extends BaseEntityService<User> {
         Map mergedTemplateMap = null;
         for (Privilege privilege : user.getPrivilegesByApplication(application)){
             String template = privilege.getQueryTemplate();
-
+            logger.debug("mergeTemplate() processing template:"+template);
             if (template == null || template.trim().isEmpty()){
                 continue;
             }
-
             Map<String, Object> templateMap = null;
-
             try {
-                templateMap = JAXRSConfiguration.objectMapper.readValue(template, Map.class);
+                templateMap = objectMapper.readValue(template, Map.class);
             } catch (IOException ex){
                 logger.error("mergeTemplate() cannot convert stored queryTemplate using Jackson, the queryTemplate is: " + template);
                 throw new ApplicationException("Inner application error, please contact admin.");
@@ -358,7 +366,7 @@ public class UserService extends BaseEntityService<User> {
         }
 
         try {
-            resultJSON = JAXRSConfiguration.objectMapper.writeValueAsString(mergedTemplateMap);
+            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
         } catch (JsonProcessingException ex) {
             logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: " + mergedTemplateMap);
             throw new ApplicationException("Inner application error, please contact admin.");
@@ -417,7 +425,7 @@ public class UserService extends BaseEntityService<User> {
     private String generateUserLongTermToken(HttpHeaders httpHeaders) throws ProtocolException{
         Jws<Claims> jws;
         try {
-            jws = AuthUtils.parseToken(JAXRSConfiguration.clientSecret,
+            jws = AuthUtils.parseToken(clientSecret,
                     // the original token should be able to grab from header, otherwise, it should be stopped
                     // at JWTFilter level
                     httpHeaders.getHeaderString(HttpHeaders.AUTHORIZATION)
@@ -437,12 +445,12 @@ public class UserService extends BaseEntityService<User> {
             tokenSubject = tokenSubject.substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
         }
 
-        return JWTUtil.createJwtToken(JAXRSConfiguration.clientSecret,
+        return JWTUtil.createJwtToken(clientSecret,
                 claims.getId(),
                 claims.getIssuer(),
                 claims,
                 AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
-                JAXRSConfiguration.longTermTokenExpirationTime);
+                longTermTokenExpirationTime);
     }
 
 
@@ -469,5 +477,6 @@ public class UserService extends BaseEntityService<User> {
             }
         }
     }
+
 
 }

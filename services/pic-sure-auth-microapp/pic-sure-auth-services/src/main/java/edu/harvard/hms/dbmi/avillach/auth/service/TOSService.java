@@ -16,7 +16,7 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Business Logic for TermsOfServiceEndpoint
+ * <p>Provides business logic for the TermsOfService endpoint.</p>>
  *
  * @see edu.harvard.hms.dbmi.avillach.auth.rest.TermsOfServiceEndpoint
  */

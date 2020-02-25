@@ -29,6 +29,7 @@ RUN keytool -noprompt -import -alias root_cert -keystore $JAVA_HOME/lib/security
 
 # copy modules
 COPY target/modules/system/layers/base/com/sql/mysql/main/* /modules/
+COPY src/main/resources/emailTemplates/accessEmail.mustache /usr/local/share/applications/
 
 # install modules
 RUN wildfly/bin/jboss-cli.sh --command="module add --name=com.sql.mysql \
