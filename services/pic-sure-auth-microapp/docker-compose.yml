@@ -33,6 +33,9 @@ services:
       - DENIED_EMAIL_ENABLED=${DENIED_EMAIL_ENABLED:-false}
       - COMMA_SEPARATED_EMAILS=${COMMA_SEPARATED_EMAILS:-dummyemail}
       - accessGrantEmailSubject=Testing
+      - MAIL_USERNAME=${MAIL_USERNAME:-emailuser@avillach.lab}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-email_password}
+      - TOS_ENABLED:false
     ports:
       - 8787:8787
     expose:
@@ -42,7 +45,7 @@ services:
     networks:
       - public
     env_file:
-      - .env
+      - .env_nhanes
 
   picsureauthdb:
     build:
@@ -56,13 +59,8 @@ services:
       - 3306
     ports:
       - 3306:3306
-    volumes:
-      - picsure-auth-data:/var/lib/mysql
     networks:
       - public
 
 networks:
   public:
-
-volumes:
-  picsure-auth-data:

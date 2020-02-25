@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.utils;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.security.Key;
@@ -14,6 +16,7 @@ import java.util.Map;
  * <p>For more information on JWT tokens, see <url>https://github.com/hms-dbmi/jwt-creator/blob/master/src/main/java/edu/harvard/hms/dbmi/avillach/jwt/App.java<url/></p>
  */
 public class JWTUtil {
+    private static Logger logger = LoggerFactory.getLogger(JWTUtil.class);
 
     private static final long defaultTTLMillis = 1000L * 60 * 60 * 24 * 7;
 
@@ -28,6 +31,8 @@ public class JWTUtil {
      * @return
      */
     public static String createJwtToken(String clientSecret, String id, String issuer, Map<String, Object> claims , String subject, long ttlMillis) {
+        logger.debug("createJwtToken() starting...");
+        String jwt_token = null;
 
         if (ttlMillis < 0)
             ttlMillis = defaultTTLMillis;
@@ -36,7 +41,6 @@ public class JWTUtil {
             ttlMillis = 999L * 1000 * 60 * 60 * 24;
 
         SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.HS256;
-
         long nowMillis = System.currentTimeMillis();
         Date now = new Date(nowMillis);
 
@@ -44,28 +48,32 @@ public class JWTUtil {
         byte[] apiKeySecretBytes = clientSecret.getBytes();
         Key signingKey = new SecretKeySpec(apiKeySecretBytes, signatureAlgorithm.getJcaName());
 
-
-        Jwts.builder().setClaims(claims);
-
-
-
         //Let's set the JWT Claims
-        JwtBuilder builder = Jwts.builder()
-                .setClaims(claims)
-                .setId(id)
-                .setIssuedAt(now)
-                .setSubject(subject)
-                .setIssuer(issuer)
-                .signWith(signatureAlgorithm, signingKey);
+        JwtBuilder builder = null;
+        try {
+            //Builds the JWT and serializes it to a compact, URL-safe string
+            builder = Jwts.builder()
+                    .setClaims(claims)
+                    .setId(id)
+                    .setIssuedAt(now)
+                    .setSubject(subject)
+                    .setIssuer(issuer)
+                    .signWith(signatureAlgorithm, signingKey);
 
-        //if it has been specified, let's add the expiration
-        if (ttlMillis >= 0) {
-            long expMillis = nowMillis + ttlMillis;
-            Date exp = new Date(expMillis);
-            builder.setExpiration(exp);
+            //if it has been specified, let's add the expiration
+            if (ttlMillis >= 0) {
+                long expMillis = nowMillis + ttlMillis;
+                Date exp = new Date(expMillis);
+                builder.setExpiration(exp);
+            }
+
+            jwt_token = builder.compact();
+        } catch (Exception ex) {
+            logger.error("createJwtToken() Exception:"+ex.getClass().getSimpleName());
+            ex.printStackTrace();
         }
 
-        //Builds the JWT and serializes it to a compact, URL-safe string
-        return builder.compact();
+
+        return jwt_token;
     }
 }

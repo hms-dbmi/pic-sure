@@ -23,6 +23,9 @@ import java.io.FileReader;
 import java.io.StringWriter;
 import java.util.Map;
 
+/**
+ * <p>Service class for sending email notifications.</p>
+ */
 public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
@@ -33,7 +36,7 @@ public class MailService {
 	 * @throws FileNotFoundException Exception thrown if templateFile is missing due to not being configured
 	 */
 	private Mustache compileTemplate(String templateFile) throws FileNotFoundException {
-		FileReader reader = new FileReader(JAXRSConfiguration.emailTemplatePath + templateFile);
+		FileReader reader = new FileReader(JAXRSConfiguration.templatePath + templateFile);
 		return mf.compile(reader, templateFile);
 	}
 
@@ -96,5 +99,6 @@ public class MailService {
 		} catch (Exception e) {
 			logger.error("Error occurred while trying to send email '" + subject + "'", e);
 		}
+		logger.debug("sendEmail() finished");
 	}
 }

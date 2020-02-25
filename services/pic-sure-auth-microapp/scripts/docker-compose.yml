@@ -1,0 +1,66 @@
+version: '3'
+services:
+  httpd:
+    build:
+      context: ./pic-sure-auth-ui
+      dockerfile: Dockerfile
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./pic-sure-auth-ui/src/main/webapp:/usr/local/apache2/htdocs
+      - ./pic-sure-auth-ui/target/webjars/META-INF/resources/webjars:/usr/local/apache2/htdocs/psamaui/webjars
+      - ./pic-sure-auth-ui/src/main/resources:/usr/local/apache2/htdocs/psamaui/settings
+    networks:
+      - public
+
+  picsureauth:
+    build:
+      context: pic-sure-auth-services
+      dockerfile: Dockerfile
+    command: --debug *:8787
+    depends_on:
+      - picsureauthdb
+    environment:
+      - AUTH_CLIENT_SECRET=${AUTH_CLIENT_SECRET:-secret}
+      - AUTH_CLIENT_ID=${AUTH_CLIENT_ID:-client_id}
+      - AUTH_USER_ID_CLAIM=sub
+      - AUTH_MYSQLADDRESS=picsureauthdb
+      - AUTH0TOKEN=${AUTH0TOKEN:-nothing}
+      - AUTH0HOST=https://avillachlab.auth0.com
+      - systemName=${systemName:-PICSURE}
+      - EMAIL_TEMPLATE_PATH=${EMAIL_TEMPLATE_PATH:-/opt/jboss/wildfly/emailTemplates}/
+      - DENIED_EMAIL_ENABLED=${DENIED_EMAIL_ENABLED:-false}
+      - COMMA_SEPARATED_EMAILS=${COMMA_SEPARATED_EMAILS:-dummyemail}
+      - accessGrantEmailSubject=Testing
+      - MAIL_USERNAME=${MAIL_USERNAME:-emailuser@avillach.lab}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-email_password}
+      - TOS_ENABLED:false
+    ports:
+      - 8787:8787
+    expose:
+      - 8080
+    volumes:
+      - ./pic-sure-auth-services/src/main/resources/emailTemplates:${EMAIL_TEMPLATE_PATH:-/opt/jboss/wildfly/emailTemplates}
+    networks:
+      - public
+    env_file:
+      - .env
+
+  picsureauthdb:
+    build:
+      context: pic-sure-auth-db
+      dockerfile: Dockerfile
+    environment:
+      - MYSQL_ROOT_PASSWORD=${AUTH_MYSQL_ROOT_PASSWORD:-password}
+      - MYSQL_DATABASE=auth
+    restart: always
+    expose:
+      - 3306
+    ports:
+      - 3306:3306
+    networks:
+      - public
+
+networks:
+  public:

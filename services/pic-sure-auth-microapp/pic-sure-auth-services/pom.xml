@@ -12,7 +12,7 @@
 	<packaging>war</packaging>
 	<properties>
 		<!--<jackson.version>1.8.6</jackson.version> -->
-		<jackson.version>2.9.4</jackson.version>
+		<jackson.version>2.10.0</jackson.version>
 		<xml.bind.version>2.3.0</xml.bind.version>
 	</properties>
 	<dependencies>

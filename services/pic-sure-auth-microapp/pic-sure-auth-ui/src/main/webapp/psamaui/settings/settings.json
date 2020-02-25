@@ -1,0 +1,10 @@
+{
+  "helpLink": "",
+  "customizeAuth0Login": true,
+  "client_id": "__AUTH0_CLIENT_ID__",
+  "basePath": "/psama",
+  "idp_provider": "__EITHER_FENCE_OR_AUTH0__",
+  "idp_provider_uri": "__FENCE_DOMAIN_URI__",
+  "fence_client_id": "__FENCE_CLIENT_ID__",
+  "fence_redirect_url": "https://datastage-i2b2-transmart-stage.aws.dbmi.hms.harvard.edu/psamaui/login/"
+}
