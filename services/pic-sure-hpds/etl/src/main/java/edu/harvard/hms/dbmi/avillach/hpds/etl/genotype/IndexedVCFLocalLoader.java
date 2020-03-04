@@ -250,6 +250,8 @@ public class IndexedVCFLocalLoader {
 
 			final boolean[] horribleHeaderSkipFlag = {false};
 			TreeMap<Integer, VCFLineProducer> producerMap = new TreeMap<Integer, VCFLineProducer>();
+
+			int[] sampleIndex = {0};
 			parser.forEach((CSVRecord r)->{
 				if(horribleHeaderSkipFlag[0]) {
 					File vcf = new File(r.get(FILE_COLUMN));
@@ -260,21 +262,21 @@ public class IndexedVCFLocalLoader {
 					boolean vcfIsGzipped = Integer.parseInt(r.get(GZIP_FLAG_COLUMN))==1;
 					String[] sampleIds = r.get(SAMPLE_IDS_COLUMN).split(",");
 					String[] patientIds = r.get(PATIENT_IDS_COLUMN).split(",");
-					for(int sampleIndex = 0; sampleIndex<sampleIds.length; sampleIndex++) {
-						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[sampleIndex]);
+					for(sampleIndex[0] = sampleIndex[0]; sampleIndex[0]<sampleIds.length; sampleIndex[0]++) {
+						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[sampleIndex[0]]);
 						if(chromosomeFileMap == null) {
 							chromosomeFileMap = new TreeMap<Integer, File>();
-							patientChromosomeFileMap.put(patientIds[sampleIndex], chromosomeFileMap);
+							patientChromosomeFileMap.put(patientIds[sampleIndex[0]], chromosomeFileMap);
 						}
 						chromosomeFileMap.put(chromosome, vcf);
-						VCFLineProducer producer = producerMap.get(sampleIndex);
+						VCFLineProducer producer = producerMap.get(sampleIndex[0]);
 						if(producer==null) {
 							producer = 
 									new VCFLineProducer(
-											sampleIndex, processAnnotations, vcfIsGzipped, 
-											chromosomeFileMap, patientIds[sampleIndex], 
+											sampleIndex[0], processAnnotations, vcfIsGzipped, 
+											chromosomeFileMap, patientIds[sampleIndex[0]], 
 											new ArrayBlockingQueue<>(VCF_LINE_QUEUE_SIZE));							
-							producerMap.put(sampleIndex, producer);
+							producerMap.put(sampleIndex[0], producer);
 						}
 					}
 				}else {
