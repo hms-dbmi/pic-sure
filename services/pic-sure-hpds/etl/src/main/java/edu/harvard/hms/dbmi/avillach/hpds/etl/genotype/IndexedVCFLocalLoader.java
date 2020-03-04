@@ -274,7 +274,7 @@ public class IndexedVCFLocalLoader {
 						if(producer==null) {
 							producer = 
 									new VCFLineProducer(
-											sampleIndex[0], processAnnotations, vcfIsGzipped, 
+											patientIdIndex, processAnnotations, vcfIsGzipped, 
 											chromosomeFileMap, patientIds[patientIdIndex], 
 											new ArrayBlockingQueue<>(VCF_LINE_QUEUE_SIZE));							
 							producerMap.put(sampleIndex[0], producer);
