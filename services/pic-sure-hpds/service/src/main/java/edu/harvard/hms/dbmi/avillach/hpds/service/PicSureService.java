@@ -53,8 +53,7 @@ public class PicSureService implements IResourceRS {
 		try {
 			countProcessor = new CountProcessor();
 		} catch (ClassNotFoundException | IOException e3) {
-			// TODO Auto-generated catch block
-			e3.printStackTrace();
+			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
 	}
 	
@@ -130,14 +129,11 @@ public class PicSureService implements IResourceRS {
 							))
 					));
 		} catch (JsonParseException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace(); 
+			log.error("JsonParseException  caught: ", e);
 		} catch (JsonMappingException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			log.error("JsonMappingException  caught: ", e);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			log.error("IOException  caught: ", e);
 		}
 		// TODO examples, examples, examples, specification
 		return info;
@@ -225,6 +221,7 @@ public class PicSureService implements IResourceRS {
 				query = convertIncomingQuery(queryJson);
 				return convertToQueryStatus(queryService.runQuery(query));		
 			} catch (IOException e) {
+				log.error("IOException caught in query processing:", e);
 				throw new ServerErrorException(500);
 			} catch (ValidationException e) {
 				QueryStatus status = queryStatus;
@@ -232,8 +229,7 @@ public class PicSureService implements IResourceRS {
 				try {
 					status.setResourceStatus("Validation failed for query for reason : " + new ObjectMapper().writeValueAsString(e.getResult()));
 				} catch (JsonProcessingException e2) {
-					// TODO Auto-generated catch block
-					e2.printStackTrace();
+					log.error("JsonProcessingException  caught: ", e);
 				}
 				try {
 					status.setResultMetadata(mapper.writeValueAsBytes(e.getResult()));
@@ -345,11 +341,9 @@ public class PicSureService implements IResourceRS {
 					return Response.ok(countProcessor.runCounts(incomingQuery)).build();				
 				}
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				log.error("IOException  caught: ", e);
 			} catch (TooManyVariantsException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				log.error("TooManyVariantsException  caught: ", e);
 			} 
 			return Response.serverError().build();
 
