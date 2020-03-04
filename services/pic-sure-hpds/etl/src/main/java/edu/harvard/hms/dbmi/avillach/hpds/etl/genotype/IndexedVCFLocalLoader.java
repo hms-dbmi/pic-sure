@@ -263,10 +263,11 @@ public class IndexedVCFLocalLoader {
 					String[] sampleIds = r.get(SAMPLE_IDS_COLUMN).split(",");
 					String[] patientIds = r.get(PATIENT_IDS_COLUMN).split(",");
 					for(int startIndex = sampleIndex[0]; (sampleIndex[0] - startIndex) <sampleIds.length; sampleIndex[0]++) {
-						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[sampleIndex[0]]);
+						int patientIdIndex = sampleIndex[0] - startIndex;
+						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[patientIdIndex]);
 						if(chromosomeFileMap == null) {
 							chromosomeFileMap = new TreeMap<Integer, File>();
-							patientChromosomeFileMap.put(patientIds[sampleIndex[0] - startIndex], chromosomeFileMap);
+							patientChromosomeFileMap.put(patientIds[patientIdIndex], chromosomeFileMap);
 						}
 						chromosomeFileMap.put(chromosome, vcf);
 						VCFLineProducer producer = producerMap.get(sampleIndex[0]);
@@ -274,7 +275,7 @@ public class IndexedVCFLocalLoader {
 							producer = 
 									new VCFLineProducer(
 											sampleIndex[0], processAnnotations, vcfIsGzipped, 
-											chromosomeFileMap, patientIds[sampleIndex[0]], 
+											chromosomeFileMap, patientIds[patientIdIndex], 
 											new ArrayBlockingQueue<>(VCF_LINE_QUEUE_SIZE));							
 							producerMap.put(sampleIndex[0], producer);
 						}
