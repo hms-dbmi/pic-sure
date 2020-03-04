@@ -266,7 +266,7 @@ public class IndexedVCFLocalLoader {
 						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[sampleIndex[0]]);
 						if(chromosomeFileMap == null) {
 							chromosomeFileMap = new TreeMap<Integer, File>();
-							patientChromosomeFileMap.put(patientIds[sampleIndex[0]], chromosomeFileMap);
+							patientChromosomeFileMap.put(patientIds[sampleIndex[0] - startIndex], chromosomeFileMap);
 						}
 						chromosomeFileMap.put(chromosome, vcf);
 						VCFLineProducer producer = producerMap.get(sampleIndex[0]);
