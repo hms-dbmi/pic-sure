@@ -262,7 +262,7 @@ public class IndexedVCFLocalLoader {
 					boolean vcfIsGzipped = Integer.parseInt(r.get(GZIP_FLAG_COLUMN))==1;
 					String[] sampleIds = r.get(SAMPLE_IDS_COLUMN).split(",");
 					String[] patientIds = r.get(PATIENT_IDS_COLUMN).split(",");
-					for(sampleIndex[0] = sampleIndex[0]; sampleIndex[0]<sampleIds.length; sampleIndex[0]++) {
+					for(int startIndex = sampleIndex[0]; (sampleIndex[0] - startIndex) <sampleIds.length; sampleIndex[0]++) {
 						TreeMap<Integer, File> chromosomeFileMap = patientChromosomeFileMap.get(patientIds[sampleIndex[0]]);
 						if(chromosomeFileMap == null) {
 							chromosomeFileMap = new TreeMap<Integer, File>();
