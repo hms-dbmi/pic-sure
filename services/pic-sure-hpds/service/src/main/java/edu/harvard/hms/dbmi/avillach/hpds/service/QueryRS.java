@@ -19,7 +19,6 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
@@ -86,7 +85,7 @@ public class QueryRS {
 
 	@POST
 	@Path("/count")
-	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException, ClassNotFoundException, TooManyVariantsException {
+	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException, ClassNotFoundException {
 		if(Crypto.hasKey()){
 			return Response.ok(new CountProcessor().runCounts(resultRequest)).build();
 		} else {

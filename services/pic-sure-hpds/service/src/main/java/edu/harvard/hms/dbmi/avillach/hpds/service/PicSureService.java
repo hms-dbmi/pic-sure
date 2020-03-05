@@ -38,7 +38,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInf
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
@@ -342,9 +341,7 @@ public class PicSureService implements IResourceRS {
 				}
 			} catch (IOException e) {
 				log.error("IOException  caught: ", e);
-			} catch (TooManyVariantsException e) {
-				log.error("TooManyVariantsException  caught: ", e);
-			} 
+			}
 			return Response.serverError().build();
 
 		} else {

@@ -28,7 +28,6 @@ import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
@@ -99,7 +98,7 @@ public class QueryService {
 
 	ExecutorService countExecutor = Executors.newSingleThreadExecutor();
 
-	public int runCount(Query query) throws ValidationException, InterruptedException, ExecutionException, ClassNotFoundException, FileNotFoundException, IOException, TooManyVariantsException {
+	public int runCount(Query query) throws ValidationException, InterruptedException, ExecutionException, ClassNotFoundException, FileNotFoundException, IOException {
 		return new CountProcessor().runCounts(query);
 	}
 

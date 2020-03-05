@@ -15,7 +15,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 
 
 public class QueryProcessor extends AbstractProcessor {
@@ -27,7 +26,7 @@ public class QueryProcessor extends AbstractProcessor {
 		super();
 	}
 
-	public void runQuery(Query query, AsyncResult result) throws NotEnoughMemoryException, TooManyVariantsException {
+	public void runQuery(Query query, AsyncResult result) throws NotEnoughMemoryException {
 		TreeSet<Integer> idList = getPatientSubsetForQuery(query);
 		log.info("Processing " + idList.size() + " rows for result " + result.id);
 		for(List<Integer> list : Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE)){

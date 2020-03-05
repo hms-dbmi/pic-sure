@@ -5,7 +5,6 @@ import java.io.IOException;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 
 public class VariantExportProcessor extends AbstractProcessor {
 
@@ -16,7 +15,7 @@ public class VariantExportProcessor extends AbstractProcessor {
 
 	@Override
 	public void runQuery(Query query, AsyncResult asyncResult)
-			throws NotEnoughMemoryException, TooManyVariantsException {
+			throws NotEnoughMemoryException {
 		// TODO Auto-generated method stub
 		
 	}

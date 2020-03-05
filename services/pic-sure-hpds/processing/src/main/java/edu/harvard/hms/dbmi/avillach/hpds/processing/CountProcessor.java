@@ -4,8 +4,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -15,7 +13,6 @@ import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 
 public class CountProcessor extends AbstractProcessor { 
 
@@ -28,9 +25,8 @@ public class CountProcessor extends AbstractProcessor {
 	 * 
 	 * @param query
 	 * @return
-	 * @throws TooManyVariantsException
 	 */
-	public int runCounts(Query query) throws TooManyVariantsException {
+	public int runCounts(Query query) {
 		return getPatientSubsetForQuery(query).size();
 	}
 
@@ -40,9 +36,8 @@ public class CountProcessor extends AbstractProcessor {
 	 * 
 	 * @param query
 	 * @return
-	 * @throws TooManyVariantsException
 	 */
-	public int runObservationCount(Query query) throws TooManyVariantsException {
+	public int runObservationCount(Query query) {
 		TreeSet<Integer> patients = getPatientSubsetForQuery(query);
 		int[] observationCount = {0};
 		query.fields.stream().forEach(field -> {
@@ -59,25 +54,16 @@ public class CountProcessor extends AbstractProcessor {
 	 * 
 	 * @param query
 	 * @return
-	 * @throws TooManyVariantsException
 	 */
-	public Map<String, Integer> runCrossCounts(Query query) throws TooManyVariantsException {
+	public Map<String, Integer> runCrossCounts(Query query) {
 		TreeMap<String, Integer> counts = new TreeMap<>();
-		TooManyVariantsException[] exceptions = new TooManyVariantsException[1];
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
 			Query safeCopy = new Query();
 			safeCopy.requiredFields = new ArrayList<String>();
 			safeCopy.requiredFields.add(concept);
-			try {
-				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
-			} catch (TooManyVariantsException e) {
-				exceptions[0] = e;
-			}
+			counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
 		});
-		if(exceptions[0]!=null) {
-			throw exceptions[0];
-		}
 		return counts;
 	}
 

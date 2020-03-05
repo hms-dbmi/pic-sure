@@ -44,7 +44,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.TooManyVariantsException;
 
 public abstract class AbstractProcessor {
 
@@ -178,9 +177,8 @@ public abstract class AbstractProcessor {
 	 * 
 	 * @param query
 	 * @return
-	 * @throws TooManyVariantsException
 	 */
-	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) throws TooManyVariantsException {
+	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
 		addIdSetsForAnyRecordOf(query, filteredIdSets);
@@ -202,9 +200,8 @@ public abstract class AbstractProcessor {
 	 * 
 	 * @param query
 	 * @return
-	 * @throws TooManyVariantsException
 	 */
-	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) throws TooManyVariantsException {
+	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) {
 		ArrayList<Set<Integer>> filteredIdSets;
 
 		filteredIdSets = idSetsForEachFilter(query);
@@ -442,8 +439,7 @@ public abstract class AbstractProcessor {
 		return indiscriminateVariantBitmask;
 	}
 
-	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets)
-			throws TooManyVariantsException {
+	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
@@ -709,8 +705,7 @@ public abstract class AbstractProcessor {
 	 * @param query
 	 * @param asyncResult
 	 * @throws NotEnoughMemoryException
-	 * @throws TooManyVariantsException
 	 */
-	public abstract void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException, TooManyVariantsException;
+	public abstract void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException;
 
 }
