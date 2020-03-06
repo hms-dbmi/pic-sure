@@ -11,6 +11,7 @@ import org.apache.log4j.Logger;
 import com.google.common.collect.Lists;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
@@ -82,7 +83,7 @@ public class QueryProcessor extends AbstractProcessor {
 		try{
 			String path = paths.get(x-1);
 			if(pathIsVariantSpec(path)) {
-				VariantMasks masks = variantStore.getMasks(path);
+				VariantMasks masks = variantStore.getMasks(path, new VariantMaskBucketHolder());
 				String[] patientIds = variantStore.getPatientIds();
 				int idPointer = 0;
 
