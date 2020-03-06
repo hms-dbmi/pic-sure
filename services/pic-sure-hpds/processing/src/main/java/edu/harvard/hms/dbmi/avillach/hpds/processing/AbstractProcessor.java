@@ -215,7 +215,7 @@ public abstract class AbstractProcessor {
 								new TreeSet(Arrays.asList(
 										variantStore.getPatientIds()).stream()
 										.collect(Collectors.mapping(
-												(String id)->{return Integer.parseInt(id);}, Collectors.toList()))) ));				
+												(String id)->{return Integer.parseInt(id.trim());}, Collectors.toList()))) ));				
 			}else {
 				idList = allIds;
 			}
