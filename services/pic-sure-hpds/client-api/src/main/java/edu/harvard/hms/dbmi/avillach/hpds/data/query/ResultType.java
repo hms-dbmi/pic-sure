@@ -37,5 +37,23 @@ public enum ResultType {
 	 * statistics experience needs to develop a p-value based filter for
 	 * the subset of patients.
 	 */
-	VARIANTS_OF_INTEREST
+	VARIANTS_OF_INTEREST,
+	/**
+	 * The count is the size of the intersection of VariantSpecs that is 
+	 * the result of applying all INFO filters in the query.
+	 * 
+	 * This is used by clients to limit queries to reasonable numbers of
+	 * variants.
+	 */
+	VARIANT_COUNT_FOR_QUERY,
+	/**
+	 * This returns the list of string representations of VariantSpecs
+	 * involved in a query.
+	 */
+	VARIANT_LIST_FOR_QUERY,
+	/**
+	 * This returns quasi-VCF lines for the variants expressed in the
+	 * query.
+	 */
+	VCF_EXCERPT
 }

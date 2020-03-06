@@ -44,6 +44,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 
 public abstract class AbstractProcessor {
 
@@ -226,10 +227,11 @@ public abstract class AbstractProcessor {
 
 	private void addIdSetsForRequiredFields(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.requiredFields != null && !query.requiredFields.isEmpty()) {
+			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.requiredFields.parallelStream().map(path->{
 				if(pathIsVariantSpec(path)) {
 					TreeSet<Integer> patientsInScope = new TreeSet<Integer>();
-					addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
+					addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope, bucketCache);
 					return patientsInScope;
 				} else {
 					return new TreeSet<Integer>(getCube(path).keyBasedIndex());
@@ -241,13 +243,14 @@ public abstract class AbstractProcessor {
 	private void addIdSetsForAnyRecordOf(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.anyRecordOf != null && !query.anyRecordOf.isEmpty()) {
 			Set<Integer> patientsInScope = new ConcurrentSkipListSet<Integer>();
+			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			query.anyRecordOf.parallelStream().forEach(path->{
 				if(patientsInScope.size()<Math.max(
 						allIds.size(),
 						(variantStore==null || variantStore.getPatientIds()==null) ? 
 								0 : variantStore.getPatientIds().length)) {
 					if(pathIsVariantSpec(path)) {
-						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope);
+						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope, bucketCache);
 					} else {
 						patientsInScope.addAll(getCube(path).keyBasedIndex());
 					}
@@ -268,10 +271,11 @@ public abstract class AbstractProcessor {
 
 	private void addIdSetsForCategoryFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.categoryFilters != null && !query.categoryFilters.isEmpty()) {
+			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
 				Set<Integer> ids = new TreeSet<Integer>();
 				if(pathIsVariantSpec(key)) {
-					addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids);
+					addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids, bucketCache);
 				} else {
 					String[] categoryFilter = query.categoryFilters.get(key);
 					for(String category : categoryFilter) {
@@ -284,8 +288,8 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private void addIdSetsForVariantSpecCategoryFilters(String[] zygosities, String key, Set<Integer> ids) {
-		ArrayList<BigInteger> variantBitmasks = getBitmasksForVariantSpecCategoryFilter(zygosities, key);
+	private void addIdSetsForVariantSpecCategoryFilters(String[] zygosities, String key, Set<Integer> ids, VariantMaskBucketHolder bucketCache) {
+		ArrayList<BigInteger> variantBitmasks = getBitmasksForVariantSpecCategoryFilter(zygosities, key, bucketCache);
 		if( ! variantBitmasks.isEmpty()) {
 			BigInteger bitmask = variantBitmasks.get(0);
 			if(variantBitmasks.size()>1) {
@@ -303,7 +307,7 @@ public abstract class AbstractProcessor {
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
 						// Minor hack here to deal with Baylor not sticking to one file naming convention
-						String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
+						String patientId = variantStore.getPatientIds()[x-2].split("_")[0].trim();
 						try{
 							ids.add(idCube == null ? Integer.parseInt(patientId) : idCube.getKeysForValue(patientId).iterator().next());
 						}catch(NullPointerException e) {
@@ -387,13 +391,13 @@ public abstract class AbstractProcessor {
 		//					} 
 	}
 
-	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(String[] zygosities, String variantName) {
+	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(String[] zygosities, String variantName, VariantMaskBucketHolder bucketCache) {
 		ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
 		variantName = variantName.replaceAll(",\\d/\\d$", "");
 		log.debug("looking up mask for : " + variantName);
 		VariantMasks masks;
 		try {
-			masks = variantStore.getMasks(variantName);
+			masks = variantStore.getMasks(variantName, bucketCache);
 			Arrays.stream(zygosities).forEach((zygosity) -> {
 				if(masks!=null) {
 					if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
@@ -517,8 +521,9 @@ public abstract class AbstractProcessor {
 				BigInteger matchingPatients = variantStore.emptyBitmask();
 				Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
 				int variantsProcessed = 0;
+				VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 				while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
-					masks = variantStore.getMasks(variantIterator.next());
+					masks = variantStore.getMasks(variantIterator.next(), bucketCache);
 					variantsProcessed++;
 					if(masks != null) {
 						heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
@@ -534,7 +539,7 @@ public abstract class AbstractProcessor {
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
 						// Minor hack here to deal with Baylor not sticking to one file naming convention
-						String patientId = variantStore.getPatientIds()[x-2].split("_")[0];
+						String patientId = variantStore.getPatientIds()[x-2].split("_")[0].trim();
 						try {
 							ids.add(patientIdCube == null ? Integer.parseInt(patientId) : patientIdCube.getKeysForValue(patientId).iterator().next());
 						}catch(NullPointerException e) {

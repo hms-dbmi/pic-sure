@@ -356,6 +356,18 @@ public class PicSureService implements IResourceRS {
 					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
 				}
 				
+				case VARIANT_COUNT_FOR_QUERY : {
+					throw new RuntimeException("Not yet implemented");
+				}
+				
+				case VARIANT_LIST_FOR_QUERY : {
+					throw new RuntimeException("Not yet implemented");
+				}
+				
+				case VCF_EXCERPT : {
+					throw new RuntimeException("Not yet implemented");
+				}
+				
 				default : {
 					// The only thing left is counts, this is also the lowest security concern query type so we default to it
 					return Response.ok(countProcessor.runCounts(incomingQuery)).build();

@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.RangeSet;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class VariantStore implements Serializable{
@@ -83,26 +84,22 @@ public class VariantStore implements Serializable{
 	public String[] getPatientIds() {
 		return patientIds;
 	}
-
-	private ConcurrentHashMap<String, VariantMasks> lastSetOfVariants;
-	private int lastChr;
-	private int lastChunkOffset;
 	
-	public VariantMasks getMasks(String variant) throws IOException {
+	public VariantMasks getMasks(String variant, VariantMaskBucketHolder bucketCache) throws IOException {
 		String[] segments = variant.split(",");
 		if(segments.length<2) {
 			System.out.println("Less than 2 segments found in this variant : " + variant);
 		}
 		int chrOffset = Integer.parseInt(segments[1])/ BUCKET_SIZE;
 		int chrNumber = Integer.parseInt(segments[0]);
-		if(lastSetOfVariants != null && chrNumber == lastChr && chrOffset == lastChunkOffset) {
+		if(bucketCache.lastSetOfVariants != null && chrNumber == bucketCache.lastChr && chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
-			lastSetOfVariants = variantMaskStorage[chrNumber].get(chrOffset);	
-			lastChr = chrNumber;
-			lastChunkOffset = chrOffset;
+			bucketCache.lastSetOfVariants = variantMaskStorage[chrNumber].get(chrOffset);	
+			bucketCache.lastChr = chrNumber;
+			bucketCache.lastChunkOffset = chrOffset;
 		}
-		return lastSetOfVariants == null ? null : lastSetOfVariants.get(variant);
+		return bucketCache.lastSetOfVariants == null ? null : bucketCache.lastSetOfVariants.get(variant);
 	}
 
 	public String[] getHeaders() {
