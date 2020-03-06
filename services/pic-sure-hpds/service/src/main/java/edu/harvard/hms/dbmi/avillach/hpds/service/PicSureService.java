@@ -315,7 +315,9 @@ public class PicSureService implements IResourceRS {
 			try {
 				incomingQuery = convertIncomingQuery(resultRequest);
 				log.info("Query Converted");
-				if(incomingQuery.expectedResultType==ResultType.INFO_COLUMN_LISTING) {
+				switch(incomingQuery.expectedResultType) {
+				
+				case INFO_COLUMN_LISTING : {
 					ArrayList<Map> infoStores = new ArrayList<>();
 					AbstractProcessor.infoStoreColumns.stream().forEach((infoColumn)->{
 						FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
@@ -324,20 +326,40 @@ public class PicSureService implements IResourceRS {
 						}
 					});
 					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
-				} else if(incomingQuery.expectedResultType==ResultType.DATAFRAME || incomingQuery.expectedResultType==ResultType.DATAFRAME_MERGED) {
+				}
+				
+				case DATAFRAME : {
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
 						status = queryStatus(status.getResourceResultId(), null);
 					}
 					log.info(status.toString());
 					return queryResult(status.getResourceResultId(), null);
-				} else if (incomingQuery.expectedResultType == ResultType.CROSS_COUNT) {
+					
+				}
+				
+				case DATAFRAME_MERGED : {
+					QueryStatus status = query(resultRequest);
+					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
+						status = queryStatus(status.getResourceResultId(), null);
+					}
+					log.info(status.toString());
+					return queryResult(status.getResourceResultId(), null);
+					
+				}
+				
+				case CROSS_COUNT : {
 					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				} else if(incomingQuery.expectedResultType==ResultType.OBSERVATION_COUNT) {
+				}
+				
+				case OBSERVATION_COUNT : {
 					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
-				} else {
+				}
+				
+				default : {
 					// The only thing left is counts, this is also the lowest security concern query type so we default to it
-					return Response.ok(countProcessor.runCounts(incomingQuery)).build();				
+					return Response.ok(countProcessor.runCounts(incomingQuery)).build();
+				}
 				}
 			} catch (IOException e) {
 				log.error("IOException  caught: ", e);
