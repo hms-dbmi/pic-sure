@@ -6,9 +6,9 @@ import java.io.IOException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
-public class VariantListProcessor extends AbstractProcessor {
+public class VCFExcerptProcessor extends AbstractProcessor {
 
-	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
+	public VCFExcerptProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
 		// TODO Auto-generated constructor stub
 	}
@@ -20,4 +20,6 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 	}
 
+	
+	
 }
