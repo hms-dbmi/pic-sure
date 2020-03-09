@@ -644,7 +644,7 @@ public abstract class AbstractProcessor {
 	 * Prime the cache if we have a key already by loading PhenoCubes into the cache up to maximum CACHE_SIZE
 	 * 
 	 */
-	public void loadAllDataFiles() {
+	public synchronized void loadAllDataFiles() {
 		if(!dataFilesLoaded) {
 			if(Crypto.hasKey()) {
 				List<String> cubes = new ArrayList<String>(metaStore.keySet());
@@ -688,6 +688,7 @@ public abstract class AbstractProcessor {
 					e.printStackTrace();
 				}
 			});
+			dataFilesLoaded = true;
 		}
 	}
 
