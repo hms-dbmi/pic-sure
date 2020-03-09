@@ -76,4 +76,18 @@ public class CountProcessor extends AbstractProcessor {
 		throw new UnsupportedOperationException("Counts do not run asynchronously.");
 	}
 
+	/**
+	 * To be implemented for ALS-113
+	 * 
+	 * The incomingQuery is a normal query, the same as COUNT result type.
+	 * 
+	 * This should not actually do any filtering based on bitmasks, just INFO columns.
+	 * 
+	 * @param incomingQuery
+	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
+	 */
+	public int runVariantCount(Query incomingQuery) {
+		throw new RuntimeException("Not yet implemented");
+	}
+
 }

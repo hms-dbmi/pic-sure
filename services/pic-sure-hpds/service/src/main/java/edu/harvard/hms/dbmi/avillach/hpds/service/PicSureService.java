@@ -42,6 +42,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantsOfInterestProcessor;
 
 @Path("PIC-SURE")
@@ -51,6 +52,7 @@ public class PicSureService implements IResourceRS {
 	public PicSureService() {
 		try {
 			countProcessor = new CountProcessor();
+			variantListProcessor = new VariantListProcessor();
 		} catch (ClassNotFoundException | IOException e3) {
 			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
@@ -66,7 +68,9 @@ public class PicSureService implements IResourceRS {
 
 	private Logger log = Logger.getLogger(PicSureService.class);
 
-	private VariantsOfInterestProcessor variantsOfInterestProcessor;
+	private VariantListProcessor variantListProcessor;
+	
+	private CountProcessor countProcessor;
 
 	@POST
 	@Path("/info")
@@ -204,7 +208,6 @@ public class PicSureService implements IResourceRS {
 					queryService.processor.loadAllDataFiles();
 					log.info("Data is loaded");
 					queryStatus.setResourceStatus("Resource unlocked.");
-					variantsOfInterestProcessor = new VariantsOfInterestProcessor();
 				} catch(Exception e) {
 					Crypto.setKey(null);
 					e.printStackTrace();
@@ -304,8 +307,6 @@ public class PicSureService implements IResourceRS {
 				queryService.getStatusFor(queryId));
 	}
 
-	CountProcessor countProcessor;
-
 	@POST
 	@Path("/query/sync")
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
@@ -357,15 +358,15 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VARIANT_COUNT_FOR_QUERY : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(countProcessor.runVariantCount(incomingQuery)).build();
 				}
 				
 				case VARIANT_LIST_FOR_QUERY : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(variantListProcessor.runVariantListQuery(incomingQuery)).build();
 				}
 				
 				case VCF_EXCERPT : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery)).build();
 				}
 				
 				default : {
