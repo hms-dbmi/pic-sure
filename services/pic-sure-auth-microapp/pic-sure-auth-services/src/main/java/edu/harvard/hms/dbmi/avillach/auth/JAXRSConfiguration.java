@@ -50,7 +50,6 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/client_id")
     public static String clientId;
-
     @Resource(mappedName = "java:global/client_secret")
     public static String clientSecret;
     @Resource(mappedName = "java:global/clientSecretIsBase64")
@@ -64,6 +63,13 @@ public class JAXRSConfiguration extends Application {
 
     @Resource(mappedName = "java:global/tosEnabled")
     public static String tosEnabled;
+
+    /**
+     * The default application UUID assumed for all operational contexts where
+	 * one is not supplied.
+     */
+    @Resource(mappedName = "java:global/defaultApplicationUUID")
+    public static String defaultApplicationUUID;
 
     @Resource(mappedName = "java:global/systemName")
     public static String systemName;

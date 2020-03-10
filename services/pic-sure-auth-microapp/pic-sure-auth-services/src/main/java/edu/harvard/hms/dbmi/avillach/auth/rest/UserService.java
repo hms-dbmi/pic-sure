@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.*;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
@@ -303,7 +304,7 @@ public class UserService extends BaseEntityService<User> {
     @GET
     @Path("/me/queryTemplate/{applicationId}")
     public Response getQueryTemplate(
-            @ApiParam(required = false, value = "Application Id for the returning queryTemplate")
+            @ApiParam(value = "Application Id for the returning queryTemplate")
             @PathParam("applicationId") String applicationId){
 
         if (applicationId == null || applicationId.trim().isEmpty()){
@@ -333,6 +334,14 @@ public class UserService extends BaseEntityService<User> {
         return PICSUREResponse.success(
                 Map.of("queryTemplate", mergeTemplate(user, application)));
 
+    }
+
+    @ApiOperation(value = "Retrieve the queryTemplate of default application")
+    @Transactional
+    @GET
+    @Path("/me/queryTemplate")
+    public Response getQueryTemplate(){
+        return getQueryTemplate(JAXRSConfiguration.defaultApplicationUUID);
     }
 
 
