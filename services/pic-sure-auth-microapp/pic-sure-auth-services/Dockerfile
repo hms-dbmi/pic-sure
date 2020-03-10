@@ -18,14 +18,8 @@ ENV AUTH_USER_ID_CLAIM sub
 USER root
 
 # Add certs for AWS to trust store
-COPY aws_certs/root_cert.der root_cert.der
-COPY aws_certs/cert_1.der cert_1.der
-COPY aws_certs/cert_2.der cert_2.der
-COPY aws_certs/cert_3.der cert_3.der
-RUN keytool -noprompt -import -alias root_cert -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file root_cert.der \
-    && keytool -noprompt -import -alias cert_1 -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file cert_1.der \
-    && keytool -noprompt -import -alias cert_2 -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file cert_2.der \
-    && keytool -noprompt -import -alias cert_3 -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file cert_3.der
+COPY aws_certs/certificate.der certificate.der
+RUN keytool -noprompt -import -alias root_cert -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file certificate.der
 
 # copy modules
 COPY target/modules/system/layers/base/com/sql/mysql/main/* /modules/
