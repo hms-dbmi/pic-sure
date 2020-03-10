@@ -448,7 +448,7 @@
                 <simple name="java:global/adminUsers" value="${env.COMMA_SEPARATED_EMAILS:none}"/>
                 <simple name="java:global/accessGrantEmailSubject" value="${env.accessGrantEmailSubject:none}"/>
                 <simple name="java:global/tokenExpirationTime" value="${env.tokenExpriationTime:900000}" />
-                <simple name="${env.defaultApplicationUUID}" value="${env.defaultApplicationUUID}" />
+                <simple name="java:global/defaultApplicationUUID" value="${env.defaultApplicationUUID}" />
 
                 <!-- Configure Identity Provider Parameters, with defaults-->
                 <simple name="java:global/idp_provider" value="${env.IDP_PROVIDER:auth0}"/>
