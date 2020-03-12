@@ -86,10 +86,16 @@ public class AuthorizationService {
 
 		// start to process the jsonpath checking
 
-		String requestJson = null;
+		String formattedQuery = null;
 		try {
-			requestJson = new ObjectMapper().writeValueAsString(requestBody);
-		} catch (JsonProcessingException e1) {
+			formattedQuery = (String) ((Map)requestBody).get("formattedQuery");
+			
+			if(formattedQuery == null) {
+				//fallback in case no formatted query info present
+				formattedQuery = new ObjectMapper().writeValueAsString(requestBody);
+			}
+			
+		} catch (ClassCastException | JsonProcessingException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
@@ -108,7 +114,7 @@ public class AuthorizationService {
         // Here we assume that the application has at least one privilege
 		if (privileges == null || privileges.isEmpty()) {
 		    logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() +
-                    " ___ has been denied access to execute query ___ " + requestBody + " ___ in application ___ " + applicationName
+                    " ___ has been denied access to execute query ___ " + formattedQuery + " ___ in application ___ " + applicationName
                     + " __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES");
             return false;
         }
@@ -117,7 +123,7 @@ public class AuthorizationService {
 
 		if (accessRules == null || accessRules.isEmpty()) {
 			logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-					" ___ has been granted access to execute query ___ " + requestJson + " ___ in application ___ " + applicationName
+					" ___ has been granted access to execute query ___ " + formattedQuery + " ___ in application ___ " + applicationName
                     + " ___ NO ACCESS RULES EVALUATED");
 			return true;        	
 		}
@@ -148,7 +154,7 @@ public class AuthorizationService {
         }
 
 		logger.info("ACCESS_LOG ___ " + user.getUuid().toString() + "," + user.getEmail() + "," + user.getName() + 
-				" ___ has been " + (result?"granted":"denied") + " access to execute query ___ " + requestJson + 
+				" ___ has been " + (result?"granted":"denied") + " access to execute query ___ " + formattedQuery + 
 				" ___ in application ___ " + applicationName + " ___ " +
                 (result?"passed by " + passRuleName:"failed by rules: ["
                         + failedRules.stream()

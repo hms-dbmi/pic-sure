@@ -23,10 +23,11 @@ import javax.inject.Inject;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+
+
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.*;
 
 /**
  * This class provides authentication functionality. This implements an authenticationService interface
@@ -103,7 +104,9 @@ public class AuthenticationService {
         claims.put("name", user.getName());
         claims.put("email", user.getEmail());
         HashMap<String, String> responseMap = authUtil.getUserProfileResponse(claims);
-
+        
+		logger.info("LOGIN SUCCESS ___ " + user.getEmail() + ":" + user.getUuid().toString() + " ___ Authorization will expire at  ___ " + responseMap.get("expirationDate") + "___");
+		
         return PICSUREResponse.success(responseMap);
     }
 
