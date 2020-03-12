@@ -105,12 +105,12 @@ public class JAXRSConfiguration extends Application {
     public static String defaultAdminRoleName = "PIC-SURE Top Admin";
 
     public static long tokenExpirationTime;
-    // default expiration time is 15 minutes
-    private static long defaultTokenExpirationTime = 1000L * 60 * 15;
+    // default expiration time is 1 hr
+    private static long defaultTokenExpirationTime = 1000L * 60 * 60;
 
     public static long longTermTokenExpirationTime;
-    // default long term token expiration time is 1 day
-    private static long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24;
+    // default long term token expiration time is 30 days
+    private static long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30;
 
     @Inject
     RoleRepository roleRepo;
