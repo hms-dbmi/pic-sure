@@ -179,10 +179,13 @@ public class JWTFilter implements ContainerRequestFilter {
 				requestMap.put("query", queryObject);
 
 				if(requestPath.startsWith("/query/")) {
-					UUID resourceUUID = UUID.fromString((String) ((Map)queryObject).get("resourceUUID"));
-					//logger.info("QUERY OBJ: " + queryObject);
-					// QUERY OBJ: {resourceUUID=66343762-6666-6637-3532-346531316539, query={categoryFilters={}, numericFilters={}, requiredFields=[], variantInfoFilters=[{}], expectedResultType=COUNT}}
-
+					
+					UUID resourceUUID = null;
+					String resourceUUIDStr = (String) ((Map)queryObject).get("resourceUUID");
+					if(resourceUUIDStr != null) {
+						resourceUUID = UUID.fromString(resourceUUIDStr);
+					}
+					
 					if(resourceUUID != null) {
 						edu.harvard.dbmi.avillach.data.entity.Resource resource = resourceRepo.getById(resourceUUID);
 						//logger.info("resource obj: " + resource + "    path: " + resource.getResourceRSPath());
