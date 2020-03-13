@@ -18,6 +18,9 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     return opts.inverse(this);
 
             });
+            HBS.registerHelper('tokenExpiration', function (array, opts) {
+                return new Date(JSON.parse(atob(JSON.parse(sessionStorage.session).token.split('.')[1])).exp * 1000).toString().substring(0,24);
+            });
             this.template = HBS.compile(template);
             this.applications = [];
             this.modalTemplate = HBS.compile(modalTemplate);
