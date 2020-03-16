@@ -18,8 +18,22 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     return opts.inverse(this);
 
             });
-            HBS.registerHelper('tokenExpiration', function (array, opts) {
-                return new Date(JSON.parse(atob(JSON.parse(sessionStorage.session).token.split('.')[1])).exp * 1000).toString().substring(0,24);
+            HBS.registerHelper('tokenExpiration', function (token) {
+                var expirationTime = JSON.parse(atob(token)).exp * 1000;
+                var badgeClass = "primary";
+                var badgeMessage = "unknown";
+                var daysLeftOnToken = (expirationTime - Date.now()) / (1000 * 60 * 60 * 24);
+                if ( expirationTime < Date.now() ){
+                    badgeClass = "danger";
+                    badgeMessage = "EXPIRED"
+                } else if ( daysLeftOnToken < 7 ) {
+                    badgeClass = "caution";
+                    badgeMessage = "EXPIRING SOON";
+                } else {
+                    badgeClass = "success";
+                    badgeMessage = "Valid for " + daysLeftOnToken + " more days";
+                }
+                return new Date(expirationTime).toString().substring(0,24) + " <span class='badge-" + badgeClass + "'>" + badgeMessage + "</span>";
             });
             this.template = HBS.compile(template);
             this.applications = [];
