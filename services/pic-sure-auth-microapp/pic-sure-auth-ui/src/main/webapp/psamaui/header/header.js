@@ -19,7 +19,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
 
             });
             HBS.registerHelper('tokenExpiration', function (token) {
-                var expirationTime = JSON.parse(atob(token)).exp * 1000;
+                var expirationTime = JSON.parse(atob(token.split('.')[1])).exp * 1000;
                 var badgeClass = "primary";
                 var badgeMessage = "unknown";
                 var daysLeftOnToken = (expirationTime - Date.now()) / (1000 * 60 * 60 * 24);
