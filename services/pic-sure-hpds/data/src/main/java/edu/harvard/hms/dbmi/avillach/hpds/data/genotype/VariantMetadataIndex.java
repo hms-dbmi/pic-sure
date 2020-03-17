@@ -3,16 +3,13 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
@@ -26,24 +23,19 @@ public class VariantMetadataIndex implements Serializable {
 
 	public static String storageFile = "/opt/local/hpds/all/VariantMetadataStorage.bin";
 	public static String binFile = "/opt/local/hpds/all/VariantMetadata.javabin";
-	FileBackedByteIndexedStorage<String, String[]> fbbiStorage;
-	FileBackedByteIndexedStorage<String, String[]> fbbiStorageBin;  
+	FileBackedByteIndexedStorage<String, String[]> fbbis;   
 	
-	public VariantMetadataIndex() { 
-		//Moving default construction of resources to separate initialize methods (loading index and reading index data)
-	}
-
-	public void initializeWrites() throws FileNotFoundException, IOException, ClassNotFoundException {
-		fbbiStorage = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(storageFile));
-	}
+	public VariantMetadataIndex() throws IOException { 
+		fbbis = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(storageFile)); 
+	} 
 	
 	public void initializeRead() throws FileNotFoundException, IOException, ClassNotFoundException {
 		ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(new File(binFile))));
-		fbbiStorageBin = (FileBackedByteIndexedStorage<String, String[]>) in.readObject();
+		fbbis = (FileBackedByteIndexedStorage<String, String[]>) in.readObject(); 
 	}
 
 	public String[] findBySingleVariantSpec(String string) throws Exception {
-		return fbbiStorageBin.get(string);
+		return fbbis.get(string);
 	}
 
 	public Map<String, String[]> findByMultipleVariantSpec(List<String> varientSpecList) throws Exception {
@@ -58,17 +50,14 @@ public class VariantMetadataIndex implements Serializable {
 	}
 
 	public void put(String specNotation, String[] array) throws IOException {
-		fbbiStorage.put(specNotation, array);
+		fbbis.put(specNotation, array);
 	}
 
 	public void complete() {
-		fbbiStorage.complete();
+		fbbis.complete();
 	}
 
-	public void writeObject() throws FileNotFoundException, IOException, ClassNotFoundException {
-		ObjectOutputStream out = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(binFile))));
-		out.writeObject(fbbiStorage);
-		out.close();
+	public FileBackedByteIndexedStorage<String, String[]> getFbbis() {
+		return fbbis;
 	}
-
 }
