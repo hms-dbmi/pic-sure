@@ -91,6 +91,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     document.getElementById("user_token_textarea").attributes.token.value = result.userLongTermToken;
 
                     $("#user-token-copy-button").html("COPY");
+                    $('#user-profile-btn').click()
                 }.bind(this));
             }.bind(this), 'center', 'Refresh will inactivate the old token!! Do you want to continue?');
         },
@@ -129,6 +130,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                                 })
                         }));
                     }.bind(this));
+                    $('#user-profile-btn').click();
                 }else {
                     userFunctions.me(this, function (user) {
                         applicationFunctions.fetchApplications(this, function(applications){
