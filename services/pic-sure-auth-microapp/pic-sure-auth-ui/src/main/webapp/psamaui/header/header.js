@@ -22,7 +22,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 var expirationTime = JSON.parse(atob(token.split('.')[1])).exp * 1000;
                 var badgeClass = "primary";
                 var badgeMessage = "unknown";
-                var daysLeftOnToken = (expirationTime - Date.now()) / (1000 * 60 * 60 * 24);
+                var daysLeftOnToken = Math.floor((expirationTime - Date.now()) / (1000 * 60 * 60 * 24));
                 if ( expirationTime < Date.now() ){
                     badgeClass = "danger";
                     badgeMessage = "EXPIRED"
