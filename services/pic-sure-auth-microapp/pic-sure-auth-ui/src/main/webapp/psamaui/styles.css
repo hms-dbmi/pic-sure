@@ -351,3 +351,15 @@ input:read-only {
     border-color: #6c757d;
     float: right;
 }
+.badge-danger {
+    color: #fff;
+    background-color: #dc3545;
+}
+.badge-success {
+    color: #fff;
+    background-color: #28a745;
+}
+.badge-warning {
+    color: #212529;
+    background-color: #ffc107;
+}

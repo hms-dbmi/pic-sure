@@ -27,13 +27,13 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     badgeClass = "danger";
                     badgeMessage = "EXPIRED"
                 } else if ( daysLeftOnToken < 7 ) {
-                    badgeClass = "caution";
+                    badgeClass = "warning";
                     badgeMessage = "EXPIRING SOON";
                 } else {
                     badgeClass = "success";
                     badgeMessage = "Valid for " + daysLeftOnToken + " more days";
                 }
-                return new Date(expirationTime).toString().substring(0,24) + " <span class='badge-" + badgeClass + "'>" + badgeMessage + "</span>";
+                return new Date(expirationTime).toString().substring(0,24) + " <span class='badge badge-" + badgeClass + "'>" + badgeMessage + "</span>";
             });
             this.template = HBS.compile(template);
             this.applications = [];
