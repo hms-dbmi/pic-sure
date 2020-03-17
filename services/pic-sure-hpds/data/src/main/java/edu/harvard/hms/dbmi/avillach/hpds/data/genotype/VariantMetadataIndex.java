@@ -6,10 +6,12 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
+
+import org.apache.log4j.Logger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
@@ -20,9 +22,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 public class VariantMetadataIndex implements Serializable {
 
 	private static final long serialVersionUID = 5917054606643971537L;
+	private static Logger log = Logger.getLogger(VariantMetadataIndex.class);
 
 	public static String storageFile = "/opt/local/hpds/all/VariantMetadataStorage.bin";
 	public static String binFile = "/opt/local/hpds/all/VariantMetadata.javabin";
+
 	FileBackedByteIndexedStorage<String, String[]> fbbis;   
 	
 	public VariantMetadataIndex() throws IOException { 
@@ -34,19 +38,20 @@ public class VariantMetadataIndex implements Serializable {
 		fbbis = (FileBackedByteIndexedStorage<String, String[]>) in.readObject(); 
 	}
 
-	public String[] findBySingleVariantSpec(String string) throws Exception {
-		return fbbis.get(string);
+	public String[] findBySingleVariantSpec(String variantSpec) {
+		try {
+			return fbbis.get(variantSpec);
+		} catch (IOException e) {
+			log.warn("IOException caught looking up variantSpec : " + variantSpec, e);
+			return new String[0];
+		}
 	}
 
-	public Map<String, String[]> findByMultipleVariantSpec(List<String> varientSpecList) throws Exception {
-		Map<String, String[]> result = varientSpecList.stream().collect(HashMap::new, (m, v) -> {
-			try {
-				m.put(v, this.findBySingleVariantSpec(v));
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}, HashMap::putAll);
-		return result;
+	public Map<String, String[]> findByMultipleVariantSpec(List<String> varientSpecList) {
+		return varientSpecList.stream().collect(Collectors.toMap(
+				variant->{return variant;},
+				variant->{return findBySingleVariantSpec(variant);}
+				));
 	}
 
 	public void put(String specNotation, String[] array) throws IOException {
