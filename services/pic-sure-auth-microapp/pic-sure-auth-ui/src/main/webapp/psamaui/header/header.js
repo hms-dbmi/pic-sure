@@ -129,8 +129,8 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                                     return 0;
                                 })
                         }));
+                        $('#user-profile-btn').click();
                     }.bind(this));
-                    $('#user-profile-btn').click();
                 }else {
                     userFunctions.me(this, function (user) {
                         applicationFunctions.fetchApplications(this, function(applications){
