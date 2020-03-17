@@ -10,6 +10,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.NotSupportedException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -30,7 +31,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
-import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.domain.QueryFormat;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
@@ -42,7 +47,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantsOfInterestProcessor;
 
 @Path("PIC-SURE")
 @Produces("application/json")
@@ -65,8 +69,6 @@ public class PicSureService implements IResourceRS {
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	private Logger log = Logger.getLogger(PicSureService.class);
-
-	private VariantsOfInterestProcessor variantsOfInterestProcessor;
 
 	@POST
 	@Path("/info")
@@ -204,7 +206,6 @@ public class PicSureService implements IResourceRS {
 					queryService.processor.loadAllDataFiles();
 					log.info("Data is loaded");
 					queryStatus.setResourceStatus("Resource unlocked.");
-					variantsOfInterestProcessor = new VariantsOfInterestProcessor();
 				} catch(Exception e) {
 					Crypto.setKey(null);
 					e.printStackTrace();
@@ -251,18 +252,6 @@ public class PicSureService implements IResourceRS {
 		return mapper.readValue(mapper.writeValueAsString(queryJson.getQuery()), Query.class);
 	}
 
-	private QueryStatus unknownResultTypeQueryStatus() {
-		QueryStatus status = new QueryStatus();
-		status.setDuration(0);
-		status.setExpiration(-1);
-		status.setPicsureResultId(null);
-		status.setResourceID(null);
-		status.setResourceResultId(null);
-		status.setResourceStatus("Unsupported result type");
-		status.setStatus(PicSureStatus.ERROR);
-		return status;
-	}
-
 	private QueryStatus convertToQueryStatus(AsyncResult entity) {
 		QueryStatus status = new QueryStatus();
 		status.setDuration(entity.completedTime==0?0:entity.completedTime - entity.queuedTime);
@@ -274,14 +263,6 @@ public class PicSureService implements IResourceRS {
 		}
 		status.setStartTime(entity.queuedTime);
 		status.setStatus(entity.status.toPicSureStatus());
-		return status;
-	}
-
-	private QueryStatus convertToQueryStatus(int count) {
-		QueryStatus status = new QueryStatus();
-		status.setResourceStatus("COMPLETE");
-		status.setResultMetadata((""+count).getBytes());
-		status.setStatus(PicSureStatus.AVAILABLE);
 		return status;
 	}
 
@@ -302,6 +283,17 @@ public class PicSureService implements IResourceRS {
 			QueryRequest request) {
 		return convertToQueryStatus(
 				queryService.getStatusFor(queryId));
+	}
+	
+	@POST
+	@Path("/query/format")
+	public Response queryFormat(QueryRequest resultRequest) {
+		try {
+			//The toString() method here has been overridden to produce a human readable value
+			return Response.ok().entity(convertIncomingQuery(resultRequest).toString()).build();
+		} catch (IOException e) {
+			return Response.ok().entity("An error occurred formatting the query for display: " + e.getLocalizedMessage()).build();
+		}
 	}
 
 	CountProcessor countProcessor;
