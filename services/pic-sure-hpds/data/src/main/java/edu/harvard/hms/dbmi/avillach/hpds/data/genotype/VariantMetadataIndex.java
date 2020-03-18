@@ -20,27 +20,27 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
  * 
  */
 public class VariantMetadataIndex implements Serializable {
-
 	private static final long serialVersionUID = 5917054606643971537L;
-	private static Logger log = Logger.getLogger(VariantMetadataIndex.class);
-
-	public static String storageFile = "/opt/local/hpds/all/VariantMetadataStorage.bin";
-	public static String binFile = "/opt/local/hpds/all/VariantMetadata.javabin";
-
-	FileBackedByteIndexedStorage<String, String[]> fbbis;   
+	private static Logger log = Logger.getLogger(VariantMetadataIndex.class); 
+	private FileBackedByteIndexedStorage<String, String[]> fbbis;   
 	
-	public VariantMetadataIndex() throws IOException { 
-		fbbis = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(storageFile)); 
-	} 
+	public VariantMetadataIndex(String storageFile) throws IOException { 
+		fbbis = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(storageFile));   
+	}  
 	
-	public void initializeRead() throws FileNotFoundException, IOException, ClassNotFoundException {
-		ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(new File(binFile))));
-		fbbis = (FileBackedByteIndexedStorage<String, String[]>) in.readObject(); 
+	public VariantMetadataIndex() { 
+	}
+
+	public void initializeRead(String binFile) throws FileNotFoundException, IOException, ClassNotFoundException {
+		try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(new File(binFile))))){
+			fbbis  = ((VariantMetadataIndex) in.readObject()).fbbis;
+		}
 	}
 
 	public String[] findBySingleVariantSpec(String variantSpec) {
 		try {
-			return fbbis.get(variantSpec);
+			String[] value = fbbis.get(variantSpec);
+			return value != null  ? value :  new String[0];
 		} catch (IOException e) {
 			log.warn("IOException caught looking up variantSpec : " + variantSpec, e);
 			return new String[0];
