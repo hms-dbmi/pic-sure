@@ -117,8 +117,7 @@ define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "
             if (window.location.pathname !== "/psamaui/tos") {
                 if (window.location.pathname == "/psamaui/userProfile"){
                     applicationFunctions.fetchApplications(this, function(applications){
-                        this.$el.html(this.template({
-                        	logoPath: settings.logoPath,
+                        this.$el.html(this.template(_.extend({
                             privileges: [],
                             applications: applications
                                 .filter(function (app) {
@@ -129,14 +128,14 @@ define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "
                                     if(a.name > b.name) { return 1; }
                                     return 0;
                                 })
-                        }));
+                        }, settings)));
                         $('#user-profile-btn').click();
                     }.bind(this));
                 }else {
                     userFunctions.me(this, function (user) {
                         applicationFunctions.fetchApplications(this, function(applications){
                             this.applications = applications;
-                            this.$el.html(this.template({
+                            this.$el.html(this.template(_.extend({
                                 privileges: user.privileges,
                                 applications: this.applications
                                     .filter(function (app) {
@@ -147,7 +146,7 @@ define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "
                                         if(a.name > b.name) { return 1; }
                                         return 0;
                                     })
-                            }));
+                            }, settings)));
                         }.bind(this))
 
                     }.bind(this));
