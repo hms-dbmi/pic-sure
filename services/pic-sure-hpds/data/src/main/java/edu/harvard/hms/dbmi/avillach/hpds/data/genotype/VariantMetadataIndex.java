@@ -1,15 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
 
 import org.apache.log4j.Logger;
 
@@ -22,19 +19,19 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 public class VariantMetadataIndex implements Serializable {
 	private static final long serialVersionUID = 5917054606643971537L;
 	private static Logger log = Logger.getLogger(VariantMetadataIndex.class); 
-	private FileBackedByteIndexedStorage<String, String[]> fbbis;   
+	private FileBackedByteIndexedStorage<String, String[]> fbbis;  
+	public static String DEFAULT_STORAGE_FILE_LOCATION = "/opt/local/hpds/all/VariantMetadataStorage.bin";
 	
 	public VariantMetadataIndex(String storageFile) throws IOException { 
 		fbbis = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(storageFile));   
 	}  
 	
-	public VariantMetadataIndex() { 
+	public VariantMetadataIndex() throws IOException {  
+		fbbis = new FileBackedByteIndexedStorage<>(String.class, String[].class, new File(DEFAULT_STORAGE_FILE_LOCATION));   
 	}
 
-	public void initializeRead(String binFile) throws FileNotFoundException, IOException, ClassNotFoundException {
-		try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(new File(binFile))))){
-			fbbis  = ((VariantMetadataIndex) in.readObject()).fbbis;
-		}
+	public void initializeRead() throws FileNotFoundException, IOException, ClassNotFoundException {
+		fbbis.open();
 	}
 
 	public String[] findBySingleVariantSpec(String variantSpec) {

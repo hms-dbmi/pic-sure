@@ -22,6 +22,7 @@ import org.apache.log4j.Logger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
+import htsjdk.samtools.util.BlockCompressedInputStream;
 
 /**
  * 
@@ -31,45 +32,66 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 public class VariantMetadataLoader {
 	
 	private static Logger log = Logger.getLogger(VariantMetadataLoader.class);
-	public static String storageFile = "/opt/local/hpds/all/VariantMetadataStorage.bin";
 	public static String binFile = "/opt/local/hpds/all/VariantMetadata.javabin";
-
+    
 	private static final int 
-	INFO_COLUMN = 7,  
+	INFO_COLUMN = 7,
+	ANNOTATED_FLAG_COLUMN = 2,
+	GZIP_FLAG_COLUMN=3,
 	FILE_COLUMN = 0;	
 	
 	public static void main(String[] args) throws Exception{  
-		File vcfIndexFile = new File("/opt/local/hpds/vcfIndex.tsv");
+		File vcfIndexFile;
+		String storagePathForTests = null;
+		log.info(new File(".").getAbsolutePath());
+		if(args.length > 0 && new File(args[0]).exists()) {
+			log.info("using path from command line, is this a test");
+			vcfIndexFile = new File(args[0]);
+			binFile = args[1];
+			storagePathForTests = args[2];
+		}else {
+			vcfIndexFile = new File("/opt/local/hpds/vcfIndex.tsv");
+		}
 		List<File> vcfFiles = new ArrayList<>();
+		List<Boolean> gzipFlags = new ArrayList<>();
 
 		try(CSVParser parser = CSVParser.parse(vcfIndexFile, Charset.forName("UTF-8"), CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(true))) { 
 			final boolean[] horribleHeaderSkipFlag = {false}; 
 			parser.forEach((CSVRecord r)->{
 				if(horribleHeaderSkipFlag[0]) {
 					File vcfFileLocal = new File(r.get(FILE_COLUMN)); 
-					vcfFiles.add(vcfFileLocal);
+					if(Integer.parseInt(r.get(ANNOTATED_FLAG_COLUMN).trim())==1) {
+						vcfFiles.add(vcfFileLocal);
+						gzipFlags.add(Integer.parseInt(r.get(GZIP_FLAG_COLUMN).trim())==1);
+					}
 				}else {
 					horribleHeaderSkipFlag[0] = true;
 				}
 			});
 		}
 		
-		VariantMetadataIndex vmi = new VariantMetadataIndex(storageFile); 
-		vcfFiles.stream().forEach((vcfFile)->{ 
-			processVCFFile(vmi, vcfFile.getAbsolutePath()); 
-		});  
-		
+		VariantMetadataIndex vmi = storagePathForTests == null ? 
+				new VariantMetadataIndex() : new VariantMetadataIndex(storagePathForTests); 
+				
+		for(int x = 0;x<vcfFiles.size();x++){
+			processVCFFile(vmi, vcfFiles.get(x), gzipFlags.get(x)); 
+			
+		}
+
 		vmi.complete(); 
 		
 		try(ObjectOutputStream out = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(binFile))))){
 			out.writeObject(vmi);
 			out.flush();
 		}
+		
 	}
 	 
-	public static void processVCFFile(VariantMetadataIndex vmi, String vcfFile) {  
-		log.info("Processing VCF file:  "+vcfFile);   
-		try(Reader reader = new InputStreamReader(new GZIPInputStream(new FileInputStream(new File(vcfFile))));CSVParser parser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(false))){
+	public static void processVCFFile(VariantMetadataIndex vmi, File vcfFile, boolean gzipFlag) {  
+		log.info("Processing VCF file:  "+vcfFile.getName());   
+		try(Reader reader = new InputStreamReader( 
+				gzipFlag ? new GZIPInputStream(new FileInputStream(vcfFile)) : new FileInputStream(vcfFile));
+				CSVParser parser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(false))){
 			Iterator<CSVRecord> iterator = parser.iterator();   
 			boolean isRowData = false;  
 			while(iterator.hasNext()) { 
@@ -87,7 +109,7 @@ public class VariantMetadataLoader {
 			    } 
 			} 			
 		}catch(IOException e) {
-			log.error("Error processing VCF file: "+vcfFile, e);
+			log.error("Error processing VCF file: "+vcfFile.getName(), e);
 		}
 	}   
 }

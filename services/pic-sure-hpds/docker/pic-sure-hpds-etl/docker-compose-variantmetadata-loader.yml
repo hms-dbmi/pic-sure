@@ -1,0 +1,10 @@
+version: '3.3'
+services:
+  variantmetadata-loader:
+    image: dbmi/pic-sure-hpds-etl:jason-refactoring-project-structure_62b8ef6
+    environment:
+      - HEAPSIZE=4096
+      - LOADER_NAME=VariantMetadataLoader
+    volumes:
+      - ./hpds:/opt/local/phenocube
+      - ./hpds:/opt/local/hpds
