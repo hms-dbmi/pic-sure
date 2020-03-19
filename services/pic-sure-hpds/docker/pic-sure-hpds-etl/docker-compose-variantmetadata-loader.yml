@@ -1,7 +1,7 @@
 version: '3.3'
 services:
   variantmetadata-loader:
-    image: dbmi/pic-sure-hpds-etl:jason-refactoring-project-structure_62b8ef6
+    image: dbmi/pic-sure-hpds-etl:als-sprint-2_2f519a3
     environment:
       - HEAPSIZE=4096
       - LOADER_NAME=VariantMetadataLoader
