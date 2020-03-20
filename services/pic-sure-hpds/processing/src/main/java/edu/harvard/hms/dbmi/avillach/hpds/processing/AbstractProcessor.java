@@ -60,6 +60,12 @@ public abstract class AbstractProcessor {
 		infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 	}
 
+	public AbstractProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
+		if(!isOnlyForTests) {
+			throw new IllegalArgumentException("This constructor should never be used outside tests");
+		}
+	}
+
 	private static final String HOMOZYGOUS_VARIANT = "1/1";
 
 	private static final String HETEROZYGOUS_VARIANT = "0/1";
@@ -71,9 +77,9 @@ public abstract class AbstractProcessor {
 	protected static String ID_CUBE_NAME;
 
 	static {
-		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE"));
-		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE"));
-		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME");
+		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
+		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
+		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
 	}
 
 	protected static int ID_BATCH_SIZE;
