@@ -91,7 +91,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			if(userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
 				// For profile information, we do indeed allow long term token
 				// to be a valid token.
-				if (uriInfo.getPath().equals("/user/me")) {
+				if (uriInfo.getPath().startsWith("/user/me")) {
 					// Get the subject claim, remove the LONG_TERM_TOKEN_PREFIX, and use that String value to
 					// look up the existing user.
 					String realClaimsSubject = jws.getBody().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length()+1);
@@ -127,7 +127,7 @@ public class JWTFilter implements ContainerRequestFilter {
 					throw new NotAuthorizedException("Your token doesn't contain valid identical information, please contact admin.");
 				}
 
-					if (!authenticatedApplication.getToken().equals(token)) {
+				if (!authenticatedApplication.getToken().equals(token)) {
 					logger.error("filter() incoming application token - " + token +
 							" - is not the same as record, might because the token has been refreshed. Subject: " + userId);
 					throw new NotAuthorizedException("Your token has been inactivated, please contact admin to grab you the latest one.");
