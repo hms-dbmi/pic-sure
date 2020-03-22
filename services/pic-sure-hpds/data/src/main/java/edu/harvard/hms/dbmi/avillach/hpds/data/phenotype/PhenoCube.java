@@ -200,7 +200,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		List<KeyAndValue<V>> values = new ArrayList<>();
 		int x = 0;
 		for(Integer id : patientIds) {
-			while(sortedByKey[x].key<id) {
+			while(x < sortedByKey.length && sortedByKey[x].key<id) {
 				x++;
 			}
 			while(x < sortedByKey.length && sortedByKey[x].key==id) {
