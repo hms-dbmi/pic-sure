@@ -57,7 +57,9 @@ public class TimelineProcessor extends AbstractProcessor {
 			List<KeyAndValue> values = cube.getValuesForKeys(patientIds);
 			timelineEvents.put(event, values.parallelStream().map( value->{
 				return new TimelineEvent(value, _startTime);
-			}).collect(Collectors.toList()));
+			}).filter(event2 -> {
+				return event2.getTimestamp() > 0;
+				}).collect(Collectors.toList()));
 		}
 		return timelineEvents;
 	}
