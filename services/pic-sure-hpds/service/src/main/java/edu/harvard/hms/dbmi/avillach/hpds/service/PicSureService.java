@@ -364,7 +364,7 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case TIMELINE_DATA : {
-					return Response.ok(timelineProcessor.runTimelineQuery(incomingQuery)).build();
+					return Response.ok(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery))).build();
 				}
 				
 				default : {
