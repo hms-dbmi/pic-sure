@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 public class KeyAndValue<V extends Comparable<V>> implements Serializable, Comparable<KeyAndValue<?>> {
 
-	private static final long serialVersionUID = 6467549952930943858L;
-	
+	private static final long serialVersionUID = -3714097509955396941L;
+
 	int key;
 
 	V value;
@@ -23,7 +23,7 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	}
 
 
-	public KeyAndValue(int key, V value, long timestamp) {
+	public KeyAndValue(int key, V value, Long timestamp) {
 		this.key = key;
 		this.value = value;
 		this.setTimestamp(timestamp);
