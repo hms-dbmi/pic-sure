@@ -203,7 +203,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			while(sortedByKey[x].key<id) {
 				x++;
 			}
-			while(sortedByKey[x].key==id) {
+			while(x < sortedByKey.length && sortedByKey[x].key==id) {
 				values.add(sortedByKey[x]);
 				x++;
 			}
