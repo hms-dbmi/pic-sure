@@ -44,7 +44,7 @@ public class TimelineProcessor extends AbstractProcessor {
 			PhenoCube cube = getCube(field);
 			List<KeyAndValue> values = cube.getValuesForKeys(patientIds);
 			for(KeyAndValue value : values) {
-				if(value.getTimestamp() < startTime) {
+				if(value.getTimestamp() > Long.MIN_VALUE && value.getTimestamp() < startTime) {
 					startTime = value.getTimestamp();
 				}
 			}
