@@ -27,8 +27,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		this.name = name;
 	}
 
-	public void add(Integer key, V value) {
-		loadingMap.add(new KeyAndValue<V>(key, value));
+	public void add(Integer key, V value, Date date) {
+		loadingMap.add(new KeyAndValue<V>(key, value, date.getTime()));
 	}
 	
 	public V getValueForKey(Integer key) {
@@ -146,6 +146,14 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		return sortedByValue;
 	}
 
+	public KeyAndValue<V>[] sortedByTimestamp() {
+		KeyAndValue<V>[] sortedByTimestamp = Arrays.copyOf(sortedByKey(), sortedByKey().length);
+		Arrays.sort(sortedByTimestamp, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
+			return o1.getTimestamp().compareTo(o2.getTimestamp());
+		});
+		return sortedByTimestamp;
+	}
+
 	public List<Integer> keyBasedIndex() {
 		return Arrays.asList(sortedByKey()).stream().map((KeyAndValue<V> kv)->{
 			return kv.key;
@@ -186,6 +194,21 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 
 	public List<KeyAndValue<V>> getLoadingMap() {
 		return loadingMap;
+	}
+
+	public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
+		List<KeyAndValue<V>> values = new ArrayList<>();
+		int x = 0;
+		for(Integer id : patientIds) {
+			while(sortedByKey[x].key<id) {
+				x++;
+			}
+			while(sortedByKey[x].key==id) {
+				values.add(sortedByKey[x]);
+				x++;
+			}
+		}
+		return values;
 	}
 
 }

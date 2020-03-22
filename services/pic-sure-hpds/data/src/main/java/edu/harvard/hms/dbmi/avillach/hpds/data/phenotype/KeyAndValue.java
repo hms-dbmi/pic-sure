@@ -10,7 +10,7 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 
 	V value;
 	
-	long timestamp;
+	Long timestamp;
 		
 	public KeyAndValue() {
 		
@@ -19,6 +19,14 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	public KeyAndValue(int key, V value) {
 		this.key = key;
 		this.value = value;
+		this.setTimestamp(Long.MIN_VALUE);
+	}
+
+
+	public KeyAndValue(int key, V value, long timestamp) {
+		this.key = key;
+		this.value = value;
+		this.setTimestamp(timestamp);
 	}
 
 	public V getValue() {
@@ -42,6 +50,14 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	@Override
 	public int compareTo(KeyAndValue<?> o) {
 		return o.key - this.key;
+	}
+
+	public Long getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(Long timestamp) {
+		this.timestamp = timestamp;
 	}
 	
 }
