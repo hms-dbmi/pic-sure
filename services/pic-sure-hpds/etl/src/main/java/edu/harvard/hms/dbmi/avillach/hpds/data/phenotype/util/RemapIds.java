@@ -4,6 +4,7 @@ import java.io.*;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
@@ -44,6 +45,8 @@ public class RemapIds {
 
 	private static final int TEXT_VALUE = 3;
 
+	private static final int TIMESTAMP = 4;
+
 	public static void main(String[] args) throws IOException, ClassNotFoundException, ExecutionException {
 		loadPatientIdMap();
 		sourceStore = initializeCache(); 
@@ -75,7 +78,7 @@ public class RemapIds {
 						entry.getKey().toString(),
 						conceptPath,
 						cubeForPath.isStringType()?"":entry.getValue().toString(), 
-						cubeForPath.isStringType()?entry.getValue().toString():""));
+						cubeForPath.isStringType()?entry.getValue().toString():"", entry.getTimestamp().toString()));
 			}
 		}
 	}
@@ -119,7 +122,7 @@ public class RemapIds {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
 				int patientId = Integer.parseInt(mapId(record.get(PATIENT_NUM)));
-				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value));
+				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), new Date(Long.parseLong(record.get(TIMESTAMP))));
 				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {

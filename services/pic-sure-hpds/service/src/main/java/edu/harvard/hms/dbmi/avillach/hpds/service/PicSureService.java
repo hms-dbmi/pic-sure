@@ -42,11 +42,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.TimelineProcessor;
 
 @Path("PIC-SURE")
 @Produces("application/json")
@@ -55,6 +55,7 @@ public class PicSureService implements IResourceRS {
 	public PicSureService() {
 		try {
 			countProcessor = new CountProcessor();
+			timelineProcessor = new TimelineProcessor();
 		} catch (ClassNotFoundException | IOException e3) {
 			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
@@ -70,6 +71,10 @@ public class PicSureService implements IResourceRS {
 
 	private Logger log = Logger.getLogger(PicSureService.class);
 
+	private TimelineProcessor timelineProcessor;
+	
+	private CountProcessor countProcessor;
+	
 	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest request) {
@@ -296,8 +301,6 @@ public class PicSureService implements IResourceRS {
 		}
 	}
 
-	CountProcessor countProcessor;
-
 	@POST
 	@Path("/query/sync")
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
@@ -358,6 +361,10 @@ public class PicSureService implements IResourceRS {
 				
 				case VCF_EXCERPT : {
 					throw new RuntimeException("Not yet implemented");
+				}
+				
+				case TIMELINE_DATA : {
+					return Response.ok(timelineProcessor.runTimelineQuery(incomingQuery)).build();
 				}
 				
 				default : {
