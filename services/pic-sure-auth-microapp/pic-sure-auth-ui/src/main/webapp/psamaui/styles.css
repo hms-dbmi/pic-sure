@@ -351,3 +351,20 @@ input:read-only {
     border-color: #6c757d;
     float: right;
 }
+
+.footer-row {
+    margin-right: 15px;
+    margin-left: 15px;
+}
+
+#footer-content{
+    background-image: linear-gradient(white, #ddd);
+    padding-top: .5em;
+    padding-bottom: .5em;
+}
+#footer{
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+}

@@ -1,8 +1,8 @@
-define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'user/userManagement',
+define(["common/searchParser", "backbone", "common/session", "login/login", 'header/header', 'footer/footer','user/userManagement',
         'role/roleManagement', 'privilege/privilegeManagement', "application/applicationManagement",
         'connection/connectionManagement', 'termsOfService/tos', "picSure/userFunctions",
         'handlebars', 'accessRule/accessRuleManagement'],
-        function(searchParser, Backbone, session, login, header, userManagement, roleManagement,
+        function(searchParser, Backbone, session, login, header, footer, userManagement, roleManagement,
                  privilegeManagement, applicationManagement, connectionManagement, tos, userFunctions,
                  HBS, accessRuleManagement){
         var Router = Backbone.Router.extend({
@@ -71,6 +71,11 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     userMngmt.render();
                     $('#main-content').html(userMngmt.$el);
             });
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
+
         },
         displayTOS : function() {
             var headerView = header.View;
@@ -80,6 +85,10 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
         },
         displayApplicationManagement : function(){
             var headerView = header.View;
@@ -97,6 +106,10 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
             });
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
         },
         displayRoleManagement : function(){
             var headerView = header.View;
@@ -114,6 +127,10 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
             });
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
         },
 
         displayPrivilegeManagement : function() {
@@ -132,11 +149,19 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
             });
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
         },
         displayAccessRuleManagement : function() {
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
 
             userFunctions.me(this, function(data){
                 if (_.find(data.accessRules, function(element){
@@ -154,7 +179,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             var headerView = header.View;
             headerView.render();
             $('#header-content').append(headerView.$el);
-
+          
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -166,6 +191,11 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({}));
                 }
             });
+            
+            var footerView = footer.View;
+            footerView.render();
+            $('#footer-content').append(footerView.$el);
+
         },
         showUserProfileHeader : function() {
             var headerView = header.View;
