@@ -15,12 +15,14 @@ import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 
-import de.siegmar.fastcsv.writer.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
@@ -47,9 +49,9 @@ public class DumpSourceCSV {
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
 		store = initializeCache(); 
-		CsvWriter writer = new CsvWriter();
+		CSVPrinter writer = CSVFormat.DEFAULT.printer();
 		FileWriter fWriter = new FileWriter("/opt/local/hpds/allConcepts.csv");
-		writer.write(fWriter, ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE"}));
+		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE"}));
 		metaStoreSource.keySet().forEach((String key)->{
 			try {
 				PhenoCube cube = store.get(key);
@@ -62,7 +64,7 @@ public class DumpSourceCSV {
 					line[TEXT_VALUE] = cube.isStringType() ? kv.getValue().toString() : "";
 					cubeLines.add(line);
 				}
-				writer.write(fWriter, cubeLines);
+				writer.printRecords(cubeLines);
 			}catch(ExecutionException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
