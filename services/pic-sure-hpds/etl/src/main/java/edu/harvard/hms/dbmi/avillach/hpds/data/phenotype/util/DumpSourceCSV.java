@@ -49,8 +49,8 @@ public class DumpSourceCSV {
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
 		store = initializeCache(); 
-		CSVPrinter writer = CSVFormat.DEFAULT.printer();
 		FileWriter fWriter = new FileWriter("/opt/local/hpds/allConcepts.csv");
+		CSVPrinter writer = CSVFormat.DEFAULT.print(fWriter);
 		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE"}));
 		metaStoreSource.keySet().forEach((String key)->{
 			try {
@@ -71,6 +71,8 @@ public class DumpSourceCSV {
 				e.printStackTrace();
 			}
 		});
+		writer.flush();
+		writer.close();
 	}
 	
 	static LoadingStore loadingStoreSource = new LoadingStore();
