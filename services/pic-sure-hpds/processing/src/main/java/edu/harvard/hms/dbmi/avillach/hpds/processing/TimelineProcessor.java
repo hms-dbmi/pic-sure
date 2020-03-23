@@ -59,7 +59,7 @@ public class TimelineProcessor extends AbstractProcessor {
 			timelineEvents.put(event, values.parallelStream().map( value->{
 				return new TimelineEvent(value, _startTime);
 			}).filter(event2 -> {
-				return event2.getTimestamp() > 0;
+				return event2.getTimestamp() > -1;
 				}).collect(Collectors.toList()));
 		}
 		return timelineEvents;
