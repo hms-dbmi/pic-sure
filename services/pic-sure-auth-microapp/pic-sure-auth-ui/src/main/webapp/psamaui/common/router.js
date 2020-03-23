@@ -33,8 +33,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 return pushState.apply(history, arguments);
             }.bind({router:this});
         },
-       
-        execute: function(callback, args, name){
+       execute: function(callback, args, name){
             if ( name === 'not_authorized' ){
                 callback.apply(this, args);
             } else {
@@ -61,40 +60,34 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         not_authorized : function(){
             login.displayNotAuthorized();
         },
+        renderHeaderAndFooter: function(){
+        	 var headerView = header.View;
+             headerView.render();
+             $('#header-content').append(headerView.$el);
+             
+             var footerView = footer.View;
+             footerView.render();
+             $('#footer-content').append(footerView.$el);
+        },
         displayUserManagement : function(){
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
-
+        	this.renderHeaderAndFooter();
             userFunctions.me(this, function(data){
                     var userMngmt = new userManagement.View({model: new userManagement.Model()});
                     userMngmt.render();
                     $('#main-content').html(userMngmt.$el);
             });
-            
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
-
         },
         displayTOS : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
+        	this.renderHeaderAndFooter();
             
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
-            
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
+         
         },
         displayApplicationManagement : function(){
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
-
+        	this.renderHeaderAndFooter();
+        	
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -107,14 +100,9 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
             
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
         },
         displayRoleManagement : function(){
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
+        	this.renderHeaderAndFooter();
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
@@ -128,15 +116,10 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
             
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
         },
 
         displayPrivilegeManagement : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
+        	this.renderHeaderAndFooter();
 
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
@@ -150,19 +133,11 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
             
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
+            this.renderHeaderAndFooter();
         },
         displayAccessRuleManagement : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
-            
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
-
+        	this.renderHeaderAndFooter();
+        	
             userFunctions.me(this, function(data){
                 if (_.find(data.accessRules, function(element){
                     return (element === 'ROLE_SUPER_ADMIN')
@@ -176,9 +151,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             });
         },
         displayConnectionManagement : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
+        	this.renderHeaderAndFooter();
           
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
@@ -192,10 +165,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                 }
             });
             
-            var footerView = footer.View;
-            footerView.render();
-            $('#footer-content').append(footerView.$el);
-
         },
         showUserProfileHeader : function() {
             var headerView = header.View;
