@@ -1,6 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype;
 
+import java.util.Comparator;
+
 public class TimelineEvent {
+
 	public TimelineEvent(KeyAndValue value2, long startTime) {
 		this.timestamp = value2.timestamp-startTime;
 		this.patient_num = value2.key;
@@ -10,7 +13,7 @@ public class TimelineEvent {
 	long timestamp;
 	int patient_num;
 	String value;
-	
+
 	public long getTimestamp() {
 		return timestamp;
 	}
@@ -29,4 +32,7 @@ public class TimelineEvent {
 	public void setValue(String value) {
 		this.value = value;
 	}
+
+	public static Comparator<TimelineEvent> timestampComparator =
+			Comparator.comparing(TimelineEvent::getTimestamp);
 }

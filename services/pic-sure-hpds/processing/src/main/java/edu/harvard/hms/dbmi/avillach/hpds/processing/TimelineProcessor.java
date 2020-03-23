@@ -3,8 +3,11 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -25,7 +28,7 @@ public class TimelineProcessor extends AbstractProcessor {
 	public void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException {
 		throw new RuntimeException("Not yet implemented.");
 	}
-	
+
 	public HashMap<String/* concept path */, List<TimelineEvent> /* events */> runTimelineQuery(Query query){
 
 		// save the requiredFields and selected fields for later use
@@ -51,17 +54,38 @@ public class TimelineProcessor extends AbstractProcessor {
 			}
 		}
 		final long _startTime = startTime;
-		HashMap<String/* concept path */, List<TimelineEvent> /* events */> timelineEvents = new HashMap<>();;
+		LinkedHashMap<String/* concept path */, List<TimelineEvent> /* events */> timelineEvents = 
+				new LinkedHashMap<>();
 		// fetch results for selected fields
-		for(String event : fieldsForTimeline) {
-			PhenoCube cube = getCube(event);
+		for(String concept : fieldsForTimeline) {
+			PhenoCube cube = getCube(concept);
 			List<KeyAndValue> values = cube.getValuesForKeys(patientIds);
-			timelineEvents.put(event, values.parallelStream().map( value->{
-				return new TimelineEvent(value, _startTime);
-			}).filter(event2 -> {
-				return event2.getTimestamp() > -1;
-				}).collect(Collectors.toList()));
+			timelineEvents.put(concept, 
+					values.parallelStream()
+					.map( value->{
+						return new TimelineEvent(value, _startTime);
+					})
+					.filter(event -> {
+						return event.getTimestamp() > -1;
+					})
+					.sorted(TimelineEvent.timestampComparator)
+					.collect(Collectors.toList()));
 		}
+
+		List<Entry<String, List<TimelineEvent>>> entries = new ArrayList<>(timelineEvents.entrySet());
+
+		Collections.sort(entries, (a, b)->{
+			if(a.getValue().isEmpty()) return 1;
+			if(b.getValue().isEmpty()) return -1;
+			return TimelineEvent.timestampComparator.compare(a.getValue().get(0), b.getValue().get(0));
+		});
+
+		timelineEvents.clear();
+		entries.stream().forEach(
+				(entry)->{
+					timelineEvents.put(entry.getKey(), entry.getValue());
+				});
+
 		return timelineEvents;
 	}
 
