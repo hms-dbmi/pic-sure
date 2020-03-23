@@ -29,7 +29,8 @@ public class TimelineProcessor extends AbstractProcessor {
 	public HashMap<String/* concept path */, List<TimelineEvent> /* events */> runTimelineQuery(Query query){
 
 		// save the requiredFields and selected fields for later use
-		List<String> fieldsForTimeline = query.requiredFields;
+		List<String> requiredFieldsForTimeline = query.requiredFields;
+		List<String> fieldsForTimeline = new ArrayList(query.requiredFields);
 		fieldsForTimeline.addAll(query.fields);
 
 		// wipe out required fields to not limit the patients by it
@@ -40,7 +41,7 @@ public class TimelineProcessor extends AbstractProcessor {
 
 		// get start time for the timeline
 		long startTime = Long.MAX_VALUE;
-		for(String field : query.requiredFields) {
+		for(String field : requiredFieldsForTimeline) {
 			PhenoCube cube = getCube(field);
 			List<KeyAndValue> values = cube.getValuesForKeys(patientIds);
 			for(KeyAndValue value : values) {
