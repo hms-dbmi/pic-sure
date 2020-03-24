@@ -2,19 +2,36 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.log4j.Logger;
+
+import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
 public class VariantListProcessor extends AbstractProcessor {
 
 	private VariantMetadataIndex metadataIndex;
 	
+	private static Logger log = Logger.getLogger(VariantListProcessor.class);
+	
 	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
 	}
+	
+	public VariantListProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
+		super(true);
+		if(!isOnlyForTests) {
+			throw new IllegalArgumentException("This constructor should never be used outside tests");
+		}
+	}	
 
 	@Override
 	public void runQuery(Query query, AsyncResult asyncResult)
@@ -23,17 +40,39 @@ public class VariantListProcessor extends AbstractProcessor {
 	}
 
 	/**
-	 * To be implemented as part of ALS-114
 	 * 
 	 * The incomingQuery is a normal query, the same as COUNT result type.
 	 * 
 	 * This should not actually do any filtering based on bitmasks, just INFO columns.
 	 * 
 	 * @param incomingQuery
-	 * @return a List of VariantSpec strings that would be used to filter patients if the incomingQuery was run as a COUNT query.
+	 * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
 	 */
-	public List<String> runVariantListQuery(Query incomingQuery) {
-		throw new RuntimeException("Not yet implemented");
+	public List<String> runVariantListQuery(Query query) {
+		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
+			Set<String> unionOfInfoFilters = new TreeSet<>();
+			for(VariantInfoFilter filter : query.variantInfoFilters){
+				ArrayList<Set<String>> variantSets = new ArrayList<>();
+				addVariantsMatchingFilters(filter, variantSets);
+				Set<String> intersectionOfInfoFilters = null;
+
+				if(!variantSets.isEmpty()) {
+					for(Set<String> variantSet : variantSets) {
+						if(intersectionOfInfoFilters == null) {
+							intersectionOfInfoFilters = variantSet;
+						} else {
+							intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
+						}
+					}
+				}else {
+					intersectionOfInfoFilters = new TreeSet<String>();
+					log.error("No info filters included in query.");
+				}
+				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
+			}
+			return new ArrayList<String>(unionOfInfoFilters);
+		}		
+		return new ArrayList<>();
 	}
 
 	/**
