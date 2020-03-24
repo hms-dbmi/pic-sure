@@ -48,6 +48,7 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
                     callback.apply(this, args);
                 }
             }
+            this.renderHeaderAndFooter();
         },
         login : function(){
             login.showLoginPage();
@@ -70,7 +71,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
              $('#footer-content').append(footerView.$el);
         },
         displayUserManagement : function(){
-        	this.renderHeaderAndFooter();
             userFunctions.me(this, function(data){
                     var userMngmt = new userManagement.View({model: new userManagement.Model()});
                     userMngmt.render();
@@ -78,16 +78,12 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             });
         },
         displayTOS : function() {
-        	this.renderHeaderAndFooter();
-            
             var termsOfService = new this.tos.View({model: new this.tos.Model()});
             termsOfService.render();
             $('#main-content').html(termsOfService.$el);
          
         },
         displayApplicationManagement : function(){
-        	this.renderHeaderAndFooter();
-        	
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -102,8 +98,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             
         },
         displayRoleManagement : function(){
-        	this.renderHeaderAndFooter();
-
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -119,8 +113,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
         },
 
         displayPrivilegeManagement : function() {
-        	this.renderHeaderAndFooter();
-
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -136,8 +128,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             this.renderHeaderAndFooter();
         },
         displayAccessRuleManagement : function() {
-        	this.renderHeaderAndFooter();
-        	
             userFunctions.me(this, function(data){
                 if (_.find(data.accessRules, function(element){
                     return (element === 'ROLE_SUPER_ADMIN')
@@ -151,8 +141,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             });
         },
         displayConnectionManagement : function() {
-        	this.renderHeaderAndFooter();
-          
             userFunctions.me(this, function(data){
                 if (_.find(data.privileges, function(element){
                     return (element === 'SUPER_ADMIN')
@@ -167,9 +155,6 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             
         },
         showUserProfileHeader : function() {
-            var headerView = header.View;
-            headerView.render();
-            $('#header-content').append(headerView.$el);
             $('#user-profile-btn', headerView.$el).click();
             $('#main-content').html("<div class='row'><div id='modal-window'></div></div>");
         }
