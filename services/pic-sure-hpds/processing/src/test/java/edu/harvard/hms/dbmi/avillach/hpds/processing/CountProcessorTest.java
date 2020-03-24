@@ -6,7 +6,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,7 +58,7 @@ public class CountProcessorTest {
 
 	@Test
 	public void testVariantCountWithVariantInfoFiltersWithMultipleVariantsButNoIntersectionKeys() throws Exception {
-		ArrayList<Set<String>> data = new ArrayList(List.of(
+		ArrayList<Set<String>> data = new ArrayList<Set<String>>(List.of(
 				Set.of("key1"), 
 				Set.of("key2")));
 
@@ -79,20 +78,12 @@ public class CountProcessorTest {
 
 	@Test
 	public void testVariantCountWithVariantInfoFiltersWithMultipleVariantsWithIntersectingKeys() throws Exception {
-		ArrayList<Set<String>> data = new ArrayList<Set<String>>();
-		Set<String> set1 = new HashSet<>();
-		set1.add("key1");
-		data.add(set1);
-
-		Set<String> set2 = new HashSet<>();
-		set2.add("key1");
-		set2.add("key2");
-		data.add(set2);
-
+		ArrayList<Set<String>> data = new ArrayList<Set<String>>(List.of(
+				Set.of("key1"),
+				Set.of("key1","key2"))); 
 		TestableCountProcessor t = new TestableCountProcessor(true, data);
 
-		Map<String, String[]> categoryVariantInfoFilters = new HashMap<String, String[]>();
-		categoryVariantInfoFilters.put("key1", new String[] { "test1" });
+		Map<String, String[]> categoryVariantInfoFilters = Map.of("key1", new String[] { "test1" });
 		VariantInfoFilter variantInfoFilter = new VariantInfoFilter();
 		variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
@@ -105,21 +96,11 @@ public class CountProcessorTest {
 
 	@Test
 	public void testVariantCountWithTwoVariantInfoFiltersWithMultipleVariantsWithIntersectingKeys() throws Exception {
-		List<ArrayList<Set<String>>> data = new ArrayList<ArrayList<Set<String>>>();
-		Set<String> set1 = new HashSet<>();
-		set1.add("key1");
-		set1.add("key3");
-		data.add(new ArrayList(List.of(set1)));
-
-		Set<String> set2 = new HashSet<>();
-		set2.add("key1");
-		set2.add("key2");
-		data.add(new ArrayList(List.of(set2)));
-
-		TestableCountProcessor t = new TestableCountProcessor(true, data);
+		List<ArrayList<Set<String>>> data1 = new ArrayList<ArrayList<Set<String>>>(new ArrayList(List.of(
+				new ArrayList(List.of(Set.of("key1", "key3"))),new ArrayList(List.of(Set.of("key1", "key2"))))));
+		TestableCountProcessor t = new TestableCountProcessor(true, data1);
 		
-		Map<String, String[]> categoryVariantInfoFilters = new HashMap<String, String[]>();
-		categoryVariantInfoFilters.put("key1", new String[] { "test1" });
+		Map<String, String[]> categoryVariantInfoFilters = Map.of("key1", new String[] { "test1" });
 		VariantInfoFilter variantInfoFilter = new VariantInfoFilter();
 		variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
@@ -135,14 +116,11 @@ public class CountProcessorTest {
 
 	@Test
 	public void testVariantCountWithVariantInfoFiltersWithOnlyOneFilterCriteria() throws Exception {
-		ArrayList<Set<String>> data = new ArrayList<Set<String>>();
-		Set<String> sets = new HashSet<>();
-		sets.add("key1");
-		data.add(sets);
+		ArrayList<Set<String>> data = new ArrayList(List.of(
+				Set.of("key1"))); 		
 		TestableCountProcessor t = new TestableCountProcessor(true, data);
 
-		Map<String, String[]> categoryVariantInfoFilters = new HashMap<String, String[]>();
-		categoryVariantInfoFilters.put("key1", new String[] { "test1" });
+		Map<String, String[]> categoryVariantInfoFilters = Map.of("key1", new String[] { "test1" });
 		VariantInfoFilter variantInfoFilter = new VariantInfoFilter();
 		variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
@@ -157,8 +135,7 @@ public class CountProcessorTest {
 	public void testVariantCountWithVariantInfoFiltersWhenFiltersDoNotMatchAnyVariants() throws Exception {
 		TestableCountProcessor t = new TestableCountProcessor(true, new ArrayList<Set<String>>());
 
-		Map<String, String[]> categoryVariantInfoFilters = new HashMap<String, String[]>();
-		categoryVariantInfoFilters.put("key1", new String[] { "test1" });
+		Map<String, String[]> categoryVariantInfoFilters = Map.of("key1", new String[] { "test1" });
 		VariantInfoFilter variantInfoFilter = new VariantInfoFilter();
 		variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
