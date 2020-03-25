@@ -28,7 +28,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	}
 
 	public void add(Integer key, V value, Date date) {
-		loadingMap.add(new KeyAndValue<V>(key, value, date.getTime()));
+		loadingMap.add(new KeyAndValue<V>(key, value, date!=null?date.getTime():null));
 	}
 	
 	public V getValueForKey(Integer key) {
@@ -149,7 +149,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	public KeyAndValue<V>[] sortedByTimestamp() {
 		KeyAndValue<V>[] sortedByTimestamp = Arrays.copyOf(sortedByKey(), sortedByKey().length);
 		Arrays.sort(sortedByTimestamp, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
-			return o1.getTimestamp().compareTo(o2.getTimestamp());
+			return o1.getTimestamp()==null? -1 : o1.getTimestamp().compareTo(o2.getTimestamp());
 		});
 		return sortedByTimestamp;
 	}

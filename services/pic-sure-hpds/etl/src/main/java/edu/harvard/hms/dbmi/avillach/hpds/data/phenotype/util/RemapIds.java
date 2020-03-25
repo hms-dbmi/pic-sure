@@ -78,7 +78,7 @@ public class RemapIds {
 						entry.getKey().toString(),
 						conceptPath,
 						cubeForPath.isStringType()?"":entry.getValue().toString(), 
-						cubeForPath.isStringType()?entry.getValue().toString():"", entry.getTimestamp().toString()));
+						cubeForPath.isStringType()?entry.getValue().toString():"", entry.getTimestamp() == null ? null : entry.getTimestamp().toString()));
 			}
 		}
 	}
@@ -122,7 +122,7 @@ public class RemapIds {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
 				int patientId = Integer.parseInt(mapId(record.get(PATIENT_NUM)));
-				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), new Date(Long.parseLong(record.get(TIMESTAMP))));
+				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), record.get(TIMESTAMP) == null ? null : new Date(Long.parseLong(record.get(TIMESTAMP))));
 				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {
