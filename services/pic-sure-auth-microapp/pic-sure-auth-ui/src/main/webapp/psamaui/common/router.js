@@ -155,8 +155,11 @@ define(["common/searchParser", "backbone", "common/session", "login/login", 'hea
             
         },
         showUserProfileHeader : function() {
-            $('#user-profile-btn', headerView.$el).click();
+            var headerView = header.View;
+            headerView.render();
+            $('#header-content').append(headerView.$el);
             $('#main-content').html("<div class='row'><div id='modal-window'></div></div>");
+            header.View.userProfile();
         }
 
     });

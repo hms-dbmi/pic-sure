@@ -368,3 +368,17 @@ input:read-only {
     bottom: 0;
     width: 100%;
 }
+
+.login-logo {
+	width:100%;
+}
+
+.fence-login-btn {
+	display: inline; 
+	padding: 5px; 
+	background-color: #d0d0d0; 
+}
+
+.fence-login-img {
+	height:16px;
+}
