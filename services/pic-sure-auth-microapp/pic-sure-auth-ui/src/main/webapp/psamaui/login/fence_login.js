@@ -1,4 +1,4 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/fence_login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'footer/footer', "common/styles"],
+define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/fence_login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'footer/footer'],
     function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification, footer){
         var loginTemplate = HBS.compile(loginTemplate);
 
