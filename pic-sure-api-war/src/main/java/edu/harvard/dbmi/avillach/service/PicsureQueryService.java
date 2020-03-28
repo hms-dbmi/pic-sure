@@ -83,7 +83,7 @@ public class PicsureQueryService {
 		if( dataQueryRequest.getQuery() != null) {
 			try {
 				ObjectMapper mapper = new ObjectMapper();
-				queryJson = mapper.writeValueAsString( dataQueryRequest.getQuery());
+				queryJson = mapper.writeValueAsString( dataQueryRequest);
 			} catch (JsonProcessingException e) {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 			}
@@ -224,7 +224,7 @@ public class PicsureQueryService {
 		if( queryRequest.getQuery() != null) {
 			try {
 				ObjectMapper mapper = new ObjectMapper();
-				queryJson = mapper.writeValueAsString( queryRequest.getQuery());
+				queryJson = mapper.writeValueAsString( queryRequest);
 			} catch (JsonProcessingException e) {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 			}

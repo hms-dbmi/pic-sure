@@ -158,7 +158,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 			
 			if(initialQuery != null) {
-				IOUtils.copy(new ByteArrayInputStream(mapper.writeValueAsBytes(initialQuery)), buffer);
+				IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
 			} else {
 				//This stream is only consumable once, so we need to save & reset it.
 				InputStream entityStream = requestContext.getEntityStream();
