@@ -59,6 +59,8 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Resource(mappedName = "java:global/user_id_claim")
 	private String userIdClaim;
 
+	ObjectMapper mapper = new ObjectMapper();
+	
 	@Inject
 	PicSureWarInit picSureWarInit;
 	
@@ -156,7 +158,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 			
 			if(initialQuery != null) {
-				IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
+				IOUtils.copy(new ByteArrayInputStream(mapper.writeValueAsBytes(initialQuery)), buffer);
 			} else {
 				//This stream is only consumable once, so we need to save & reset it.
 				InputStream entityStream = requestContext.getEntityStream();
