@@ -1,5 +1,5 @@
-define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/fence_login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification'],
-    function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification){
+define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', 'handlebars', 'text!login/fence_login.hbs', 'text!login/not_authorized.hbs', 'overrides/login', 'util/notification', 'footer/footer'],
+    function(session, settings, parseQueryString, $, HBS, loginTemplate, notAuthorizedTemplate, overrides, notification, footer){
         var loginTemplate = HBS.compile(loginTemplate);
 
         var login = {
@@ -67,6 +67,12 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                             "&client_id=" + settings.fence_client_id +
                             "&redirect_uri="+settings.fence_redirect_url
                     }));
+                    
+                    //also need to show footer on login page
+                    var footerView = footer.View;
+                    footerView.render();
+                    $('#footer-content').append(footerView.$el);
+                    
                     return null;
                 }
                 console.log("FENCE-showLoginPage() finished");
@@ -90,6 +96,11 @@ define(['common/session', 'picSure/settings', 'common/searchParser', 'jquery', '
                     overrides.displayNotAuthorized()
                 else
                     $('#main-content').html(HBS.compile(notAuthorizedTemplate)({helpLink:settings.helpLink}));
+                
+                //also need to show footer everywhere
+                var footerView = footer.View;
+                footerView.render();
+                $('#footer-content').append(footerView.$el);
             }
         };
         return login;
