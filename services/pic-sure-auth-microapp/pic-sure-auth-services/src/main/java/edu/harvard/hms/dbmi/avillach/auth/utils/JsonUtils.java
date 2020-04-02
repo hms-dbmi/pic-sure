@@ -139,6 +139,12 @@ public class JsonUtils {
 		return newSet;
 	}
 
+	
+	/*
+	 * Taking this method out for now, as we don't do index-based comparisons anymore.  This may have been to
+	 * allow merging of variant info filters; I don't think that's necessary for query templates -NC 4/2020
+	 */
+	
 //	/**
 //	 * will merge the two elements in the same location.
 //	 * meaning baseList(0) will merge with incomingList(0) ...
