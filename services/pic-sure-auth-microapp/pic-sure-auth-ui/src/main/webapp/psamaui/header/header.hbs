@@ -1,4 +1,5 @@
 <div class="row header-row">
+	<img class="logo-img col-md-4" src="{{logoPath}}"></a>
 	<div class="logo-img col-md-3"
          {{#not_contains privileges 'ADMIN'}}style="visibility: hidden"{{/not_contains}}>Management console</div>
 </div>
@@ -26,10 +27,15 @@
     </div>
     <a class="col-md-1 btn btn-default header-btn" id="userMgmt-users" href="/psamaui/userManagement"
        {{#not_contains privileges 'ADMIN'}}style="visibility: hidden"{{/not_contains}}>Users
-    </a>
-    <span class="col-md-1 header-btn">
-		<a class="btn btn-default help-btn">Help</a>
-	</span>
+    </a>  
+    <div class="col-md-1 dropdown btn btn-default header-btn" id="help-dropdown" >
+        <span class="dropdown-toggle col-md-12" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Help</span>
+        <ul class="dropdown-menu" role="menu">
+	        {{#if pdfLink}}<li class="dropdown"><a href="{{{pdfLink}}}">User Guide</a></li>{{/if}}
+            {{#if jupyterExampleLink}}<li class="dropdown"><a href="{{{jupyterExampleLink}}}">Jupyter Examples</a></li>{{/if}}
+            {{#if helpLink}}<li class="dropdown"><a href="{{{helpLink}}}">Contact Us</a></li>{{/if}}
+    </div>
+
     <a id="user-profile-btn" class="col-md-1 btn btn-default header-btn">User Profile</a>
     <a id="logout-btn" class="col-md-1 btn btn-default header-btn">Log Out</a>
 </div>

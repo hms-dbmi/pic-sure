@@ -1,5 +1,5 @@
-define(["backbone","handlebars", "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "util/notification"],
-		function(BB, HBS, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, notification){
+define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "util/notification"],
+		function(BB, HBS, settings, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, notification){
 	var headerView = BB.View.extend({
         initialize: function () {
             HBS.registerHelper('not_contains', function (array, object, opts) {
@@ -17,6 +17,23 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                 else
                     return opts.inverse(this);
 
+            });
+            HBS.registerHelper('tokenExpiration', function (token) {
+                var expirationTime = JSON.parse(atob(token.split('.')[1])).exp * 1000;
+                var badgeClass = "primary";
+                var badgeMessage = "unknown";
+                var daysLeftOnToken = Math.floor((expirationTime - Date.now()) / (1000 * 60 * 60 * 24));
+                if ( expirationTime < Date.now() ){
+                    badgeClass = "danger";
+                    badgeMessage = "EXPIRED"
+                } else if ( daysLeftOnToken < 7 ) {
+                    badgeClass = "warning";
+                    badgeMessage = "EXPIRING SOON";
+                } else {
+                    badgeClass = "success";
+                    badgeMessage = "Valid for " + daysLeftOnToken + " more days";
+                }
+                return new Date(expirationTime).toString().substring(0,24) + " <span class='badge badge-" + badgeClass + "'>" + badgeMessage + "</span>";
             });
             this.template = HBS.compile(template);
             this.applications = [];
@@ -74,6 +91,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                     document.getElementById("user_token_textarea").attributes.token.value = result.userLongTermToken;
 
                     $("#user-token-copy-button").html("COPY");
+                    $('#user-profile-btn').click()
                 }.bind(this));
             }.bind(this), 'center', 'Refresh will inactivate the old token!! Do you want to continue?');
         },
@@ -99,7 +117,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
             if (window.location.pathname !== "/psamaui/tos") {
                 if (window.location.pathname == "/psamaui/userProfile"){
                     applicationFunctions.fetchApplications(this, function(applications){
-                        this.$el.html(this.template({
+                        this.$el.html(this.template(_.extend({
                             privileges: [],
                             applications: applications
                                 .filter(function (app) {
@@ -110,13 +128,14 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                                     if(a.name > b.name) { return 1; }
                                     return 0;
                                 })
-                        }));
+                        }, settings)));
+                        $('#user-profile-btn').click();
                     }.bind(this));
                 }else {
                     userFunctions.me(this, function (user) {
                         applicationFunctions.fetchApplications(this, function(applications){
                             this.applications = applications;
-                            this.$el.html(this.template({
+                            this.$el.html(this.template(_.extend({
                                 privileges: user.privileges,
                                 applications: this.applications
                                     .filter(function (app) {
@@ -127,7 +146,7 @@ define(["backbone","handlebars", "text!header/header.hbs", "common/session", "pi
                                         if(a.name > b.name) { return 1; }
                                         return 0;
                                     })
-                            }));
+                            }, settings)));
                         }.bind(this))
 
                     }.bind(this));

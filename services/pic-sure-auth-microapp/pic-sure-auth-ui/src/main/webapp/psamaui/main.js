@@ -6,6 +6,7 @@ require.config({
 		underscore: 'webjars/underscorejs/1.8.3/underscore-min',
 		handlebars: 'webjars/handlebars/4.0.5/handlebars.min',
 		bootstrap: 'webjars/bootstrap/3.3.7-1/js/bootstrap.min',
+		bootstrapStyles: 'webjars/bootstrap/3.3.7-1/css/bootstrap.min.css',
 		backbone: 'webjars/backbonejs/1.3.3/backbone-min',
 		text: 'webjars/requirejs-text/2.0.15/text',
         Noty: 'webjars/noty/3.1.4/lib/noty',
