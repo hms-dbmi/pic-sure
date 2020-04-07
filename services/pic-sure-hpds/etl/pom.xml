@@ -87,6 +87,26 @@
 						</goals>
 					</execution>
 					<execution>
+						<id>buildPerPatientUnifiedVCFLocalLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.IndexedUnifiedVCFLocalLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>UnifiedVCFLocalLoader</classifier>
+							<finalName>UnifiedVCFLocalLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
 						<id>buildCSVLoader</id>
 						<configuration>
 							<archive>
