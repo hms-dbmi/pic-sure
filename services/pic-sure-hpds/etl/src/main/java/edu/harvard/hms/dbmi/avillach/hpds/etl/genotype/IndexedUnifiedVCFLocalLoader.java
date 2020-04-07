@@ -287,9 +287,12 @@ public class IndexedUnifiedVCFLocalLoader {
 			});
 
 			producerMap.values().stream().forEach((producer)->{
+				producers.add(producer);
+			});
+			
+			producerMap.values().stream().forEach((producer)->{
 				System.out.println("Starting : " + producer.patientId);
 				producer.start();
-				producers.add(producer);
 			});
 
 			System.out.println("Started all producers. " + producers.size());
