@@ -73,7 +73,7 @@ public class UnifiedVCFLineProducer {
 	private static List<UnifiedVCFLineProducer> producers = new ArrayList<>();
 
 	public synchronized void start() {
-		if(thread!=null) {
+		if(thread==null) {
 			thread = new Thread(()->{
 				List<String> filenames = inputFiles.values().stream().map((File f)->{return f.getAbsolutePath();}).collect(Collectors.toList());
 				String cacheKey = String.join("+", filenames);
