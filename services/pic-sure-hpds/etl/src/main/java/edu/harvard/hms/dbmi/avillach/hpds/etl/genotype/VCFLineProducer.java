@@ -112,7 +112,7 @@ public class VCFLineProducer {
 						try {
 							VCFLine vcfLine = lineHusk.clone();
 							vcfLine.patientId = patientId;
-							vcfLine.data = splitLineCache.get(rawline)[9+sampleIndex];
+							vcfLine.data = splitLineCache.get(rawline)[8+sampleIndex];
 							vcfLineQueue.put(vcfLine);	
 						} catch (InterruptedException e) {
 							// TODO Auto-generated catch block

@@ -119,14 +119,14 @@ public class UnifiedVCFLineProducer {
 							for(UnifiedVCFLineProducer producer : producers) {
 								VCFLine vcfLine = lineHusk.clone();
 								vcfLine.patientId = producer.patientId;
-								vcfLine.data = splitLine[9+producer.sampleIndex];
+								vcfLine.data = splitLine[8+producer.sampleIndex];
 								if(!producer.vcfLineQueue.offer(vcfLine)) {
 									try {
 										producer.vcfLineQueue.put(vcfLine);
 									} catch (InterruptedException e) {
 										// TODO Auto-generated catch block
 										e.printStackTrace();
-									}
+									}									
 								}
 							}
 						}
