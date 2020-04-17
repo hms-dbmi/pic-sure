@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Queue;
 import java.util.TreeMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
@@ -108,31 +109,33 @@ public class UnifiedVCFLineProducer {
 				try{
 					String rawline = fileCache.get(lineNumber);
 					while(!rawline.isEmpty()) {
-						for(UnifiedVCFLineProducer producer : producers) {
-							if(rawline.startsWith("#")) {
+						if(rawline.startsWith("#")) {
+							for(UnifiedVCFLineProducer producer : producers) {
 								producer.headerLines.add(rawline);
-							} else {
-								VCFLine lineHusk = vcfLineCache.get(rawline);
-
-								try {
-									VCFLine vcfLine = lineHusk.clone();
-									vcfLine.patientId = producer.patientId;
-									vcfLine.data = splitLineCache.get(rawline)[9+producer.sampleIndex];
-									producer.vcfLineQueue.put(vcfLine);	
-								} catch (InterruptedException e) {
-									// TODO Auto-generated catch block
-									e.printStackTrace();
-								}							
-
+							}
+						} else {
+							VCFLine lineHusk = vcfLineCache.get(rawline);
+							String[] splitLine = splitLineCache.get(rawline);
+							for(UnifiedVCFLineProducer producer : producers) {
+								VCFLine vcfLine = lineHusk.clone();
+								vcfLine.patientId = producer.patientId;
+								vcfLine.data = splitLine[9+producer.sampleIndex];
+								if(!producer.vcfLineQueue.offer(vcfLine)) {
+									try {
+										producer.vcfLineQueue.put(vcfLine);
+									} catch (InterruptedException e) {
+										// TODO Auto-generated catch block
+										e.printStackTrace();
+									}
+								}
 							}
 						}
 						lineNumber++;
 						rawline = fileCache.get(lineNumber);
-					}			
+					}
 				}catch(ExecutionException e) {
 					throw new RuntimeException("Why did this happen? ", e);
 				}
-
 			});
 			thread.setPriority(Thread.MAX_PRIORITY);
 			thread.start();

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -31,6 +32,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
+import com.google.common.collect.Lists;
 import com.sun.management.HotSpotDiagnosticMXBean;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
@@ -235,7 +237,7 @@ public class IndexedUnifiedVCFLocalLoader {
 	SAMPLE_RELATIONSHIPS_COLUMN=6,
 	RELATED_SAMPLE_IDS_COLUMN=7
 	;
-	public static final int VCF_LINE_QUEUE_SIZE = 2000;
+	public static final int VCF_LINE_QUEUE_SIZE = 50;
 
 	private static void createAndStartProducers(File vcfIndexFile) {
 
@@ -277,7 +279,7 @@ public class IndexedUnifiedVCFLocalLoader {
 									new UnifiedVCFLineProducer(
 											patientIdIndex, processAnnotations, vcfIsGzipped, 
 											chromosomeFileMap, patientIds[patientIdIndex], 
-											new ArrayBlockingQueue<>(VCF_LINE_QUEUE_SIZE));							
+											new ArrayBlockingQueue<VCFLine>(VCF_LINE_QUEUE_SIZE));							
 							producerMap.put(sampleIndex[0], producer);
 						}
 					}
@@ -289,7 +291,7 @@ public class IndexedUnifiedVCFLocalLoader {
 			producerMap.values().stream().forEach((producer)->{
 				producers.add(producer);
 			});
-			
+
 			producerMap.values().stream().forEach((producer)->{
 				System.out.println("Starting : " + producer.patientId);
 				producer.start();
@@ -334,7 +336,7 @@ public class IndexedUnifiedVCFLocalLoader {
 						infoStores.put(columnKey, infoStore);										
 					}
 				} else {
-					System.out.println("Skipping header row : " + line);	
+					//System.out.println("Skipping header row : " + line);	
 				}
 			}
 		}
@@ -342,31 +344,21 @@ public class IndexedUnifiedVCFLocalLoader {
 	}
 
 	private static ArrayList<VCFLine> getLowestChromosomalOffsetLines() {
-		ArrayList<VCFLine> lines = new ArrayList<>(producers.parallelStream()
-				.filter((producer)->{return !producer.vcfLineQueue.isEmpty();})
-				.map((producer)->{return producer.vcfLineQueue.peek();})
-				.collect(Collectors.toList()));
-		if(lines.isEmpty()) {
-			return lines;
+		UnifiedVCFLineProducer firstProducer = producers.get(0);
+		VCFLine lowestLine = firstProducer.vcfLineQueue.peek();
+		if(lowestLine==null) {
+			return new ArrayList<>();				
 		}
-		VCFLine lowestLine = Collections.min(lines);
 		ArrayList<VCFLine> lowestLines = new ArrayList<VCFLine>();
-		producers.parallelStream().filter((producer)->{
-			VCFLine producerLine = producer.vcfLineQueue.peek();
-			return producerLine != null 
-					&& producerLine.compareTo(lowestLine) == 0;
-		}).forEach((producer)->{
-			VCFLine line;
+		lowestLines.addAll(producers.parallelStream().map((UnifiedVCFLineProducer producer)->{
 			try {
-				line = producer.vcfLineQueue.take();
-				synchronized(lowestLines) {
-					lowestLines.add(line);
-				}
+				return producer.vcfLineQueue.take();
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-		});
+			return null;
+		}).collect(Collectors.toList()));
 		return lowestLines;
 	}
 
