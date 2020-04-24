@@ -222,7 +222,7 @@ public class NewVCFLoader {
 		String idList = "";
 		if(heterozygousMask!=null) {
 			for(int x = 2;x<heterozygousMask.bitLength()-2;x++) {
-				if(heterozygousMask.testBit(x)) {
+				if(heterozygousMask.testBit(heterozygousMask.bitLength() - 1 - x)) {
 					idList+=sampleIds[x-2]+",";
 				}
 			}
@@ -234,7 +234,7 @@ public class NewVCFLoader {
 		String idList = "";
 		if(heterozygousMask!=null) {
 			for(int x = 2;x<heterozygousMask.bitLength()-2;x++) {
-				if(heterozygousMask.testBit(x)) {
+				if(heterozygousMask.testBit(heterozygousMask.bitLength() - 1 - x)) {
 					idList+=patientIds[x-2]+",";
 				}
 			}
@@ -465,7 +465,7 @@ public class NewVCFLoader {
 
 		public void setBitmaskOffsets(Integer[] allPatientIdsSorted) {
 			for(int x = 0; x<vcfIndexLine.patientIds.length; x++) {
-				bitmaskOffsets[x] = allPatientIdsSorted.length - 1 - Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
+				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
 			}
 		}
 
