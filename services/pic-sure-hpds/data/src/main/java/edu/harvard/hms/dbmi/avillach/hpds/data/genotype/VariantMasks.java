@@ -16,6 +16,44 @@ public class VariantMasks implements Serializable {
 	private static final String homoPhased = "1|1";
 	private static final String homoNoCall = "./.";
 	private static final String heteroNoCall = "./1";
+	
+	/*
+	 * These indices result from the char values of the 3 characters in a VCF sample 
+	 * record summed as integers % 7
+	 * 
+	 * This allows us to not actually do string comparisons, instead we add 3 values,
+	 * do one modulus operation, then use the result as the index into the result array.
+	 */
+	
+	// ./0 = (46 + 47 + 48) % 7 = 1
+	// 0|. = (48 + 124 + 46) % 7 = 1
+	// .|0 = (46 + 124 + 48) % 7 = 1
+	public static final int HETERO_NOCALL_REF_CHAR_INDEX = 1;
+
+	// ./1 = (46 + 47 + 49) % 7 = 2
+	// 1|. = (49 + 124 + 46) % 7 = 2
+	// .|1 = (46 + 124 + 49) % 7 = 2
+	// ./1 = (46 + 47 + 49) % 7 = 2
+	// 1|. = (49 + 124 + 46) % 7 = 2
+	// .|1 = (46 + 124 + 49) % 7 = 2
+	public static final int HETERO_NOCALL_VARIANT_CHAR_INDEX = 2;
+
+	// 0/0 = (48 + 47 + 48) % 7 = 3
+	// 0|0 = (48 + 124 + 48) % 7 = 3
+	public static final int ZERO_ZERO_CHAR_INDEX = 3;
+	
+	// 0/1 = (48 + 47 + 49) % 7 = 4
+	// 1|0 = (49 + 124 + 48) % 7 = 4
+	// 0|1 = (48 + 124 + 49) % 7 = 4
+	public static final int ZERO_ONE_CHAR_INDEX = 4;
+
+	// 1/1 = (49 + 47 + 49) % 7 = 5
+	// 1|1 = (49 + 124 + 49) % 7 = 5
+	public static final int ONE_ONE_CHAR_INDEX = 5;
+
+	// ./. = (46 + 47 + 46) % 7 = 6
+	// .|. = (46 + 124 + 46) % 7 = 6
+	public static final int HOMO_NOCALL_CHAR_INDEX = 6;
 
 	public VariantMasks(String[] values) {
 		char[] homozygousBits = new char[values.length];
@@ -106,6 +144,26 @@ public class VariantMasks implements Serializable {
 			heteroNoCallString.append(oneone);
 			heterozygousNoCallMask = new BigInteger(heteroNoCallString.toString(), 2);	
 		}
+	}
+	
+	public VariantMasks(char[][] maskValues) {
+		String heteroMaskStringRaw = new String(maskValues[ZERO_ONE_CHAR_INDEX]);
+		String homoMaskStringRaw = new String(maskValues[ONE_ONE_CHAR_INDEX]);
+		String heteroNoCallMaskStringRaw = new String(maskValues[HETERO_NOCALL_VARIANT_CHAR_INDEX]);
+		String homoNoCallMaskStringRaw = new String(maskValues[HOMO_NOCALL_CHAR_INDEX]);
+		if(heteroMaskStringRaw.contains("1")) {
+			heterozygousMask = new BigInteger(oneone + heteroMaskStringRaw + oneone, 2);
+		}
+		if(homoMaskStringRaw.contains("1")) {
+			homozygousMask = new BigInteger(oneone + homoMaskStringRaw + oneone, 2);
+		}
+		if(heteroNoCallMaskStringRaw.contains("1")) {
+			heterozygousNoCallMask = new BigInteger(oneone + heteroNoCallMaskStringRaw + oneone, 2);
+		}
+		if(homoNoCallMaskStringRaw.contains("1")) {
+			homozygousNoCallMask = new BigInteger(oneone + homoNoCallMaskStringRaw + oneone, 2);
+		}
+		
 	}
 
 	public BigInteger homozygousMask;

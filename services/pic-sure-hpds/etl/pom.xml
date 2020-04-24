@@ -71,7 +71,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.IndexedVCFLocalLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -91,7 +91,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.IndexedUnifiedVCFLocalLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
