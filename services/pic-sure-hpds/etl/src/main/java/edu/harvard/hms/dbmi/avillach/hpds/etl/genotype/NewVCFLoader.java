@@ -67,10 +67,11 @@ public class NewVCFLoader {
 
 	private static long startTime;
 
+	private static List<VCFWalker> walkers = new ArrayList<>();
+
 	private static void loadVCFs(File indexFile) throws IOException {
 		startTime = System.currentTimeMillis();
 		List<VCFIndexLine> vcfIndexLines = parseVCFIndex(indexFile);
-		ArrayList<VCFWalker> walkers = new ArrayList<>();
 		for(VCFIndexLine line : vcfIndexLines) {
 			walkers.add(new VCFWalker(line));
 		}
@@ -262,6 +263,9 @@ public class NewVCFLoader {
 				}
 				infoStoreMap = newInfoStores;
 			}
+			walkers = walkers.parallelStream().filter((walker)->{
+				return walker.hasNext;
+			}).collect(Collectors.toList());
 		}
 		if(currentChromosome[0] > lastChromosomeProcessed || currentChunk > lastChunkProcessed || isLastChunk) {
 			// flip chunk
