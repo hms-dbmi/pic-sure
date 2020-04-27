@@ -150,6 +150,9 @@ public class NewVCFLoader {
 				}
 			});
 			zygosityMaskStrings.put(currentSpecNotation, maskStringsForVariantSpec[0]);
+			walkers = walkers.parallelStream().filter((walker)->{
+				return walker.hasNext;
+			}).collect(Collectors.toList());
 		}
 		flipChunk(lastChromosomeProcessed, lastChunkProcessed, currentChunk, currentChromosome, true);
 
@@ -263,9 +266,7 @@ public class NewVCFLoader {
 				}
 				infoStoreMap = newInfoStores;
 			}
-			walkers = walkers.parallelStream().filter((walker)->{
-				return walker.hasNext;
-			}).collect(Collectors.toList());
+			
 		}
 		if(currentChromosome[0] > lastChromosomeProcessed || currentChunk > lastChunkProcessed || isLastChunk) {
 			// flip chunk
