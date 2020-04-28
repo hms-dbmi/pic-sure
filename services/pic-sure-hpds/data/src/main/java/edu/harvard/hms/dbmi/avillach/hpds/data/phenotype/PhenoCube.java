@@ -103,7 +103,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		}
 		
 		if(max == null) {
-			maxIndex = sortedByValue.length - 1;
+			maxIndex = sortedByValue.length;
 		} else {
 			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
@@ -131,7 +131,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
 			maxSearchIndex++;
 		}
-		return Math.min(sortedByValue.length - 1, maxSearchIndex);
+		return maxSearchIndex;
 	}
 
 	public boolean isStringType() {
