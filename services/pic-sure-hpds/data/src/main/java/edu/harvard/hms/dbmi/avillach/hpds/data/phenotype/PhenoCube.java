@@ -99,45 +99,39 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int minSearchIndex = Arrays.binarySearch(sortedByValue, minKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);			
+			minIndex = seekForMinIndex(minSearchIndex, minKeyAndValue, sortedByValue);
 		}
 		
 		if(max == null) {
-			maxIndex = sortedByValue.length;
+			maxIndex = sortedByValue.length - 1;
 		} else {
 			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			maxIndex = seekForMaxIndex(Math.abs(maxSearchIndex), maxKeyAndValue, sortedByValue);			
+			maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
 		}
 		
 		return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
 	}
 
 	private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
-		if(minSearchIndex==0) {
-			return 0;
-		}
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
 		while(minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry)>=0) {
 			minSearchIndex--;
 		}
-		return minSearchIndex+1;
+		return Math.max(0, minSearchIndex);
 	}
 
 	private int seekForMaxIndex(int maxSearchIndex, KeyAndValue<V> maxEntry, KeyAndValue<V>[] sortedByValue) {
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
-		if(maxSearchIndex > sortedByValue.length - 1) {
-			return sortedByValue.length - 1;
-		}
-		while(maxSearchIndex > -1 && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
+		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
 			maxSearchIndex++;
 		}
-		return maxSearchIndex;
+		return Math.min(sortedByValue.length - 1, maxSearchIndex);
 	}
 
 	public boolean isStringType() {
