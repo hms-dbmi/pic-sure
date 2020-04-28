@@ -28,7 +28,7 @@ public class Query {
 		this.id = query.id;
 	}
 
-	public ResultType expectedResultType = ResultType.DATAFRAME;
+	public ResultType expectedResultType = ResultType.COUNT;
 	public List<String> crossCountFields = new ArrayList<String>();
 	public List<String> fields = new ArrayList<String>();
 	public List<String> requiredFields;
