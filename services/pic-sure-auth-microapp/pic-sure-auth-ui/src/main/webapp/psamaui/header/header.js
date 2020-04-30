@@ -1,5 +1,5 @@
-define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "util/notification"],
-		function(BB, HBS, settings, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, notification){
+define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "common/session", "picSure/userFunctions","picSure/applicationFunctions", "text!options/modal.hbs","text!header/userProfile.hbs", "util/notification", "overrides/userProfile"],
+		function(BB, HBS, settings, template, session, userFunctions, applicationFunctions,modalTemplate, userProfileTemplate, notification, profileOverride){
 	var headerView = BB.View.extend({
         initialize: function () {
             HBS.registerHelper('not_contains', function (array, object, opts) {
@@ -49,15 +49,19 @@ define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "
             window.location = "/psamaui/login" + window.location.search;
         },
         userProfile: function (event) {
-            userFunctions.meWithToken(this, function(user){
-                $("#modal-window").html(this.modalTemplate({title: "User Profile"}));
-                $("#modalDialog").show();
-                $(".modal-body").html(this.userProfileTemplate({user:user}));
-                $("#user-token-copy-button").click(this.copyToken);
-                $("#user-token-refresh-button").click(this.refreshToken);
-                $('#user-token-reveal-button').click(this.revealToken);
-                $('.close').click(this.closeDialog);
-            }.bind(this));
+        	if(profileOverride.userProfile) {
+        		profileOverride.userProfile(event, this);
+        	} else {
+	            userFunctions.meWithToken(this, function(user){
+	                $("#modal-window").html(this.modalTemplate({title: "User Profile"}));
+	                $("#modalDialog").show();
+	                $(".modal-body").html(this.userProfileTemplate({user:user}));
+	                $("#user-token-copy-button").click(this.copyToken);
+	                $("#user-token-refresh-button").click(this.refreshToken);
+	                $('#user-token-reveal-button').click(this.revealToken);
+	                $('.close').click(this.closeDialog);
+	            }.bind(this));
+        	}
         },
         copyToken: function(){
             var originValue = document.getElementById("user_token_textarea").textContent;

@@ -1,5 +1,5 @@
 
-define(["jquery", "underscore", "common/styles.js"], function($, _){
+define(["jquery", "underscore", "common/styles"], function($, _){
 	var storedSession = JSON.parse(
 			sessionStorage.getItem("session"));
 	
