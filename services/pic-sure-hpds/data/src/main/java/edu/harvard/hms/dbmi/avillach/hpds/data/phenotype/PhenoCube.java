@@ -99,7 +99,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int minSearchIndex = Arrays.binarySearch(sortedByValue, minKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			minIndex = seekForMinIndex(minSearchIndex, minKeyAndValue, sortedByValue);
+			minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);
 		}
 		
 		if(max == null) {
@@ -108,7 +108,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
+			maxIndex = seekForMaxIndex(Math.abs(maxSearchIndex), maxKeyAndValue, sortedByValue);
 		}
 		
 		return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
