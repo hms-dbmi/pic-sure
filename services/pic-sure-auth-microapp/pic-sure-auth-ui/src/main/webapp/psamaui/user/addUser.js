@@ -8,9 +8,21 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
         },
 		events: {
 			"change #new-user-connection-dropdown":"renderConnectionForm",
-			"click #save-user-button": "createUser"
+			"click #save-user-button": "createUser",
+			"input #email": "validateEmail"
+		},
+		validateEmail: function(event){
+			$(".error").hide();
+	        var emailReg = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,4})?$/;
+	        if(!emailReg.test($('input[name=email]').val())) {
+	        	$('input[name=email]').after('<span class="error">Enter a valid email address.</span>');
+	        	$("#save-user-button").prop( "disabled", true);
+        	} else {
+        		$("#save-user-button").prop( "disabled", false);
+        	}
 		},
 		createUser: function(event){
+			
 			var metadata = {};
 			var roles = [];
 			_.each(this.$('input:checked'), function (checkbox) {

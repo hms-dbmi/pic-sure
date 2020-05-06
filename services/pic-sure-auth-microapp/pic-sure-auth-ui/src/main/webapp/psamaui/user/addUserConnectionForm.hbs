@@ -2,7 +2,7 @@
 	{{#each connection.requiredFields}}
 		<div class='row'>
 			<label for={{this.id}}>{{this.label}} (required)</label>
-			<input type="text" required name="{{this.id}}" style="width: 100%;" required>
+			<input type="text" required name="{{this.id}}" id="{{this.id}}" style="width: 100%;">
 		</div>
 	{{/each}}
 	{{#each connection.optionalFields}}
