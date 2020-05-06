@@ -39,7 +39,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			"click #cancel-user-button":"closeDialog",
 			"click .user-row":          "showUserAction",
 			"click #switch-status-button":"deactivateUser",
-			"submit":                   "saveUserAction",
+//			"submit":                   "saveUserAction",
 			"click .btn-show-inactive":	"toggleInactive"
 		},
 		updateUserTable: function(connections){
@@ -88,39 +88,47 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 				})
 			})
 		},
-		saveUserAction: function (e) {
-			e.preventDefault();
-			var user
-			if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
-				user = this.model.get("selectedUser");
-			}
-			else {
-				user = {
-						subject: "",
-						roles: []}
-			}
-			user.userId = this.$('input[name=userId]').val();
-			user.auth0metadata = this.$('input[name=auth0metadata]').val();
-			user.subject = this.$('input[name=subject]').val();
-			user.connection = {
-					id: this.$('input[name=connectionId]').val()
-			};
-			var general_metadata = {};
-			_.each($('#required-fields input[type=text]'), function(entry){
-				general_metadata[entry.name] = entry.value
-			});
-			user.generalMetadata = JSON.stringify(general_metadata);
-			user.email = general_metadata["email"] ? general_metadata["email"] : email; // synchronize email with metadata
-			var roles = [];
-			_.each(this.$('input:checked'), function (checkbox) {
-				roles.push({uuid: checkbox.value});
-			})
-			user.roles = roles;
-			userFunctions.createOrUpdateUser([user], user.uuid == null ? 'POST' : 'PUT', function(result) {
-				console.log(result);
-				this.render();
-			}.bind(this));
-		},
+//		saveUserAction: function (e) {
+//			e.preventDefault();
+//			var user
+//			if (this.model.get("selectedUser") != null && this.model.get("selectedUser").uuid.trim().length > 0) {
+//				user = this.model.get("selectedUser");
+//			}
+//			else {
+//				user = {
+//						subject: "",
+//						roles: []}
+//			}
+//			user.userId = this.$('input[name=userId]').val();
+//			user.auth0metadata = this.$('input[name=auth0metadata]').val();
+//			user.subject = this.$('input[name=subject]').val();
+//			user.connection = {
+//					id: this.$('input[name=connectionId]').val()
+//			};
+//			var general_metadata = {};
+//			_.each($('#required-fields input[type=text]'), function(entry){
+//				general_metadata[entry.name] = entry.value
+//			});
+//			user.generalMetadata = JSON.stringify(general_metadata);
+//			user.email = general_metadata["email"] ? general_metadata["email"] : email; // synchronize email with metadata
+//			
+//			$(".error").hide();
+//	        var emailReg = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,4})?$/;
+//	        if(!emailReg.test(user.email)) {
+//	        	$('input[name=email]').after('<span class="error">Enter a valid email address.</span>');
+//	        	return false; 
+//        	}
+//			
+//			var roles = [];
+//			_.each(this.$('input:checked'), function (checkbox) {
+//				roles.push({uuid: checkbox.value});
+//			})
+//			user.roles = roles;
+//			userFunctions.createOrUpdateUser([user], user.uuid == null ? 'POST' : 'PUT', function(result) {
+//				console.log(result);
+//				this.render();
+//			}.bind(this));
+//		},
 		deactivateUser: function (event) {
 			try {
 				var user = this.model.get('selectedUser');
