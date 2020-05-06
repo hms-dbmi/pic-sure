@@ -64,6 +64,12 @@
     background-color: #76a6de;
 }
 
+.btn-success:disabled, .btn-success:disabled:hover{
+	 border: 1px solid #999999;
+     background-color: #cccccc;
+     color: #666666;
+}
+
 .btn-right {
     float: right;
 }
