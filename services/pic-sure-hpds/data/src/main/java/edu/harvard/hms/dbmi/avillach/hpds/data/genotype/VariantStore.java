@@ -7,9 +7,11 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -28,19 +30,19 @@ public class VariantStore implements Serializable{
 
 	private String[] vcfHeaders = new String[24];
 	
-	public FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] 
-			variantMaskStorage = new FileBackedByteIndexedStorage[24];
+	public TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>>
+			variantMaskStorage = new TreeMap<>();
 
 	public ArrayList<String> listVariants() {
 		ArrayList<String> allVariants = new ArrayList<>();
-		for(int x = 1;x<variantMaskStorage.length-1;x++) {
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage[x];
+		for(String key : variantMaskStorage.keySet()) {
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage.get(key);
 			storage
 			.keys()
 			.stream()
-			.forEach((Integer key)->{
+			.forEach((Integer bucket)->{
 				try {
-					for(String variant : storage.get(key).keySet()) {
+					for(String variant : storage.get(bucket).keySet()) {
 						allVariants.add(variant);
 					}
 				} catch (IOException e) {
@@ -52,22 +54,24 @@ public class VariantStore implements Serializable{
 		return allVariants;
 	}
 	
-	public int[][] countVariants() {
-		int[][] counts = new int[24][5];
-		for(int x = 1;x<variantMaskStorage.length-1;x++) {
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage[x];
-			final int final_x = x;
+	public Map<String, int[]> countVariants() {
+		HashMap<String, Integer> countOffsetMap = new HashMap<String, Integer>();
+		TreeMap<String, int[]> counts = new TreeMap<>();
+		for(String contig : variantMaskStorage.keySet()) {
+			counts.put(contig, new int[5]);
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage.get(contig);
 			storage
 			.keys()
 			.stream()
 			.forEach((Integer key)->{
+				int[] contigCounts = counts.get(contig);
 				try {
 					Collection<VariantMasks> values = storage.get(key).values();
-					counts[final_x][0] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousMask!=null?1:0;}));
-					counts[final_x][1] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.homozygousMask!=null?1:0;}));
-					counts[final_x][2] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousNoCallMask!=null?1:0;}));
-					counts[final_x][3] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.homozygousNoCallMask!=null?1:0;}));
-					counts[final_x][4] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousMask!=null || masks.homozygousMask!=null || masks.heterozygousNoCallMask!=null || masks.homozygousNoCallMask!=null?1:0;}));
+					contigCounts[0] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousMask!=null?1:0;}));
+					contigCounts[1] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.homozygousMask!=null?1:0;}));
+					contigCounts[2] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousNoCallMask!=null?1:0;}));
+					contigCounts[3] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.homozygousNoCallMask!=null?1:0;}));
+					contigCounts[4] += values.stream().collect(Collectors.summingInt((VariantMasks masks)->{return masks.heterozygousMask!=null || masks.homozygousMask!=null || masks.heterozygousNoCallMask!=null || masks.homozygousNoCallMask!=null?1:0;}));
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -91,12 +95,12 @@ public class VariantStore implements Serializable{
 			System.out.println("Less than 2 segments found in this variant : " + variant);
 		}
 		int chrOffset = Integer.parseInt(segments[1])/ BUCKET_SIZE;
-		int chrNumber = Integer.parseInt(segments[0]);
-		if(bucketCache.lastSetOfVariants != null && chrNumber == bucketCache.lastChr && chrOffset == bucketCache.lastChunkOffset) {
+		String contig = segments[0];
+		if(bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
-			bucketCache.lastSetOfVariants = variantMaskStorage[chrNumber].get(chrOffset);	
-			bucketCache.lastChr = chrNumber;
+			bucketCache.lastSetOfVariants = variantMaskStorage.get(contig).get(chrOffset);	
+			bucketCache.lastContig = contig;
 			bucketCache.lastChunkOffset = chrOffset;
 		}
 		return bucketCache.lastSetOfVariants == null ? null : bucketCache.lastSetOfVariants.get(variant);
@@ -107,7 +111,7 @@ public class VariantStore implements Serializable{
 	}
 
 	public void open() {
-		Arrays.stream(variantMaskStorage).forEach((fbbis->{
+		variantMaskStorage.values().stream().forEach((fbbis->{
 			if(fbbis!=null) {
 				try {
 					fbbis.open();
@@ -135,8 +139,8 @@ public class VariantStore implements Serializable{
 		this.variantStorageSize = variantStorageSize;
 	}
 
-	public List<VariantMasks> getMasksForRangesOfChromosome(Integer chromosomeForGene, List<Integer> offsetsForGene, RangeSet<Integer> rangeSetsForGene) throws IOException {
-		FileBackedByteIndexedStorage masksForChromosome = variantMaskStorage[chromosomeForGene];
+	public List<VariantMasks> getMasksForRangesOfChromosome(String contigForGene, List<Integer> offsetsForGene, RangeSet<Integer> rangeSetsForGene) throws IOException {
+		FileBackedByteIndexedStorage masksForChromosome = variantMaskStorage.get(contigForGene);
 		Set<Integer> bucketsForGene = offsetsForGene.stream().map((offset)->{ return offset/BUCKET_SIZE; }).collect(Collectors.toSet());
 		List<VariantMasks> masks = new ArrayList<VariantMasks>();
 		for(Integer bucket : bucketsForGene) {
