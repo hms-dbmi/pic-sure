@@ -327,7 +327,7 @@ public class NewVCFLoader {
 		logger.info("completed load in " + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	private static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
+	public static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
 		logger.debug("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreSplitter.splitAll();
@@ -338,7 +338,7 @@ public class NewVCFLoader {
 		logger.debug("Split" + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	private static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
+	public static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
 		logger.debug("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreToFBBIISConverter.convertAll("/opt/local/hpds/merged", "/opt/local/hpds/all");
