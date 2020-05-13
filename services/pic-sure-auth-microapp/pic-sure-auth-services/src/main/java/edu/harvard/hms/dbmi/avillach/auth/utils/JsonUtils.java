@@ -32,7 +32,8 @@ import java.util.stream.Collectors;
  * Use caution when using these methods for other use cases.</p>
  * <p>
  *     Notice: the input Map or list are from the conversion of JSONs, which means only three possible formats
- *     will appear here: string, list, map.
+ *     will appear here: string, list, map. These classes are changed internally to allow some field consolidation,
+ *     so it is safer to use 'Collection' instead of 'List' when referencing the returned map.
  * </p>
  */
 public class JsonUtils {
@@ -52,8 +53,9 @@ public class JsonUtils {
 	 *     2 in JSON map B.
 	 * </li>
 	 * <li>
-	 *     When a JSONArray element merges with another JSONArray element, only the data in the same corresponding
-	 *     location will be merged, and the rest of elements in the longer array will be simply attached.
+	 *     When a JSONArray element merges with another JSONArray element, a single copy of each string element is
+	 *     preserved.  Each instance of other objects (e.g., Maps) are present in the resulting Collection.  This means
+	 *     that merging multiple VariantInfoFilters is not currently supported.
 	 * </li>
 	 * <li>
 	 *     When a JSON Map merge into a Json Array, it will be either append or merge into one of the element that is a
@@ -65,6 +67,7 @@ public class JsonUtils {
 	 */
 	public static Map<String, Object> mergeTemplateMap(@NotNull Map<String, Object> originMap,
 			@NotNull Map<String, Object> incomingMap){
+		
 		Map mergedMap = originMap;
 
 		for (Map.Entry<String, Object> entry : incomingMap.entrySet()){
@@ -72,45 +75,35 @@ public class JsonUtils {
 			Object value = entry.getValue();
 
 			if (originMap.containsKey(key)){
-
 				Object originValue = originMap.get(key);
+				
+				//first check for valid types.  this will throw an exception if an unhandled type is used
+				if(! ( value instanceof String       || value instanceof Map       || value instanceof Collection)  ||
+				   ! ( originValue instanceof String || originValue instanceof Map || originValue instanceof Collection)) {
+					logJsonTypeException(originValue);
+				}
 
 				if (value instanceof String) {
-					if (originValue instanceof String) {
-						if (value.equals(originValue))
-							continue;
-						else {
-							originMap.put(key,mergeToNewList(originValue, value));
-						}
-					} else if (originValue instanceof Map){
-						originMap.put(key,mergeToNewList(originValue, value));
-					} else if (originValue instanceof List) {
-						originMap.put(key, mergeStringToList((String)value, (List)originValue));
-					} else {
-						logJsonTypeException(originValue);
+					
+					if (originValue instanceof String || originValue instanceof Map) {
+						originMap.put(key,mergeToNewSet(originValue, value));
+					} else if (originValue instanceof Set) { //we are only adding sets to our map
+						((Set)originValue).add(value);
 					}
-				} else if (value instanceof List) {
-					if (originValue instanceof String) {
-						originMap.put(key, mergeStringToList((String)originValue, (List)value));
-					} else if (originValue instanceof List) {
-						originMap.put(key, mergeListToList((List)originValue, (List)value));
+				} else if (value instanceof Collection) {  //we don't know what the input will be, so check super type
+					if (originValue instanceof String || originValue instanceof Collection) {
+						originMap.put(key, mergeToNewSet(originValue, value));
 					} else if (originValue instanceof Map) {
-						mergeMapToList((Map)originValue, (List)value);
-					} else {
-						logJsonTypeException(originValue);
+						mergeMapToSet((Map)originValue, (Collection)value);
 					}
 				} else if (value instanceof Map) {
 					if (originValue instanceof Map){
 						originMap.put(key, mergeTemplateMap((Map)originValue, (Map)value));
 					} else if (originValue instanceof String){
-						originMap.put(key, mergeToNewList(originValue, value));
-					} else if (originValue instanceof List) {
-						mergeMapToList((Map)value, (List)originValue);
-					} else {
-						logJsonTypeException(originValue);
+						originMap.put(key, mergeToNewSet(originValue, value));
+					} else if (originValue instanceof Collection) {
+						mergeMapToSet((Map)value, (Collection)originValue);
 					}
-				} else {
-					logJsonTypeException(value);
 				}
 			} else {
 				originMap.put(key, value);
@@ -121,95 +114,86 @@ public class JsonUtils {
 	}
 
 	/**
-	 * merge two JSON into a new list. Example use case: merge two string together
+	 * merge two JSON into a new list. Example use case: merge two string together.  if the argument
+	 * is a collection, each element will be added to the returned Set
 	 *
 	 * @param a
 	 * @param b
 	 * @return a new list that contains two input JSONs
 	 */
-	public static List mergeToNewList(Object a, Object b){
-		List list = new ArrayList();
-		list.add(a);
-		list.add(b);
-		return list;
-	}
-
-	/**
-	 * merge a string into a list.
-	 * <p>
-	 *     Notice: the list could include JSON string, array, or map.
-	 * </p>
-	 * The logic here is, before merging, it will check if the list already contains the same string, if not,
-	 * will merge.
-	 *
-	 * @param s
-	 * @param list
-	 * @return
-	 */
-	public static List mergeStringToList(String s, List list){
-		boolean isExist = false;
-		for (Object object: list){
-			if (object instanceof String && s.equals(object)){
-				isExist = true;
-				break;
-			}
-		}
-		if (!isExist){
-			list.add(s);
-		}
-
-		return list;
-	}
-
-	/**
-	 * will merge the two elements in the same location.
-	 * meaning baseList(0) will merge with incomingList(0) ...
-	 * And if two same-location elements are not in the same type, only the element in baseList will be kept
-	 *
-	 * @param baseList
-	 * @param incomingList
-	 * @return
-	 */
-	public static List mergeListToList(List baseList, List incomingList){    	
-		List mergedList = new ArrayList();
-
-		if (incomingList.size()==0) {
-			addElementsOfListToMergedList(mergedList, baseList);
-		}else if(incomingList.get(0) instanceof String) {
-			addElementsOfListToMergedList(mergedList, incomingList);
-			addElementsOfListToMergedList(mergedList, baseList);        		
+	public static Set mergeToNewSet(Object a, Object b){
+		Set newSet = new HashSet();
+		
+		if(a instanceof Collection) {
+			newSet.addAll((Collection)a);
 		} else {
-			List sourceList = baseList.size()>incomingList.size()?baseList:incomingList;
-			List targetList = baseList.size()<=incomingList.size()?baseList:incomingList;
-			for (int i = 0 ; i < sourceList.size() ; i++) {
-				Object sourceElement = sourceList.get(i);
-				if(targetList.size()<=i) {
-					mergedList.add(sourceList.get(i));
-				}else {
-					Object targetElement = targetList.get(i);
-					if (sourceElement.getClass() == targetElement.getClass() ) {
-						if (sourceElement instanceof List){
-							mergedList.add(mergeListToList((List)sourceElement, (List)targetElement));
-						} else if (sourceElement instanceof Map){
-							mergedList.add(mergeTemplateMap((Map)sourceElement, (Map)targetElement));
-						} else {
-							logJsonTypeException(sourceElement);
-						}
-					} else {
-						mergedList.add(sourceElement);
-					}
-				}
-			}
+			newSet.add(a);
 		}
-
-		return mergedList;
+		
+		if(b instanceof Collection) {
+			newSet.addAll((Collection)b);
+		} else {
+			newSet.add(b);
+		}
+		
+		return newSet;
 	}
 
-	private static void addElementsOfListToMergedList(List mergedList, List baseList) {
-		if(baseList!=null&&baseList.size()>0) {
-			mergedList.addAll(baseList);
-		}
-	}
+	
+	/*
+	 * Taking this method out for now, as we don't do index-based comparisons anymore.  This may have been to
+	 * allow merging of variant info filters; I don't think that's necessary for query templates -NC 4/2020
+	 */
+	
+//	/**
+//	 * will merge the two elements in the same location.
+//	 * meaning baseList(0) will merge with incomingList(0) ...
+//	 * And if two same-location elements are not in the same type, only the element in baseList will be kept
+//	 *
+//	 * @param baseList
+//	 * @param incomingList
+//	 * @return
+//	 */
+//	public static List mergeListToList(List baseList, List incomingList){    	
+//		List mergedList = new ArrayList();
+//
+//		if (incomingList.size()==0) {
+//			addElementsOfListToMergedList(mergedList, baseList);
+//		}else if(incomingList.get(0) instanceof String) {
+//			addElementsOfListToMergedList(mergedList, incomingList);
+//			addElementsOfListToMergedList(mergedList, baseList);        		
+//		} else {
+//			List sourceList = baseList.size()>incomingList.size()?baseList:incomingList;
+//			List targetList = baseList.size()<=incomingList.size()?baseList:incomingList;
+//			for (int i = 0 ; i < sourceList.size() ; i++) {
+//				Object sourceElement = sourceList.get(i);
+//				if(targetList.size()<=i) {
+//					mergedList.add(sourceList.get(i));
+//				}else {
+//					Object targetElement = targetList.get(i);
+//					if (sourceElement.getClass() == targetElement.getClass() ) {
+//						if (sourceElement instanceof List){
+//							mergedList.add(mergeListToList((List)sourceElement, (List)targetElement));
+//						} else if (sourceElement instanceof Map){
+//							mergedList.add(mergeTemplateMap((Map)sourceElement, (Map)targetElement));
+//						} else {
+//							logJsonTypeException(sourceElement);
+//						}
+//					} else {
+//						mergedList.add(sourceElement);
+//					}
+//				}
+//			}
+//		}
+//
+//		return mergedList;
+//	}
+//
+//	private static void addElementsOfListToMergedList(List mergedList, List baseList) {
+//		if(baseList!=null&&baseList.size()>0) {
+//			mergedList.addAll(baseList);
+//		}
+//	}
 
 	/**
 	 *  attach or merge a map to a list, the list might contain many elements that are string, list or map that are converted from JSONs.
@@ -220,26 +204,25 @@ public class JsonUtils {
 	 * @param list
 	 * @return
 	 */
-	public static List mergeMapToList(Map map, List list){
-		List mergedList = new ArrayList(list.size());
+	public static Set mergeMapToSet(Map map, Collection collection){
+		Set mergedSet = new HashSet(collection.size());
 
 		boolean merged = false;
-		for (int i = 0; i<list.size(); i++){
-			Object element = list.get(i);
-			if (element instanceof Map && isMapMergeable((Map)element, map)){
-				mergedList.addAll(list.subList(0,i));
-				mergedList.add(mergeTemplateMap((Map)element, map));
-				mergedList.addAll(list.subList(i+1, list.size()));
+		for (Object element : collection) {
+			//only merge the map once if it matches another map.
+			if (!merged && element instanceof Map && isMapMergeable((Map)element, map)){
+				mergedSet.add(mergeTemplateMap((Map)element, map));
 				merged = true;
+			} else {
+				mergedSet.add(element);
 			}
 		}
 
-		if (merged) {
-			return mergedList;
-		} else {
-			list.add(map);
-			return list;
+		//if we didn't find a mergeable map, just add the given map to the Set.
+		if(!merged) {
+			mergedSet.add(map);
 		}
+		return mergedSet;
 	}
 
 	/**
