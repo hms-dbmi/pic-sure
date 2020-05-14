@@ -40,7 +40,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	public Set<Integer> getKeysForValue(V value) {
 		
 		if(isStringType()) {
-			return categoryMap.get(value);
+			Set<Integer> keys = categoryMap.get(value);
+			return keys == null ? new TreeSet<Integer>() : keys;
 		} else {
 			int minIndex;
 			KeyAndValue<V> keyAndValue = new KeyAndValue<V>(1, value);
