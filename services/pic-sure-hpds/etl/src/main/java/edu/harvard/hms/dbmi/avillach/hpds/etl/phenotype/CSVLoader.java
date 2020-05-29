@@ -91,7 +91,7 @@ public class CSVLoader {
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
 				int patientId = Integer.parseInt(record.get(PATIENT_NUM));
 				Date date = null;
-				if(record.size()>4 && record.get(DATETIME) != null && record.get(DATETIME).isEmpty()) {
+				if(record.size()>4 && record.get(DATETIME) != null && ! record.get(DATETIME).isEmpty()) {
 					date = new Date(Long.parseLong(record.get(DATETIME)));
 				}
 				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), date);
