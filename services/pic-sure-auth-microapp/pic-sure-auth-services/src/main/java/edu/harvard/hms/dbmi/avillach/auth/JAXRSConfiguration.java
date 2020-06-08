@@ -123,7 +123,7 @@ public class JAXRSConfiguration extends Application {
 
     public final static ObjectMapper objectMapper = new ObjectMapper();
 
-    public static final HttpClient client = HttpClientBuilder.create().build();
+    public static final HttpClient client = HttpClientBuilder.create().useSystemProperties().build();
 
 
     @PostConstruct
