@@ -45,6 +45,7 @@ public class PicSureWarInit {
                 .setRoutePlanner(
                         new SystemDefaultRoutePlanner(ProxySelector
                                 .getDefault()))
+                .useSystemProperties()
                 .build();
     }
 
