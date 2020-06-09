@@ -37,7 +37,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.applyProxySettings;
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
 @Provider
@@ -128,7 +127,6 @@ public class JWTFilter implements ContainerRequestFilter {
 		CloseableHttpClient client = PicSureWarInit.CLOSEABLE_HTTP_CLIENT;
 
 		HttpPost post = new HttpPost(token_introspection_url);
-		applyProxySettings(post);
 
 		Map<String, Object> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
