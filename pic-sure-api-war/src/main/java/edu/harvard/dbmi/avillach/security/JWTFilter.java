@@ -1,23 +1,15 @@
 package edu.harvard.dbmi.avillach.security;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.PicSureWarInit;
-import edu.harvard.dbmi.avillach.data.entity.Query;
-import edu.harvard.dbmi.avillach.data.entity.User;
-import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import io.jsonwebtoken.JwtException;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.util.EntityUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 import javax.annotation.Resource;
 import javax.inject.Inject;
@@ -28,16 +20,27 @@ import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.ext.Provider;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import edu.harvard.dbmi.avillach.PicSureWarInit;
+import edu.harvard.dbmi.avillach.data.entity.Query;
+import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import io.jsonwebtoken.JwtException;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
