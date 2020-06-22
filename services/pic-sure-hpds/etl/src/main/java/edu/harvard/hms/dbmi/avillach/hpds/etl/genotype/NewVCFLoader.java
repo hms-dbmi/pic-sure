@@ -118,6 +118,9 @@ public class NewVCFLoader {
 			currentChunk = lowestWalker.currentPosition/CHUNK_SIZE;
 			positionsProcessedInChunk.add(currentPosition[0]);
 
+			if(lastContigProcessed==null) {
+				lastContigProcessed = lowestWalker.currentContig;
+			}
 			flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], false, lowestWalker.currentLine);
 			lastContigProcessed = lowestWalker.currentContig;
 			lastChunkProcessed = currentChunk;
@@ -247,7 +250,7 @@ public class NewVCFLoader {
 	private static void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
 			String currentContig, boolean isLastChunk, String currentLine) throws IOException, FileNotFoundException {
 		if(currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
-			if(!infoStoreFlipped.get(lastContigProcessed)) {
+			if(infoStoreFlipped.get(lastContigProcessed)==null || !infoStoreFlipped.get(lastContigProcessed)) {
 				infoStoreFlipped.put(lastContigProcessed, true);
 				File infoFile = new File(storageDir, lastContigProcessed + "_infoStores.javabin");
 				System.out.println(Thread.currentThread().getName() + " : " + "Flipping info : " + infoFile.getAbsolutePath() + " " + lastContigProcessed + " ");
@@ -538,7 +541,7 @@ public class NewVCFLoader {
 
 	private static class VCFIndexLine implements Comparable<VCFIndexLine>{
 		String vcfPath;
-		Integer chromosome;
+		String contig;
 		boolean isAnnotated;
 		boolean isGzipped;
 		String[] sampleIds;
@@ -546,7 +549,7 @@ public class NewVCFLoader {
 
 		@Override
 		public int compareTo(VCFIndexLine o) {
-			int chomosomeComparison = chromosome.compareTo(o.chromosome);
+			int chomosomeComparison = contig.compareTo(o.contig);
 			if(chomosomeComparison==0) {
 				return vcfPath.compareTo(o.vcfPath);
 			}
@@ -565,8 +568,8 @@ public class NewVCFLoader {
 				if(horribleHeaderSkipFlag[0]) {
 					VCFIndexLine line = new VCFIndexLine();
 					line.vcfPath = r.get(FILE_COLUMN).trim();
-					line.chromosome = r.get(CHROMOSOME_COLUMN).trim().contentEquals("ALL") ? 
-							0 : Integer.parseInt(r.get(CHROMOSOME_COLUMN).trim());
+					line.contig = r.get(CHROMOSOME_COLUMN).trim().contentEquals("ALL") ? 
+							null : r.get(CHROMOSOME_COLUMN).trim();
 					line.isAnnotated = Integer.parseInt(r.get(ANNOTATED_FLAG_COLUMN).trim())==1;
 					line.isGzipped = Integer.parseInt(r.get(GZIP_FLAG_COLUMN).trim())==1;
 					line.sampleIds = Arrays.stream(r.get(SAMPLE_IDS_COLUMN).split(",")).map(String::trim).collect(Collectors.toList()).toArray(new String[0]);
