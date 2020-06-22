@@ -127,7 +127,7 @@ public class NewVCFLoader {
 			char[][][] maskStringsForVariantSpec = {zygosityMaskStrings.get(currentSpecNotation)};
 			if(maskStringsForVariantSpec[0] == null) {
 				maskStringsForVariantSpec[0] = new char[7][allPatientIds.size()];
-				for(int x = 0;x<6;x++) {
+				for(int x = 0;x<maskStringsForVariantSpec[0].length;x++) {
 					maskStringsForVariantSpec[0][x] = new char[allPatientIds.size()];
 					for(int y = 0;y<allPatientIds.size();y++) {
 						maskStringsForVariantSpec[0][x][y]='0';
