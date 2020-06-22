@@ -14,7 +14,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CSVLoader {
-	
+
 	private static LoadingStore store = new LoadingStore();
 
 	private static Logger log = Logger.getLogger(CSVLoader.class); 
@@ -71,7 +71,7 @@ public class CSVLoader {
 				try {
 					numericValue = Double.parseDouble(textValueFromRow) + "";
 				}catch(NumberFormatException e) {
-					
+
 				}
 			}
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
@@ -90,7 +90,11 @@ public class CSVLoader {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
 				int patientId = Integer.parseInt(record.get(PATIENT_NUM));
-				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), new Date(Long.parseLong(record.get(DATETIME))));
+				Date date = null;
+				if(record.size()>4 && record.get(DATETIME) != null && ! record.get(DATETIME).isEmpty()) {
+					date = new Date(Long.parseLong(record.get(DATETIME)));
+				}
+				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), date);
 				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {

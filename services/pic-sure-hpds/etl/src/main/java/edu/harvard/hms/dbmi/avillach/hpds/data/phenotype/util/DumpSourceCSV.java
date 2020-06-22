@@ -59,7 +59,7 @@ public class DumpSourceCSV {
 				PhenoCube cube = store.get(key);
 				ArrayList<String[]> cubeLines = new ArrayList<>();
 				for(KeyAndValue kv : cube.sortedByKey()) {
-					String[] line = new String[4];
+					String[] line = new String[5];
 					line[PATIENT_NUM] = kv.getKey().toString();
 					line[CONCEPT_PATH] = key;
 					line[NUMERIC_VALUE] = cube.isStringType() ? "" : kv.getValue().toString();
