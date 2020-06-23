@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+
 public class HttpClientUtil {
 	private final static ObjectMapper json = new ObjectMapper();
 
