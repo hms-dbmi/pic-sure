@@ -45,7 +45,7 @@ public class VariantListQueryTest {
 	@Test
 	public void testVariantListWithEmptyQuery() throws Exception {
 		TestableVariantListProcessor t = new TestableVariantListProcessor(true, new ArrayList<Set<String>>());
-		assertEquals(new ArrayList<String>(), t.runVariantListQuery(new Query()));
+		assertEquals("", t.runVariantListQuery(new Query()));
 	} 
 	
 	@Test
@@ -53,11 +53,11 @@ public class VariantListQueryTest {
 		TestableVariantListProcessor t = new TestableVariantListProcessor(true, new ArrayList<Set<String>>());
 		Query query = new Query();
 		query.variantInfoFilters = null;
-		assertEquals(new ArrayList<String>(), t.runVariantListQuery(query));
+		assertEquals("", t.runVariantListQuery(query));
 	}	
 	
 	@Test
-	public void testVariantListWithVariantInfoFiltersWithMultipleVariantsButNoIntersectionKeys() throws Exception {
+	public void testVariantListWithVariantInfoFiltersWithMultipleVariantsButNoIntersectingKeys() throws Exception {
 		ArrayList<Set<String>> data = new ArrayList<Set<String>>(List.of(
 				Set.of("key1"), 
 				Set.of("key2")));
@@ -73,7 +73,7 @@ public class VariantListQueryTest {
 
 		Query q = new Query();
 		q.variantInfoFilters = variantInfoFilters;
-		assertEquals(new ArrayList<String>(), t.runVariantListQuery(q));
+		assertEquals("[]", t.runVariantListQuery(q));
 	}	
 	
 	@Test
@@ -92,8 +92,8 @@ public class VariantListQueryTest {
 		variantInfoFilters.add(variantInfoFilter);
 		Query q = new Query();
 		q.variantInfoFilters = variantInfoFilters;
-		List<String> runVariantListQuery = t.runVariantListQuery(q);
-		assertEquals(List.of("key1"), runVariantListQuery);
+		String runVariantListQuery = t.runVariantListQuery(q);
+		assertEquals("[key1]", runVariantListQuery);
 	}	
 	
 	@Test
@@ -115,8 +115,8 @@ public class VariantListQueryTest {
 				List.of(variantInfoFilter, variantInfoFilter2));
 		Query q = new Query();
 		q.variantInfoFilters = variantInfoFilters;
-		List<String> runVariantListQuery = t.runVariantListQuery(q);
-		assertEquals(List.of("key1", "key2", "key3"), runVariantListQuery);
+		String runVariantListQuery = t.runVariantListQuery(q);
+		assertEquals("[key1, key2, key3]", runVariantListQuery);
 	}
 	
 	@Test
@@ -134,8 +134,8 @@ public class VariantListQueryTest {
 		variantInfoFilters.add(variantInfoFilter);
 		Query q = new Query();
 		q.variantInfoFilters = variantInfoFilters;
-		List<String> runVariantListQuery = t.runVariantListQuery(q);
-		assertEquals(List.of("key1"), runVariantListQuery);
+		String runVariantListQuery = t.runVariantListQuery(q);
+		assertEquals("[key1]", runVariantListQuery);
 	}
 	
 	@Test
@@ -150,8 +150,8 @@ public class VariantListQueryTest {
 		variantInfoFilters.add(variantInfoFilter);
 		Query q = new Query();
 		q.variantInfoFilters = variantInfoFilters;
-		List<String> runVariantListQuery = t.runVariantListQuery(q);
-		assertEquals(0, runVariantListQuery.size());
+		String runVariantListQuery = t.runVariantListQuery(q);
+		assertEquals("[]", runVariantListQuery);
 	}	
 
 }
