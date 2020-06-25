@@ -549,7 +549,7 @@ public class NewVCFLoader {
 
 		@Override
 		public int compareTo(VCFIndexLine o) {
-			int chomosomeComparison = contig.compareTo(o.contig);
+			int chomosomeComparison = o.contig==null ? 1 : contig==null ? 0 : contig.compareTo(o.contig);
 			if(chomosomeComparison==0) {
 				return vcfPath.compareTo(o.vcfPath);
 			}
