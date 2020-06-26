@@ -421,9 +421,9 @@ public class NewVCFLoader {
 			for(startOffsetForLine[0] = 0;columnNumber<=8;startOffsetForLine[0]++) {
 				if(currentLine.charAt(startOffsetForLine[0])=='\t') {
 					columnNumber++;
-				}
-				if(columnNumber==8) {
-					formatStartIndex = startOffsetForLine[0];
+					if(columnNumber==8) {
+						formatStartIndex = startOffsetForLine[0];
+					}
 				}
 			}
 			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 3;
