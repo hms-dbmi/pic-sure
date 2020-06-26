@@ -426,7 +426,7 @@ public class NewVCFLoader {
 					}
 				}
 			}
-			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 3;
+			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
 			int[] formatIsGTOnlyIndex = {0};
 			indices.parallelStream().forEach((index)->{
 				int startOffsetForSample = 0;
