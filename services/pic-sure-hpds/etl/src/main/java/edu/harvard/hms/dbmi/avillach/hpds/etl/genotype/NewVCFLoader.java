@@ -417,13 +417,27 @@ public class NewVCFLoader {
 		public void updateRecords(char[][] zygosityMaskStrings, ConcurrentHashMap<String, InfoStore> infoStores) {
 			int[] startOffsetForLine = {0};
 			int columnNumber = 0;
+			int formatStartIndex = 0;
 			for(startOffsetForLine[0] = 0;columnNumber<=8;startOffsetForLine[0]++) {
 				if(currentLine.charAt(startOffsetForLine[0])=='\t') {
 					columnNumber++;
 				}
+				if(columnNumber==8) {
+					formatStartIndex = startOffsetForLine[0];
+				}
 			}
+			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
+			int[] formatIsGTOnlyIndex = {0};
 			indices.parallelStream().forEach((index)->{
-				int startOffsetForSample = startOffsetForLine[0] + vcfOffsets[index];
+				int startOffsetForSample = 0;
+				if(formatIsGTOnly) {
+					startOffsetForSample = startOffsetForLine[0] + vcfOffsets[index];
+				}else {
+					while(currentLine.charAt(formatIsGTOnlyIndex[0]) != '\t') {
+						formatIsGTOnlyIndex[0]++;
+					}
+					startOffsetForSample = formatIsGTOnlyIndex[0] + 1;
+				}
 				int patientZygosityIndex = 
 						(
 								currentLine.charAt(startOffsetForSample  + 0) + 
