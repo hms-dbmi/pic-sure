@@ -249,7 +249,7 @@ public class NewVCFLoader {
 
 	private static void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
 			String currentContig, boolean isLastChunk, String currentLine) throws IOException, FileNotFoundException {
-		if(currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
+		if(!currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
 			if(infoStoreFlipped.get(lastContigProcessed)==null || !infoStoreFlipped.get(lastContigProcessed)) {
 				infoStoreFlipped.put(lastContigProcessed, true);
 				File infoFile = new File(storageDir, lastContigProcessed + "_infoStores.javabin");
