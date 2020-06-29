@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -522,9 +524,37 @@ public class NewVCFLoader {
 			}
 		}
 
+		private static LinkedList<String> contigOrder = new LinkedList<String>();
+
 		@Override
 		public int compareTo(VCFWalker o) {
-			int chromosomeCompared = currentContig.compareTo(o.currentContig);
+			int chromosomeCompared;
+			if(currentContig.contentEquals(o.currentContig)) {
+				chromosomeCompared = 0;
+				if(!contigOrder.contains(currentContig)) {
+					contigOrder.add(currentContig);
+				}
+			}else {
+				Integer currentContigIndex = -1;
+				Integer oCurrentContigIndex = -1;
+				for(int x = 0;x<contigOrder.size();x++) {
+					if(currentContig.contentEquals(contigOrder.get(x))) {
+						currentContigIndex = x;
+					}
+					if(o.currentContig.contentEquals(contigOrder.get(x))) {
+						oCurrentContigIndex = x;
+					}
+				}
+				if(currentContigIndex == -1) {
+					contigOrder.add(currentContig);
+					currentContigIndex = contigOrder.size()-1;
+				}
+				if(oCurrentContigIndex == -1) {
+					contigOrder.add(o.currentContig);
+					oCurrentContigIndex = contigOrder.size()-1;
+				}
+				chromosomeCompared = currentContigIndex.compareTo(oCurrentContigIndex);
+			}
 			if(chromosomeCompared == 0) {
 				int positionCompared = currentPosition.compareTo(o.currentPosition);
 				if(positionCompared == 0) {
