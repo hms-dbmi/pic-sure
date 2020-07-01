@@ -449,7 +449,7 @@ public abstract class AbstractProcessor {
 		return indiscriminateVariantBitmask;
 	}
 
-	private void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
@@ -484,6 +484,11 @@ public abstract class AbstractProcessor {
 				Arrays.sort(values);
 				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
 				List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
+					
+					
+					// I think that the 'key' here is a compound string that has the variant meta data?
+					
+					
 					int insertionIndex = Arrays.binarySearch(values, key);
 					return insertionIndex > -1 && insertionIndex < values.length;
 				}).collect(Collectors.toList());
@@ -500,6 +505,8 @@ public abstract class AbstractProcessor {
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
 			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
 				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+				String s = infoStore.description;
+				
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);

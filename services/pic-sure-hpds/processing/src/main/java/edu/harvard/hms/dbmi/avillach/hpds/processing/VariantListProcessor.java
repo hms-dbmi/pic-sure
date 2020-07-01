@@ -9,6 +9,7 @@ import org.apache.log4j.Logger;
 
 import com.google.common.collect.Sets;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
@@ -18,7 +19,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
 public class VariantListProcessor extends AbstractProcessor {
 
-	private VariantMetadataIndex metadataIndex = new VariantMetadataIndex();
+	private VariantMetadataIndex metadataIndex = null;
 	
 	private static Logger log = Logger.getLogger(VariantListProcessor.class);
 	
@@ -98,10 +99,24 @@ public class VariantListProcessor extends AbstractProcessor {
 	 */
 	public String runVcfExcerptQuery(Query query) {
 		
+		if(metadataIndex == null) {
+			try {
+				metadataIndex  = new VariantMetadataIndex();
+				metadataIndex.initializeRead();
+			} catch (IOException e) {
+				log.error(e);
+				e.printStackTrace();
+				return "";
+			} catch (ClassNotFoundException e) {
+				log.error(e);
+				e.printStackTrace();
+				return "";
+			}
+		}
+		
 		ArrayList<String> variantList = getVariantList(query);
 		
-		log.info("INFO ARRAY:   "  + Arrays.toString(variantList.toArray()));
-		
+		log.info("FBBIS data:   "  + Arrays.toString(metadataIndex.getFbbis().keys().toArray()));
 		Map<String, String[]> metadata = metadataIndex.findByMultipleVariantSpec(variantList);
 		
 		StringBuilder builder = new StringBuilder();
@@ -114,67 +129,61 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 		builder.append("headers: " + Arrays.toString(variantStore.getVCFHeaders()));
 		String[] patientIds = variantStore.getPatientIds();
-		Arrays.sort(patientIds);
-		log.info("Patient IDs: " + patientIds.length + "   ::   " +  Arrays.toString(patientIds));
+		
+		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>();
+		int index = 2;
+		for(String patientId : patientIds) {
+			if(patientSubset.contains(Integer.parseInt(patientId))){
+				log.info("Patient ID " + patientId + "   index: " + index);
+				patientIndexMap.put(patientId, index);
+			}
+			index++;
+			if(patientIndexMap.size() >= patientSubset.size()) {
+				break;
+			}
+		}
+		
+		for(String key : infoStores.keySet()) {
+			log.info("Key: " + key + "  " + infoStores.get(key).column_key + "   " + infoStores.get(key).description);
+		}
 		
 		metadata.forEach((String column, String[] values)->{
 			
+			log.info("VALUES " +Arrays.toString(values));
 			builder.append(column);
-			builder.append("\t");
-			builder.append(Arrays.toString(values));
-			builder.append("\n");
 			
 			try {
-				log.info("Masks");
 				VariantMasks masks = variantStore.getMasks(column, new VariantMaskBucketHolder());
 				
 				String heteroMask = masks.heterozygousMask == null? null :masks.heterozygousMask.toString(2);
 				String homoMask = masks.homozygousMask == null? null :masks.homozygousMask.toString(2);
-				log.info("heteroMask size: " + heteroMask == null ? 0 : heteroMask.length() + "  data: " + heteroMask);
-				log.info("homoMask   size: " + homoMask == null ? 0 : homoMask.length() + "  data: " + homoMask);
-				
-				
+				log.info("heteroMask size: " + (heteroMask == null ? 0 : heteroMask.length()) + "  data: " + heteroMask);
+				log.info("homoMask   size: " + (homoMask == null ? 0 : homoMask.length()) + "  data: " + homoMask);
+
 				log.info(masks.heterozygousNoCallMask);
 				log.info(masks.homozygousNoCallMask);
 				
-				int idPointer = 0;
-				for(Integer index : patientSubset) {
-					
-					
-					int patientId = Integer.parseInt(patientIds[index]);
-					
-					log.info("Index " + index + "     ID " + patientId);
-					
-					while(idPointer < patientIds.length) {
-						int key = Integer.parseInt(patientIds[idPointer]);
-						if(key < index) {
-							idPointer++;	
-						} else if(key == index){
-							if(heteroMask != null && '1' == heteroMask.charAt(idPointer + 2)) {
-								log.info("Patient " + index + ":  " +" 0/1");
-							}else if(homoMask != null && '1' == homoMask.charAt(idPointer + 2)) {
-								log.info("Patient " + index + ":  " +" 1/1");
-							}{
-								log.info("Patient " + index + ":  " +" 0/0");
-							}
-							break;
-						} else {
-							log.info("ID POINTER SKIPPING " + idPointer + " Patient " + index + ":  " +"NO DATA");
-							break;
-						}
+				for(Integer patientIndex : patientIndexMap.values()) {
+					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
+						log.info("Patient index " + patientIndex + ":  " +" 0/1");
+						builder.append("\t0/1");
+					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
+						log.info("Patient index " + patientIndex + ":  " +" 1/1");
+						builder.append("\t1/1");
+					}else {
+						log.info("Patient index " + patientIndex + ":  " +" 0/0");
+						builder.append("\t0/0");
 					}
 				}
-				
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			
+			builder.append("\n");
 			
 		});
 		
 		log.info("SO FAR " + builder.toString());
-		
-		
 		
 		return builder.toString();
 	}
