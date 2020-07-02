@@ -1,9 +1,10 @@
+
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.zip.GZIPInputStream;
 
 import org.apache.log4j.Logger;
 
@@ -100,9 +101,18 @@ public class VariantListProcessor extends AbstractProcessor {
 	public String runVcfExcerptQuery(Query query) {
 		
 		if(metadataIndex == null) {
+			
+			String metadataIndexPath = "/opt/local/hpds/all/VariantMetadata.javabin";
 			try {
-				metadataIndex  = new VariantMetadataIndex();
-				metadataIndex.initializeRead();
+				if(new File(metadataIndexPath).exists()) {
+					try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
+							new FileInputStream(metadataIndexPath)))){
+						metadataIndex = (VariantMetadataIndex) in.readObject();
+					}catch(Exception e) {
+						e.printStackTrace();
+					}
+					metadataIndex.initializeRead();			
+				} 
 			} catch (IOException e) {
 				log.error(e);
 				e.printStackTrace();
@@ -116,26 +126,44 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 		ArrayList<String> variantList = getVariantList(query);
 		
-		log.info("FBBIS data:   "  + Arrays.toString(metadataIndex.getFbbis().keys().toArray()));
+//		log.info("FBBIS data:   "  + Arrays.toString(metadataIndex.getFbbis().keys().toArray()));
 		Map<String, String[]> metadata = metadataIndex.findByMultipleVariantSpec(variantList);
+		
+		
+		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+//		log.info(Arrays.toString(patientSubset.toArray()) + "   " + patientSubset.size());
+		
+//		builder.append(patientSubset);
+		
+		
+//		builder.append("headers: " + Arrays.toString(variantStore.getVCFHeaders()));
 		
 		StringBuilder builder = new StringBuilder();
 		
-		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
-		log.info(Arrays.toString(patientSubset.toArray()) + "   " + patientSubset.size());
+		//Build the header row
 		
-		builder.append(patientSubset);
+		//5 columns for gene info
+		builder.append("CHROM\tPOSITION\tID\tREF\tALT");
+		
+		//now add the variant metadata column headers
+		for(String key : infoStores.keySet()) {
+			builder.append("\t" + key);
+			log.info("Key: " + key + "  " + infoStores.get(key).column_key + "   " + infoStores.get(key).description);
+		}
 		
 		
-		builder.append("headers: " + Arrays.toString(variantStore.getVCFHeaders()));
+		//patient count columns
+		builder.append("\tPatients with this variant in subset\tPatients Without this variant in subset");
+		
 		String[] patientIds = variantStore.getPatientIds();
 		
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>();
 		int index = 2;
 		for(String patientId : patientIds) {
 			if(patientSubset.contains(Integer.parseInt(patientId))){
-				log.info("Patient ID " + patientId + "   index: " + index);
+//				log.info("Patient ID " + patientId + "   index: " + index);
 				patientIndexMap.put(patientId, index);
+				builder.append("\t"+patientId);
 			}
 			index++;
 			if(patientIndexMap.size() >= patientSubset.size()) {
@@ -143,14 +171,39 @@ public class VariantListProcessor extends AbstractProcessor {
 			}
 		}
 		
-		for(String key : infoStores.keySet()) {
-			log.info("Key: " + key + "  " + infoStores.get(key).column_key + "   " + infoStores.get(key).description);
-		}
+		//End of headers
+		builder.append("\n");
 		
+		//loop over the variants identified, and build an output row
 		metadata.forEach((String column, String[] values)->{
 			
 			log.info("VALUES " +Arrays.toString(values));
-			builder.append(column);
+			
+			String[] variantDataColumns = column.split(",");
+			for(int i = 0; i < 5; i++) {
+				if(i > 0) {
+					builder.append("\t");
+				}
+				if(i < variantDataColumns.length) {
+					builder.append(variantDataColumns[i]);
+				}
+			}
+			
+			if(values.length > 0) {
+				String[] metaDataColumns = values[0].split(";");
+				
+				Map<String,String> variantColumnMap = new HashMap<String, String>();
+				for(String key : metaDataColumns) {
+					String[] keyValue = key.split("=");
+					if(keyValue.length == 2) {
+						variantColumnMap.put(keyValue[0], keyValue[1]);
+					}
+				}
+				
+				for(String key : infoStores.keySet()) {
+					builder.append("\t" + variantColumnMap.get(key));
+				}
+			}
 			
 			try {
 				VariantMasks masks = variantStore.getMasks(column, new VariantMaskBucketHolder());
@@ -160,21 +213,28 @@ public class VariantListProcessor extends AbstractProcessor {
 				log.info("heteroMask size: " + (heteroMask == null ? 0 : heteroMask.length()) + "  data: " + heteroMask);
 				log.info("homoMask   size: " + (homoMask == null ? 0 : homoMask.length()) + "  data: " + homoMask);
 
-				log.info(masks.heterozygousNoCallMask);
-				log.info(masks.homozygousNoCallMask);
+//				log.info(masks.heterozygousNoCallMask);
+//				log.info(masks.homozygousNoCallMask);
 				
+				StringBuilder patientListBuilder = new StringBuilder();
+				
+				int notPresent = 0;
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
-						log.info("Patient index " + patientIndex + ":  " +" 0/1");
-						builder.append("\t0/1");
+//						log.info("Patient index " + patientIndex + ":  " +" 0/1");
+						patientListBuilder.append("\t0/1");
 					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
-						log.info("Patient index " + patientIndex + ":  " +" 1/1");
-						builder.append("\t1/1");
+//						log.info("Patient index " + patientIndex + ":  " +" 1/1");
+						patientListBuilder.append("\t1/1");
 					}else {
-						log.info("Patient index " + patientIndex + ":  " +" 0/0");
-						builder.append("\t0/0");
+//						log.info("Patient index " + patientIndex + ":  " +" 0/0");
+						patientListBuilder.append("\t0/0");
+						notPresent++;
 					}
 				}
+				
+				builder.append("\t"+ (patientIndexMap.size() - notPresent) + "\t" + notPresent);
+				builder.append(patientListBuilder.toString());
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -183,7 +243,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			
 		});
 		
-		log.info("SO FAR " + builder.toString());
+		log.info("OUTPUT:  \n" + builder.toString());
 		
 		return builder.toString();
 	}
