@@ -4,16 +4,19 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.log4j.Logger;
 
 import com.google.common.collect.Sets;
 
+import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -97,90 +100,77 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * 
 	 * @param incomingQuery A query which contains only VariantSpec strings in the fields array.
 	 * @return a String that is the entire response as a TSV encoded to mimic the VCF4.1 specification but with the necessary columns. This should include all variants in the request that at least 1 patient in the subset has.
+	 * @throws ExecutionException 
 	 */
 	public String runVcfExcerptQuery(Query query) {
 		
-		if(metadataIndex == null) {
-			
-			String metadataIndexPath = "/opt/local/hpds/all/VariantMetadata.javabin";
-			try {
-				if(new File(metadataIndexPath).exists()) {
-					try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
-							new FileInputStream(metadataIndexPath)))){
-						metadataIndex = (VariantMetadataIndex) in.readObject();
-					}catch(Exception e) {
-						e.printStackTrace();
-					}
-					metadataIndex.initializeRead();			
-				} 
-			} catch (IOException e) {
-				log.error(e);
-				e.printStackTrace();
-				return "";
-			} catch (ClassNotFoundException e) {
-				log.error(e);
-				e.printStackTrace();
-				return "";
-			}
+		log.info("Running VCF Extract query");
+		try {
+			initializeMetadataIndex();
+		} catch (ClassNotFoundException | IOException e1) {
+			log.error("could not initialize metadata index!", e1);
 		}
 		
 		ArrayList<String> variantList = getVariantList(query);
-		
-//		log.info("FBBIS data:   "  + Arrays.toString(metadataIndex.getFbbis().keys().toArray()));
 		Map<String, String[]> metadata = metadataIndex.findByMultipleVariantSpec(variantList);
 		
-		
 		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
-//		log.info(Arrays.toString(patientSubset.toArray()) + "   " + patientSubset.size());
 		
-//		builder.append(patientSubset);
-		
-		
-//		builder.append("headers: " + Arrays.toString(variantStore.getVCFHeaders()));
-		
+		PhenoCube<String> idCube = null;
+		if(ID_CUBE_NAME.contentEquals("NONE")) {
+			try {
+				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
+			} catch (ExecutionException e) {
+				e.printStackTrace();
+			}
+		}
 		StringBuilder builder = new StringBuilder();
 		
+		//
 		//Build the header row
+		//
 		
 		//5 columns for gene info
-		builder.append("CHROM\tPOSITION\tID\tREF\tALT");
+		builder.append("CHROM\tPOSITION\tREF\tALT");
 		
 		//now add the variant metadata column headers
 		for(String key : infoStores.keySet()) {
 			builder.append("\t" + key);
-			log.info("Key: " + key + "  " + infoStores.get(key).column_key + "   " + infoStores.get(key).description);
 		}
-		
 		
 		//patient count columns
 		builder.append("\tPatients with this variant in subset\tPatients Without this variant in subset");
 		
+		//then one column per patient
 		String[] patientIds = variantStore.getPatientIds();
-		
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>();
 		int index = 2;
 		for(String patientId : patientIds) {
-			if(patientSubset.contains(Integer.parseInt(patientId))){
-//				log.info("Patient ID " + patientId + "   index: " + index);
+			Integer idInt = Integer.parseInt(patientId);
+			if(patientSubset.contains(idInt)){
 				patientIndexMap.put(patientId, index);
-				builder.append("\t"+patientId);
+				if(idCube != null) {
+					builder.append("\t" + idCube.getValueForKey(idInt));
+				} else {
+					builder.append("\t" + patientId);
+				}
 			}
 			index++;
 			if(patientIndexMap.size() >= patientSubset.size()) {
 				break;
 			}
 		}
-		
 		//End of headers
 		builder.append("\n");
+		log.debug("HEADER ROW\n" + builder.toString());
 		
 		//loop over the variants identified, and build an output row
-		metadata.forEach((String column, String[] values)->{
-			
-			log.info("VALUES " +Arrays.toString(values));
+		metadata.forEach((String column, String[] infoColumns)->{
+			log.debug("variant info for " + column + " :: " + Arrays.toString(infoColumns));
 			
 			String[] variantDataColumns = column.split(",");
-			for(int i = 0; i < 5; i++) {
+			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
+			for(int i = 0; i < 4; i++) {
 				if(i > 0) {
 					builder.append("\t");
 				}
@@ -189,8 +179,10 @@ public class VariantListProcessor extends AbstractProcessor {
 				}
 			}
 			
-			if(values.length > 0) {
-				String[] metaDataColumns = values[0].split(";");
+			if(infoColumns.length > 0) {
+				//I'm not sure why infoColumns is an array; the data is in a single semi-colon delimited string.
+				// e.g.,   key1=value1;key2=value2;....
+				String[] metaDataColumns = infoColumns[0].split(";");
 				
 				Map<String,String> variantColumnMap = new HashMap<String, String>();
 				for(String key : metaDataColumns) {
@@ -200,19 +192,23 @@ public class VariantListProcessor extends AbstractProcessor {
 					}
 				}
 				
+				//need to make sure columns are pushed out in the right order; use same iterator as headers
 				for(String key : infoStores.keySet()) {
 					builder.append("\t" + variantColumnMap.get(key));
 				}
 			}
 			
+			//Now put the patient zygosities in the right columns
 			try {
 				VariantMasks masks = variantStore.getMasks(column, new VariantMaskBucketHolder());
 				
+				//make strings of 000100 so we can just check 'char at'
 				String heteroMask = masks.heterozygousMask == null? null :masks.heterozygousMask.toString(2);
 				String homoMask = masks.homozygousMask == null? null :masks.homozygousMask.toString(2);
-				log.info("heteroMask size: " + (heteroMask == null ? 0 : heteroMask.length()) + "  data: " + heteroMask);
-				log.info("homoMask   size: " + (homoMask == null ? 0 : homoMask.length()) + "  data: " + homoMask);
+				log.info("heteroMask size: " + (heteroMask == null ? 0 : heteroMask.length()));
+				log.info("homoMask   size: " + (homoMask == null ? 0 : homoMask.length()));
 
+				//not sure what these 'NoCall' masks are; just leaving this note and ignoring them (nc)
 //				log.info(masks.heterozygousNoCallMask);
 //				log.info(masks.homozygousNoCallMask);
 				
@@ -221,13 +217,10 @@ public class VariantListProcessor extends AbstractProcessor {
 				int notPresent = 0;
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
-//						log.info("Patient index " + patientIndex + ":  " +" 0/1");
 						patientListBuilder.append("\t0/1");
 					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
-//						log.info("Patient index " + patientIndex + ":  " +" 1/1");
 						patientListBuilder.append("\t1/1");
 					}else {
-//						log.info("Patient index " + patientIndex + ":  " +" 0/0");
 						patientListBuilder.append("\t0/0");
 						notPresent++;
 					}
@@ -240,12 +233,26 @@ public class VariantListProcessor extends AbstractProcessor {
 			}
 			
 			builder.append("\n");
-			
 		});
 		
 		log.info("OUTPUT:  \n" + builder.toString());
 		
 		return builder.toString();
+	}
+
+	private void initializeMetadataIndex() throws IOException, ClassNotFoundException{
+		if(metadataIndex == null) {
+			String metadataIndexPath = "/opt/local/hpds/all/VariantMetadata.javabin";
+			if(new File(metadataIndexPath).exists()) {
+				try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
+						new FileInputStream(metadataIndexPath)))){
+					metadataIndex = (VariantMetadataIndex) in.readObject();
+				}catch(Exception e) {
+					e.printStackTrace();
+				}
+				metadataIndex.initializeRead();			
+			} 
+		}
 	}
 
 }

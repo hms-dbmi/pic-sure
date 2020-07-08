@@ -329,16 +329,7 @@ public class PicSureService implements IResourceRS {
 					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
 				}
 				
-				case DATAFRAME : {
-					QueryStatus status = query(resultRequest);
-					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-						status = queryStatus(status.getResourceResultId(), null);
-					}
-					log.info(status.toString());
-					return queryResult(status.getResourceResultId(), null);
-					
-				}
-				
+				case DATAFRAME : 
 				case DATAFRAME_MERGED : {
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
