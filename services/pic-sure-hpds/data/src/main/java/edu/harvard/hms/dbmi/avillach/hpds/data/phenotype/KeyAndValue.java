@@ -41,7 +41,6 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 
 	@Override
 	public int compareTo(KeyAndValue<?> o) {
-		return o.key - this.key;
+		return this.key - o.key;
 	}
-	
 }
