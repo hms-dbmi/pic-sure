@@ -548,22 +548,15 @@ public abstract class AbstractProcessor {
 				Set<Integer> ids = new TreeSet<Integer>();
 				String bitmaskString = matchingPatients.toString(2);
 				log.debug("or'd masks : " + bitmaskString);
-				PhenoCube<String> patientIdCube = ID_CUBE_NAME.contentEquals("NONE") ? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
 						// Minor hack here to deal with Baylor not sticking to one file naming convention
 						String patientId = variantStore.getPatientIds()[x-2].split("_")[0].trim();
-						try {
-							ids.add(patientIdCube == null ? Integer.parseInt(patientId) : patientIdCube.getKeysForValue(patientId).iterator().next());
-						}catch(NullPointerException e) {
-							System.out.println("Could not find id for patient " + patientId);
-						}
+						ids.add(Integer.parseInt(patientId));
 					}
 				}
 				filteredIdSets.add(ids);
 			} catch (IOException e) {
-				log.error(e);
-			} catch (ExecutionException e) {
 				log.error(e);
 			}					
 		}else {
