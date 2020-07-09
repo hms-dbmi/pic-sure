@@ -2,20 +2,19 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.log4j.Logger;
 
+import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 import com.google.common.collect.Sets;
 
-import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
@@ -87,20 +86,21 @@ public class VariantListProcessor extends AbstractProcessor {
 			
 		
 	}
-	
 
 	/**
-	 * To be implemented as part of ALS-115
-	 * 
-	 * Note that this is returning a plain old String. In the future, once the behavior
-	 * has been approved for the prototype, this will be moved to runQuery and processing
-	 * will asynchronously batch rows into a temp file just like the DATAFRAME queries. 
-	 * 
-	 * For now we hack it on purpose to get something in front of the users.
-	 * 
-	 * @param incomingQuery A query which contains only VariantSpec strings in the fields array.
-	 * @return a String that is the entire response as a TSV encoded to mimic the VCF4.1 specification but with the necessary columns. This should include all variants in the request that at least 1 patient in the subset has.
-	 * @throws ExecutionException 
+	 *  This method takes a Query input (expected but not validated to be expected result type = VCF_EXCERPT) and
+	 *  returns a tab separated string representing a table describing the variants described by the query and the 
+	 *  associated zygosities of subjects identified by the query. it includes a header row describing each column.
+	 *  
+	 *  The output columns start with the variant description (chromosome, position reference allele, and subsitution),
+	 *  continuing with a series of columns describing the Info columns associated with the variant data.  A count 
+	 *  of how many subjects in the result set have/do not have comes next, followed by one column per patient.
+	 *  
+	 *  The default patientId header value can be overridden by passing the ID_CUBE_NAME environment variable to 
+	 *  the java VM.
+	 *  
+	 *  @param Query A VCF_EXCERPT type query
+	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 */
 	public String runVcfExcerptQuery(Query query) {
 		
@@ -114,21 +114,24 @@ public class VariantListProcessor extends AbstractProcessor {
 		ArrayList<String> variantList = getVariantList(query);
 		Map<String, String[]> metadata = metadataIndex.findByMultipleVariantSpec(variantList);
 		
-		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+		if(metadata.isEmpty()) {
+			return "No Variants Found\n"; //UI uses newlines to show result count
+		}
 		
 		PhenoCube<String> idCube = null;
-		if(ID_CUBE_NAME.contentEquals("NONE")) {
+		if(!ID_CUBE_NAME.contentEquals("NONE")) {
 			try {
+				log.info("Looking up ID cube " + ID_CUBE_NAME);
 				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
-			} catch (ExecutionException e) {
-				e.printStackTrace();
+			} catch (ExecutionException |  InvalidCacheLoadException e) {
+				log.warn("Unable to identify ID_CUBE_NAME data, using patientId instead.  " + e.getLocalizedMessage());
 			}
 		}
-		StringBuilder builder = new StringBuilder();
 		
 		//
 		//Build the header row
 		//
+		StringBuilder builder = new StringBuilder();
 		
 		//5 columns for gene info
 		builder.append("CHROM\tPOSITION\tREF\tALT");
@@ -141,28 +144,26 @@ public class VariantListProcessor extends AbstractProcessor {
 		//patient count columns
 		builder.append("\tPatients with this variant in subset\tPatients Without this variant in subset");
 		
-		//then one column per patient
-		String[] patientIds = variantStore.getPatientIds();
-		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>();
-		int index = 2;
-		for(String patientId : patientIds) {
+		//then one column per patient.  We also need to identify the patient ID and
+		// map it to the right index in the bit mask fields.
+		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
+		int index = 2; //variant bitmasks are bookended with '11'
+		
+		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
 				patientIndexMap.put(patientId, index);
-				if(idCube != null) {
-					builder.append("\t" + idCube.getValueForKey(idInt));
-				} else {
-					builder.append("\t" + patientId);
-				}
+				builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
 			}
 			index++;
+			
 			if(patientIndexMap.size() >= patientSubset.size()) {
 				break;
 			}
 		}
 		//End of headers
 		builder.append("\n");
-		log.debug("HEADER ROW\n" + builder.toString());
 		
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String column, String[] infoColumns)->{
@@ -205,15 +206,9 @@ public class VariantListProcessor extends AbstractProcessor {
 				//make strings of 000100 so we can just check 'char at'
 				String heteroMask = masks.heterozygousMask == null? null :masks.heterozygousMask.toString(2);
 				String homoMask = masks.homozygousMask == null? null :masks.homozygousMask.toString(2);
-				log.info("heteroMask size: " + (heteroMask == null ? 0 : heteroMask.length()));
-				log.info("homoMask   size: " + (homoMask == null ? 0 : homoMask.length()));
 
-				//not sure what these 'NoCall' masks are; just leaving this note and ignoring them (nc)
-//				log.info(masks.heterozygousNoCallMask);
-//				log.info(masks.homozygousNoCallMask);
-				
+				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
-				
 				int notPresent = 0;
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
@@ -225,17 +220,15 @@ public class VariantListProcessor extends AbstractProcessor {
 						notPresent++;
 					}
 				}
-				
+				//then dump out the data
 				builder.append("\t"+ (patientIndexMap.size() - notPresent) + "\t" + notPresent);
 				builder.append(patientListBuilder.toString());
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.error(e);
 			}
 			
 			builder.append("\n");
 		});
-		
-		log.info("OUTPUT:  \n" + builder.toString());
 		
 		return builder.toString();
 	}
