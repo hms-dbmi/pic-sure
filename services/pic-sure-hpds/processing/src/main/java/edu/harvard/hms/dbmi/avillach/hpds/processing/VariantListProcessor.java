@@ -109,14 +109,14 @@ public class VariantListProcessor extends AbstractProcessor {
 		log.info("Running VCF Extract query");
 		try {
 			initializeMetadataIndex();
-		} catch (ClassNotFoundException | IOException e1) {
+		} catch (IOException e1) {
 			log.error("could not initialize metadata index!", e1);
 		}
 		
 		ArrayList<String> variantList = getVariantList(query);
-		Map<String, String[]> metadata = metadataIndex.findByMultipleVariantSpec(variantList);
+		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
 		
-		if(metadata.isEmpty()) {
+		if(metadata == null || metadata.isEmpty()) {
 			return "No Variants Found\n"; //UI uses newlines to show result count
 		}
 		
@@ -235,18 +235,16 @@ public class VariantListProcessor extends AbstractProcessor {
 		return builder.toString();
 	}
 
-	private void initializeMetadataIndex() throws IOException, ClassNotFoundException{
+	private void initializeMetadataIndex() throws IOException{
 		if(metadataIndex == null) {
 			String metadataIndexPath = "/opt/local/hpds/all/VariantMetadata.javabin";
-			if(new File(metadataIndexPath).exists()) {
-				try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
-						new FileInputStream(metadataIndexPath)))){
-					metadataIndex = (VariantMetadataIndex) in.readObject();
-				}catch(Exception e) {
-					e.printStackTrace();
-				}
-				metadataIndex.initializeRead();			
-			} 
+			try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
+					new FileInputStream(metadataIndexPath)))){
+				metadataIndex = (VariantMetadataIndex) in.readObject();
+				metadataIndex.initializeRead();	
+			}catch(Exception e) {
+				throw new IOException("No Metadata Index found at " + metadataIndexPath);
+			}
 		}
 	}
 
