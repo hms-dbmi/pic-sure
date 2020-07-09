@@ -4,13 +4,13 @@ import java.io.Serializable;
 
 public class KeyAndValue<V extends Comparable<V>> implements Serializable, Comparable<KeyAndValue<?>> {
 
-	private static final long serialVersionUID = 6467549952930943858L;
-	
+	private static final long serialVersionUID = -3714097509955396941L;
+
 	int key;
 
 	V value;
 	
-	long timestamp;
+	Long timestamp;
 		
 	public KeyAndValue() {
 		
@@ -19,6 +19,14 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	public KeyAndValue(int key, V value) {
 		this.key = key;
 		this.value = value;
+		this.setTimestamp(Long.MIN_VALUE);
+	}
+
+
+	public KeyAndValue(int key, V value, Long timestamp) {
+		this.key = key;
+		this.value = value;
+		this.setTimestamp(timestamp);
 	}
 
 	public V getValue() {
@@ -42,5 +50,13 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	@Override
 	public int compareTo(KeyAndValue<?> o) {
 		return this.key - o.key;
+	}
+
+	public Long getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(Long timestamp) {
+		this.timestamp = timestamp;
 	}
 }

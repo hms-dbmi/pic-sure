@@ -123,5 +123,4 @@ public class CountProcessor extends AbstractProcessor {
 		}
 		return 0;
 	}
-
 }

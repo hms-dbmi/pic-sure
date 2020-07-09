@@ -14,8 +14,10 @@ import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -40,7 +42,7 @@ public class VariantListProcessor extends AbstractProcessor {
 	@Override
 	public void runQuery(Query query, AsyncResult asyncResult)
 			throws NotEnoughMemoryException {
-		throw new RuntimeException("Not yet implemented");
+		throw new RuntimeException("Not implemented");
 	}
 
 	/**

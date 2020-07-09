@@ -10,6 +10,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.NotSupportedException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -30,20 +31,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
-import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.domain.QueryFormat;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantsOfInterestProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.TimelineProcessor;
 
 @Path("PIC-SURE")
 @Produces("application/json")
@@ -52,7 +55,7 @@ public class PicSureService implements IResourceRS {
 	public PicSureService() {
 		try {
 			countProcessor = new CountProcessor();
-			variantListProcessor = new VariantListProcessor();
+			timelineProcessor = new TimelineProcessor();
 		} catch (ClassNotFoundException | IOException e3) {
 			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
@@ -68,10 +71,10 @@ public class PicSureService implements IResourceRS {
 
 	private Logger log = Logger.getLogger(PicSureService.class);
 
-	private VariantListProcessor variantListProcessor;
+	private TimelineProcessor timelineProcessor;
 	
 	private CountProcessor countProcessor;
-
+	
 	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest request) {
@@ -254,18 +257,6 @@ public class PicSureService implements IResourceRS {
 		return mapper.readValue(mapper.writeValueAsString(queryJson.getQuery()), Query.class);
 	}
 
-	private QueryStatus unknownResultTypeQueryStatus() {
-		QueryStatus status = new QueryStatus();
-		status.setDuration(0);
-		status.setExpiration(-1);
-		status.setPicsureResultId(null);
-		status.setResourceID(null);
-		status.setResourceResultId(null);
-		status.setResourceStatus("Unsupported result type");
-		status.setStatus(PicSureStatus.ERROR);
-		return status;
-	}
-
 	private QueryStatus convertToQueryStatus(AsyncResult entity) {
 		QueryStatus status = new QueryStatus();
 		status.setDuration(entity.completedTime==0?0:entity.completedTime - entity.queuedTime);
@@ -277,14 +268,6 @@ public class PicSureService implements IResourceRS {
 		}
 		status.setStartTime(entity.queuedTime);
 		status.setStatus(entity.status.toPicSureStatus());
-		return status;
-	}
-
-	private QueryStatus convertToQueryStatus(int count) {
-		QueryStatus status = new QueryStatus();
-		status.setResourceStatus("COMPLETE");
-		status.setResultMetadata((""+count).getBytes());
-		status.setStatus(PicSureStatus.AVAILABLE);
 		return status;
 	}
 
@@ -305,6 +288,17 @@ public class PicSureService implements IResourceRS {
 			QueryRequest request) {
 		return convertToQueryStatus(
 				queryService.getStatusFor(queryId));
+	}
+	
+	@POST
+	@Path("/query/format")
+	public Response queryFormat(QueryRequest resultRequest) {
+		try {
+			//The toString() method here has been overridden to produce a human readable value
+			return Response.ok().entity(convertIncomingQuery(resultRequest).toString()).build();
+		} catch (IOException e) {
+			return Response.ok().entity("An error occurred formatting the query for display: " + e.getLocalizedMessage()).build();
+		}
 	}
 
 	@POST
@@ -349,15 +343,19 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VARIANT_COUNT_FOR_QUERY : {
-					return Response.ok(countProcessor.runVariantCount(incomingQuery)).build();
+					throw new RuntimeException("Not yet implemented");
 				}
 				
 				case VARIANT_LIST_FOR_QUERY : {
-					return Response.ok(variantListProcessor.runVariantListQuery(incomingQuery)).build();
+					throw new RuntimeException("Not yet implemented");
 				}
 				
 				case VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery)).build();
+					throw new RuntimeException("Not yet implemented");
+				}
+				
+				case TIMELINE_DATA : {
+					return Response.ok(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery))).build();
 				}
 				
 				default : {

@@ -92,7 +92,7 @@ public class LoadingStore {
 				private <V extends Comparable<V>> void complete(PhenoCube<V> cube) {
 					ArrayList<KeyAndValue<V>> entryList = new ArrayList<KeyAndValue<V>>(
 							cube.getLoadingMap().stream().map((entry)->{
-								return new KeyAndValue<V>(entry.getKey(), entry.getValue());
+								return new KeyAndValue<V>(entry.getKey(), entry.getValue(), entry.getTimestamp());
 							}).collect(Collectors.toList()));
 
 					List<KeyAndValue<V>> sortedByKey = entryList.stream()

@@ -15,12 +15,14 @@ import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 
-import de.siegmar.fastcsv.writer.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
@@ -42,33 +44,38 @@ public class DumpSourceCSV {
 
 	private static final int TEXT_VALUE = 3;
 	
+	private static final int TIMESTAMP = 4;
+
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 		Object[] metadata = loadMetadata();
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
 		allIds = (TreeSet<Integer>) metadata[1];
 		store = initializeCache(); 
-		CsvWriter writer = new CsvWriter();
 		FileWriter fWriter = new FileWriter("/opt/local/hpds/allConcepts.csv");
-		writer.write(fWriter, ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE"}));
+		CSVPrinter writer = CSVFormat.DEFAULT.print(fWriter);
+		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE","TIMESTAMP"}));
 		metaStoreSource.keySet().forEach((String key)->{
 			try {
 				PhenoCube cube = store.get(key);
 				ArrayList<String[]> cubeLines = new ArrayList<>();
 				for(KeyAndValue kv : cube.sortedByKey()) {
-					String[] line = new String[4];
+					String[] line = new String[5];
 					line[PATIENT_NUM] = kv.getKey().toString();
 					line[CONCEPT_PATH] = key;
 					line[NUMERIC_VALUE] = cube.isStringType() ? "" : kv.getValue().toString();
 					line[TEXT_VALUE] = cube.isStringType() ? kv.getValue().toString() : "";
+					line[TIMESTAMP] = kv.getTimestamp() == null ? null : kv.getTimestamp().toString();
 					cubeLines.add(line);
 				}
-				writer.write(fWriter, cubeLines);
+				writer.printRecords(cubeLines);
 			}catch(ExecutionException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		});
+		writer.flush();
+		writer.close();
 	}
 	
 	static LoadingStore loadingStoreSource = new LoadingStore();
