@@ -90,14 +90,6 @@ public class PicsureRS {
 		return queryService.querySync(credentialsQueryRequest);
 	}
 	
-	@POST
-	@Path("/query/format")
-	@ApiOperation(value = "Returns a formatted string describing the given query")
-	public Response queryFormat(@ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
-										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
-		return queryService.queryFormat(credentialsQueryRequest);
-	}
-
 	@GET
 	@Path("/query/{queryId}/metadata")
 	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId){
