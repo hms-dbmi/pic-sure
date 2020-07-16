@@ -14,6 +14,37 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ResultSetTooLargeException;
 
+/**
+ * This class handles composing a segment of a data export file in memory. The goal here
+ * is to prevent memory errors during data export and maximize concurrency for processing
+ * concepts.
+ * 
+ * Each ResultStore instance allocates a byte[] called resultArray. The size of this array is:
+ * 
+ *  (maximum width of a row in the results) * (number of patients in the result segment)
+ *  
+ * The maximum width of a row in the result is the sum of the maximum widths in bytes of all
+ * columns. This width is stored when the data is loaded initially in the column meta for the
+ * concept.
+ * 
+ * If the size of the array exceeds the maximum size for an array(Integer.MAX_VALUE) then a
+ * {@link ResultSetTooLargeException} is thrown with a message that suggests the user select fewer fields.
+ * 
+ * If the size of the resultArray exceeds the available heap in the JVM a NotEnoughMemoryException
+ * is thrown. The only recourse here is to increase the amount of available heap or make the BATCH_SIZE 
+ * system property smaller. One way to increase the amount of available heap is to reduce the CACHE_SIZE
+ * system property, but that has to be balanced against the performance of non-export queries. Finding 
+ * the ideal settings for these properties is a trial and error process for each dataset and user-base.
+ * 
+ * The resultArray approach allows us to build the entire CSV segment concurrently for multiple concepts
+ * without any synchronization overhead. Each concept is written into a dedicated fixed-width region of 
+ * the resultArray. These regions do not overlap and a single thread is used for each concept, so there
+ * are never two threads writing to the same location at the same time.
+ * 
+ * The data is then read out of this fixed width structure into a String[] at the time it is written to
+ * a temp file for the result by the {@link ResultStoreStream} class.
+ *
+ */
 public class ResultStore {
 
 	private static Logger log = Logger.getLogger(ResultStore.class);
@@ -25,7 +56,14 @@ public class ResultStore {
 	private static final ColumnMeta PATIENT_ID_COLUMN_META = new ColumnMeta().setColumnOffset(0).setName("PatientId").setWidthInBytes(Integer.BYTES);
 	byte[] resultArray;
 	
-	public ResultStore(String resultId, String queryId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
+	/**
+	 * 
+	 * @param resultId The result id here is only used for logging
+	 * @param columns The ColumnMeta entries involed in the result, these are used to calculate rowWidth
+	 * @param ids The subject ids for in the current batch of the result
+	 * @throws NotEnoughMemoryException If the size of available heap cannot support a byte array of size (rowWidth x numRows)
+	 */
+	public ResultStore(String resultId, List<ColumnMeta> columns, TreeSet<Integer> ids) throws NotEnoughMemoryException {
 		this.columns = new ArrayList<ColumnMeta>();
 		this.numRows = ids.size();
 		this.getColumns().add(PATIENT_ID_COLUMN_META);
@@ -52,6 +90,7 @@ public class ResultStore {
 		}
 	}
 
+	
 	public void writeField(int column, int row, byte[] fieldValue) {
 		int offset = getFieldOffset(row,column);
 		try {
