@@ -7,7 +7,7 @@ import org.apache.commons.csv.CSVRecord;
 public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 
 	public class VariantCoords implements Serializable {
-		public Integer chromosome;
+		public String chromosome;
 		public Integer offset;
 		public String name;
 		public String ref;
@@ -22,7 +22,7 @@ public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 
 	public VariantSpec(CSVRecord r) {
 		this.metadata = new VariantCoords();
-		this.metadata.chromosome = Integer.parseInt(r.get(CHR));
+		this.metadata.chromosome = r.get(CHR);
 		this.metadata.offset = Integer.parseInt(r.get(OFF));
 		this.metadata.name = r.get(NAME);
 		this.metadata.ref = r.get(REF);
@@ -37,7 +37,7 @@ public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 	public VariantSpec(String variant) {
 		this.metadata = new VariantCoords();
 		String[] segments = variant.split(",");
-		this.metadata.chromosome = Integer.parseInt(segments[0]);
+		this.metadata.chromosome = segments[0];
 		this.metadata.offset = Integer.parseInt(segments[1]);
 		this.metadata.name = null;
 		this.metadata.ref = segments[2];
