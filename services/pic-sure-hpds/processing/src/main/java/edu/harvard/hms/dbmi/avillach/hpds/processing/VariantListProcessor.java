@@ -17,6 +17,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucke
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.math.BigInteger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
@@ -81,12 +82,44 @@ public class VariantListProcessor extends AbstractProcessor {
 				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
 			}
 			
+			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+			int index = 2; //variant bitmasks are bookended with '11'
+			StringBuilder builder = new StringBuilder("00");
+			for(String patientId : variantStore.getPatientIds()) {
+				Integer idInt = Integer.parseInt(patientId);
+				if(patientSubset.contains(idInt)){
+					builder.append("1");
+				} else {
+					builder.append("0");
+				}
+				index++;
+			}
+			builder.append("00"); // masks are bookended with '11' set this so we don't count those
 			
-			return new ArrayList<String>(unionOfInfoFilters);
-			}		
+			log.info("PATIENT MASK: " + builder.toString());
+			
+			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
+			ArrayList<String> variantsWithPatients = new ArrayList<String>();
+			
+			for(String variantKey : unionOfInfoFilters) {
+				VariantMasks masks;
+				try {
+					masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
+				} catch (IOException e) {
+					continue;
+				}
+				
+				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(0)) {
+					variantsWithPatients.add(variantKey);
+					
+				}else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
+					variantsWithPatients.add(variantKey);
+				}
+			}
+			
+			return variantsWithPatients;
+		}		
 		return new ArrayList<>();
-			
-		
 	}
 
 	/**
