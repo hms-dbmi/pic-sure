@@ -90,7 +90,12 @@ public class ResultStore {
 		}
 	}
 
-	
+	/**
+	 * Copies fieldValue into the resultArray of this instance using System.arraycopy
+	 * @param column
+	 * @param row
+	 * @param fieldValue
+	 */
 	public void writeField(int column, int row, byte[] fieldValue) {
 		int offset = getFieldOffset(row,column);
 		try {
@@ -101,33 +106,48 @@ public class ResultStore {
 		}
 	}
 
-	public int getFieldOffset(int row, int column) {
+	/**
+	 * Finds the resultArray offset of the passed in row and column
+	 * @param row
+	 * @param column
+	 * @return
+	 */
+	private int getFieldOffset(int row, int column) {
 		int rowOffset = row*rowWidth;
 		int columnOffset = getColumns().get(column).getColumnOffset();
 		return rowOffset + columnOffset;
 	}
 
 	ByteBuffer wrappedResultArray;
-	public void readRowIntoStringArray(int rowNumber, String[] row) throws IOException {
+	/**
+	 * Populate 
+	 * 
+	 * @param rowNumber
+	 * @param row
+	 * @throws IOException
+	 */
+	public void readRowIntoStringArray(int rowNumber, int[] columnWidths, String[] row) throws IOException {
 		if(wrappedResultArray == null) {
 			wrappedResultArray = ByteBuffer.wrap(resultArray);
 		}
 		row[0] = wrappedResultArray.getInt(getFieldOffset(rowNumber, 0)) + "";
-
-		byte[][] columnBuffers = new byte[getColumns().size()][];
-		for(int x = 0;x<getColumns().size();x++) {
-			columnBuffers[x] = new byte[getColumns().get(x).getWidthInBytes()];
-		}
-
-		stringifyRow(rowNumber, row, columnBuffers);
+		
+		stringifyRow(rowNumber, columnWidths, row);
 	}
 
-	private void stringifyRow(int rowNumber, String[] row, byte[][] columnBuffers) {
+	/**
+	 * Copy each field of a single row from the resultArray into a String[] to be written out to the CSV
+	 * 
+	 * @param rowNumber row number to copy
+	 * @param row String[] to populate with field values
+	 * @param columnBuffers a set of buffers corresponding to each column where each buffer is {@link ColumnMeta.widthInBytes} bytes
+	 */
+	private void stringifyRow(int rowNumber, int[] columnWidths, String[] row) {
 		for(int x = 1;x<row.length;x++) {
 			ColumnMeta columnMeta = getColumns().get(x);
 			int fieldOffset = getFieldOffset(rowNumber, x);
 			if(columnMeta.isCategorical()) {
-				stringifyString(row, columnBuffers, x, fieldOffset);
+				stringifyString(row, columnWidths, x, fieldOffset);
 			} else {
 				stringifyDouble(row, x, fieldOffset);
 			}
@@ -139,8 +159,8 @@ public class ResultStore {
 		row[x] = Double.valueOf(wrappedResultArray.getDouble(fieldOffset)).toString();
 	}
 
-	private void stringifyString(String[] row, byte[][] columnBuffers, int x, int fieldOffset) {
-		row[x] = new String(Arrays.copyOfRange(resultArray, fieldOffset, fieldOffset + columnBuffers[x].length)).trim();
+	private void stringifyString(String[] row, int[] columnWidths, int x, int fieldOffset) {
+		row[x] = new String(Arrays.copyOfRange(resultArray, fieldOffset, fieldOffset + columnWidths[x])).trim();
 	}
 
 	public int getNumRows() {
