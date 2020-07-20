@@ -199,9 +199,10 @@ public class ResourceWebClient {
             String pathName = "/query/format";
             String body = json.writeValueAsString(queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
-            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+            int status = resourcesResponse.getStatusLine().getStatusCode();
+            if (status != 200) {
+                logger.error("ResourceRS did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
+                return Response.status(status).entity(resourcesResponse.getEntity().getContent()).build();
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
