@@ -90,6 +90,7 @@
  .logo-img {
      max-height: 90px;
      max-width: 275px;
+     width: auto;
 }
  #pic-sure-instances {
      width: 100%;
