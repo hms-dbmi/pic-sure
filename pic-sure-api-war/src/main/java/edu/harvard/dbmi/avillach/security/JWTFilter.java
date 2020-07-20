@@ -1,17 +1,5 @@
 package edu.harvard.dbmi.avillach.security;
 
-<<<<<<< HEAD
-import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-=======
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,7 +22,6 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
->>>>>>> 258fa68dfac5d3d6bfca7f15ce3a8ce93d36a048
 
 import javax.annotation.Resource;
 import javax.inject.Inject;
@@ -46,33 +33,11 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.Provider;
-<<<<<<< HEAD
-=======
 
 import java.io.*;
 import java.util.*;
->>>>>>> 258fa68dfac5d3d6bfca7f15ce3a8ce93d36a048
 
-import org.apache.commons.io.IOUtils;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.util.EntityUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import edu.harvard.dbmi.avillach.PicSureWarInit;
-import edu.harvard.dbmi.avillach.data.entity.Query;
-import edu.harvard.dbmi.avillach.data.entity.User;
-import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import io.jsonwebtoken.JwtException;
+import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
