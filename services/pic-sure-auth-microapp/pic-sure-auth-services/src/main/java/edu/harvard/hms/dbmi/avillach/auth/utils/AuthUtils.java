@@ -23,7 +23,7 @@ import java.util.Map;
  */
 public class AuthUtils {
 
-	private static Logger logger = LoggerFactory.getLogger(AuthUtils.class);
+	private static java.util.logging.Logger logger = LoggerFactory.getLogger(AuthUtils.class);
 
 	@Inject
 	TOSService tosService;
@@ -105,9 +105,17 @@ public class AuthUtils {
 		responseMap.put("email", claims.get("email").toString());
 
 		logger.debug("getUserProfileResponse() acceptedTOS is set");
+		logger.info("debugging");
+		logger.info(tosService.toString());
+		
+		logger.info(tosService.getLatest());
+		
+		logger.info(claims.get("sub").toString());
 
 		boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ?
 				tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("sub").toString()) : true;
+		
+		logger.info("you made it!");
 
 		responseMap.put("acceptedTOS", ""+acceptedTOS);
 
