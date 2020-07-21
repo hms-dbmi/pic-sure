@@ -90,14 +90,17 @@ public class OauthUserMatchingService {
 				return null;
 			}
 			for (UserMetadataMapping umm : mappings) {
+				logger.info("Reading auth0 values for path " + umm.getAuth0MetadataJsonPath());
 				List<String> auth0values = JsonPath.using(conf).parse(parsedInfo).read(umm.getAuth0MetadataJsonPath());
 				if (auth0values == null || auth0values.isEmpty()) {
 					//Well, nothing found, let's move on.
 					logger.info("Fetched data has no value at " + umm.getAuth0MetadataJsonPath());
 					break;
 				}
+				logger.info("auth0values size=" + auth0values.size() + ". auth0values[0]=" + auth0values.get(0));
 				String auth0value = auth0values.get(0);
 				for (User u : users) {
+					logger.info("Reading auth0 values for path " + umm.getGeneralMetadataJsonPath());
 					List<String> values = JsonPath.using(conf).parse(u.getGeneralMetadata()).read(umm.getGeneralMetadataJsonPath());
 					if (values == null || values.isEmpty()) {
 						logger.info("User " + u.getUuid() + " has no value at " + umm.getGeneralMetadataJsonPath());
