@@ -111,7 +111,9 @@ public class AuthUtils {
 		logger.info(tosService.toString());
 		logger.info(tosService.getLatest());
 		logger.info(claims.get("sub").toString());
-		logger.info(tosService.hasUserAcceptedLatest(claims.get("sub").toString()));
+		if(tosService.hasUserAcceptedLatest(claims.get("sub").toString())) {
+			logger.info("has sub");
+		};
 
 		boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ?
 				tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("sub").toString()) : true;
