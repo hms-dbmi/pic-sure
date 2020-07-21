@@ -42,9 +42,9 @@ public class PicSureWarInit {
         CLOSEABLE_HTTP_CLIENT = HttpClients
                 .custom()
                 .setConnectionManager(HTTP_CLIENT_CONNECTION_MANAGER)
-                .setRoutePlanner(
-                        new SystemDefaultRoutePlanner(ProxySelector
-                                .getDefault()))
+//                .setRoutePlanner(
+//                        new SystemDefaultRoutePlanner(ProxySelector
+//                                .getDefault()))
                 .useSystemProperties()
                 .build();
     }
