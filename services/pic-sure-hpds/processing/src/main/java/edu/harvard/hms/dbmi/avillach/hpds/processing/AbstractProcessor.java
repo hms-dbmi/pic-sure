@@ -664,8 +664,9 @@ public abstract class AbstractProcessor {
 						}else {
 							store.get(cubes.get(x));
 							log.debug("loaded: " + cubes.get(x));
-							if(x % (conceptsToCache * .1)== 0) {
-								log.info("cached: " + x + " out of " + conceptsToCache);	
+							// +1 offset when logging to print _after_ each 10%
+							if((x + 1) % (conceptsToCache * .1)== 0) {
+								log.info("cached: " + (x + 1) + " out of " + conceptsToCache);	
 							}
 						}
 					} catch (ExecutionException e) {

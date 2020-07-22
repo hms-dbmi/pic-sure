@@ -4,6 +4,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.log4j.Logger;
@@ -200,7 +201,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
-			log.debug("variant info for " + variantSpec + " :: " + Arrays.toString(variantMetadata));
+//			log.info("variant info for " + variantSpec + " :: " + Arrays.toString(variantMetadata));
 			
 			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
@@ -212,25 +213,31 @@ public class VariantListProcessor extends AbstractProcessor {
 					builder.append(variantDataColumns[i]);
 				}
 			}
-			
+			Map<String,Set<String>> variantColumnMap = new HashMap<String, Set<String>>();
 			for(String infoColumns : variantMetadata) {
-				//there may be more than one data is in a single semi-colon delimited string.
+				//data is in a single semi-colon delimited string.
 				// e.g.,   key1=value1;key2=value2;....
+				
 				String[] metaDataColumns = infoColumns.split(";");
 				
-				Map<String,String> variantColumnMap = new HashMap<String, String>();
+				
 				for(String key : metaDataColumns) {
 					String[] keyValue = key.split("=");
-					if(keyValue.length == 2) {
-						String existingValue = variantColumnMap.get(keyValue[0]);
-						variantColumnMap.put(keyValue[0], existingValue != null ? existingValue + "," + keyValue[1] : keyValue[1]);
+					if(keyValue.length == 2 && keyValue[1] != null) {
+						Set<String> existingValues = variantColumnMap.get(keyValue[0]);
+						if(existingValues == null) {
+							existingValues = new HashSet<String>();
+							variantColumnMap.put(keyValue[0], existingValues); 
+						}
+						existingValues.add(keyValue[1]);
 					}
 				}
-				
-				//need to make sure columns are pushed out in the right order; use same iterator as headers
-				for(String key : infoStores.keySet()) {
-					builder.append("\t" + variantColumnMap.get(key));
-				}
+			}
+			
+			//need to make sure columns are pushed out in the right order; use same iterator as headers
+			for(String key : infoStores.keySet()) {
+				//collect our sets to a single entry
+				builder.append("\t" +  variantColumnMap.get(key).stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
 			}
 			
 			//Now put the patient zygosities in the right columns
