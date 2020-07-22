@@ -572,7 +572,7 @@ public abstract class AbstractProcessor {
 	//	}
 
 	public boolean pathIsVariantSpec(String key) {
-		return key.matches("rs[0-9]+.*") || key.matches("[0-9]+,[0-9\\.]+,.*");
+		return key.matches("rs[0-9]+.*") || key.matches(".*,[0-9\\\\.]+,[CATGcatg]*,[CATGcatg]*");
 	}
 
 	/**

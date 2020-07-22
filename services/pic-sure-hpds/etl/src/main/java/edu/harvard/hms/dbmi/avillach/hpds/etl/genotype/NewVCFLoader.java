@@ -9,17 +9,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
-import java.io.SequenceInputStream;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -37,7 +37,6 @@ import org.apache.log4j.Logger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 import htsjdk.samtools.util.BlockCompressedInputStream;
@@ -62,12 +61,13 @@ public class NewVCFLoader {
 
 	private static HashMap<String, char[][]> zygosityMaskStrings;
 
-	private static FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage = 
-			new FileBackedByteIndexedStorage[24];
+	private static TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage = 
+			new TreeMap<>();
 
 	private static long startTime;
 
 	private static List<VCFWalker> walkers = new ArrayList<>();
+	private static boolean contigIsHemizygous;
 
 	private static void loadVCFs(File indexFile) throws IOException {
 		startTime = System.currentTimeMillis();
@@ -98,10 +98,10 @@ public class NewVCFLoader {
 		VariantStore store = new VariantStore();
 		store.setPatientIds(allPatientIds.stream().map((id)->{return id.toString();}).collect(Collectors.toList()).toArray(new String[0]));
 
-		int lastChromosomeProcessed = 0;
+		String lastContigProcessed = null;
 		int lastChunkProcessed = 0;
 		int currentChunk = 0;
-		int[] currentChromosome = {-1};
+		String[] currentContig = new String[1];
 		int[] currentPosition = {-1};
 		String[] currentRef = new String[1];
 		String[] currentAlt = new String[1];
@@ -113,15 +113,18 @@ public class NewVCFLoader {
 			Collections.sort(walkers);
 			VCFWalker lowestWalker = walkers.get(0);
 			String currentSpecNotation = lowestWalker.currentSpecNotation();
-			currentChromosome[0] = lowestWalker.currentChromosome;
+			currentContig[0] = lowestWalker.currentContig;
 			currentPosition[0] = lowestWalker.currentPosition;
 			currentRef[0] = lowestWalker.currentRef;
 			currentAlt[0] = lowestWalker.currentAlt;
 			currentChunk = lowestWalker.currentPosition/CHUNK_SIZE;
 			positionsProcessedInChunk.add(currentPosition[0]);
 
-			flipChunk(lastChromosomeProcessed, lastChunkProcessed, currentChunk, currentChromosome, false);
-			lastChromosomeProcessed = lowestWalker.currentChromosome;
+			if(lastContigProcessed==null) {
+				lastContigProcessed = lowestWalker.currentContig;
+			}
+			flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], false, lowestWalker.currentLine);
+			lastContigProcessed = lowestWalker.currentContig;
 			lastChunkProcessed = currentChunk;
 
 			char[][][] maskStringsForVariantSpec = {zygosityMaskStrings.get(currentSpecNotation)};
@@ -139,7 +142,7 @@ public class NewVCFLoader {
 						walker.currentPosition == currentPosition[0] && 
 						walker.currentAlt == currentAlt[0] && 
 						walker.currentRef == currentRef[0] && 
-						walker.currentChromosome == currentChromosome[0];
+						walker.currentContig.contentEquals(currentContig[0]);
 			}).forEach((walker)->{
 				walker.updateRecords(maskStringsForVariantSpec[0], infoStoreMap);
 				try {
@@ -154,7 +157,7 @@ public class NewVCFLoader {
 				return walker.hasNext;
 			}).collect(Collectors.toList());
 		}
-		flipChunk(lastChromosomeProcessed, lastChunkProcessed, currentChunk, currentChromosome, true);
+		flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], true, null);
 
 		shutdownChunkWriteExecutor();
 
@@ -170,9 +173,9 @@ public class NewVCFLoader {
 			int[] count = {0};
 			Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
 			Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
-			for(int chromosome = 0;chromosome<store.variantMaskStorage.length;chromosome++) {
+			for(String contig : store.variantMaskStorage.keySet()) {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
-				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage[chromosome];
+				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage.get(contig);
 				if(chromosomeStorage!=null) {
 					chunkIds.addAll(chromosomeStorage.keys());
 					for(Integer chunkId : chunkIds){
@@ -246,13 +249,13 @@ public class NewVCFLoader {
 		return idList;
 	}
 
-	private static void flipChunk(int lastChromosomeProcessed, int lastChunkProcessed, int currentChunk,
-			int[] currentChromosome, boolean isLastChunk) throws IOException, FileNotFoundException {
-		if(currentChromosome[0] > lastChromosomeProcessed || isLastChunk) {
-			if(!infoStoreFlipped[lastChromosomeProcessed]) {
-				infoStoreFlipped[lastChromosomeProcessed] = true;
-				File infoFile = new File(storageDir, lastChromosomeProcessed + "_infoStores.javabin");
-				System.out.println(Thread.currentThread().getName() + " : " + "Flipping info : " + infoFile.getAbsolutePath() + " " + lastChromosomeProcessed + " ");
+	private static void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
+			String currentContig, boolean isLastChunk, String currentLine) throws IOException, FileNotFoundException {
+		if(!currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
+			if(infoStoreFlipped.get(lastContigProcessed)==null || !infoStoreFlipped.get(lastContigProcessed)) {
+				infoStoreFlipped.put(lastContigProcessed, true);
+				File infoFile = new File(storageDir, lastContigProcessed + "_infoStores.javabin");
+				System.out.println(Thread.currentThread().getName() + " : " + "Flipping info : " + infoFile.getAbsolutePath() + " " + lastContigProcessed + " ");
 				try (
 						FileOutputStream fos = new FileOutputStream(infoFile);
 						GZIPOutputStream gzos = new GZIPOutputStream(fos);
@@ -266,38 +269,45 @@ public class NewVCFLoader {
 				}
 				infoStoreMap = newInfoStores;
 			}
-			
+			if(currentLine!=null) {
+				String[] split = currentLine.split("\t");
+				if(split[8].length()>2) {
+					contigIsHemizygous = false;
+				}else {
+					contigIsHemizygous = true;
+				}
+			}
 		}
-		if(currentChromosome[0] > lastChromosomeProcessed || currentChunk > lastChunkProcessed || isLastChunk) {
+		if(!currentContig.contentEquals(lastContigProcessed) || currentChunk > lastChunkProcessed || isLastChunk) {
 			// flip chunk
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage_f = variantMaskStorage;
+			TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage_f = variantMaskStorage;
 			HashMap<String, char[][]> zygosityMaskStrings_f = zygosityMaskStrings;
-			int lastChromosomeProcessed_f = lastChromosomeProcessed;
+			String lastContigProcessed_f = lastContigProcessed;
 			int lastChunkProcessed_f = lastChunkProcessed;
 			chunkWriteEx.execute(()->{
 				try {
-					if(variantMaskStorage_f[lastChromosomeProcessed_f]==null) {
-						variantMaskStorage_f[lastChromosomeProcessed_f] = 
+					if(variantMaskStorage_f.get(lastContigProcessed_f)==null) {
+						variantMaskStorage_f.put(lastContigProcessed_f, 
 								new FileBackedByteIndexedStorage(Integer.class, ConcurrentHashMap.class, 
-										new File(storageDir, "chr" + lastChromosomeProcessed_f + "masks.bin"));							
+										new File(storageDir, "chr" + lastContigProcessed_f + "masks.bin")));							
 					}
-					variantMaskStorage_f[lastChromosomeProcessed_f].put(lastChunkProcessed_f, convertLoadingMapToMaskMap(zygosityMaskStrings_f));
+					variantMaskStorage_f.get(lastContigProcessed_f).put(lastChunkProcessed_f, convertLoadingMapToMaskMap(zygosityMaskStrings_f));
 				} catch (IOException e) {
 					logger.error(e);
 				}
 			});
 			if(lastChunkProcessed % 100 == 0) {
-				logger.info(System.currentTimeMillis() + " Done loading chunk : " + lastChunkProcessed + " for chromosome " + lastChromosomeProcessed);
+				logger.info(System.currentTimeMillis() + " Done loading chunk : " + lastChunkProcessed + " for chromosome " + lastContigProcessed);
 			}
 			zygosityMaskStrings = new HashMap<String/*variantSpec*/, char[][]/*string bitmasks*/>();
 		}
 	}
 
 	private static void saveVariantStore(VariantStore store,
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>[] variantMaskStorage)
+			TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage)
 					throws IOException, FileNotFoundException {
 		store.variantMaskStorage = variantMaskStorage;
-		for(FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage : variantMaskStorage) {
+		for(FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage : variantMaskStorage.values()) {
 			if(storage!=null)
 				storage.complete();
 		}
@@ -371,7 +381,7 @@ public class NewVCFLoader {
 		return maskMap;
 	}
 
-	static boolean[] infoStoreFlipped = new boolean[24];
+	static TreeMap<String,Boolean> infoStoreFlipped = new TreeMap<String,Boolean>();
 
 	private static class VCFWalker implements Comparable<VCFWalker>{
 
@@ -383,7 +393,8 @@ public class NewVCFLoader {
 		private BufferedReader vcfReader;
 		private VCFIndexLine vcfIndexLine;
 		boolean hasNext = true;
-		Integer currentChromosome, currentPosition;
+		String currentContig;
+		Integer currentPosition;
 		String currentRef, currentAlt;
 
 		public VCFWalker(VCFIndexLine vcfIndexLine) {
@@ -408,13 +419,27 @@ public class NewVCFLoader {
 		public void updateRecords(char[][] zygosityMaskStrings, ConcurrentHashMap<String, InfoStore> infoStores) {
 			int[] startOffsetForLine = {0};
 			int columnNumber = 0;
+			int formatStartIndex = 0;
 			for(startOffsetForLine[0] = 0;columnNumber<=8;startOffsetForLine[0]++) {
 				if(currentLine.charAt(startOffsetForLine[0])=='\t') {
 					columnNumber++;
+					if(columnNumber==8) {
+						formatStartIndex = startOffsetForLine[0];
+					}
 				}
 			}
+			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
+			int[] formatIsGTOnlyIndex = {0};
 			indices.parallelStream().forEach((index)->{
-				int startOffsetForSample = startOffsetForLine[0] + vcfOffsets[index];
+				int startOffsetForSample = 0;
+				if(formatIsGTOnly) {
+					startOffsetForSample = startOffsetForLine[0] + vcfOffsets[index];
+				}else {
+					while(currentLine.charAt(formatIsGTOnlyIndex[0]) != '\t') {
+						formatIsGTOnlyIndex[0]++;
+					}
+					startOffsetForSample = formatIsGTOnlyIndex[0] + 1;
+				}
 				int patientZygosityIndex = 
 						(
 								currentLine.charAt(startOffsetForSample  + 0) + 
@@ -492,16 +517,44 @@ public class NewVCFLoader {
 					end++;
 					start = end;
 				}
-				currentChromosome = Integer.parseInt(currentLineSplit[0]);
+				currentContig = currentLineSplit[0];
 				currentPosition = Integer.parseInt(currentLineSplit[1]);
 				currentRef = currentLineSplit[3];
 				currentAlt = currentLineSplit[4];
 			}
 		}
 
+		private static LinkedList<String> contigOrder = new LinkedList<String>();
+
 		@Override
 		public int compareTo(VCFWalker o) {
-			int chromosomeCompared = currentChromosome.compareTo(o.currentChromosome);
+			int chromosomeCompared;
+			if(currentContig.contentEquals(o.currentContig)) {
+				chromosomeCompared = 0;
+				if(!contigOrder.contains(currentContig)) {
+					contigOrder.add(currentContig);
+				}
+			}else {
+				Integer currentContigIndex = -1;
+				Integer oCurrentContigIndex = -1;
+				for(int x = 0;x<contigOrder.size();x++) {
+					if(currentContig.contentEquals(contigOrder.get(x))) {
+						currentContigIndex = x;
+					}
+					if(o.currentContig.contentEquals(contigOrder.get(x))) {
+						oCurrentContigIndex = x;
+					}
+				}
+				if(currentContigIndex == -1) {
+					contigOrder.add(currentContig);
+					currentContigIndex = contigOrder.size()-1;
+				}
+				if(oCurrentContigIndex == -1) {
+					contigOrder.add(o.currentContig);
+					oCurrentContigIndex = contigOrder.size()-1;
+				}
+				chromosomeCompared = currentContigIndex.compareTo(oCurrentContigIndex);
+			}
 			if(chromosomeCompared == 0) {
 				int positionCompared = currentPosition.compareTo(o.currentPosition);
 				if(positionCompared == 0) {
@@ -532,7 +585,7 @@ public class NewVCFLoader {
 
 	private static class VCFIndexLine implements Comparable<VCFIndexLine>{
 		String vcfPath;
-		Integer chromosome;
+		String contig;
 		boolean isAnnotated;
 		boolean isGzipped;
 		String[] sampleIds;
@@ -540,7 +593,7 @@ public class NewVCFLoader {
 
 		@Override
 		public int compareTo(VCFIndexLine o) {
-			int chomosomeComparison = chromosome.compareTo(o.chromosome);
+			int chomosomeComparison = o.contig==null ? 1 : contig==null ? 0 : contig.compareTo(o.contig);
 			if(chomosomeComparison==0) {
 				return vcfPath.compareTo(o.vcfPath);
 			}
@@ -559,8 +612,8 @@ public class NewVCFLoader {
 				if(horribleHeaderSkipFlag[0]) {
 					VCFIndexLine line = new VCFIndexLine();
 					line.vcfPath = r.get(FILE_COLUMN).trim();
-					line.chromosome = r.get(CHROMOSOME_COLUMN).trim().contentEquals("ALL") ? 
-							0 : Integer.parseInt(r.get(CHROMOSOME_COLUMN).trim());
+					line.contig = r.get(CHROMOSOME_COLUMN).trim().contentEquals("ALL") ? 
+							null : r.get(CHROMOSOME_COLUMN).trim();
 					line.isAnnotated = Integer.parseInt(r.get(ANNOTATED_FLAG_COLUMN).trim())==1;
 					line.isGzipped = Integer.parseInt(r.get(GZIP_FLAG_COLUMN).trim())==1;
 					line.sampleIds = Arrays.stream(r.get(SAMPLE_IDS_COLUMN).split(",")).map(String::trim).collect(Collectors.toList()).toArray(new String[0]);
