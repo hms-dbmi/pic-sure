@@ -108,11 +108,16 @@ public class VariantListProcessor extends AbstractProcessor {
 				
 				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(0)) {
 					variantsWithPatients.add(variantKey);
-					
-				}else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
+				} else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
 					variantsWithPatients.add(variantKey);
-				} else {
-					log.info("Dropping variant " + variantKey + " With no patients identified");
+				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(0)) {
+					//so heterozygous no calls we want, homozygous no calls we don't
+					variantsWithPatients.add(variantKey);
+//				} else{
+//					log.info("Dropping variant " + variantKey + " With no patients identified: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+//							+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+//							+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+//							+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
 				}
 			}
 			
@@ -245,9 +250,10 @@ public class VariantListProcessor extends AbstractProcessor {
 				VariantMasks masks = variantStore.getMasks(variantSpec, new VariantMaskBucketHolder());
 				
 				//make strings of 000100 so we can just check 'char at'
-				String heteroMask = masks.heterozygousMask == null? null :masks.heterozygousMask.toString(2);
-				String homoMask = masks.homozygousMask == null? null :masks.homozygousMask.toString(2);
-
+				//so heterozygous no calls we want, homozygous no calls we don't
+				String heteroMask = masks.heterozygousMask != null? masks.heterozygousMask.toString(2) : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask.toString(2) : null;
+				String homoMask = masks.homozygousMask != null? masks.homozygousMask.toString(2) : null;
+				
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
 				int patientCount = 0;
@@ -266,8 +272,18 @@ public class VariantListProcessor extends AbstractProcessor {
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 				
+				Integer patientsWithVariantsCount = null;
+				if(heteroMask != null) {
+					patientsWithVariantsCount = heteroMask.length() - 4;
+				} else if (homoMask != null ) {
+					patientsWithVariantsCount = homoMask.length() - 4;
+				} else {
+					patientsWithVariantsCount = -1;
+				}
+				
+				
 				// (patients with/total) in subset   \t   (patients with/total) out of subset.
-				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (allIds.size() - patientIndexMap.size()));
+				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (patientsWithVariantsCount - patientIndexMap.size()));
 				//then dump out the data
 				builder.append(patientListBuilder.toString());
 			} catch (IOException e) {
