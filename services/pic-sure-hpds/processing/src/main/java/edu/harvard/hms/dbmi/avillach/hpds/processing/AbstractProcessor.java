@@ -464,7 +464,6 @@ public abstract class AbstractProcessor {
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					log.info("Number of matching variant sets : " + variantSets.size());
 					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
 					log.info("Number of matching variants for all sets : " + stats);
 					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
@@ -486,18 +485,16 @@ public abstract class AbstractProcessor {
 				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
 				List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
 					
-					
-					// I think that the 'key' here is a compound string that has the variant meta data?
-					
+					// iterate over the values for the specific category and find which ones match the search
 					
 					int insertionIndex = Arrays.binarySearch(values, key);
 					return insertionIndex > -1 && insertionIndex < values.length;
 				}).collect(Collectors.toList());
+				log.info("found " + infoKeys.size() + " keys");
 				for(String key : infoKeys) {
 					try {
 						variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
 					} catch (IOException e) {
-						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
 				}

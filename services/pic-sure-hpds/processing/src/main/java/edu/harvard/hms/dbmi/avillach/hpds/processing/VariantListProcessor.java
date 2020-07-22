@@ -65,21 +65,17 @@ public class VariantListProcessor extends AbstractProcessor {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
-				Set<String> intersectionOfInfoFilters = null;
 
 				if(!variantSets.isEmpty()) {
+					Set<String> intersectionOfInfoFilters = variantSets.get(0);
 					for(Set<String> variantSet : variantSets) {
-						if(intersectionOfInfoFilters == null) {
-							intersectionOfInfoFilters = variantSet;
-						} else {
-							intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-						}
+//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
+						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
+					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
 				}else {
-					intersectionOfInfoFilters = new TreeSet<String>();
-					log.error("No info filters included in query.");
+					log.warn("No info filters included in query.");
 				}
-				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
 			}
 			
 			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
@@ -96,7 +92,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			}
 			builder.append("00"); // masks are bookended with '11' set this so we don't count those
 			
-			log.info("PATIENT MASK: " + builder.toString());
+//			log.info("PATIENT MASK: " + builder.toString());
 			
 			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 			ArrayList<String> variantsWithPatients = new ArrayList<String>();
@@ -114,6 +110,8 @@ public class VariantListProcessor extends AbstractProcessor {
 					
 				}else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
 					variantsWithPatients.add(variantKey);
+				} else {
+					log.info("Dropping variant " + variantKey + " With no patients identified");
 				}
 			}
 			
@@ -156,7 +154,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		PhenoCube<String> idCube = null;
 		if(!ID_CUBE_NAME.contentEquals("NONE")) {
 			try {
-				log.info("Looking up ID cube " + ID_CUBE_NAME);
+//				log.info("Looking up ID cube " + ID_CUBE_NAME);
 				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
 			} catch (ExecutionException |  InvalidCacheLoadException e) {
 				log.warn("Unable to identify ID_CUBE_NAME data, using patientId instead.  " + e.getLocalizedMessage());
@@ -177,7 +175,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		}
 		
 		//patient count columns
-		builder.append("\tPatients with this variant in subset\tPatients Without this variant in subset");
+		builder.append("\tPatients with this variant in subset\tPatients With this variant NOT in subset");
 		
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
@@ -201,10 +199,10 @@ public class VariantListProcessor extends AbstractProcessor {
 		builder.append("\n");
 		
 		//loop over the variants identified, and build an output row
-		metadata.forEach((String column, String[] infoColumns)->{
-			log.debug("variant info for " + column + " :: " + Arrays.toString(infoColumns));
+		metadata.forEach((String variantSpec, String[] variantMetadata)->{
+			log.debug("variant info for " + variantSpec + " :: " + Arrays.toString(variantMetadata));
 			
-			String[] variantDataColumns = column.split(",");
+			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
 			for(int i = 0; i < 4; i++) {
 				if(i > 0) {
@@ -215,16 +213,17 @@ public class VariantListProcessor extends AbstractProcessor {
 				}
 			}
 			
-			if(infoColumns.length > 0) {
-				//I'm not sure why infoColumns is an array; the data is in a single semi-colon delimited string.
+			for(String infoColumns : variantMetadata) {
+				//there may be more than one data is in a single semi-colon delimited string.
 				// e.g.,   key1=value1;key2=value2;....
-				String[] metaDataColumns = infoColumns[0].split(";");
+				String[] metaDataColumns = infoColumns.split(";");
 				
 				Map<String,String> variantColumnMap = new HashMap<String, String>();
 				for(String key : metaDataColumns) {
 					String[] keyValue = key.split("=");
 					if(keyValue.length == 2) {
-						variantColumnMap.put(keyValue[0], keyValue[1]);
+						String existingValue = variantColumnMap.get(keyValue[0]);
+						variantColumnMap.put(keyValue[0], existingValue != null ? existingValue + "," + keyValue[1] : keyValue[1]);
 					}
 				}
 				
@@ -236,7 +235,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			
 			//Now put the patient zygosities in the right columns
 			try {
-				VariantMasks masks = variantStore.getMasks(column, new VariantMaskBucketHolder());
+				VariantMasks masks = variantStore.getMasks(variantSpec, new VariantMaskBucketHolder());
 				
 				//make strings of 000100 so we can just check 'char at'
 				String heteroMask = masks.heterozygousMask == null? null :masks.heterozygousMask.toString(2);
@@ -244,19 +243,25 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
-				int notPresent = 0;
+				int patientCount = 0;
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
+						patientCount++;
 					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t1/1");
+						patientCount++;
 					}else {
 						patientListBuilder.append("\t0/0");
-						notPresent++;
 					}
 				}
+				
+				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
+				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
+				
+				// (patients with/total) in subset   \t   (patients with/total) out of subset.
+				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (allIds.size() - patientIndexMap.size()));
 				//then dump out the data
-				builder.append("\t"+ (patientIndexMap.size() - notPresent) + "\t" + notPresent);
 				builder.append(patientListBuilder.toString());
 			} catch (IOException e) {
 				log.error(e);

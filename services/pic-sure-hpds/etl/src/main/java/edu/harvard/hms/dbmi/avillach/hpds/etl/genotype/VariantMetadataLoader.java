@@ -9,9 +9,7 @@ import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
 import java.io.Reader;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -87,26 +85,26 @@ public class VariantMetadataLoader {
 		
 	}
 	 
-	public static void processVCFFile(VariantMetadataIndex vmi, File vcfFile, boolean gzipFlag) {  
+	public static void processVCFFile(VariantMetadataIndex metadataIndex, File vcfFile, boolean gzipFlag) {  
 		log.info("Processing VCF file:  "+vcfFile.getName());   
 		try(Reader reader = new InputStreamReader( 
-				gzipFlag ? new GZIPInputStream(new FileInputStream(vcfFile)) : new FileInputStream(vcfFile));
-				CSVParser parser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(false))){
+			gzipFlag ? new GZIPInputStream(new FileInputStream(vcfFile)) : new FileInputStream(vcfFile));
+			CSVParser parser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(false))){
 			Iterator<CSVRecord> iterator = parser.iterator();   
-			boolean isRowData = false;  
 			while(iterator.hasNext()) { 
 			    CSVRecord csvRecord = iterator.next(); 
-			    if(!isRowData) {
-			    	if(csvRecord.get(0).startsWith("#CHROM")) {  
-				    	csvRecord = iterator.next();
-				    	isRowData = true;
-				    }
+			    //skip all header rows
+		    	if(csvRecord.get(0).startsWith("#")) {  
+			    	continue;
 			    }
-			      
-			    if(isRowData) { 
-			    	VariantSpec variantSpec = new VariantSpec(csvRecord); 
-			    	vmi.put(variantSpec.specNotation(), List.of(csvRecord.get(INFO_COLUMN).trim()).stream().toArray(size -> new String[size]));
-			    } 
+			    
+		    	VariantSpec variantSpec = new VariantSpec(csvRecord); 
+		    	
+		    	List<String> existingRecords =  new ArrayList<String>();
+		    	Collections.addAll(existingRecords, metadataIndex.findBySingleVariantSpec(variantSpec.specNotation()));
+		    	existingRecords.add(csvRecord.get(INFO_COLUMN).trim());
+		    	
+		    	metadataIndex.put(variantSpec.specNotation(), existingRecords.toArray(new String[existingRecords.size()]));
 			} 			
 		}catch(IOException e) {
 			log.error("Error processing VCF file: "+vcfFile.getName(), e);
