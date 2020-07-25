@@ -457,6 +457,7 @@ public abstract class AbstractProcessor {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
+				log.info("Found " + variantSets.size() + " varients for patient identification");
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
@@ -534,9 +535,17 @@ public abstract class AbstractProcessor {
 				int variantsProcessed = 0;
 				VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 				while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
-					masks = variantStore.getMasks(variantIterator.next(), bucketCache);
+					String variantSpec = variantIterator.next();
+					masks = variantStore.getMasks(variantSpec, bucketCache);
 					variantsProcessed++;
 					if(masks != null) {
+						
+						log.info("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+								+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+								+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+								+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+						
+						
 						heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 						homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
 						BigInteger orMasks = heteroMask.or(homoMask);

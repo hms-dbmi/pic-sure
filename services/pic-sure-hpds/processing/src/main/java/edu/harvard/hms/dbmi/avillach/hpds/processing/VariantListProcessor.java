@@ -79,7 +79,12 @@ public class VariantListProcessor extends AbstractProcessor {
 				}
 			}
 			
+			log.info("Found " + variantStore.getPatientIds().length + " ids");
 			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+			
+			
+			//TODO: swithc these bookends to '1' and check == 4 instead of 0
 			int index = 2; //variant bitmasks are bookended with '11'
 			StringBuilder builder = new StringBuilder("00");
 			for(String patientId : variantStore.getPatientIds()) {
@@ -93,7 +98,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			}
 			builder.append("00"); // masks are bookended with '11' set this so we don't count those
 			
-//			log.info("PATIENT MASK: " + builder.toString());
+			log.info("PATIENT MASK: " + builder.toString());
 			
 			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 			ArrayList<String> variantsWithPatients = new ArrayList<String>();
@@ -113,11 +118,11 @@ public class VariantListProcessor extends AbstractProcessor {
 				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(0)) {
 					//so heterozygous no calls we want, homozygous no calls we don't
 					variantsWithPatients.add(variantKey);
-//				} else{
-//					log.info("Dropping variant " + variantKey + " With no patients identified: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-//							+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-//							+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-//							+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+				} else{
+					log.info("Dropping variant " + variantKey + " With no patients identified: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+							+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+							+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+							+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
 				}
 			}
 			
@@ -203,6 +208,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		}
 		//End of headers
 		builder.append("\n");
+		VariantMaskBucketHolder variantMaskBucketHolder = new VariantMaskBucketHolder();
 		
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
@@ -225,7 +231,6 @@ public class VariantListProcessor extends AbstractProcessor {
 				
 				String[] metaDataColumns = infoColumns.split(";");
 				
-				
 				for(String key : metaDataColumns) {
 					String[] keyValue = key.split("=");
 					if(keyValue.length == 2 && keyValue[1] != null) {
@@ -241,13 +246,18 @@ public class VariantListProcessor extends AbstractProcessor {
 			
 			//need to make sure columns are pushed out in the right order; use same iterator as headers
 			for(String key : infoStores.keySet()) {
+				Set<String> columnMeta = variantColumnMap.get(key);
+				if(columnMeta != null) {
 				//collect our sets to a single entry
-				builder.append("\t" +  variantColumnMap.get(key).stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
+				builder.append("\t" +  columnMeta.stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
+				} else {
+					builder.append("\tnull");
+				}
 			}
 			
 			//Now put the patient zygosities in the right columns
 			try {
-				VariantMasks masks = variantStore.getMasks(variantSpec, new VariantMaskBucketHolder());
+				VariantMasks masks = variantStore.getMasks(variantSpec, variantMaskBucketHolder);
 				
 				//make strings of 000100 so we can just check 'char at'
 				//so heterozygous no calls we want, homozygous no calls we don't
@@ -293,6 +303,11 @@ public class VariantListProcessor extends AbstractProcessor {
 			builder.append("\n");
 		});
 		
+		StringBuilder b2 = new StringBuilder();
+		for( String key : variantMaskBucketHolder.lastSetOfVariants.keySet()) {
+			b2.append(key + "\t");
+		}
+		log.info("Found variants " + b2.toString());
 		return builder.toString();
 	}
 

@@ -94,8 +94,12 @@ public class VariantStore implements Serializable{
 		if(segments.length<2) {
 			System.out.println("Less than 2 segments found in this variant : " + variant);
 		}
+		
 		int chrOffset = Integer.parseInt(segments[1])/ BUCKET_SIZE;
 		String contig = segments[0];
+		
+		System.out.println("Getting masks for variant " + variant + "  Test " + (bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
+		
 		if(bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
