@@ -432,7 +432,7 @@ public class NewVCFLoader {
 		
 			if(!formatIsGTOnly) {
 				int index = 0;
-				for(int currentLineOffset = startOffsetForLine[0]; currentLineOffset<currentLine.length(); currentLineOffset++) {
+				for(int currentLineOffset = startOffsetForLine[0]-1; currentLineOffset<currentLine.length(); currentLineOffset++) {
 					if(currentLine.charAt(currentLineOffset) == '\t'){
 						setMasksForSample(zygosityMaskStrings, index, currentLineOffset);
 						index++;
