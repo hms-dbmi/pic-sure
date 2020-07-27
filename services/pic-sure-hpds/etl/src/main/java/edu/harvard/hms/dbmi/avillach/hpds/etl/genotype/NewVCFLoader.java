@@ -429,28 +429,33 @@ public class NewVCFLoader {
 				}
 			}
 			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
-			int[] formatIsGTOnlyIndex = {0};
-			indices.parallelStream().forEach((index)->{
-				int startOffsetForSample = 0;
-				if(formatIsGTOnly) {
-					startOffsetForSample = startOffsetForLine[0] + vcfOffsets[index];
-				}else {
-					while(currentLine.charAt(formatIsGTOnlyIndex[0]) != '\t') {
-						formatIsGTOnlyIndex[0]++;
+		
+			if(!formatIsGTOnly) {
+				int index = 0;
+				for(int currentLineOffset = startOffsetForLine[0]; currentLineOffset<currentLine.length(); currentLineOffset++) {
+					if(currentLine.charAt(currentLineOffset) == '\t'){
+						setMasksForSample(zygosityMaskStrings, index, currentLineOffset);
+						index++;
 					}
-					startOffsetForSample = formatIsGTOnlyIndex[0] + 1;
 				}
-				int patientZygosityIndex = 
-						(
-								currentLine.charAt(startOffsetForSample  + 0) + 
-								currentLine.charAt(startOffsetForSample  + 1) + 
-								currentLine.charAt(startOffsetForSample  + 2)
-								) % 7;
-				zygosityMaskStrings[patientZygosityIndex][bitmaskOffsets[index]] = '1';
-			});
+			}else {
+				indices.parallelStream().forEach((index)->{
+					setMasksForSample(zygosityMaskStrings, index, startOffsetForLine[0] + vcfOffsets[index]);
+				});	
+			}
 			infoStores.values().parallelStream().forEach(infoStore->{
 				infoStore.processRecord(currentSpecNotation(), currentLineSplit[7].split("[;&]"));
 			});
+		}
+
+		private void setMasksForSample(char[][] zygosityMaskStrings, int index, int startOffsetForSample) {
+			int patientZygosityIndex = 
+					(
+							currentLine.charAt(startOffsetForSample  + 0) + 
+							currentLine.charAt(startOffsetForSample  + 1) + 
+							currentLine.charAt(startOffsetForSample  + 2)
+							) % 7;
+			zygosityMaskStrings[patientZygosityIndex][bitmaskOffsets[index]] = '1';
 		}
 
 		private String currentSpecNotation() {
