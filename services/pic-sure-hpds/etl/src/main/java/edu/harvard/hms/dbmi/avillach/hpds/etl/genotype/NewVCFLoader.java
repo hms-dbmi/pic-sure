@@ -237,18 +237,6 @@ public class NewVCFLoader {
 		return idList;
 	}
 
-	private static String patientIdsForMask(Integer[] patientIds, BigInteger heterozygousMask) {
-		String idList = "";
-		if(heterozygousMask!=null) {
-			for(int x = 2;x<heterozygousMask.bitLength()-2;x++) {
-				if(heterozygousMask.testBit(heterozygousMask.bitLength() - 1 - x)) {
-					idList+=patientIds[x-2]+",";
-				}
-			}
-		}
-		return idList;
-	}
-
 	private static void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
 			String currentContig, boolean isLastChunk, String currentLine) throws IOException, FileNotFoundException {
 		if(!currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
@@ -376,6 +364,14 @@ public class NewVCFLoader {
 			HashMap<String, char[][]> zygosityMaskStrings_f) {
 		ConcurrentHashMap<String, VariantMasks> maskMap = new ConcurrentHashMap<>();
 		zygosityMaskStrings_f.entrySet().parallelStream().forEach((entry)->{
+			
+			//debugging ALS-528
+			if(entry.getKey().contains("48377182")) {
+				
+				logger.debug("Found key " + entry.getKey() + " with data " + Arrays.deepToString(entry.getValue()));
+				
+			}
+			
 			maskMap.put(entry.getKey(), new VariantMasks(entry.getValue()));
 		});
 		return maskMap;
