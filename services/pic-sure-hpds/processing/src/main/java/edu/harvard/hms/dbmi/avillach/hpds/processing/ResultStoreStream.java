@@ -20,6 +20,7 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 
 import de.siegmar.fastcsv.writer.CsvWriter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 
 public class ResultStoreStream extends InputStream {
 
@@ -100,10 +101,17 @@ public class ResultStoreStream extends InputStream {
 
 	private List<String[]> writeResultsToTempFile(ResultStore results, FileWriter out, int batchSize,
 			List<String[]> entries) throws IOException {
+		
+		List<ColumnMeta> columns = results.getColumns();
+		int[] columnWidths = new int[columns.size()];
+		for(int x = 0;x<columns.size();x++) {
+			columnWidths[x] = columns.get(x).getWidthInBytes();
+		}
+
 		for(int x = 0;x<(results.getNumRows());x+=batchSize) {
 			int rowsInBatch = Math.min(batchSize, results.getNumRows() - x);
 			for(int y = 0;y<rowsInBatch;y++) {
-				results.readRowIntoStringArray(y+x, entries.get(y));
+				results.readRowIntoStringArray(y+x, columnWidths, entries.get(y));
 			}
 			if(rowsInBatch < batchSize) {
 				entries = entries.subList(0, rowsInBatch);
