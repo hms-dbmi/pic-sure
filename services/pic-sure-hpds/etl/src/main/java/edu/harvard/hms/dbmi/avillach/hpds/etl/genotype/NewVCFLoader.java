@@ -156,6 +156,7 @@ public class NewVCFLoader {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage.get(contig);
 				if(chromosomeStorage!=null) {
+					//print out the top and bottom 50 variants in the store (that have masks)
 					chunkIds.addAll(chromosomeStorage.keys());
 					for(Integer chunkId : chunkIds){
 						for(String variantSpec : chromosomeStorage.get(chunkId).keySet()){
@@ -345,10 +346,9 @@ public class NewVCFLoader {
 		zygosityMaskStrings_f.entrySet().parallelStream().forEach((entry)->{
 			
 			//debugging ALS-528
-//			if(entry.getKey().contains("48377182")) {
-//				
-//				logger.debug("Found key " + entry.getKey() + " with data " + Arrays.deepToString(entry.getValue()));
-//			}
+			if(entry.getKey().contains("48377182")) {
+				logger.debug("Found key " + entry.getKey() + " with data " + Arrays.deepToString(entry.getValue()));
+			}
 			
 			maskMap.put(entry.getKey(), new VariantMasks(entry.getValue()));
 		});
