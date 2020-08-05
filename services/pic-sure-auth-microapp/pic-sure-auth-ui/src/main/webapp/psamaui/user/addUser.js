@@ -1,5 +1,5 @@
-define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "picSure/picsureFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs"],
-		function(BB, HBS, connections, userFunctions, picsureFunctions, template, connectionTemplate){
+define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "picSure/picsureFunctions", "text!user/addUser.hbs", "text!user/addUserConnectionForm.hbs", "util/notification"],
+		function(BB, HBS, connections, userFunctions, picsureFunctions, template, connectionTemplate, notification){
 	var view = BB.View.extend({
 		initialize: function(opts){
 			this.connectionTemplate = HBS.compile(connectionTemplate);
@@ -22,7 +22,11 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
         	}
 		},
 		createUser: function(event){
-			
+			// cheeck to see if an email has been entered
+            if ($("input[name=email]").text().trim() == "") {
+                notification.showFailureMessage("Missing: You must enter a value for user's email");
+                return;
+            }
 			var metadata = {};
 			var roles = [];
 			_.each(this.$('input:checked'), function (checkbox) {
