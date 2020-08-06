@@ -74,7 +74,8 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			this.connections(function(connections){
 				var requiredFields = _.where(connections, {id: user.connection.id})[0].requiredFields;
 				$(".modal-body", this.$el).html(this.crudUserTemplate({createOrUpdateUser: true, user: user, availableRoles: this.model.get("availableRoles"), requiredFields: requiredFields}));
-				this.applyCheckboxes();				
+				this.applyCheckboxes();
+                $("input[name=email]").attr('disabled', true);
 			}.bind(this));
 		},
 		applyCheckboxes: function () {
