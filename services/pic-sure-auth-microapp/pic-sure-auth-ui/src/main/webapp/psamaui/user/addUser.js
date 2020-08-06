@@ -23,7 +23,7 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 		},
 		createUser: function(event){
 			// cheeck to see if an email has been entered
-            if ($("input[name=email]").text().trim() == "") {
+            if ($("input[name=email]").val().trim() == "") {
                 notification.showFailureMessage("Missing: You must enter a value for user's email");
                 return;
             }
@@ -52,7 +52,7 @@ define(["backbone", "handlebars", "user/connections", "picSure/userFunctions", "
 			);
 		},
 		renderConnectionForm: function(event){
-			this.connection = _.find(this.connections, {id:event.target.value});
+            this.connection = _.find(this.connections, {id:event.target.value});
 			userFunctions.getAvailableRoles(function (roles) {
 				$('#current-connection-form', this.$el).html(
 						this.connectionTemplate({
