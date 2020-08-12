@@ -408,13 +408,18 @@ public class NewVCFLoader {
 			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
 		
 			if(!formatIsGTOnly) {
+				//index is sample index in vcf
 				int index = 0;
 				try {
 					
 					int currentLineOffset = startOffsetForLine[0];
 					for(; currentLineOffset<currentLine.length(); currentLineOffset++) {
 						if(currentLine.charAt(currentLineOffset - 1) == '\t'){
+							
 							if(vcfIndexLookup.containsKey(index)) {
+//								int patientNum = vcfIndexLine.patientIds[vcfIndexLookup.get(index)];
+//								int x = Arrays.binarySearch(vcfIndexLine.patientIds, patientNum);
+								
 								setMasksForSample(zygosityMaskStrings, vcfIndexLookup.get(index), currentLineOffset);
 							}
 							index++;
@@ -479,17 +484,27 @@ public class NewVCFLoader {
 
 			// Set vcf offsets by sampleIds
 			for(int x = 0;x < vcfIndexLine.sampleIds.length;x++) {
+				//y is index into vcf samples
+				
+				//x is index into patient IDs
 				int y;
 				for(y = 0;y < vcfHeaderSamples.length && ! vcfHeaderSamples[y].contentEquals(vcfIndexLine.sampleIds[x]);y++);
 				vcfOffsets[x] = y * 4;
+//				vcfIndexLooukupArr[x] = y;
+				vcfIndexLookup.put(y, x);
 			}
+			
+			//add not GT only logic
+			
+			
 			nextLine();
 		}
 
 		public void setBitmaskOffsets(Integer[] allPatientIdsSorted) {
 			for(int x = 0; x<vcfIndexLine.patientIds.length; x++) {
 				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
-				vcfIndexLookup.put(vcfIndexLine.patientIds[x], x);
+				
+				logger.info("Index " + x + " offset " + bitmaskOffsets[x] + " mapped by ID " + vcfIndexLine.patientIds[x]);
 			}
 		}
 

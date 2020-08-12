@@ -267,6 +267,8 @@ public class VariantListProcessor extends AbstractProcessor {
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
 				int patientCount = 0;
+				
+				//this bit is kinda broken.   should be maybe +/- 2 or maybe endian flipped??? MAYBE
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
