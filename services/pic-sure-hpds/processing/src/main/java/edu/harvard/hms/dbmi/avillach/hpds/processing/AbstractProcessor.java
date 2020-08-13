@@ -479,19 +479,26 @@ public abstract class AbstractProcessor {
 					return insertionIndex > -1 && insertionIndex < values.length;
 				}).collect(Collectors.toList());
 				log.info("found " + infoKeys.size() + " keys");
-				for(String key : infoKeys) {
+				/*
+				 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
+				 *   that part of the processing and synchronizing only the adds to the variantSets list.
+				 */
+				infoKeys.parallelStream().forEach((key)->{
+					TreeSet<String> valuesForKey;
 					try {
-						variantSets.add(new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key))));
+						valuesForKey = new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key)));
+						synchronized(variantSets) {
+							variantSets.add(valuesForKey);
+						}
 					} catch (IOException e) {
-						e.printStackTrace();
+						log.error(e);
 					}
-				}
+				});
 			});
 		}
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
 			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
 				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-				String s = infoStore.description;
 				
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
@@ -518,17 +525,16 @@ public abstract class AbstractProcessor {
 				BigInteger heteroMask = variantStore.emptyBitmask();
 				BigInteger homoMask = variantStore.emptyBitmask();
 				BigInteger matchingPatients = variantStore.emptyBitmask();
-				Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
+
 				int variantsProcessed = 0;
 				VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
-				int numberOfVariants = intersectionOfInfoFilters.size();
-				while(variantsProcessed++ < numberOfVariants && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
-					String variantSpec = variantIterator.next();
-					masks = variantStore.getMasks(variantSpec, bucketCache);
+				String[] variantsInScope = intersectionOfInfoFilters.toArray(new String[intersectionOfInfoFilters.size()]);
+				while(variantsProcessed < variantsInScope.length && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
+					masks = variantStore.getMasks(variantsInScope[variantsProcessed], bucketCache);
 					if(masks != null) {
 						// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
 						if(Level.DEBUG.equals(log.getEffectiveLevel())) {
-							log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+							log.debug("checking variant " + variantsInScope[variantsProcessed] + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
 									+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
 									+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
 									+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
@@ -537,7 +543,8 @@ public abstract class AbstractProcessor {
 						heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 						homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
 						BigInteger orMasks = heteroMask.or(homoMask);
-						matchingPatients = matchingPatients.or(orMasks);								
+						matchingPatients = matchingPatients.or(orMasks);
+						variantsProcessed++;
 					}
 				}
 				Set<Integer> ids = new TreeSet<Integer>();
