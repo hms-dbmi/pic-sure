@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -15,12 +14,16 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+
 import com.google.common.collect.RangeSet;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class VariantStore implements Serializable{
+	private static Logger log = Logger.getLogger(VariantStore.class);
 	public static final int BUCKET_SIZE = 1000;
 	private static final long serialVersionUID = -6970128712587609414L;
 	public BigInteger emptyBitmask;
@@ -92,13 +95,15 @@ public class VariantStore implements Serializable{
 	public VariantMasks getMasks(String variant, VariantMaskBucketHolder bucketCache) throws IOException {
 		String[] segments = variant.split(",");
 		if(segments.length<2) {
-			System.out.println("Less than 2 segments found in this variant : " + variant);
+			log.error("Less than 2 segments found in this variant : " + variant);
 		}
 		
 		int chrOffset = Integer.parseInt(segments[1])/ BUCKET_SIZE;
 		String contig = segments[0];
 		
-		System.out.println("Getting masks for variant " + variant + "  Test " + (bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
+		if(Level.DEBUG.equals(log.getEffectiveLevel())) {
+			log.debug("Getting masks for variant " + variant + "  Test " + (bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
+		}
 		
 		if(bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
