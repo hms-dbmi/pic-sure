@@ -118,11 +118,6 @@ public class VariantListProcessor extends AbstractProcessor {
 				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(0)) {
 					//so heterozygous no calls we want, homozygous no calls we don't
 					variantsWithPatients.add(variantKey);
-				} else{
-					log.info("Dropping variant " + variantKey + " With no patients identified: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-							+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-							+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-							+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
 				}
 			}
 			
