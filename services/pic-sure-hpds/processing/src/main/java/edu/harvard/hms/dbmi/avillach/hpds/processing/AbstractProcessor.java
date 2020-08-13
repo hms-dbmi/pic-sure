@@ -181,9 +181,9 @@ public abstract class AbstractProcessor {
 
 		addIdSetsForNumericFilters(query, filteredIdSets);
 
-		addIdSetsForVariantInfoFilters(query, filteredIdSets);
-
 		addIdSetsForCategoryFilters(query, filteredIdSets);
+
+		addIdSetsForVariantInfoFilters(query, filteredIdSets);
 
 		return filteredIdSets;
 	}
@@ -299,10 +299,9 @@ public abstract class AbstractProcessor {
 				// TODO : This is much less efficient than using bitmask.testBit(x)
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
-						// Minor hack here to deal with Baylor not sticking to one file naming convention
-						String patientId = variantStore.getPatientIds()[x-2].split("_")[0].trim();
+						String patientId = variantStore.getPatientIds()[x-2];
 						try{
-							ids.add(idCube == null ? Integer.parseInt(patientId) : idCube.getKeysForValue(patientId).iterator().next());
+							ids.add(Integer.parseInt(patientId));
 						}catch(NullPointerException | NoSuchElementException e) {
 							log.error(ID_CUBE_NAME + " has no value for patientId : " + patientId);
 						}
