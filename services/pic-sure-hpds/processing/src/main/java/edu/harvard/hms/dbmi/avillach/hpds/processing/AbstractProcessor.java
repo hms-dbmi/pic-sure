@@ -9,6 +9,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
+import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.ChiSquareTest;
 //import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.log4j.Logger;
@@ -520,17 +521,18 @@ public abstract class AbstractProcessor {
 				Iterator<String> variantIterator = intersectionOfInfoFilters.iterator();
 				int variantsProcessed = 0;
 				VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
-				while(variantIterator.hasNext() && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
+				int numberOfVariants = intersectionOfInfoFilters.size();
+				while(variantsProcessed++ < numberOfVariants && (variantsProcessed%1000!=0 || matchingPatients.bitCount() < matchingPatients.bitLength())) {
 					String variantSpec = variantIterator.next();
 					masks = variantStore.getMasks(variantSpec, bucketCache);
-					variantsProcessed++;
 					if(masks != null) {
-						
-						log.info("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-								+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-								+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-								+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
-						
+						// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
+						if(Level.DEBUG.equals(log.getEffectiveLevel())) {
+							log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+									+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+									+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+									+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+						}
 						
 						heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 						homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
