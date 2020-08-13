@@ -118,11 +118,6 @@ public class VariantListProcessor extends AbstractProcessor {
 				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(0)) {
 					//so heterozygous no calls we want, homozygous no calls we don't
 					variantsWithPatients.add(variantKey);
-				} else{
-					log.info("Dropping variant " + variantKey + " With no patients identified: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-							+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-							+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-							+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
 				}
 			}
 			
@@ -212,7 +207,6 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
-//			log.info("variant info for " + variantSpec + " :: " + Arrays.toString(variantMetadata));
 			
 			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
@@ -268,7 +262,6 @@ public class VariantListProcessor extends AbstractProcessor {
 				StringBuilder patientListBuilder = new StringBuilder();
 				int patientCount = 0;
 				
-				//this bit is kinda broken.   should be maybe +/- 2 or maybe endian flipped??? MAYBE
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
