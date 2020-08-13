@@ -344,12 +344,6 @@ public class NewVCFLoader {
 			HashMap<String, char[][]> zygosityMaskStrings_f) {
 		ConcurrentHashMap<String, VariantMasks> maskMap = new ConcurrentHashMap<>();
 		zygosityMaskStrings_f.entrySet().parallelStream().forEach((entry)->{
-			
-			//debugging ALS-528
-			if(entry.getKey().contains("48377182")) {
-				logger.debug("Found key " + entry.getKey() + " with data " + Arrays.deepToString(entry.getValue()));
-			}
-			
 			maskMap.put(entry.getKey(), new VariantMasks(entry.getValue()));
 		});
 		return maskMap;
@@ -415,17 +409,12 @@ public class NewVCFLoader {
 					int currentLineOffset = startOffsetForLine[0];
 					for(; currentLineOffset<currentLine.length(); currentLineOffset++) {
 						if(currentLine.charAt(currentLineOffset - 1) == '\t'){
-							
 							if(vcfIndexLookup.containsKey(index)) {
-//								int patientNum = vcfIndexLine.patientIds[vcfIndexLookup.get(index)];
-//								int x = Arrays.binarySearch(vcfIndexLine.patientIds, patientNum);
-								
 								setMasksForSample(zygosityMaskStrings, vcfIndexLookup.get(index), currentLineOffset);
 							}
 							index++;
 						}
 					} 
-//					logger.info(currentLine.substring(0, 10) +  " Stopped reading at " + currentLineOffset + " out of " + currentLine.length() + " and found " + patientsFound + " patients");
 					
 				} catch ( IndexOutOfBoundsException e) {
 					logger.warn("INDEX out of bounds " + currentLine.substring(0, Math.min(50, currentLine.length())), e);
@@ -490,7 +479,6 @@ public class NewVCFLoader {
 				int y;
 				for(y = 0;y < vcfHeaderSamples.length && ! vcfHeaderSamples[y].contentEquals(vcfIndexLine.sampleIds[x]);y++);
 				vcfOffsets[x] = y * 4;
-//				vcfIndexLooukupArr[x] = y;
 				vcfIndexLookup.put(y, x);
 			}
 			
@@ -503,8 +491,6 @@ public class NewVCFLoader {
 		public void setBitmaskOffsets(Integer[] allPatientIdsSorted) {
 			for(int x = 0; x<vcfIndexLine.patientIds.length; x++) {
 				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
-				
-				logger.info("Index " + x + " offset " + bitmaskOffsets[x] + " mapped by ID " + vcfIndexLine.patientIds[x]);
 			}
 		}
 

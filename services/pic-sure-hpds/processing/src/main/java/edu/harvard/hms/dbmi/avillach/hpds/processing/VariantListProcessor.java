@@ -212,7 +212,6 @@ public class VariantListProcessor extends AbstractProcessor {
 		
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
-//			log.info("variant info for " + variantSpec + " :: " + Arrays.toString(variantMetadata));
 			
 			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
@@ -268,7 +267,6 @@ public class VariantListProcessor extends AbstractProcessor {
 				StringBuilder patientListBuilder = new StringBuilder();
 				int patientCount = 0;
 				
-				//this bit is kinda broken.   should be maybe +/- 2 or maybe endian flipped??? MAYBE
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
