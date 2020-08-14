@@ -61,7 +61,12 @@ public class VariantListProcessor extends AbstractProcessor {
 	}
 	
 	private ArrayList<String> getVariantList(Query query){
-		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
+		if(query.variantInfoFilters != null && 
+				(!query.variantInfoFilters.isEmpty() && 
+						query.variantInfoFilters.stream().anyMatch((entry)->{
+							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
+									|| (!entry.numericVariantInfoFilters.isEmpty()));
+						}))) {
 			Set<String> unionOfInfoFilters = new TreeSet<>();
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
