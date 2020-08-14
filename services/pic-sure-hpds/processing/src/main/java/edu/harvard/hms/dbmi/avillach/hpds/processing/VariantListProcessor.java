@@ -14,6 +14,7 @@ import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import java.io.FileNotFoundException;
@@ -27,13 +28,13 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 public class VariantListProcessor extends AbstractProcessor {
 
 	private VariantMetadataIndex metadataIndex = null;
-	
+
 	private static Logger log = Logger.getLogger(VariantListProcessor.class);
-	
+
 	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
 	}
-	
+
 	public VariantListProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
 		super(true);
 		if(!isOnlyForTests) {
@@ -59,7 +60,7 @@ public class VariantListProcessor extends AbstractProcessor {
 	public String runVariantListQuery(Query query) {
 		return  Arrays.toString( getVariantList(query).toArray());
 	}
-	
+
 	private ArrayList<String> getVariantList(Query query){
 		if(query.variantInfoFilters != null && 
 				(!query.variantInfoFilters.isEmpty() && 
@@ -75,7 +76,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				if(!variantSets.isEmpty()) {
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
 					for(Set<String> variantSet : variantSets) {
-//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
+						//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
@@ -83,12 +84,12 @@ public class VariantListProcessor extends AbstractProcessor {
 					log.warn("No info filters included in query.");
 				}
 			}
-			
+
 			log.info("Found " + variantStore.getPatientIds().length + " ids");
 			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
-			
-			
+
+
 			//TODO: swithc these bookends to '1' and check == 4 instead of 0
 			int index = 2; //variant bitmasks are bookended with '11'
 			StringBuilder builder = new StringBuilder("00");
@@ -102,12 +103,12 @@ public class VariantListProcessor extends AbstractProcessor {
 				index++;
 			}
 			builder.append("00"); // masks are bookended with '11' set this so we don't count those
-			
+
 			log.info("PATIENT MASK: " + builder.toString());
-			
+
 			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 			ArrayList<String> variantsWithPatients = new ArrayList<String>();
-			
+
 			for(String variantKey : unionOfInfoFilters) {
 				VariantMasks masks;
 				try {
@@ -115,7 +116,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				} catch (IOException e) {
 					continue;
 				}
-				
+
 				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(0)) {
 					variantsWithPatients.add(variantKey);
 				} else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
@@ -125,7 +126,7 @@ public class VariantListProcessor extends AbstractProcessor {
 					variantsWithPatients.add(variantKey);
 				}
 			}
-			
+
 			return variantsWithPatients;
 		}		
 		return new ArrayList<>();
@@ -147,53 +148,60 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 */
 	public String runVcfExcerptQuery(Query query) {
-		
+
 		log.info("Running VCF Extract query");
 		try {
 			initializeMetadataIndex();
 		} catch (IOException e1) {
 			log.error("could not initialize metadata index!", e1);
 		}
-		
+
 		ArrayList<String> variantList = getVariantList(query);
 		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
-		
+
+		// Sort the variantSpecs so that the user doesn't lose their mind
+		TreeMap<String, String[]> metadataSorted = new TreeMap<>((o1, o2) -> {
+			return new VariantSpec(o1).compareTo(new VariantSpec(o2));
+		});
+		metadataSorted.putAll(metadata);
+		metadata = metadataSorted;
+
 		if(metadata == null || metadata.isEmpty()) {
 			return "No Variants Found\n"; //UI uses newlines to show result count
 		}
-		
+
 		PhenoCube<String> idCube = null;
 		if(!ID_CUBE_NAME.contentEquals("NONE")) {
 			try {
-//				log.info("Looking up ID cube " + ID_CUBE_NAME);
+				//				log.info("Looking up ID cube " + ID_CUBE_NAME);
 				idCube = (PhenoCube<String>) store.get(ID_CUBE_NAME);
 			} catch (ExecutionException |  InvalidCacheLoadException e) {
 				log.warn("Unable to identify ID_CUBE_NAME data, using patientId instead.  " + e.getLocalizedMessage());
 			}
 		}
-		
+
 		//
 		//Build the header row
 		//
 		StringBuilder builder = new StringBuilder();
-		
+
 		//5 columns for gene info
 		builder.append("CHROM\tPOSITION\tREF\tALT");
-		
+
 		//now add the variant metadata column headers
 		for(String key : infoStores.keySet()) {
 			builder.append("\t" + key);
 		}
-		
+
 		//patient count columns
 		builder.append("\tPatients with this variant in subset\tPatients With this variant NOT in subset");
-		
+
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
 		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
 		int index = 2; //variant bitmasks are bookended with '11'
-		
+
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
@@ -201,7 +209,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
 			}
 			index++;
-			
+
 			if(patientIndexMap.size() >= patientSubset.size()) {
 				break;
 			}
@@ -209,10 +217,10 @@ public class VariantListProcessor extends AbstractProcessor {
 		//End of headers
 		builder.append("\n");
 		VariantMaskBucketHolder variantMaskBucketHolder = new VariantMaskBucketHolder();
-		
+
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
-			
+
 			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
 			for(int i = 0; i < 4; i++) {
@@ -227,9 +235,9 @@ public class VariantListProcessor extends AbstractProcessor {
 			for(String infoColumns : variantMetadata) {
 				//data is in a single semi-colon delimited string.
 				// e.g.,   key1=value1;key2=value2;....
-				
+
 				String[] metaDataColumns = infoColumns.split(";");
-				
+
 				for(String key : metaDataColumns) {
 					String[] keyValue = key.split("=");
 					if(keyValue.length == 2 && keyValue[1] != null) {
@@ -242,31 +250,31 @@ public class VariantListProcessor extends AbstractProcessor {
 					}
 				}
 			}
-			
+
 			//need to make sure columns are pushed out in the right order; use same iterator as headers
 			for(String key : infoStores.keySet()) {
 				Set<String> columnMeta = variantColumnMap.get(key);
 				if(columnMeta != null) {
-				//collect our sets to a single entry
-				builder.append("\t" +  columnMeta.stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
+					//collect our sets to a single entry
+					builder.append("\t" +  columnMeta.stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
 				} else {
 					builder.append("\tnull");
 				}
 			}
-			
+
 			//Now put the patient zygosities in the right columns
 			try {
 				VariantMasks masks = variantStore.getMasks(variantSpec, variantMaskBucketHolder);
-				
+
 				//make strings of 000100 so we can just check 'char at'
 				//so heterozygous no calls we want, homozygous no calls we don't
 				String heteroMask = masks.heterozygousMask != null? masks.heterozygousMask.toString(2) : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask.toString(2) : null;
 				String homoMask = masks.homozygousMask != null? masks.homozygousMask.toString(2) : null;
-				
+
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
 				int patientCount = 0;
-				
+
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
@@ -278,10 +286,10 @@ public class VariantListProcessor extends AbstractProcessor {
 						patientListBuilder.append("\t0/0");
 					}
 				}
-				
+
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
-				
+
 				Integer patientsWithVariantsCount = null;
 				if(heteroMask != null) {
 					patientsWithVariantsCount = heteroMask.length() - 4;
@@ -290,8 +298,8 @@ public class VariantListProcessor extends AbstractProcessor {
 				} else {
 					patientsWithVariantsCount = -1;
 				}
-				
-				
+
+
 				// (patients with/total) in subset   \t   (patients with/total) out of subset.
 				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (patientsWithVariantsCount - patientIndexMap.size()));
 				//then dump out the data
@@ -299,10 +307,10 @@ public class VariantListProcessor extends AbstractProcessor {
 			} catch (IOException e) {
 				log.error(e);
 			}
-			
+
 			builder.append("\n");
 		});
-		
+
 		StringBuilder b2 = new StringBuilder();
 		for( String key : variantMaskBucketHolder.lastSetOfVariants.keySet()) {
 			b2.append(key + "\t");
