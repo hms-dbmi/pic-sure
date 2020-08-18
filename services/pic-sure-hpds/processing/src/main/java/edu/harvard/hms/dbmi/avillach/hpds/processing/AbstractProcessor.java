@@ -575,7 +575,7 @@ public abstract class AbstractProcessor {
 
 	ObjectMapper mapper = new ObjectMapper();
 	LoadingCache<String, ArrayList<String>> variantListCache = CacheBuilder.newBuilder()
-			.maximumSize(10000000).weigher(new Weigher<String, ArrayList<String>>(){
+			.maximumWeight(10000000).weigher(new Weigher<String, ArrayList<String>>(){
 				@Override
 				public int weigh(String key, ArrayList<String> value) {
 					try {
