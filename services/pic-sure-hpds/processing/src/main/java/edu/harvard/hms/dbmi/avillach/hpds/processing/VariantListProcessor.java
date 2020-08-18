@@ -61,76 +61,18 @@ public class VariantListProcessor extends AbstractProcessor {
 	public String runVariantListQuery(Query query) {
 		return  Arrays.toString( getVariantList(query).toArray());
 	}
-
-	private ArrayList<String> getVariantList(Query query){
-		if(query.variantInfoFilters != null && 
-				(!query.variantInfoFilters.isEmpty() && 
-						query.variantInfoFilters.stream().anyMatch((entry)->{
-							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
-									|| (!entry.numericVariantInfoFilters.isEmpty()));
-						}))) {
-			Set<String> unionOfInfoFilters = new TreeSet<>();
-			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				addVariantsMatchingFilters(filter, variantSets);
-
-				if(!variantSets.isEmpty()) {
-					Set<String> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<String> variantSet : variantSets) {
-						//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
-						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-					}
-					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
-				}else {
-					log.warn("No info filters included in query.");
-				}
-			}
-
-			log.info("Found " + variantStore.getPatientIds().length + " ids");
-			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
-			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
-
-
-			//TODO: swithc these bookends to '1' and check == 4 instead of 0
-			int index = 2; //variant bitmasks are bookended with '11'
-			StringBuilder builder = new StringBuilder("00");
-			for(String patientId : variantStore.getPatientIds()) {
-				Integer idInt = Integer.parseInt(patientId);
-				if(patientSubset.contains(idInt)){
-					builder.append("1");
-				} else {
-					builder.append("0");
-				}
-				index++;
-			}
-			builder.append("00"); // masks are bookended with '11' set this so we don't count those
-
-			log.info("PATIENT MASK: " + builder.toString());
-
-			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
-			ArrayList<String> variantsWithPatients = new ArrayList<String>();
-
-			for(String variantKey : unionOfInfoFilters) {
-				VariantMasks masks;
-				try {
-					masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
-				} catch (IOException e) {
-					continue;
-				}
-
-				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(0)) {
-					variantsWithPatients.add(variantKey);
-				} else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(0)) {
-					variantsWithPatients.add(variantKey);
-				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(0)) {
-					//so heterozygous no calls we want, homozygous no calls we don't
-					variantsWithPatients.add(variantKey);
-				}
-			}
-
-			return variantsWithPatients;
-		}		
-		return new ArrayList<>();
+	
+	/**
+	 * Process only variantInfoFilters to count the number of variants that would be included in evaluating the query.
+	 * 
+	 * @param incomingQuery
+	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
+	 */
+	public int runVariantCount(Query query) {
+		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
+			return getVariantList(query).size();
+		}
+		return 0;
 	}
 
 	/**
@@ -149,15 +91,10 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 */
 	public String runVcfExcerptQuery(Query query) {
-
 		log.info("Running VCF Extract query");
-		try {
-			initializeMetadataIndex();
-		} catch (IOException e1) {
-			log.error("could not initialize metadata index!", e1);
-		}
 
 		ArrayList<String> variantList = getVariantList(query);
+
 		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
 
 		// Sort the variantSpecs so that the user doesn't lose their mind
