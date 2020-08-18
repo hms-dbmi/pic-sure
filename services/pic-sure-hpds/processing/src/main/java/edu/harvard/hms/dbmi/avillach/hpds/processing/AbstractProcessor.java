@@ -479,6 +479,10 @@ public abstract class AbstractProcessor {
 				}).collect(Collectors.toList());
 				log.info("found " + infoKeys.size() + " keys");
 				/*
+				 * We want to union all the variants for each selected key, so we need an intermediate set
+				 */
+				TreeSet<String> categoryVariantSets = new TreeSet<>();
+				/*
 				 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
 				 *   that part of the processing and synchronizing only the adds to the variantSets list.
 				 */
@@ -486,13 +490,14 @@ public abstract class AbstractProcessor {
 					TreeSet<String> valuesForKey;
 					try {
 						valuesForKey = new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key)));
-						synchronized(variantSets) {
-							variantSets.add(valuesForKey);
+						synchronized(categoryVariantSets) {
+							categoryVariantSets.addAll(valuesForKey);
 						}
 					} catch (IOException e) {
 						log.error(e);
 					}
 				});
+				variantSets.add(categoryVariantSets);
 			});
 		}
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
