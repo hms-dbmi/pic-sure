@@ -33,6 +33,7 @@ public class VariantListProcessor extends AbstractProcessor {
 
 	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
+		initializeMetadataIndex();
 	}
 
 	public VariantListProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
@@ -40,7 +41,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		if(!isOnlyForTests) {
 			throw new IllegalArgumentException("This constructor should never be used outside tests");
 		}
-	}	
+	}
 
 	@Override
 	public void runQuery(Query query, AsyncResult asyncResult)
