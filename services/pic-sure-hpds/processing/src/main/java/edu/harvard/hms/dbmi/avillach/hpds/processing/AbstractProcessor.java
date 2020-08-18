@@ -639,11 +639,11 @@ public abstract class AbstractProcessor {
 					continue;
 				}
 
-				if ( masks.heterozygousMask != null && !(masks.heterozygousMask.and(patientMasks).bitCount()>4)) {
+				if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
 					variantsWithPatients.add(variantKey);
-				} else if ( masks.homozygousMask != null && !(masks.homozygousMask.and(patientMasks).bitCount()>4)) {
+				} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
 					variantsWithPatients.add(variantKey);
-				} else if ( masks.heterozygousNoCallMask != null && !(masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4)) {
+				} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
 					//so heterozygous no calls we want, homozygous no calls we don't
 					variantsWithPatients.add(variantKey);
 				}
