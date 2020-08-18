@@ -99,27 +99,7 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public int runVariantCount(Query query) {
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			Set<String> unionOfInfoFilters = new TreeSet<>();
-			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				addVariantsMatchingFilters(filter, variantSets);
-				Set<String> intersectionOfInfoFilters = null;
-
-				if(!variantSets.isEmpty()) {
-					for(Set<String> variantSet : variantSets) {
-						if(intersectionOfInfoFilters == null) {
-							intersectionOfInfoFilters = variantSet;
-						} else {
-							intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-						}
-					}
-				}else {
-					intersectionOfInfoFilters = new TreeSet<String>();
-					log.error("No info filters included in query.");
-				}
-				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
-			}
-			return unionOfInfoFilters.size();
+			return getVariantList(query).size();
 		}
 		return 0;
 	}

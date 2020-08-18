@@ -571,6 +571,77 @@ public abstract class AbstractProcessor {
 		}
 	}
 
+	protected ArrayList<String> getVariantList(Query query){
+		if(query.variantInfoFilters != null && 
+				(!query.variantInfoFilters.isEmpty() && 
+						query.variantInfoFilters.stream().anyMatch((entry)->{
+							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
+									|| (!entry.numericVariantInfoFilters.isEmpty()));
+						}))) {
+			Set<String> unionOfInfoFilters = new TreeSet<>();
+			for(VariantInfoFilter filter : query.variantInfoFilters){
+				ArrayList<Set<String>> variantSets = new ArrayList<>();
+				addVariantsMatchingFilters(filter, variantSets);
+
+				if(!variantSets.isEmpty()) {
+					Set<String> intersectionOfInfoFilters = variantSets.get(0);
+					for(Set<String> variantSet : variantSets) {
+						//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
+						intersectionOfInfoFilters = Sets.intersection(unionOfInfoFilters, variantSet);
+					}
+					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
+				}else {
+					log.warn("No info filters included in query.");
+				}
+			}
+
+			log.info("Found " + variantStore.getPatientIds().length + " ids");
+			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+
+
+			//TODO: swithc these bookends to '1' and check == 4 instead of 0
+			int index = 2; //variant bitmasks are bookended with '11'
+			StringBuilder builder = new StringBuilder("11");
+			for(String patientId : variantStore.getPatientIds()) {
+				Integer idInt = Integer.parseInt(patientId);
+				if(patientSubset.contains(idInt)){
+					builder.append("1");
+				} else {
+					builder.append("0");
+				}
+				index++;
+			}
+			builder.append("11"); // masks are bookended with '11' set this so we don't count those
+
+			log.info("PATIENT MASK: " + builder.toString());
+
+			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
+			ArrayList<String> variantsWithPatients = new ArrayList<String>();
+
+			for(String variantKey : unionOfInfoFilters) {
+				VariantMasks masks;
+				try {
+					masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
+				} catch (IOException e) {
+					continue;
+				}
+
+				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(4)) {
+					variantsWithPatients.add(variantKey);
+				} else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(4)) {
+					variantsWithPatients.add(variantKey);
+				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(4)) {
+					//so heterozygous no calls we want, homozygous no calls we don't
+					variantsWithPatients.add(variantKey);
+				}
+			}
+
+			return variantsWithPatients;
+		}		
+		return new ArrayList<>();
+	}
+	
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
 		return infoStores.get(column);
 	}
