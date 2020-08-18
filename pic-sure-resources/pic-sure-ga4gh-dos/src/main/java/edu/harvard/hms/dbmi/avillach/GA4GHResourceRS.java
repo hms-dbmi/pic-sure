@@ -291,7 +291,11 @@ public class GA4GHResourceRS implements IResourceRS
             status.setDuration(endtime-starttime);
 			status.setPicsureResultId(UUID.fromString(responseNode.get("data_object").get("id").asText()));
 			status.setStatus(PicSureStatus.AVAILABLE);
-			status.setResultMetadata(SerializationUtils.serialize(responseBody));
+			
+			Map<String, Object> metadata = new HashMap<String, Object>();
+	        metadata.put("queryResultMetadata", responseBody);
+	        status.setResultMetadata(metadata);
+			
 			status.setSizeInBytes(responseBody.length());
 			return status;
 		} catch (IOException e){
