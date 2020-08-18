@@ -13,10 +13,12 @@ import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.ChiSquareTest;
 //import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.ObjectMapper;
 
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.cache.Weigher;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 
@@ -571,13 +573,24 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	protected ArrayList<String> getVariantList(Query query){
-		if(query.variantInfoFilters != null && 
-				(!query.variantInfoFilters.isEmpty() && 
-						query.variantInfoFilters.stream().anyMatch((entry)->{
-							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
-									|| (!entry.numericVariantInfoFilters.isEmpty()));
-						}))) {
+	ObjectMapper mapper = new ObjectMapper();
+	LoadingCache<String, ArrayList<String>> variantListCache = CacheBuilder.newBuilder()
+			.maximumSize(10000000).weigher(new Weigher<String, ArrayList<String>>(){
+				@Override
+				public int weigh(String key, ArrayList<String> value) {
+					try {
+						return mapper.writeValueAsString(value).length() + key.length();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					return 0;
+				}
+	}).build(new CacheLoader<String, ArrayList<String>>() {
+
+		@Override
+		public ArrayList<String> load(String key) throws Exception {
+			Query query = mapper.readValue(key, Query.class);
 			Set<String> unionOfInfoFilters = new TreeSet<>();
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
@@ -600,7 +613,6 @@ public abstract class AbstractProcessor {
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 
-			//TODO: swithc these bookends to '1' and check == 4 instead of 0
 			int index = 2; //variant bitmasks are bookended with '11'
 			StringBuilder builder = new StringBuilder("11");
 			for(String patientId : variantStore.getPatientIds()) {
@@ -627,17 +639,31 @@ public abstract class AbstractProcessor {
 					continue;
 				}
 
-				if ( masks.heterozygousMask != null && !masks.heterozygousMask.and(patientMasks).equals(4)) {
+				if ( masks.heterozygousMask != null && !(masks.heterozygousMask.and(patientMasks).bitCount()>4)) {
 					variantsWithPatients.add(variantKey);
-				} else if ( masks.homozygousMask != null && !masks.homozygousMask.and(patientMasks).equals(4)) {
+				} else if ( masks.homozygousMask != null && !(masks.homozygousMask.and(patientMasks).bitCount()>4)) {
 					variantsWithPatients.add(variantKey);
-				} else if ( masks.heterozygousNoCallMask != null && !masks.heterozygousNoCallMask.and(patientMasks).equals(4)) {
+				} else if ( masks.heterozygousNoCallMask != null && !(masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4)) {
 					//so heterozygous no calls we want, homozygous no calls we don't
 					variantsWithPatients.add(variantKey);
 				}
 			}
 
 			return variantsWithPatients;
+		}
+	});
+	protected ArrayList<String> getVariantList(Query query){
+		if(query.variantInfoFilters != null && 
+				(!query.variantInfoFilters.isEmpty() && 
+						query.variantInfoFilters.stream().anyMatch((entry)->{
+							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
+									|| (!entry.numericVariantInfoFilters.isEmpty()));
+						}))) {
+			try {
+				return variantListCache.get(mapper.writeValueAsString(query));
+			} catch (ExecutionException | IOException e) {
+				log.error(e);
+			}
 		}		
 		return new ArrayList<>();
 	}
