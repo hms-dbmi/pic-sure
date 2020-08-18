@@ -74,6 +74,8 @@ public class PicSureService implements IResourceRS {
 	private TimelineProcessor timelineProcessor;
 	
 	private CountProcessor countProcessor;
+
+	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
 	
 	@POST
 	@Path("/info")
@@ -236,11 +238,9 @@ public class PicSureService implements IResourceRS {
 				} catch (JsonProcessingException e2) {
 					log.error("JsonProcessingException  caught: ", e);
 				}
-				try {
-					status.setResultMetadata(mapper.writeValueAsBytes(e.getResult()));
-				} catch (JsonProcessingException e1) {
-					throw new ServerErrorException(500);
-				}
+				Map<String, Object> metadata = new HashMap<String, Object>();
+				metadata.put(QUERY_METADATA_FIELD, e.getResult());
+				status.setResultMetadata(metadata);
 				return status;
 			} catch (ClassNotFoundException e) {
 				throw new ServerErrorException(500);
