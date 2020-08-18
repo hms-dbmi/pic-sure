@@ -600,7 +600,7 @@ public abstract class AbstractProcessor {
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
 					for(Set<String> variantSet : variantSets) {
 						//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
-						intersectionOfInfoFilters = Sets.intersection(unionOfInfoFilters, variantSet);
+						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
 				}else {
