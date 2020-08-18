@@ -7,6 +7,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.HttpHeaders;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
@@ -34,7 +35,8 @@ public class AggregateQueryResourceRS implements IResourceRS
 {
 	private static final String TARGET_PICSURE_URL = System.getenv("TARGET_PICSURE_URL");
 	private static final String PICSURE_2_TOKEN = System.getenv("PICSURE_2_TOKEN");
-
+	
+	private static final String QUERY_ID_LIST_FIELD = "queryIdList";
 	private static final String BEARER_STRING = "Bearer ";
 
 	private Header[] headers = {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + PICSURE_2_TOKEN)};
@@ -111,7 +113,11 @@ public class AggregateQueryResourceRS implements IResourceRS
 			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
         statusResponse.setStatus(determineStatus(presentStatuses));
-        statusResponse.setResultMetadata(SerializationUtils.serialize(queryIdList));
+        
+        Map<String, Object> metadata = new HashMap<String, Object>();
+        metadata.put(QUERY_ID_LIST_FIELD, queryIdList);
+        statusResponse.setResultMetadata(metadata);
+        
 		return statusResponse;
 	}
 
@@ -129,7 +135,11 @@ public class AggregateQueryResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(composeURL(TARGET_PICSURE_URL, pathName), headers);
 		QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
 		try {
-			ArrayList<UUID> queryIdList = SerializationUtils.deserialize(status.getResultMetadata());
+			ArrayList<UUID> queryIdList = (ArrayList<UUID>) status.getResultMetadata().get(QUERY_ID_LIST_FIELD);
+			if(queryIdList == null) {
+				logger.warn("No query ID List detected");
+				throwResponseError(response, TARGET_PICSURE_URL);
+			}
 			Set<PicSureStatus> presentStatuses = new HashSet<>();
 
 			for (UUID qid : queryIdList) {
@@ -169,8 +179,12 @@ public class AggregateQueryResourceRS implements IResourceRS
 		HttpResponse response = retrieveGetResponse(composeURL(TARGET_PICSURE_URL , pathName), headers);
 		QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
 		try {
-			ArrayList<UUID> queryIdList = SerializationUtils.deserialize(status.getResultMetadata());
-
+			ArrayList<UUID> queryIdList = (ArrayList<UUID>) status.getResultMetadata().get(QUERY_ID_LIST_FIELD);
+			if(queryIdList == null) {
+				logger.warn("No query ID List detected");
+				throwResponseError(response, TARGET_PICSURE_URL);
+			}
+			
 			List<JsonNode> responses = new ArrayList<>();
 			for (UUID qid : queryIdList) {
 				pathName = "/query/" + qid + "/result";

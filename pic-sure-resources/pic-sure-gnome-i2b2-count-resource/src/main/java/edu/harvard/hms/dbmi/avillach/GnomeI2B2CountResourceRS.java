@@ -179,7 +179,10 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 		}
 		//TODO Should I call queryStatus to find out (don't have id yet)
 		result.setStatus(PicSureStatus.PENDING);
-		result.setResultMetadata(SerializationUtils.serialize(resultIds));
+		Map<String, Object> metadata = new HashMap<String, Object>();
+        metadata.put("queryResultMetadata", resultIds);
+        result.setResultMetadata(metadata);
+        
 		return result;
 	}
 
@@ -404,7 +407,7 @@ public class GnomeI2B2CountResourceRS implements IResourceRS
 		String pathName = "/query/" + queryId + "/metadata";
 		HttpResponse response = retrieveGetResponse(TARGET_PICSURE_URL + pathName, new Header[]{new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + token)});
 		QueryStatus status = readObjectFromResponse(response, QueryStatus.class);
-		return SerializationUtils.deserialize(status.getResultMetadata());
+		return (HashMap<String, String>) status.getResultMetadata().get("queryResultMetadata");
 	}
 
 }

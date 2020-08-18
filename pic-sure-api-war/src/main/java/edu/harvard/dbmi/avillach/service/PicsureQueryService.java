@@ -26,6 +26,9 @@ import javax.ws.rs.core.Response;
  */
 public class PicsureQueryService {
 
+	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
+	private static final String QUERY_JSON_FIELD = "queryJson";
+
 	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
 	@Inject
@@ -90,7 +93,10 @@ public class PicsureQueryService {
 		}
 		
 		queryEntity.setQuery(queryJson);
-		queryEntity.setMetadata(results.getResultMetadata());
+		
+		if (results.getResultMetadata() != null) {
+			queryEntity.setMetadata((byte[])results.getResultMetadata().get(QUERY_METADATA_FIELD));
+		}
 		queryRepo.persist(queryEntity);
 
 		logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
@@ -254,7 +260,19 @@ public class PicsureQueryService {
         response.setResourceID(query.getResource().getUuid());
         response.setStatus(query.getStatus());
         response.setResourceResultId(query.getResourceResultId());
-        response.setResultMetadata(query.getMetadata());
+        
+        Map<String, Object> metadata = new HashMap<String, Object>();
+        
+        try {
+			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
+		} catch (JsonProcessingException e) {
+			logger.warn("Unable to use object mapper", e);
+		}
+        
+        metadata.put(QUERY_METADATA_FIELD, query.getMetadata());
+        response.setResultMetadata(metadata);
+        
+        
         return response;
     }
 }

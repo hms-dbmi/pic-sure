@@ -1,8 +1,9 @@
 package edu.harvard.dbmi.avillach.domain;
 
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
-
+import java.util.Map;
 import java.util.UUID;
+
+import edu.harvard.dbmi.avillach.util.PicSureStatus;
 
 public class QueryStatus {
 	private PicSureStatus status;
@@ -28,7 +29,7 @@ public class QueryStatus {
 	/**
 	 * any metadata will be stored here
 	 */
-	private byte[] resultMetadata;
+	private Map<String, Object> resultMetadata;
 
 	private long sizeInBytes;
 	
@@ -110,11 +111,11 @@ public class QueryStatus {
 		this.resourceResultId = resourceResultId;
 	}
 
-	public byte[] getResultMetadata() {
+	public Map<String, Object> getResultMetadata() {
 		return resultMetadata;
 	}
 
-	public void setResultMetadata(byte[] resultMetadata) {
+	public void setResultMetadata(Map<String, Object> resultMetadata) {
 		this.resultMetadata = resultMetadata;
 	}
 }
