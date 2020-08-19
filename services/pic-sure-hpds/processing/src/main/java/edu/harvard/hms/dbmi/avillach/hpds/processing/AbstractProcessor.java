@@ -500,7 +500,7 @@ public abstract class AbstractProcessor {
 				/*
 				 * We want to union all the variants for each selected key, so we need an intermediate set
 				 */
-				TreeSet<String> categoryVariantSets = new TreeSet<>();
+				LinkedHashSet<String> categoryVariantSets = new LinkedHashSet<>();
 				/*
 				 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
 				 *   that part of the processing and synchronizing only the adds to the variantSets list.
