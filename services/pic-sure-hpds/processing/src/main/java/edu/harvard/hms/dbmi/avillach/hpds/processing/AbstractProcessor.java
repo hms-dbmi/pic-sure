@@ -485,6 +485,7 @@ public abstract class AbstractProcessor {
 
 	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
+		ConcurrentSkipListSet<Set<String>> _variantSets = new ConcurrentSkipListSet<>();
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
 			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
 				String column = entry.getKey();
@@ -502,7 +503,7 @@ public abstract class AbstractProcessor {
 				/*
 				 * We want to union all the variants for each selected key, so we need an intermediate set
 				 */
-				LinkedHashSet<String> categoryVariantSets = new LinkedHashSet<>();
+				ConcurrentSkipListSet<String> categoryVariantSets = new ConcurrentSkipListSet<>();
 				/*
 				 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
 				 *   that part of the processing and synchronizing only the adds to the variantSets list.
@@ -511,15 +512,14 @@ public abstract class AbstractProcessor {
 					LinkedHashSet<String> valuesForKey;
 					try {
 						valuesForKey = new LinkedHashSet<String>(infoCache.get(columnAndKey(column, key)));
-						synchronized(categoryVariantSets) {
-							categoryVariantSets.addAll(valuesForKey);
-						}
+						categoryVariantSets.addAll(valuesForKey);
 					} catch (ExecutionException e) {
 						log.error(e);
 					}
 				});
-				variantSets.add(categoryVariantSets);
+				_variantSets.add(categoryVariantSets);
 			});
+			variantSets.addAll(_variantSets);
 		}
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
 			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
