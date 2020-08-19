@@ -188,7 +188,7 @@ public abstract class AbstractProcessor {
 		if(filteredIdSets.size()>1) {
 			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
 		}
-		
+
 		addIdSetsForVariantInfoFilters(query, filteredIdSets);
 
 		return filteredIdSets;
@@ -664,27 +664,26 @@ public abstract class AbstractProcessor {
 			log.info("PATIENT MASK: " + builder.toString());
 
 			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
-			ArrayList<String> variantsWithPatients = new ArrayList<String>();
+			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
-			for(String variantKey : unionOfInfoFilters) {
+			unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
 				VariantMasks masks;
 				try {
 					masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
+					if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+						variantsWithPatients.add(variantKey);
+					} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+						variantsWithPatients.add(variantKey);
+					} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+						//so heterozygous no calls we want, homozygous no calls we don't
+						variantsWithPatients.add(variantKey);
+					}
 				} catch (IOException e) {
-					continue;
-				}
+					log.error(e);
+				}				
+			});
 
-				if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-					variantsWithPatients.add(variantKey);
-				} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-					variantsWithPatients.add(variantKey);
-				} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-					//so heterozygous no calls we want, homozygous no calls we don't
-					variantsWithPatients.add(variantKey);
-				}
-			}
-
-			return variantsWithPatients;
+			return new ArrayList<>(variantsWithPatients);
 		} 
 		return new ArrayList<>();
 	}
