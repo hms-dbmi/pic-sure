@@ -185,6 +185,10 @@ public abstract class AbstractProcessor {
 
 		addIdSetsForCategoryFilters(query, filteredIdSets);
 
+		if(filteredIdSets.size()>1) {
+			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
+		}
+		
 		addIdSetsForVariantInfoFilters(query, filteredIdSets);
 
 		return filteredIdSets;
@@ -549,12 +553,22 @@ public abstract class AbstractProcessor {
 	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
 			Set<String> intersectionOfInfoFilters) {
 		if(!intersectionOfInfoFilters.isEmpty()) {
+			Set<Integer> patientsInScope;
+			Set<Integer> patientIds = Arrays.asList(
+					variantStore.getPatientIds()).stream().map((String id)->{
+						return Integer.parseInt(id);}).collect(Collectors.toSet());
+			if(filteredIdSets.size()>0) {
+				patientsInScope = Sets.intersection(patientIds, filteredIdSets.get(0));
+			} else {
+				patientsInScope = patientIds;
+			}
 			int variantsProcessed = 0;
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			String[] variantsInScope = intersectionOfInfoFilters.toArray(new String[intersectionOfInfoFilters.size()]);
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			while(variantsProcessed < variantsInScope.length && (variantsProcessed%1000!=0 || matchingPatients[0].bitCount() < matchingPatients[0].bitLength())) {
+			while(variantsProcessed < variantsInScope.length && (variantsProcessed%1000!=0 
+					|| matchingPatients[0].bitCount() < patientsInScope.size()+4)) {
 				ArrayList<Integer> variantIndicesToProcess = new ArrayList<>();
 				for(int x = 0;x<1000 && x + variantsProcessed < variantsInScope.length;x++) {
 					variantIndicesToProcess.add(x+variantsProcessed);
