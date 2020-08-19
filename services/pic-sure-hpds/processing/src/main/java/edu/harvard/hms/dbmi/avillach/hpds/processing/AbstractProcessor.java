@@ -465,7 +465,30 @@ public abstract class AbstractProcessor {
 		}
 		/* END OF VARIANT INFO FILTER HANDLING */
 	}
+	
+	Weigher<String, Collection<String>> weigher = new Weigher<String, Collection<String>>(){
+			@Override
+			public int weigh(String key, Collection<String> value) {
+				try {
+					return mapper.writeValueAsString(value).length() + key.length();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				return 0;
+			}
+	};
 
+	LoadingCache<String, List<String>> infoCache = CacheBuilder.newBuilder()
+			.maximumWeight(100000000).weigher(weigher).build(new CacheLoader<String, List<String>>() {
+
+		@Override
+		public List<String> load(String infoColumn_valueKey) throws Exception {
+			String[] column_and_value = infoColumn_valueKey.split("_");
+			return Arrays.asList(infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]));
+		}
+	});
+	
 	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
@@ -491,11 +514,11 @@ public abstract class AbstractProcessor {
 				infoKeys.parallelStream().forEach((key)->{
 					TreeSet<String> valuesForKey;
 					try {
-						valuesForKey = new TreeSet<String>(Arrays.asList(infoStore.allValues.get(key)));
+						valuesForKey = new TreeSet<String>(infoCache.get(columnAndKey(column, key)));
 						synchronized(categoryVariantSets) {
 							categoryVariantSets.addAll(valuesForKey);
 						}
-					} catch (IOException e) {
+					} catch (ExecutionException e) {
 						log.error(e);
 					}
 				});
@@ -512,15 +535,18 @@ public abstract class AbstractProcessor {
 				TreeSet<String> variants = new TreeSet<String>();
 				for(String value : valuesInRange) {
 					try {
-						variants.addAll(Arrays.asList(infoStore.allValues.get(value)));
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+						variants.addAll(infoCache.get(columnAndKey(column, value)));
+					} catch (ExecutionException e) {
+						log.error(e);
 					}
 				}
 				variantSets.add(new TreeSet<String>(variants));
 			});
 		}
+	}
+
+	private String columnAndKey(String column, String key) {
+		return column + "_" + key;
 	}
 
 	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
@@ -575,18 +601,7 @@ public abstract class AbstractProcessor {
 
 	ObjectMapper mapper = new ObjectMapper();
 	LoadingCache<String, ArrayList<String>> variantListCache = CacheBuilder.newBuilder()
-			.maximumWeight(10000000).weigher(new Weigher<String, ArrayList<String>>(){
-				@Override
-				public int weigh(String key, ArrayList<String> value) {
-					try {
-						return mapper.writeValueAsString(value).length() + key.length();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-					return 0;
-				}
-	}).build(new CacheLoader<String, ArrayList<String>>() {
+			.maximumWeight(100000000).weigher(weigher).build(new CacheLoader<String, ArrayList<String>>() {
 
 		@Override
 		public ArrayList<String> load(String key) throws Exception {
