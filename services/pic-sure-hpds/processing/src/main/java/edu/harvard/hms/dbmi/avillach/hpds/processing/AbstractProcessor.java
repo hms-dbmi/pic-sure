@@ -485,7 +485,6 @@ public abstract class AbstractProcessor {
 
 	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
-		ConcurrentSkipListSet<Set<String>> _variantSets = new ConcurrentSkipListSet<>();
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
 			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
 				String column = entry.getKey();
@@ -517,9 +516,10 @@ public abstract class AbstractProcessor {
 						log.error(e);
 					}
 				});
-				_variantSets.add(categoryVariantSets);
+				synchronized(variantSets) {
+					variantSets.add(categoryVariantSets);
+				}
 			});
-			variantSets.addAll(_variantSets);
 		}
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
 			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
