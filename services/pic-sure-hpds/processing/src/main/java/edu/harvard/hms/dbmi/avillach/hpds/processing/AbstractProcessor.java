@@ -545,7 +545,7 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private static final String COLUMN_AND_KEY_DELIMITER = "*_*_*_*_*";
+	private static final String COLUMN_AND_KEY_DELIMITER = "_____";
 	private String columnAndKey(String column, String key) {
 		return column + COLUMN_AND_KEY_DELIMITER + key;
 	}
