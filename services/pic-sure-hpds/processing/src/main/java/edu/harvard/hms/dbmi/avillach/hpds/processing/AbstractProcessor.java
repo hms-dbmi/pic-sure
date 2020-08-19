@@ -506,9 +506,9 @@ public abstract class AbstractProcessor {
 				 *   that part of the processing and synchronizing only the adds to the variantSets list.
 				 */
 				infoKeys.parallelStream().forEach((key)->{
-					TreeSet<String> valuesForKey;
+					LinkedHashSet<String> valuesForKey;
 					try {
-						valuesForKey = new TreeSet<String>(infoCache.get(columnAndKey(column, key)));
+						valuesForKey = new LinkedHashSet<String>(infoCache.get(columnAndKey(column, key)));
 						synchronized(categoryVariantSets) {
 							categoryVariantSets.addAll(valuesForKey);
 						}
@@ -526,7 +526,7 @@ public abstract class AbstractProcessor {
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-				TreeSet<String> variants = new TreeSet<String>();
+				LinkedHashSet<String> variants = new LinkedHashSet<String>();
 				for(String value : valuesInRange) {
 					try {
 						variants.addAll(infoCache.get(columnAndKey(column, value)));
@@ -534,7 +534,7 @@ public abstract class AbstractProcessor {
 						log.error(e);
 					}
 				}
-				variantSets.add(new TreeSet<String>(variants));
+				variantSets.add(new LinkedHashSet<String>(variants));
 			});
 		}
 	}
