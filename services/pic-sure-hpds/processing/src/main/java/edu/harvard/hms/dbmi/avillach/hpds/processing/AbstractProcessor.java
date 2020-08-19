@@ -484,7 +484,7 @@ public abstract class AbstractProcessor {
 
 		@Override
 		public List<String> load(String infoColumn_valueKey) throws Exception {
-			String[] column_and_value = infoColumn_valueKey.split("_");
+			String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
 			return Arrays.asList(infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]));
 		}
 	});
@@ -545,8 +545,9 @@ public abstract class AbstractProcessor {
 		}
 	}
 
+	private static final String COLUMN_AND_KEY_DELIMITER = "*_*_*_*_*";
 	private String columnAndKey(String column, String key) {
-		return column + "_" + key;
+		return column + COLUMN_AND_KEY_DELIMITER + key;
 	}
 
 	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
