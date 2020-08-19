@@ -486,7 +486,9 @@ public abstract class AbstractProcessor {
 	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
-			filter.categoryVariantInfoFilters.forEach((String column, String[] values)->{
+			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
+				String column = entry.getKey();
+				String[] values = entry.getValue();
 				Arrays.sort(values);
 				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
 				List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
