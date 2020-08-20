@@ -587,13 +587,14 @@ public abstract class AbstractProcessor {
 			String[] variantsInScope = intersectionOfInfoFilters.toArray(new String[intersectionOfInfoFilters.size()]);
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			while(variantsProcessed < variantsInScope.length && (variantsProcessed%1000!=0 
-					|| matchingPatients[0].bitCount() < patientsInScope.size()+4)) {
+			while(variantsProcessed < variantsInScope.length 
+					&& matchingPatients[0].bitCount() < patientsInScope.size()+4) {
 				ArrayList<Integer> variantIndicesToProcess = new ArrayList<>();
-				for(int x = 0;x<1000 && x + variantsProcessed < variantsInScope.length;x++) {
+				int x;
+				for(x = 0;x<1000 && x + variantsProcessed < variantsInScope.length;x++) {
 					variantIndicesToProcess.add(x+variantsProcessed);
 				}
-				variantsProcessed += variantIndicesToProcess.size();
+				variantsProcessed += x - 1;
 				variantIndicesToProcess.parallelStream().forEach((index)->{
 					VariantMasks masks;
 					BigInteger heteroMask = variantStore.emptyBitmask();
