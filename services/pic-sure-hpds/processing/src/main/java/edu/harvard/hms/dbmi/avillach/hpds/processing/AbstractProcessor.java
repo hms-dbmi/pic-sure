@@ -588,14 +588,7 @@ public abstract class AbstractProcessor {
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-//			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
-
-//			List<String[]> variantsInScope_ = new ArrayList<>();
 			ArrayList<List<String>> variantsInScope__ = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream().collect(Collectors.groupingByConcurrent((variantSpec)->{return variantSpec.hashCode()%1000;})).values());
-//			String[] allVariants = intersectionOfInfoFilters.toArray(new String[0]);
-//			for(int x = 0;x<allVariants.length;x+=1000) {
-//				variantsInScope_.add(Arrays.copyOfRange(allVariants, x, x+1000));
-//			}
 			
 			int variantsInScopeSize = variantsInScope__.size();
 			int patientsInScopeSize = patientsInScope.size();
@@ -635,8 +628,7 @@ public abstract class AbstractProcessor {
 			log.debug("or'd masks : " + bitmaskString);
 			for(int x = 2;x < bitmaskString.length()-2;x++) {
 				if('1'==bitmaskString.charAt(x)) {
-					// Minor hack here to deal with Baylor not sticking to one file naming convention
-					String patientId = variantStore.getPatientIds()[x-2].split("_")[0].trim();
+					String patientId = variantStore.getPatientIds()[x-2].trim();
 					ids.add(Integer.parseInt(patientId));
 				}
 			}
@@ -655,7 +647,7 @@ public abstract class AbstractProcessor {
 							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
-			Set<String> unionOfInfoFilters = new TreeSet<>();
+			Set<String> unionOfInfoFilters = new HashSet<>();
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
@@ -672,10 +664,13 @@ public abstract class AbstractProcessor {
 				}
 			}
 
-			log.info("Found " + variantStore.getPatientIds().length + " ids");
-			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), new HashSet<String>(Arrays.asList(variantStore.getPatientIds()));
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
+			// If we have all patients then no variants would be filtered, so no need to do further processing
+			if(patientSubset.size()==variantStore.getPatientIds().length) {
+				return new ArrayList<String>(unionOfInfoFilters);
+			}
 
 			int index = 2; //variant bitmasks are bookended with '11'
 			StringBuilder builder = new StringBuilder("11");
