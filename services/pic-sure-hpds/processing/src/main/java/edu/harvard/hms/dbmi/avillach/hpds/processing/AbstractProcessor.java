@@ -22,7 +22,6 @@ import com.google.common.cache.Weigher;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
-import com.sun.tools.javac.code.Attribute.Array;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
@@ -482,13 +481,13 @@ public abstract class AbstractProcessor {
 		}
 	};
 
-	LoadingCache<String, List<String>> infoCache = CacheBuilder.newBuilder()
-			.maximumWeight(250000000).weigher(weigher).build(new CacheLoader<String, List<String>>() {
+	LoadingCache<String, Set<String>> infoCache = CacheBuilder.newBuilder()
+			.maximumWeight(500000000).weigher(weigher).build(new CacheLoader<String, Set<String>>() {
 
 				@Override
-				public List<String> load(String infoColumn_valueKey) throws Exception {
+				public Set<String> load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
-					return Arrays.asList(infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]));
+					return new HashSet<String>(Arrays.asList(infoStores.get(column_and_value[0]).allValues.get(column_and_value[1])));
 				}
 			});
 
@@ -545,7 +544,7 @@ public abstract class AbstractProcessor {
 			});
 		} else {
 			try {
-				categoryVariantSets[0] = new HashSet<String>(infoCache.get(columnAndKey(column, infoKeys.get(0))));
+				categoryVariantSets[0] = infoCache.get(columnAndKey(column, infoKeys.get(0)));
 			} catch (ExecutionException e) {
 				log.error(e);
 			}
