@@ -578,7 +578,7 @@ public abstract class AbstractProcessor {
 			Set<Integer> patientIds = Arrays.asList(
 					variantStore.getPatientIds()).stream().map((String id)->{
 						return Integer.parseInt(id);}).collect(Collectors.toSet());
-			if(filteredIdSets.size()>0) {
+			if(!filteredIdSets.isEmpty()) {
 				patientsInScope = Sets.intersection(patientIds, filteredIdSets.get(0));
 			} else {
 				patientsInScope = patientIds;
@@ -587,12 +587,13 @@ public abstract class AbstractProcessor {
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			int totalVariants = intersectionOfInfoFilters.size();
 			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
 
+			int variantsInScopeSize = variantsInScope.size();
+			int patientsInScopeSize = patientsInScope.size();
 			for(int x = 0;
-					x<variantsInScope.size() 
-					&& matchingPatients[0].bitCount() < patientsInScope.size()+4;
+					x<variantsInScopeSize 
+					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
 				variantsInScope.get(x).parallelStream().forEach((variantSpec)->{
 					VariantMasks masks;
