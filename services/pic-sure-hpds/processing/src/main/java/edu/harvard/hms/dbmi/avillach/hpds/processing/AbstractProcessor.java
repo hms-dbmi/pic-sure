@@ -456,10 +456,13 @@ public abstract class AbstractProcessor {
 					for(Set<String> variantSet : variantSets) {
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
+					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
+					if(log.getEffectiveLevel()==Level.DEBUG) {
+						IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
+						log.debug("Number of matching variants for all sets : " + stats);
+						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
+					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-					log.info("Number of matching variants for all sets : " + stats);
-					log.info("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
 					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
 				}else {
 					log.error("No info filters included in query.");
