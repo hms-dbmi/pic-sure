@@ -481,7 +481,7 @@ public abstract class AbstractProcessor {
 	};
 
 	LoadingCache<String, List<String>> infoCache = CacheBuilder.newBuilder()
-			.maximumWeight(100000000).weigher(weigher).build(new CacheLoader<String, List<String>>() {
+			.maximumWeight(250000000).weigher(weigher).build(new CacheLoader<String, List<String>>() {
 
 				@Override
 				public List<String> load(String infoColumn_valueKey) throws Exception {
