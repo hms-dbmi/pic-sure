@@ -22,6 +22,7 @@ import com.google.common.cache.Weigher;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
+import com.sun.tools.javac.code.Attribute.Array;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
@@ -587,15 +588,21 @@ public abstract class AbstractProcessor {
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
+//			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
 
-			int variantsInScopeSize = variantsInScope.size();
+			List<String[]> variantsInScope_ = new ArrayList<>();
+			String[] allVariants = intersectionOfInfoFilters.toArray(new String[0]);
+			for(int x = 0;x<allVariants.length;x+=1000) {
+				variantsInScope_.add(Arrays.copyOfRange(allVariants, x, x+1000));
+			}
+			
+			int variantsInScopeSize = variantsInScope_.size();
 			int patientsInScopeSize = patientsInScope.size();
 			for(int x = 0;
 					x<variantsInScopeSize 
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
-				variantsInScope.get(x).parallelStream().forEach((variantSpec)->{
+				Arrays.stream(variantsInScope_.get(x)).parallel().forEach((variantSpec)->{
 					VariantMasks masks;
 					BigInteger heteroMask = variantStore.emptyBitmask();
 					BigInteger homoMask = variantStore.emptyBitmask();
