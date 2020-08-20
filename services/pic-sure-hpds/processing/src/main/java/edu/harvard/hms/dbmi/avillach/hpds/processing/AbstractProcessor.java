@@ -494,38 +494,7 @@ public abstract class AbstractProcessor {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
 			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
-				String column = entry.getKey();
-				String[] values = entry.getValue();
-				Arrays.sort(values);
-				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-				List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
-
-					// iterate over the values for the specific category and find which ones match the search
-
-					int insertionIndex = Arrays.binarySearch(values, key);
-					return insertionIndex > -1 && insertionIndex < values.length;
-				}).collect(Collectors.toList());
-				log.info("found " + infoKeys.size() + " keys");
-				/*
-				 * We want to union all the variants for each selected key, so we need an intermediate set
-				 */
-				ConcurrentSkipListSet<String> categoryVariantSets = new ConcurrentSkipListSet<>();
-				/*
-				 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
-				 *   that part of the processing and synchronizing only the adds to the variantSets list.
-				 */
-				infoKeys.parallelStream().forEach((key)->{
-					LinkedHashSet<String> valuesForKey;
-					try {
-						valuesForKey = new LinkedHashSet<String>(infoCache.get(columnAndKey(column, key)));
-						categoryVariantSets.addAll(valuesForKey);
-					} catch (ExecutionException e) {
-						log.error(e);
-					}
-				});
-				synchronized(variantSets) {
-					variantSets.add(categoryVariantSets);
-				}
+				addVariantsMatchingCategoryFilter(variantSets, entry);
 			});
 		}
 		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
@@ -546,6 +515,54 @@ public abstract class AbstractProcessor {
 				variantSets.add(new LinkedHashSet<String>(variants));
 			});
 		}
+	}
+
+	private void addVariantsMatchingCategoryFilter(ArrayList<Set<String>> variantSets, Entry<String, String[]> entry) {
+		String column = entry.getKey();
+		String[] values = entry.getValue();
+		Arrays.sort(values);
+		FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+
+		List<String> infoKeys = filterInfoCategoryKeys(values, infoStore);
+		/*
+		 * We want to union all the variants for each selected key, so we need an intermediate set
+		 */
+		Set<String>[] categoryVariantSets = new Set[] { new ConcurrentSkipListSet<>()};
+
+		if(infoKeys.size()>1) {
+			/*
+			 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
+			 *   that part of the processing and synchronizing only the adds to the variantSets list.
+			 */
+			infoKeys.parallelStream().forEach((key)->{
+				try {
+					categoryVariantSets[0].addAll(infoCache.get(columnAndKey(column, key)));
+				} catch (ExecutionException e) {
+					log.error(e);
+				}
+			});
+		} else {
+			try {
+				categoryVariantSets[0] = new HashSet<String>(infoCache.get(columnAndKey(column, infoKeys.get(0))));
+			} catch (ExecutionException e) {
+				log.error(e);
+			}
+		}
+		synchronized(variantSets) {
+			variantSets.add(categoryVariantSets[0]);
+		}
+	}
+
+	private List<String> filterInfoCategoryKeys(String[] values, FileBackedByteIndexedInfoStore infoStore) {
+		List<String> infoKeys = infoStore.allValues.keys().stream().filter((String key)->{
+
+			// iterate over the values for the specific category and find which ones match the search
+
+			int insertionIndex = Arrays.binarySearch(values, key);
+			return insertionIndex > -1 && insertionIndex < values.length;
+		}).collect(Collectors.toList());
+		log.info("found " + infoKeys.size() + " keys");
+		return infoKeys;
 	}
 
 	private static final String COLUMN_AND_KEY_DELIMITER = "_____";
