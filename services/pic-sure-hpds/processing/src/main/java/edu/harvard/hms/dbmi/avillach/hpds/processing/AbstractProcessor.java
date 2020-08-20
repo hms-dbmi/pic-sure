@@ -19,6 +19,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.cache.Weigher;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 
@@ -584,27 +585,25 @@ public abstract class AbstractProcessor {
 			}
 			int variantsProcessed = 0;
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
-			String[] variantsInScope = intersectionOfInfoFilters.toArray(new String[intersectionOfInfoFilters.size()]);
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			while(variantsProcessed < variantsInScope.length 
-					&& matchingPatients[0].bitCount() < patientsInScope.size()+4) {
-				ArrayList<Integer> variantIndicesToProcess = new ArrayList<>();
-				int x;
-				for(x = 0;x<1000 && x + variantsProcessed < variantsInScope.length;x++) {
-					variantIndicesToProcess.add(x+variantsProcessed);
-				}
-				variantsProcessed += x - 1;
-				variantIndicesToProcess.parallelStream().forEach((index)->{
+			int totalVariants = intersectionOfInfoFilters.size();
+			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
+
+			for(int x = 0;
+					x<variantsInScope.size() 
+					&& matchingPatients[0].bitCount() < patientsInScope.size()+4;
+					x++) {
+				variantsInScope.get(x).parallelStream().forEach((variantSpec)->{
 					VariantMasks masks;
 					BigInteger heteroMask = variantStore.emptyBitmask();
 					BigInteger homoMask = variantStore.emptyBitmask();
 					try {
-						masks = variantStore.getMasks(variantsInScope[index], bucketCache);
+						masks = variantStore.getMasks(variantSpec, bucketCache);
 						if(masks != null) {
 							// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
 							if(Level.DEBUG.equals(log.getEffectiveLevel())) {
-								log.debug("checking variant " + variantsInScope[index] + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+								log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
 										+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
 										+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
 										+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
