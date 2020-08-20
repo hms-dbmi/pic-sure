@@ -4,6 +4,7 @@ import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -589,19 +590,20 @@ public abstract class AbstractProcessor {
 
 //			List<List<String>> variantsInScope = Lists.partition(new ArrayList<>(intersectionOfInfoFilters), 1000);
 
-			List<String[]> variantsInScope_ = new ArrayList<>();
-			String[] allVariants = intersectionOfInfoFilters.toArray(new String[0]);
-			for(int x = 0;x<allVariants.length;x+=1000) {
-				variantsInScope_.add(Arrays.copyOfRange(allVariants, x, x+1000));
-			}
+//			List<String[]> variantsInScope_ = new ArrayList<>();
+			ArrayList<List<String>> variantsInScope__ = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream().collect(Collectors.groupingByConcurrent((variantSpec)->{return variantSpec.hashCode()%1000;})).values());
+//			String[] allVariants = intersectionOfInfoFilters.toArray(new String[0]);
+//			for(int x = 0;x<allVariants.length;x+=1000) {
+//				variantsInScope_.add(Arrays.copyOfRange(allVariants, x, x+1000));
+//			}
 			
-			int variantsInScopeSize = variantsInScope_.size();
+			int variantsInScopeSize = variantsInScope__.size();
 			int patientsInScopeSize = patientsInScope.size();
 			for(int x = 0;
 					x<variantsInScopeSize 
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
-				Arrays.stream(variantsInScope_.get(x)).parallel().forEach((variantSpec)->{
+				variantsInScope__.get(x).parallelStream().forEach((variantSpec)->{
 					VariantMasks masks;
 					BigInteger heteroMask = variantStore.emptyBitmask();
 					BigInteger homoMask = variantStore.emptyBitmask();
