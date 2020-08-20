@@ -584,7 +584,7 @@ public abstract class AbstractProcessor {
 			} else {
 				patientsInScope = patientIds;
 			}
-			int variantsProcessed = 0;
+
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
@@ -664,7 +664,7 @@ public abstract class AbstractProcessor {
 				}
 			}
 
-			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), new HashSet<String>(Arrays.asList(variantStore.getPatientIds()));
+			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), new HashSet<String>(Arrays.asList(variantStore.getPatientIds())));
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			// If we have all patients then no variants would be filtered, so no need to do further processing
