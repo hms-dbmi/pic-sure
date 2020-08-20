@@ -664,7 +664,11 @@ public abstract class AbstractProcessor {
 				}
 			}
 
-			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), new HashSet<String>(Arrays.asList(variantStore.getPatientIds())));
+			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), 
+					new HashSet<Integer>(
+							Arrays.asList(variantStore.getPatientIds()).stream()
+							.map((id)->{return Integer.parseInt(id.trim());})
+							.collect(Collectors.toList())));
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			// If we have all patients then no variants would be filtered, so no need to do further processing
