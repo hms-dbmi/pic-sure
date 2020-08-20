@@ -28,7 +28,7 @@ public class QueryProcessor extends AbstractProcessor {
 	}
 
 	public void runQuery(Query query, AsyncResult result) throws NotEnoughMemoryException {
-		TreeSet<Integer> idList = getPatientSubsetForQuery(query);
+		TreeSet<Integer> idList = getPatientSubsetForQuery(query, getVariantList(query));
 		log.info("Processing " + idList.size() + " rows for result " + result.id);
 		for(List<Integer> list : Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE)){
 			result.stream.appendResultStore(buildResult(result, query, new TreeSet<Integer>(list)));			

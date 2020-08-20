@@ -40,7 +40,7 @@ public class TimelineProcessor extends AbstractProcessor {
 		query.requiredFields = new ArrayList<String>();
 
 		// list patients involved
-		Set<Integer> patientIds = getPatientSubsetForQuery(query);
+		Set<Integer> patientIds = getPatientSubsetForQuery(query, getVariantList(query));
 
 		// get start time for the timeline
 		long startTime = Long.MAX_VALUE;

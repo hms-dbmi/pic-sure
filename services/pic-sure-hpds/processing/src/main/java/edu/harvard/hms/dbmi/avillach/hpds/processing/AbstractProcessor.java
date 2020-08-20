@@ -172,9 +172,10 @@ public abstract class AbstractProcessor {
 	 * it.
 	 * 
 	 * @param query
+	 * @param unionOfInfoFilters 
 	 * @return
 	 */
-	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) {
+	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query, Collection<String> variantsInScope) {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
 		addIdSetsForAnyRecordOf(query, filteredIdSets);
@@ -189,7 +190,7 @@ public abstract class AbstractProcessor {
 			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
 		}
 
-		addIdSetsForVariantInfoFilters(query, filteredIdSets);
+		addIdSetsForVariantInfoFilters(filteredIdSets, variantsInScope);
 
 		return filteredIdSets;
 	}
@@ -199,12 +200,13 @@ public abstract class AbstractProcessor {
 	 * result. 
 	 * 
 	 * @param query
+	 * @param unionOfInfoFilters 
 	 * @return
 	 */
-	protected TreeSet<Integer> getPatientSubsetForQuery(Query query) {
+	protected TreeSet<Integer> getPatientSubsetForQuery(Query query, Collection<String> variantsInScope) {
 		ArrayList<Set<Integer>> filteredIdSets;
 
-		filteredIdSets = idSetsForEachFilter(query);
+		filteredIdSets = idSetsForEachFilter(query, variantsInScope);
 
 		TreeSet<Integer> idList;
 		if(filteredIdSets.isEmpty()) {
@@ -441,36 +443,19 @@ public abstract class AbstractProcessor {
 		return indiscriminateVariantBitmask;
 	}
 
-	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+	protected void addIdSetsForVariantInfoFilters(ArrayList<Set<Integer>> filteredIdSets, Collection<String> variantSets) {
 
-		/* VARIANT INFO FILTER HANDLING IS MESSY */
-		// NC - no kidding!
-		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				addVariantsMatchingFilters(filter, variantSets);
-				log.info("Found " + variantSets.size() + " varients for patient identification");
-				if(!variantSets.isEmpty()) {
-					// INTERSECT all the variant sets.
-					Set<String> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<String> variantSet : variantSets) {
-						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-					}
-					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
-					if(log.getEffectiveLevel()==Level.DEBUG) {
-						IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-						log.debug("Number of matching variants for all sets : " + stats);
-						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
-					}
-					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
-				}else {
-					log.error("No info filters included in query.");
-				}
+		if(!variantSets.isEmpty()) {
+			// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
+			if(log.getEffectiveLevel()==Level.DEBUG) {
+				log.debug("Number of matching variants : " + variantSets.size());						
 			}
-
+			// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
+			addPatientIdsForVariantSets(filteredIdSets, variantSets);
+		}else {
+			log.error("No info filters included in query.");
 		}
-		/* END OF VARIANT INFO FILTER HANDLING */
+
 	}
 
 	Weigher<String, Collection<String>> weigher = new Weigher<String, Collection<String>>(){
@@ -553,8 +538,8 @@ public abstract class AbstractProcessor {
 		return column + COLUMN_AND_KEY_DELIMITER + key;
 	}
 
-	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
-			Set<String> intersectionOfInfoFilters) {
+	private void addPatientIdsForVariantSets(ArrayList<Set<Integer>> filteredIdSets,
+			Collection<String> intersectionOfInfoFilters) {
 		if(!intersectionOfInfoFilters.isEmpty()) {
 			Set<Integer> patientsInScope;
 			Set<Integer> patientIds = Arrays.asList(
@@ -629,7 +614,7 @@ public abstract class AbstractProcessor {
 							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
-			Set<String> unionOfInfoFilters = new TreeSet<>();
+			Set<String> unionOfInfoFilters = new LinkedHashSet<>();
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
@@ -647,7 +632,7 @@ public abstract class AbstractProcessor {
 			}
 
 			log.info("Found " + variantStore.getPatientIds().length + " ids");
-			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+			TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query, unionOfInfoFilters);
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 

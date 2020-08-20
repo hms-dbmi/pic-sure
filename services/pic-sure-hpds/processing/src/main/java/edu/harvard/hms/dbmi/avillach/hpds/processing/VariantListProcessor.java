@@ -136,7 +136,7 @@ public class VariantListProcessor extends AbstractProcessor {
 
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
-		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query, new LinkedHashSet<>(variantList));
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
 		int index = 2; //variant bitmasks are bookended with '11'
 
