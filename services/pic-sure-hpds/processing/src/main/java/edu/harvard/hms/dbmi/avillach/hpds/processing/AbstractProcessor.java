@@ -678,12 +678,16 @@ public abstract class AbstractProcessor {
 				addVariantsMatchingFilters(filter, variantSets);
 
 				if(!variantSets.isEmpty()) {
-					Set<String> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<String> variantSet : variantSets) {
-						//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
-						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
+					if(variantSets.size()>1) {
+						Set<String> intersectionOfInfoFilters = variantSets.get(0);
+						for(Set<String> variantSet : variantSets) {
+							//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
+							intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
+						}
+						unionOfInfoFilters.addAll(intersectionOfInfoFilters);
+					}else {
+						unionOfInfoFilters = variantSets.get(0);
 					}
-					unionOfInfoFilters.addAll(intersectionOfInfoFilters);
 				}else {
 					log.warn("No info filters included in query.");
 				}
@@ -702,7 +706,7 @@ public abstract class AbstractProcessor {
 			}
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-			
+
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
