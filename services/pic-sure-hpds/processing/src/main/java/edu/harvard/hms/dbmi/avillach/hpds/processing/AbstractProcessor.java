@@ -615,6 +615,7 @@ public abstract class AbstractProcessor {
 
 			int variantsInScopeSize = variantsInScope__.size();
 			int patientsInScopeSize = patientsInScope.size();
+			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
 					x<variantsInScopeSize 
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
@@ -637,8 +638,9 @@ public abstract class AbstractProcessor {
 							heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 							homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
 							BigInteger orMasks = heteroMask.or(homoMask);
+							BigInteger andMasks = orMasks.and(patientsInScopeMask);
 							synchronized(matchingPatients) {
-								matchingPatients[0] = matchingPatients[0].or(orMasks);
+								matchingPatients[0] = matchingPatients[0].or(andMasks);
 							}
 						}
 					} catch (IOException e) {
@@ -699,22 +701,8 @@ public abstract class AbstractProcessor {
 				return new ArrayList<String>(unionOfInfoFilters);
 			}
 
-			int index = 2; //variant bitmasks are bookended with '11'
-			StringBuilder builder = new StringBuilder("11");
-			for(String patientId : variantStore.getPatientIds()) {
-				Integer idInt = Integer.parseInt(patientId);
-				if(patientSubset.contains(idInt)){
-					builder.append("1");
-				} else {
-					builder.append("0");
-				}
-				index++;
-			}
-			builder.append("11"); // masks are bookended with '11' set this so we don't count those
-
-			log.info("PATIENT MASK: " + builder.toString());
-
-			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
+			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+			
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
@@ -739,6 +727,26 @@ public abstract class AbstractProcessor {
 			return new ArrayList<>(variantsWithPatients);
 		} 
 		return new ArrayList<>();
+	}
+
+	private BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+		int index = 2; //variant bitmasks are bookended with '11'
+		StringBuilder builder = new StringBuilder("11");
+		for(String patientId : variantStore.getPatientIds()) {
+			Integer idInt = Integer.parseInt(patientId);
+			if(patientSubset.contains(idInt)){
+				builder.append("1");
+			} else {
+				builder.append("0");
+			}
+			index++;
+		}
+		builder.append("11"); // masks are bookended with '11' set this so we don't count those
+
+		log.info("PATIENT MASK: " + builder.toString());
+
+		BigInteger patientMasks = new BigInteger(builder.toString(), 2);
+		return patientMasks;
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
