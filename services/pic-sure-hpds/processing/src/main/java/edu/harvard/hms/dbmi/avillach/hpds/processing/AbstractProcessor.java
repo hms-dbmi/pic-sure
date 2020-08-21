@@ -461,7 +461,7 @@ public abstract class AbstractProcessor {
 		}else if(masks.homozygousMask != null && masks.heterozygousMask != null) {
 			indiscriminateVariantBitmask = masks.heterozygousMask.or(masks.homozygousMask);
 		}else {
-			indiscriminateVariantBitmask = variantStore.emptyBitmask;			
+			indiscriminateVariantBitmask = variantStore.emptyBitmask();			
 		}
 		return indiscriminateVariantBitmask;
 	}

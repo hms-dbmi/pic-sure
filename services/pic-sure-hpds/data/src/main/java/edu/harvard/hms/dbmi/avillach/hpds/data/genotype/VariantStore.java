@@ -26,7 +26,7 @@ public class VariantStore implements Serializable{
 	private static Logger log = Logger.getLogger(VariantStore.class);
 	public static final int BUCKET_SIZE = 1000;
 	private static final long serialVersionUID = -6970128712587609414L;
-	public BigInteger emptyBitmask;
+	private BigInteger emptyBitmask;
 	private String[] patientIds;
 
 	private Integer variantStorageSize;
