@@ -42,32 +42,36 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 public abstract class AbstractProcessor {
 
 	private static boolean dataFilesLoaded = false;
-	private BucketIndexBySample bucketIndex;
+	private static BucketIndexBySample bucketIndex;
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
-		Object[] metadata = loadMetadata();
-		metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
-		allIds = (TreeSet<Integer>) metadata[1];
-		File variantStorageFolder = new File("/opt/local/hpds/all/");
-		loadAllDataFiles();
-		infoStoreColumns = new ArrayList<String>(infoStores.keySet());
-		if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
-			bucketIndex = new BucketIndexBySample(variantStore);
-			try (
-					FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
-					GZIPOutputStream gzos = new GZIPOutputStream(fos);
-					ObjectOutputStream oos = new ObjectOutputStream(gzos);			
-					){
-				oos.writeObject(bucketIndex);
-				oos.flush();oos.close();
+		synchronized(store) {
+			Object[] metadata = loadMetadata();
+			metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
+			allIds = (TreeSet<Integer>) metadata[1];
+			File variantStorageFolder = new File("/opt/local/hpds/all/");
+			loadAllDataFiles();
+			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
+			if(bucketIndex==null) {
+				if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
+					bucketIndex = new BucketIndexBySample(variantStore);
+					try (
+							FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
+							GZIPOutputStream gzos = new GZIPOutputStream(fos);
+							ObjectOutputStream oos = new ObjectOutputStream(gzos);			
+							){
+						oos.writeObject(bucketIndex);
+						oos.flush();oos.close();
+					}
+				}else {
+					try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
+						bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
+					} catch (IOException | ClassNotFoundException e) {
+						log.error(e);
+					} 
+				}
 			}
-		}else {
-			try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
-				bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
-			} catch (IOException | ClassNotFoundException e) {
-				log.error(e);
-			} 
 		}
 	}
 
@@ -609,7 +613,7 @@ public abstract class AbstractProcessor {
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
 			ArrayList<List<String>> variantsInScope__ = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream().collect(Collectors.groupingByConcurrent((variantSpec)->{return variantSpec.hashCode()%1000;})).values());
-			
+
 			int variantsInScopeSize = variantsInScope__.size();
 			int patientsInScopeSize = patientsInScope.size();
 			for(int x = 0;
@@ -715,7 +719,7 @@ public abstract class AbstractProcessor {
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-			
+
 			unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
 				VariantMasks masks;
 				try {

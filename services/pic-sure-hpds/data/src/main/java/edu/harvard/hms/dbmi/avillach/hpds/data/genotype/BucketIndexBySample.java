@@ -22,7 +22,7 @@ import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class BucketIndexBySample {
-	public static final String INDEX_FILE = "/opt/local/hpds/all/BucketIndexBySampleStorage.javabin";
+	public static final String INDEX_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 	private static final String STORAGE_FILE = "/opt/local/hpds/all/BucketIndexBySampleStorage.javabin";
 	private static final int CONTIG_SCALE = 1000000;
 	private FileBackedByteIndexedStorage<Integer, HashSet<Integer>> fbbis;  
