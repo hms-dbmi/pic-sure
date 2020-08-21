@@ -34,7 +34,7 @@ public class BucketIndexBySample implements Serializable {
 	List<Integer> patientIds;
 	ArrayList<String> contigSet;
 
-	Logger log = Logger.getLogger(BucketIndexBySample.class);
+	transient Logger log = Logger.getLogger(BucketIndexBySample.class);
 
 	public BucketIndexBySample(VariantStore variantStore) throws FileNotFoundException {
 		fbbis = new FileBackedByteIndexedStorage(Integer.class, HashSet.class, new File(STORAGE_FILE));
