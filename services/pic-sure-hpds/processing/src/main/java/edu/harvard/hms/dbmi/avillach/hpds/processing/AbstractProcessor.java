@@ -707,22 +707,24 @@ public abstract class AbstractProcessor {
 
 			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 
-			unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
-				VariantMasks masks;
-				try {
-					masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
-					if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-						variantsWithPatients.add(variantKey);
-					} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-						variantsWithPatients.add(variantKey);
-					} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-						//so heterozygous no calls we want, homozygous no calls we don't
-						variantsWithPatients.add(variantKey);
+			if(unionOfInfoFilters.size()<100000) {
+				unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
+					VariantMasks masks;
+					try {
+						masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
+						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+							variantsWithPatients.add(variantKey);
+						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+							variantsWithPatients.add(variantKey);
+						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+							//so heterozygous no calls we want, homozygous no calls we don't
+							variantsWithPatients.add(variantKey);
+						}
+					} catch (IOException e) {
+						log.error(e);
 					}
-				} catch (IOException e) {
-					log.error(e);
-				}				
-			});
+				});
+			}
 
 			return new ArrayList<>(variantsWithPatients);
 		} 
