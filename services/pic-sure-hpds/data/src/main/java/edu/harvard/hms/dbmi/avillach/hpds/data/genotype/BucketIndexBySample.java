@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,7 +22,8 @@ import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
-public class BucketIndexBySample {
+public class BucketIndexBySample implements Serializable {
+	private static final long serialVersionUID = -1230735595028630687L;
 	public static final String INDEX_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 	private static final String STORAGE_FILE = "/opt/local/hpds/all/BucketIndexBySampleStorage.javabin";
 	private static final int CONTIG_SCALE = 1000000;
