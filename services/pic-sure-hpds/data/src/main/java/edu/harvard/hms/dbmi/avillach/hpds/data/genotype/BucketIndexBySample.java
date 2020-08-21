@@ -45,14 +45,15 @@ public class BucketIndexBySample {
 		for(int patientId : patientIds) {
 			index.put(patientId, new HashSet<Integer>());
 		}
+		BigInteger emptyBitmask = variantStore.emptyBitmask();
 		for(String contig : contigSet) {
 			int contigInteger = contigSet.indexOf(contig) * CONTIG_SCALE;
 			variantStore.variantMaskStorage.get(contig).keys().stream().forEach((bucket)->{
 				try {
 					variantStore.variantMaskStorage.get(contig).get(bucket).forEach((variantSpec, masks)->{
 						BigInteger mask =
-								(masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask).or(
-										(masks.heterozygousMask == null ? variantStore.emptyBitmask : masks.heterozygousMask));
+								(masks.homozygousMask == null ? emptyBitmask : masks.homozygousMask).or(
+										(masks.heterozygousMask == null ? emptyBitmask : masks.heterozygousMask));
 						patientIds.parallelStream().forEach((id)->{
 							if(mask.testBit(patientIds.indexOf(id)+2)) {
 								index.get(id).add(contigInteger + bucket);
