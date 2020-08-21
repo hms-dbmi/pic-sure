@@ -728,6 +728,8 @@ public abstract class AbstractProcessor {
 						log.error(e);
 					}
 				});
+			}else {
+				return new ArrayList<>(unionOfInfoFilters);
 			}
 
 			return new ArrayList<>(variantsWithPatients);
