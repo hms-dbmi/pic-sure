@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.ChiSquareTest;
@@ -25,6 +26,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
@@ -40,6 +42,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 public abstract class AbstractProcessor {
 
 	private static boolean dataFilesLoaded = false;
+	private BucketIndexBySample bucketIndex;
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -49,6 +52,23 @@ public abstract class AbstractProcessor {
 		File variantStorageFolder = new File("/opt/local/hpds/all/");
 		loadAllDataFiles();
 		infoStoreColumns = new ArrayList<String>(infoStores.keySet());
+		if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
+			bucketIndex = new BucketIndexBySample(variantStore);
+			try (
+					FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
+					GZIPOutputStream gzos = new GZIPOutputStream(fos);
+					ObjectOutputStream oos = new ObjectOutputStream(gzos);			
+					){
+				oos.writeObject(bucketIndex);
+				oos.flush();oos.close();
+			}
+		}else {
+			try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
+				bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
+			} catch (IOException | ClassNotFoundException e) {
+				log.error(e);
+			} 
+		}
 	}
 
 	public AbstractProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
@@ -694,6 +714,8 @@ public abstract class AbstractProcessor {
 			BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
+			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+			
 			unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
 				VariantMasks masks;
 				try {
