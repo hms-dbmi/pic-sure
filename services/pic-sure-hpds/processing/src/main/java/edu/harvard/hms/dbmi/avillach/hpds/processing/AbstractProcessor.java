@@ -50,7 +50,6 @@ public abstract class AbstractProcessor {
 			Object[] metadata = loadMetadata();
 			metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
 			allIds = (TreeSet<Integer>) metadata[1];
-			File variantStorageFolder = new File("/opt/local/hpds/all/");
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 			if(bucketIndex==null) {
