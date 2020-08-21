@@ -93,16 +93,12 @@ public class BucketIndexBySample implements Serializable {
 					return (contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000);
 				}));
 		ConcurrentSkipListSet<String> filteredVariantSet = new ConcurrentSkipListSet<>();
-		try {
-			bucketSet[0].parallelStream().forEach((bucket)->{
-				List<String> variantBucket = bucketMap.get(bucket);
-				if(variantBucket!=null) {
-					filteredVariantSet.addAll(variantBucket);
-				}
-			});
-		}catch(NullPointerException e) {
-			log.error(e);
-		}
+		bucketSet[0].parallelStream().forEach((bucket)->{
+			List<String> variantBucket = bucketMap.get(bucket);
+			if(variantBucket!=null) {
+				filteredVariantSet.addAll(variantBucket);
+			}
+		});
 		return new TreeSet<>(filteredVariantSet);
 	}
 
