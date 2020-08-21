@@ -573,9 +573,7 @@ public abstract class AbstractProcessor {
 				log.error(e);
 			}
 		}
-		synchronized(variantSets) {
-			variantSets.add(categoryVariantSets[0]);
-		}
+		variantSets.add(categoryVariantSets[0]);
 	}
 
 	private List<String> filterInfoCategoryKeys(String[] values, FileBackedByteIndexedInfoStore infoStore) {
@@ -673,24 +671,13 @@ public abstract class AbstractProcessor {
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
 			Set<String> unionOfInfoFilters = new HashSet<>();
-			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<String>> variantSets = new ArrayList<>();
-				addVariantsMatchingFilters(filter, variantSets);
-
-				if(!variantSets.isEmpty()) {
-					if(variantSets.size()>1) {
-						Set<String> intersectionOfInfoFilters = variantSets.get(0);
-						for(Set<String> variantSet : variantSets) {
-							//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
-							intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
-						}
-						unionOfInfoFilters.addAll(intersectionOfInfoFilters);
-					}else {
-						unionOfInfoFilters = variantSets.get(0);
-					}
-				}else {
-					log.warn("No info filters included in query.");
+			
+			if(query.variantInfoFilters.size()>1) {
+				for(VariantInfoFilter filter : query.variantInfoFilters){
+					unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
 				}
+			} else {
+				unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.variantInfoFilters.get(0));
 			}
 
 			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), 
@@ -734,6 +721,27 @@ public abstract class AbstractProcessor {
 			return variantsWithPatients;
 		}
 		return new ArrayList<>();
+	}
+
+	private Set<String> addVariantsForInfoFilter(Set<String> unionOfInfoFilters, VariantInfoFilter filter) {
+		ArrayList<Set<String>> variantSets = new ArrayList<>();
+		addVariantsMatchingFilters(filter, variantSets);
+
+		if(!variantSets.isEmpty()) {
+			if(variantSets.size()>1) {
+				Set<String> intersectionOfInfoFilters = variantSets.get(0);
+				for(Set<String> variantSet : variantSets) {
+					//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
+					intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
+				}
+				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
+			} else {
+				unionOfInfoFilters = variantSets.get(0);
+			}
+		} else {
+			log.warn("No info filters included in query.");
+		}
+		return unionOfInfoFilters;
 	}
 
 	private BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
