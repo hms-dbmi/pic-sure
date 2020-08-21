@@ -95,7 +95,10 @@ public class BucketIndexBySample implements Serializable {
 		ConcurrentSkipListSet<String> filteredVariantSet = new ConcurrentSkipListSet<>();
 		try {
 			bucketSet[0].parallelStream().forEach((bucket)->{
-				filteredVariantSet.addAll(bucketMap.get(bucket));
+				List<String> variantBucket = bucketMap.get(bucket);
+				if(variantBucket!=null) {
+					filteredVariantSet.addAll(variantBucket);
+				}
 			});
 		}catch(NullPointerException e) {
 			log.error(e);
