@@ -529,15 +529,15 @@ public abstract class AbstractProcessor {
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-				LinkedHashSet<String> variants = new LinkedHashSet<String>();
+				Set<String> variants = new LinkedHashSet<String>();
 				for(String value : valuesInRange) {
 					try {
-						variants.addAll(infoCache.get(columnAndKey(column, value)));
+						variants = Sets.union(variants, infoCache.get(columnAndKey(column, value)));
 					} catch (ExecutionException e) {
 						log.error(e);
 					}
 				}
-				variantSets.add(new LinkedHashSet<String>(variants));
+				variantSets.add(variants);
 			});
 		}
 	}
@@ -734,7 +734,7 @@ public abstract class AbstractProcessor {
 					//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
 					intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 				}
-				unionOfInfoFilters.addAll(intersectionOfInfoFilters);
+				unionOfInfoFilters = Sets.union(unionOfInfoFilters, intersectionOfInfoFilters);
 			} else {
 				unionOfInfoFilters = variantSets.get(0);
 			}
