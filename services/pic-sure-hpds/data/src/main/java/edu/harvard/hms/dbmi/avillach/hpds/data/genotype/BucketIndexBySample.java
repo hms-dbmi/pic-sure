@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
@@ -80,26 +79,33 @@ public class BucketIndexBySample implements Serializable {
 		fbbis.complete();
 	}
 
-	public TreeSet<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
+	public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
 		Integer firstPatientId = patientSet.iterator().next();
 		patientSet.remove(firstPatientId);
-		Set<Integer>[] bucketSet = new Set[] {getBucketSetForPatientId(firstPatientId)};
-		patientSet.stream().forEach((id)->{
-			bucketSet[0] = Sets.intersection(bucketSet[0], getBucketSetForPatientId(id));
-		});
+
+		// Build a set of buckets in which at least one selected patient has a variant
+		Set<Integer> bucketSet = getBucketSetForPatientId(firstPatientId);
+		for(Integer patientId : patientSet) {
+			bucketSet = Sets.union(bucketSet, getBucketSetForPatientId(patientId));
+		}
+
+		// Group variants by bucket
 		ConcurrentMap<Integer, List<String>> bucketMap = variantSet.parallelStream().
 				collect(Collectors.groupingByConcurrent((String variantSpec)->{
 					String[] spec = variantSpec.split(",");
 					return (contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000);
 				}));
-		ConcurrentSkipListSet<String> filteredVariantSet = new ConcurrentSkipListSet<>();
-		bucketSet[0].parallelStream().forEach((bucket)->{
+
+		// Union all variants in buckets that at least one patient has a variant in
+		Set<String> filteredVariantSet = new HashSet<>();
+		for(Integer bucket : bucketSet) {
 			List<String> variantBucket = bucketMap.get(bucket);
 			if(variantBucket!=null) {
-				filteredVariantSet.addAll(variantBucket);
+				filteredVariantSet = Sets.union(
+						new HashSet<>(variantBucket), filteredVariantSet);
 			}
-		});
-		return new TreeSet<>(filteredVariantSet);
+		}
+		return filteredVariantSet;
 	}
 
 	private HashSet<Integer> getBucketSetForPatientId(Integer patientId) {

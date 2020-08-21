@@ -10,7 +10,6 @@ import java.util.zip.GZIPInputStream;
 import org.apache.log4j.Logger;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
-import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
@@ -19,10 +18,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucke
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.math.BigInteger;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
 public class VariantListProcessor extends AbstractProcessor {
