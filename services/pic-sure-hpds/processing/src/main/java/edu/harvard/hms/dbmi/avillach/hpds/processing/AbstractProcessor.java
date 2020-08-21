@@ -552,7 +552,7 @@ public abstract class AbstractProcessor {
 		/*
 		 * We want to union all the variants for each selected key, so we need an intermediate set
 		 */
-		Set<String>[] categoryVariantSets = new Set[] { new ConcurrentSkipListSet<>()};
+		Set[] categoryVariantSets = new Set[] {new HashSet<>()};
 
 		if(infoKeys.size()>1) {
 			/*
@@ -561,7 +561,10 @@ public abstract class AbstractProcessor {
 			 */
 			infoKeys.parallelStream().forEach((key)->{
 				try {
-					categoryVariantSets[0].addAll(infoCache.get(columnAndKey(column, key)));
+					Set<String> variantsForColumnAndValue = infoCache.get(columnAndKey(column, key));
+					synchronized(categoryVariantSets) {
+						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
+					}
 				} catch (ExecutionException e) {
 					log.error(e);
 				}
