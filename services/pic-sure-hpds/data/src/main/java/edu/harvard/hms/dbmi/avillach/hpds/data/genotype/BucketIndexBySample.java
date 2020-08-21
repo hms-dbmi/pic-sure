@@ -50,7 +50,9 @@ public class BucketIndexBySample {
 			variantStore.variantMaskStorage.get(contig).keys().stream().forEach((bucket)->{
 				try {
 					variantStore.variantMaskStorage.get(contig).get(bucket).forEach((variantSpec, masks)->{
-						BigInteger mask = masks.homozygousMask.or(masks.heterozygousMask);
+						BigInteger mask =
+								(masks.homozygousMask == null ? variantStore.emptyBitmask : masks.homozygousMask).or(
+										(masks.heterozygousMask == null ? variantStore.emptyBitmask : masks.heterozygousMask));
 						patientIds.parallelStream().forEach((id)->{
 							if(mask.testBit(patientIds.indexOf(id)+2)) {
 								index.get(id).add(contigInteger + bucket);
