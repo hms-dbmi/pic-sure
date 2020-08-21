@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -44,7 +45,7 @@ public class VariantMetadataIndex implements Serializable {
 		}
 	}
 
-	public Map<String, String[]> findByMultipleVariantSpec(List<String> varientSpecList) {
+	public Map<String, String[]> findByMultipleVariantSpec(Collection<String> varientSpecList) {
 		return varientSpecList.stream().collect(Collectors.toMap(
 				variant->{return variant;},
 				variant->{return findBySingleVariantSpec(variant);}

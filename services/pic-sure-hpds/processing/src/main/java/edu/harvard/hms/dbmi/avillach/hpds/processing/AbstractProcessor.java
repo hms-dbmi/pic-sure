@@ -665,7 +665,7 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	protected ArrayList<String> getVariantList(Query query){
+	protected Collection<String> getVariantList(Query query){
 		if(query.variantInfoFilters != null && 
 				(!query.variantInfoFilters.isEmpty() && 
 						query.variantInfoFilters.stream().anyMatch((entry)->{
@@ -729,11 +729,10 @@ public abstract class AbstractProcessor {
 					}
 				});
 			}else {
-				return new ArrayList<>(unionOfInfoFilters);
+				return unionOfInfoFilters;
 			}
-
-			return new ArrayList<>(variantsWithPatients);
-		} 
+			return variantsWithPatients;
+		}
 		return new ArrayList<>();
 	}
 

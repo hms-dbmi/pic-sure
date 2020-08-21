@@ -93,7 +93,7 @@ public class VariantListProcessor extends AbstractProcessor {
 	public String runVcfExcerptQuery(Query query) {
 		log.info("Running VCF Extract query");
 
-		ArrayList<String> variantList = getVariantList(query);
+		Collection<String> variantList = getVariantList(query);
 
 		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
 
