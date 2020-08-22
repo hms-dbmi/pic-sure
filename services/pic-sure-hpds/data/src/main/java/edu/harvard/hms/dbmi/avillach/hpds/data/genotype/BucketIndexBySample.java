@@ -127,6 +127,16 @@ public class BucketIndexBySample implements Serializable {
 			});
 
 	private HashSet<Integer> getBucketSetForPatientId(Integer patientId) {
+		//  THIS IS TEMPORARY
+		if(bucketSetCache==null) {
+			bucketSetCache = CacheBuilder.newBuilder()
+					.maximumSize(1000).build(new CacheLoader<Integer, HashSet<Integer>>() {
+						@Override
+						public HashSet<Integer> load(Integer patientId) throws Exception {
+							return  fbbis.get(patientId);
+						}
+					});
+		}
 		try {
 			return  bucketSetCache.get(patientId);
 		} catch (ExecutionException e) {
