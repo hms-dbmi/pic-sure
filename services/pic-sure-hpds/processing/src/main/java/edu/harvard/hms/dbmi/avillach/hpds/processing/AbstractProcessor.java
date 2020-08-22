@@ -474,13 +474,13 @@ public abstract class AbstractProcessor {
 		// NC - no kidding!
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<Long>> variantSets = new ArrayList<>();
+				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
 				log.info("Found " + variantSets.size() + " varients for patient identification");
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
-					Set<Long> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<Long> variantSet : variantSets) {
+					Set<String> intersectionOfInfoFilters = variantSets.get(0);
+					for(Set<String> variantSet : variantSets) {
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
@@ -490,11 +490,7 @@ public abstract class AbstractProcessor {
 						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					ArrayList<String> variantsInScope = new  ArrayList<>(intersectionOfInfoFilters.size());
-					for(Long variant : intersectionOfInfoFilters) {
-						variantsInScope.add(variantToString(variant));
-					}
-					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, variantsInScope);
+					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
 				}else {
 					log.error("No info filters included in query.");
 				}
@@ -518,14 +514,31 @@ public abstract class AbstractProcessor {
 				public Set<Long> load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
 					String[] variantList = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
-					ConcurrentHashMap<Long, Long> variantSet = new ConcurrentHashMap<Long, Long>(variantList.length);
-					Arrays.stream(variantList).parallel().forEach((variant)->{
-						variantSet.put(variantToLong(variant), variantToLong(variant));
-					});
+					ConcurrentHashMap<Long, Long> variantSet = mapVariantSpecsToLong(variantList);
 					return variantSet.keySet();
 				}
+
 			});
 
+	private ConcurrentHashMap<Long, Long> mapVariantSpecsToLong(String[] variantList) {
+		ConcurrentHashMap<Long, Long> variantSet = new ConcurrentHashMap<Long, Long>(variantList.length);
+		Arrays.stream(variantList).parallel().forEach((variant)->{
+			Long variantToLong = variantToLong(variant);
+			variantSet.put(variantToLong, variantToLong);
+		});
+		return variantSet;
+	}
+	
+
+	private Set<String> mapVariantLongsToSpecs(Set<Long> variantLongSet) {
+		ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantLongSet.size());
+		variantLongSet.parallelStream().forEach((variant)->{
+			String variantToString = variantToString(variant);
+			variantSet.put(variantToString, variantToString);
+		});
+		return variantSet.keySet();
+	}
+	
 	ArrayList<String> contigList = new ArrayList<>();
 	ArrayList<String> alleleList = new ArrayList<>();
 	private Long variantToLong(String variant) {
@@ -555,7 +568,7 @@ public abstract class AbstractProcessor {
 		return contigList.get(contigIndex) + "," + offset  + "," + alleleList.get(alleleIndex);
 	}
 	
-	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<Long>> variantSets) {
+	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
 			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
@@ -569,10 +582,10 @@ public abstract class AbstractProcessor {
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-				Set<Long> variants = new LinkedHashSet<Long>();
+				Set<String> variants = new LinkedHashSet<String>();
 				for(String value : valuesInRange) {
 					try {
-						variants = Sets.union(variants, infoCache.get(columnAndKey(column, value)));
+						variants = Sets.union(variants, mapVariantLongsToSpecs(infoCache.get(columnAndKey(column, value))));
 					} catch (ExecutionException e) {
 						log.error(e);
 					}
@@ -582,7 +595,7 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private void addVariantsMatchingCategoryFilter(ArrayList<Set<Long>> variantSets, Entry<String, String[]> entry) {
+	private void addVariantsMatchingCategoryFilter(ArrayList<Set<String>> variantSets, Entry<String, String[]> entry) {
 		String column = entry.getKey();
 		String[] values = entry.getValue();
 		Arrays.sort(values);
@@ -601,7 +614,7 @@ public abstract class AbstractProcessor {
 			 */
 			infoKeys.parallelStream().forEach((key)->{
 				try {
-					Set<Long> variantsForColumnAndValue = infoCache.get(columnAndKey(column, key));
+					Set<String> variantsForColumnAndValue = mapVariantLongsToStrings(infoCache.get(columnAndKey(column, key)));
 					synchronized(categoryVariantSets) {
 						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
 					}
@@ -713,7 +726,7 @@ public abstract class AbstractProcessor {
 							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
-			Set<Long> unionOfInfoFilters = new HashSet<>();
+			Set<String> unionOfInfoFilters = new HashSet<>();
 
 			if(query.variantInfoFilters.size()>1) {
 				for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -731,8 +744,8 @@ public abstract class AbstractProcessor {
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			Collection<String> variantsInScope = new ArrayList<String>(unionOfInfoFilters.size());
-			for(Long variant: unionOfInfoFilters) {
-				variantsInScope.add(variantToString(variant));
+			for(String variant: unionOfInfoFilters) {
+				variantsInScope.add(variant);
 			}
 			
 			// If we have all patients then no variants would be filtered, so no need to do further processing
@@ -771,14 +784,14 @@ public abstract class AbstractProcessor {
 		return new ArrayList<>();
 	}
 
-	private Set<Long> addVariantsForInfoFilter(Set<Long> unionOfInfoFilters, VariantInfoFilter filter) {
-		ArrayList<Set<Long>> variantSets = new ArrayList<>();
+	private Set<String> addVariantsForInfoFilter(Set<String> unionOfInfoFilters, VariantInfoFilter filter) {
+		ArrayList<Set<String>> variantSets = new ArrayList<>();
 		addVariantsMatchingFilters(filter, variantSets);
 
 		if(!variantSets.isEmpty()) {
 			if(variantSets.size()>1) {
-				Set<Long> intersectionOfInfoFilters = variantSets.get(0);
-				for(Set<Long> variantSet : variantSets) {
+				Set<String> intersectionOfInfoFilters = variantSets.get(0);
+				for(Set<String> variantSet : variantSets) {
 					//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
 					intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 				}
