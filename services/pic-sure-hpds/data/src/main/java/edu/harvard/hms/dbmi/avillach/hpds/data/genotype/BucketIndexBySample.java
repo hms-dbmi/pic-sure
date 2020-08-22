@@ -84,9 +84,9 @@ public class BucketIndexBySample implements Serializable {
 		patientSet.remove(firstPatientId);
 
 		// Build a set of buckets in which at least one selected patient has a variant
-		Set<Integer> bucketSet = getBucketSetForPatientId(firstPatientId);
+		Set<Integer>[] bucketSet = new Set[] {getBucketSetForPatientId(firstPatientId)};
 		for(Integer patientId : patientSet) {
-			bucketSet = Sets.union(bucketSet, getBucketSetForPatientId(patientId));
+			bucketSet[0] = Sets.union(bucketSet[0], getBucketSetForPatientId(patientId));
 		}
 
 		// Group variants by bucket
@@ -97,14 +97,13 @@ public class BucketIndexBySample implements Serializable {
 				}));
 
 		// Union all variants in buckets that at least one patient has a variant in
-		Set<String> filteredVariantSet = new HashSet<>();
-		for(Integer bucket : bucketSet) {
-			List<String> variantBucket = bucketMap.get(bucket);
-			if(variantBucket!=null) {
-				filteredVariantSet = Sets.union(
-						new HashSet<>(variantBucket), filteredVariantSet);
-			}
-		}
+		ConcurrentSkipListSet<String> filteredVariantSet = new ConcurrentSkipListSet<>();
+		bucketMap.entrySet().parallelStream().filter((entry)->{
+			return bucketSet[0].contains(entry.getKey());
+		}).forEach((entry)->{
+			filteredVariantSet.addAll(entry.getValue());
+		});
+
 		return filteredVariantSet;
 	}
 
