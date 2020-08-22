@@ -119,7 +119,7 @@ public class BucketIndexBySample implements Serializable {
 		int start = 0;
 		int current = 0;
 		for(int x = 0;contig_and_offset[1]==null;x++) {
-			if(variantSpec.charAt(x)=='\t') {
+			if(variantSpec.charAt(x)==',') {
 				contig_and_offset[current++] = variantSpec.substring(start,x-1);
 				start = x+1;
 			}
