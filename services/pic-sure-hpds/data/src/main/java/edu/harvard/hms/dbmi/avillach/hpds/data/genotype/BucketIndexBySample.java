@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
@@ -90,10 +91,14 @@ public class BucketIndexBySample implements Serializable {
 		}
 
 		// Filter out variants outside the buckets in which patients in the set have variants
-		return variantSet.parallelStream().filter((variantSpec)->{
+		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>(bucketSet[0].size());
+		variantSet.parallelStream().filter((variantSpec)->{
 			String[] spec = variantSpec.split(",");
 			return  bucketSet[0].contains((contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000));
-		}).collect(Collectors.toSet());
+		}).forEach((variantSpec)->{
+			filteredSet.put(variantSpec, variantSpec);
+		});
+		return filteredSet.keySet();
 	}
 
 	private HashSet<Integer> getBucketSetForPatientId(Integer patientId) {
