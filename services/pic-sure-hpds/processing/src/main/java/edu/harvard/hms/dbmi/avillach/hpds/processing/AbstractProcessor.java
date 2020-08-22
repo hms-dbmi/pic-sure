@@ -741,6 +741,8 @@ public abstract class AbstractProcessor {
 
 	protected Collection<String> getVariantList(Query query){
 		try {
+			query = new Query(query);
+			query.expectedResultType = null;
 			return variantListCache.get(mapper.writeValueAsString(query));
 		} catch (ExecutionException | IOException e) {
 			log.error(e);
