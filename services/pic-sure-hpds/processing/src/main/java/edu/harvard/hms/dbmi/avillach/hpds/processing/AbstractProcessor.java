@@ -614,7 +614,7 @@ public abstract class AbstractProcessor {
 			 */
 			infoKeys.parallelStream().forEach((key)->{
 				try {
-					Set<String> variantsForColumnAndValue = mapVariantLongsToStrings(infoCache.get(columnAndKey(column, key)));
+					Set<String> variantsForColumnAndValue = mapVariantLongsToSpecs(infoCache.get(columnAndKey(column, key)));
 					synchronized(categoryVariantSets) {
 						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
 					}
