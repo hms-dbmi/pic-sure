@@ -528,7 +528,7 @@ public abstract class AbstractProcessor {
 		});
 		return variantSet;
 	}
-	
+
 
 	private Set<String> mapVariantLongsToSpecs(Set<Long> variantLongSet) {
 		ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantLongSet.size());
@@ -538,7 +538,7 @@ public abstract class AbstractProcessor {
 		});
 		return variantSet.keySet();
 	}
-	
+
 	ArrayList<String> contigList = new ArrayList<>();
 	ArrayList<String> alleleList = new ArrayList<>();
 	private Long variantToLong(String variant) {
@@ -558,7 +558,7 @@ public abstract class AbstractProcessor {
 				(contigIndex * 1000000000l) + 
 				spec.metadata.offset;
 	}
-	
+
 	private String variantToString(Long variant) {
 		int alleleIndex = (int) (variant /1000000000000l);
 		long alleleMask = alleleIndex * 1000000000000l;
@@ -567,7 +567,7 @@ public abstract class AbstractProcessor {
 		int offset = (int) (variant - (alleleMask + contigMask));
 		return contigList.get(contigIndex) + "," + offset  + "," + alleleList.get(alleleIndex);
 	}
-	
+
 	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
@@ -607,28 +607,21 @@ public abstract class AbstractProcessor {
 		 */
 		Set[] categoryVariantSets = new Set[] {new HashSet<>()};
 
-		if(infoKeys.size()>1) {
-			/*
-			 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
-			 *   that part of the processing and synchronizing only the adds to the variantSets list.
-			 */
-			infoKeys.parallelStream().forEach((key)->{
-				try {
-					Set<String> variantsForColumnAndValue = mapVariantLongsToSpecs(infoCache.get(columnAndKey(column, key)));
-					synchronized(categoryVariantSets) {
-						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
-					}
-				} catch (ExecutionException e) {
-					log.error(e);
-				}
-			});
-		} else {
+		/*
+		 *   Because constructing these TreeSets is taking most of the processing time, parallelizing 
+		 *   that part of the processing and synchronizing only the adds to the variantSets list.
+		 */
+		infoKeys.parallelStream().forEach((key)->{
 			try {
-				categoryVariantSets[0] = infoCache.get(columnAndKey(column, infoKeys.get(0)));
+				Set<String> variantsForColumnAndValue = mapVariantLongsToSpecs(infoCache.get(columnAndKey(column, key)));
+				synchronized(categoryVariantSets) {
+					categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
+				}
 			} catch (ExecutionException e) {
 				log.error(e);
 			}
-		}
+		});
+
 		variantSets.add(categoryVariantSets[0]);
 	}
 
@@ -747,7 +740,7 @@ public abstract class AbstractProcessor {
 			for(String variant: unionOfInfoFilters) {
 				variantsInScope.add(variant);
 			}
-			
+
 			// If we have all patients then no variants would be filtered, so no need to do further processing
 			if(patientSubset.size()==variantStore.getPatientIds().length) {
 				return variantsInScope;
