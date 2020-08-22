@@ -719,10 +719,10 @@ public abstract class AbstractProcessor {
 
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
-			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 
-			if(unionOfInfoFilters.size()<100000) {
-				unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
+			if(variantsInScope.size()<100000) {
+				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
 					try {
 						masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
