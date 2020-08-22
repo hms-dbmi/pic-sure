@@ -91,7 +91,7 @@ public class BucketIndexBySample implements Serializable {
 		}
 
 		// Filter out variants outside the buckets in which patients in the set have variants
-		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>(bucketSet[0].size());
+		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>();
 		variantSet.parallelStream().filter((variantSpec)->{
 			String[] spec = variantSpec.split(",");
 			return  bucketSet[0].contains((contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000));
