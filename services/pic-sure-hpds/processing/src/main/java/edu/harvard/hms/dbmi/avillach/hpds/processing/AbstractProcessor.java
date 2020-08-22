@@ -510,7 +510,7 @@ public abstract class AbstractProcessor {
 	};
 
 	LoadingCache<String, Set<String>> infoCache = CacheBuilder.newBuilder()
-			.softValues().build(new CacheLoader<String, Set<String>>() {
+			.weigher(weigher).maximumWeight(100000000).build(new CacheLoader<String, Set<String>>() {
 
 				@Override
 				public Set<String> load(String infoColumn_valueKey) throws Exception {
@@ -717,6 +717,7 @@ public abstract class AbstractProcessor {
 		Collection<String> variantList;
 		try{
 			variantList = variantListCache.get(queryJson);
+			variantListCache.cleanUp();
 		}catch (ExecutionException e) {
 			variantList = ((VariantListTooLargeException)(e.getCause())).variantList;
 		}
