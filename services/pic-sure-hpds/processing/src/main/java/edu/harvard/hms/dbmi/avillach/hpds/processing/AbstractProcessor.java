@@ -4,6 +4,7 @@ import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
@@ -511,7 +512,12 @@ public abstract class AbstractProcessor {
 				@Override
 				public Set<String> load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
-					return new HashSet<String>(Arrays.asList(infoStores.get(column_and_value[0]).allValues.get(column_and_value[1])));
+					String[] variantList = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
+					ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantList.length);
+					Arrays.stream(variantList).parallel().forEach((variant)->{
+						variantSet.put(variant, variant);
+					});
+					return variantSet.keySet();
 				}
 			});
 
@@ -674,7 +680,7 @@ public abstract class AbstractProcessor {
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
 			Set<String> unionOfInfoFilters = new HashSet<>();
-			
+
 			if(query.variantInfoFilters.size()>1) {
 				for(VariantInfoFilter filter : query.variantInfoFilters){
 					unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
