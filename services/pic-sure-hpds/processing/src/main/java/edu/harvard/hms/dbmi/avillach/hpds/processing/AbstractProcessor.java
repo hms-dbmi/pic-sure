@@ -672,64 +672,80 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	protected Collection<String> getVariantList(Query query){
-		if(query.variantInfoFilters != null && 
-				(!query.variantInfoFilters.isEmpty() && 
-						query.variantInfoFilters.stream().anyMatch((entry)->{
-							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
-									|| (!entry.numericVariantInfoFilters.isEmpty()));
-						}))) {
-			Set<String> unionOfInfoFilters = new HashSet<>();
+	ObjectMapper mapper = new ObjectMapper();
+	LoadingCache<String, Collection<String>> variantListCache = CacheBuilder.newBuilder()
+			.softValues().build(new CacheLoader<String, Collection<String>>() {
 
-			if(query.variantInfoFilters.size()>1) {
-				for(VariantInfoFilter filter : query.variantInfoFilters){
-					unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
-				}
-			} else {
-				unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.variantInfoFilters.get(0));
-			}
+				@Override
+				public Collection<String> load(String queryJson) throws Exception {
+					Query query = mapper.readValue(queryJson, Query.class);
+					if(query.variantInfoFilters != null && 
+							(!query.variantInfoFilters.isEmpty() && 
+									query.variantInfoFilters.stream().anyMatch((entry)->{
+										return ((!entry.categoryVariantInfoFilters.isEmpty()) 
+												|| (!entry.numericVariantInfoFilters.isEmpty()));
+									}))) {
+						Set<String> unionOfInfoFilters = new HashSet<>();
 
-			Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), 
-					new HashSet<Integer>(
-							Arrays.asList(variantStore.getPatientIds()).stream()
-							.map((id)->{return Integer.parseInt(id.trim());})
-							.collect(Collectors.toList())));
-			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
-
-			// If we have all patients then no variants would be filtered, so no need to do further processing
-			if(patientSubset.size()==variantStore.getPatientIds().length) {
-				return new ArrayList<String>(unionOfInfoFilters);
-			}
-
-			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-
-			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
-
-			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-
-			if(unionOfInfoFilters.size()<100000) {
-				unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
-					VariantMasks masks;
-					try {
-						masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
-						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-							variantsWithPatients.add(variantKey);
-						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-							variantsWithPatients.add(variantKey);
-						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-							//so heterozygous no calls we want, homozygous no calls we don't
-							variantsWithPatients.add(variantKey);
+						if(query.variantInfoFilters.size()>1) {
+							for(VariantInfoFilter filter : query.variantInfoFilters){
+								unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
+							}
+						} else {
+							unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.variantInfoFilters.get(0));
 						}
-					} catch (IOException e) {
-						log.error(e);
+
+						Set<Integer> patientSubset = Sets.intersection(getPatientSubsetForQuery(query), 
+								new HashSet<Integer>(
+										Arrays.asList(variantStore.getPatientIds()).stream()
+										.map((id)->{return Integer.parseInt(id.trim());})
+										.collect(Collectors.toList())));
+						log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+
+						// If we have all patients then no variants would be filtered, so no need to do further processing
+						if(patientSubset.size()==variantStore.getPatientIds().length) {
+							return new ArrayList<String>(unionOfInfoFilters);
+						}
+
+						BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+
+						ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
+
+						unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+
+						if(unionOfInfoFilters.size()<100000) {
+							unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
+								VariantMasks masks;
+								try {
+									masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
+									if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+										variantsWithPatients.add(variantKey);
+									} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+										variantsWithPatients.add(variantKey);
+									} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+										//so heterozygous no calls we want, homozygous no calls we don't
+										variantsWithPatients.add(variantKey);
+									}
+								} catch (IOException e) {
+									log.error(e);
+								}
+							});
+						}else {
+							return unionOfInfoFilters;
+						}
+						return variantsWithPatients;
 					}
-				});
-			}else {
-				return unionOfInfoFilters;
-			}
-			return variantsWithPatients;
+					return new ArrayList<>();
+				}
+			});
+
+	protected Collection<String> getVariantList(Query query){
+		try {
+			return variantListCache.get(mapper.writeValueAsString(query));
+		} catch (ExecutionException | IOException e) {
+			log.error(e);
+			return new ArrayList<>();
 		}
-		return new ArrayList<>();
 	}
 
 	private Set<String> addVariantsForInfoFilter(Set<String> unionOfInfoFilters, VariantInfoFilter filter) {
