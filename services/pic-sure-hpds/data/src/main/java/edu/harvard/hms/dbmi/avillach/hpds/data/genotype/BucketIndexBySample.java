@@ -96,11 +96,12 @@ public class BucketIndexBySample implements Serializable {
 				bucketSetFromVariants[0] = Sets.intersection(bucketSetFromVariants[0], bucketSet);
 			}
 		});;
+		
 
 		// Filter out variants outside the buckets in which patients in the set have variants
 		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>();
 		variantSet.parallelStream().filter((variantSpec)->{
-			return  bucketSet[0].contains(bucketFromVariantSpec(variantSpec));
+			return  bucketSetFromVariants[0].contains(bucketFromVariantSpec(variantSpec));
 		}).forEach((variantSpec)->{
 			filteredSet.put(variantSpec, variantSpec);
 		});
