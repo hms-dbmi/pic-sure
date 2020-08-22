@@ -96,12 +96,12 @@ public class BucketIndexBySample implements Serializable {
 		Set<Integer>[]  bucketSetFromVariants = new Set[] {bucketsFromVariants.keySet()};
 		
 		patientSet.parallelStream().map((patientId)->{return getBucketSetForPatientId(patientId);}).forEach((bucketSet)->{
+			Set patientBucketsInVariantBuckets = Sets.intersection(bucketSet, bucketSetFromVariants[0]);
 			synchronized (bucketSetFromVariants) {
-				bucketSetFromVariants[0] = Sets.intersection(bucketSetFromVariants[0], bucketSet);
+				bucketSetFromVariants[0] = Sets.union(bucketSetFromVariants[0], patientBucketsInVariantBuckets);
 			}
 		});;
 		
-
 		// Filter out variants outside the buckets in which patients in the set have variants
 		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>();
 		variantSet.parallelStream().filter((variantSpec)->{
