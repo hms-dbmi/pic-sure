@@ -14,10 +14,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import org.apache.log4j.Logger;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
@@ -113,10 +117,19 @@ public class BucketIndexBySample implements Serializable {
 		return (contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000);
 	}
 
+
+	LoadingCache<Integer, HashSet<Integer>> bucketSetCache = CacheBuilder.newBuilder()
+			.maximumSize(1000).build(new CacheLoader<Integer, HashSet<Integer>>() {
+				@Override
+				public HashSet<Integer> load(Integer patientId) throws Exception {
+					return  fbbis.get(patientId);
+				}
+			});
+
 	private HashSet<Integer> getBucketSetForPatientId(Integer patientId) {
 		try {
-			return  fbbis.get(patientId);
-		} catch (IOException e) {
+			return  bucketSetCache.get(patientId);
+		} catch (ExecutionException e) {
 			log.error(e);
 		}
 		return new HashSet<Integer>();

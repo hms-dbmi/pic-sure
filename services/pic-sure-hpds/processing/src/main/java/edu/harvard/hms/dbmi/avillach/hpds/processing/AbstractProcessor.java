@@ -681,47 +681,9 @@ public abstract class AbstractProcessor {
 			filteredIdSets.add(new TreeSet<>());
 		}
 	}
-
-	ObjectMapper mapper = new ObjectMapper();
-	LoadingCache<String, Collection<String>> variantListCache = CacheBuilder.newBuilder()
-			.weigher(weigher).maximumWeight(1000000).build(new CacheLoader<String, Collection<String>>() {
-
-				@Override
-				public Collection<String> load(String queryJson) throws Exception {
-					Collection<String> variantList = processVariantList(mapper.readValue(queryJson, Query.class));
-					if(variantList.size()>10000) {
-						throw new VariantListTooLargeException(variantList);
-					}
-					return variantList;
-				}
-
-			});
-
-	private static class VariantListTooLargeException extends RuntimeException {
-		private static final long serialVersionUID = 9162315793523243407L;
-		Collection<String> variantList;
-		public VariantListTooLargeException(Collection<String> variantList) {
-			this.variantList = variantList;
-		}
-	}
 	
 	protected Collection<String> getVariantList(Query query){
-		query = new Query(query);
-		query.expectedResultType = null;
-		String queryJson = "{}";
-		try {
-			queryJson = mapper.writeValueAsString(query);
-		} catch (IOException e) {
-			log.error(e);
-		}
-		Collection<String> variantList;
-		try{
-			variantList = variantListCache.get(queryJson);
-			variantListCache.cleanUp();
-		}catch (ExecutionException e) {
-			variantList = ((VariantListTooLargeException)(e.getCause())).variantList;
-		}
-		return variantList;
+		return processVariantList(query);
 	}
 
 	private Collection<String> processVariantList(Query query) {
