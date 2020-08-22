@@ -688,11 +688,23 @@ public abstract class AbstractProcessor {
 
 				@Override
 				public Collection<String> load(String queryJson) throws Exception {
-					return processVariantList(mapper.readValue(queryJson, Query.class));
+					Collection<String> variantList = processVariantList(mapper.readValue(queryJson, Query.class));
+					if(variantList.size()>10000) {
+						throw new VariantListTooLargeException(variantList);
+					}
+					return variantList;
 				}
 
 			});
 
+	private static class VariantListTooLargeException extends RuntimeException {
+		private static final long serialVersionUID = 9162315793523243407L;
+		Collection<String> variantList;
+		public VariantListTooLargeException(Collection<String> variantList) {
+			this.variantList = variantList;
+		}
+	}
+	
 	protected Collection<String> getVariantList(Query query){
 		query = new Query(query);
 		query.expectedResultType = null;
@@ -702,12 +714,11 @@ public abstract class AbstractProcessor {
 		} catch (IOException e) {
 			log.error(e);
 		}
-		Collection<String> variantList = variantListCache.getIfPresent(queryJson);
-		if(variantList==null) {
-			variantList = processVariantList(query);
-			if(variantList.size() < 10000) {
-				variantListCache.put(queryJson, variantList);
-			}
+		Collection<String> variantList;
+		try{
+			variantList = variantListCache.get(queryJson);
+		}catch (ExecutionException e) {
+			variantList = ((VariantListTooLargeException)(e.getCause())).variantList;
 		}
 		return variantList;
 	}
