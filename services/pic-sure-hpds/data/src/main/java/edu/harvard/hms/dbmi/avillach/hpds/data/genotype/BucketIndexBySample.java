@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -85,30 +86,29 @@ public class BucketIndexBySample implements Serializable {
 	}
 
 	public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
-		
-		// Build a list of buckets represented in the variantSet
-		ConcurrentHashMap<Integer,Integer> bucketsFromVariants = new ConcurrentHashMap<Integer, Integer>();
-		variantSet.parallelStream().map((String variantSpec)->{
-			return bucketFromVariantSpec(variantSpec);
-		}).forEach((bucket)->{
-			bucketsFromVariants.put(bucket, bucket);
-		});
-		Set<Integer>[]  bucketSetFromVariants = new Set[] {bucketsFromVariants.keySet()};
-		
-		patientSet.parallelStream().map((patientId)->{return getBucketSetForPatientId(patientId);}).forEach((bucketSet)->{
-			synchronized (bucketSetFromVariants) {
-				bucketSetFromVariants[0] = Sets.intersection(bucketSetFromVariants[0], bucketSet);
-			}
-		});;
-		
 
+		// Build a list of buckets represented in the variantSet
+		ConcurrentMap<Integer, List<String>> variantBuckets = variantSet.parallelStream().collect(
+				Collectors.groupingByConcurrent((String variantSpec)->{
+					return  bucketFromVariantSpec(variantSpec);
+				}));
+		
+		Map<Integer, Integer>[]  bucketSetFromPatients = new Map[] {new ConcurrentHashMap<Integer, Integer>()};
+		patientSet.parallelStream().map((patientId)->{return getBucketSetForPatientId(patientId);}).forEach((bucketSet)->{
+			for(Integer bucket : bucketSet) {
+				if(variantBuckets.containsKey(bucket)) {
+					bucketSetFromPatients[0].put(bucket, bucket);
+				}
+			}
+		});
+		
 		// Filter out variants outside the buckets in which patients in the set have variants
 		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>();
-		variantSet.parallelStream().filter((variantSpec)->{
-			return  bucketSetFromVariants[0].contains(bucketFromVariantSpec(variantSpec));
-		}).forEach((variantSpec)->{
-			filteredSet.put(variantSpec, variantSpec);
-		});
+		for(Integer bucket : bucketSetFromPatients[0].keySet()) {
+			variantBuckets.get(bucket).parallelStream().forEach((variant)->{
+				filteredSet.put(variant, variant);
+			});
+		}
 		return filteredSet.keySet();
 	}
 
