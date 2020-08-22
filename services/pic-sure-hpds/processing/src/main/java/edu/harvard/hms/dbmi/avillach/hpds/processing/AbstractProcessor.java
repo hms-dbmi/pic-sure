@@ -30,7 +30,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -474,13 +473,13 @@ public abstract class AbstractProcessor {
 		// NC - no kidding!
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
-				ArrayList<Set<Long>> variantSets = new ArrayList<>();
+				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
 				log.info("Found " + variantSets.size() + " varients for patient identification");
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
-					Set<Long> intersectionOfInfoFilters = variantSets.get(0);
-					for(Set<Long> variantSet : variantSets) {
+					Set<String> intersectionOfInfoFilters = variantSets.get(0);
+					for(Set<String> variantSet : variantSets) {
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
@@ -490,11 +489,7 @@ public abstract class AbstractProcessor {
 						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					ArrayList<String> variantsInScope = new  ArrayList<>(intersectionOfInfoFilters.size());
-					for(Long variant : intersectionOfInfoFilters) {
-						variantsInScope.add(variantToString(variant));
-					}
-					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, variantsInScope);
+					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
 				}else {
 					log.error("No info filters included in query.");
 				}
@@ -504,58 +499,29 @@ public abstract class AbstractProcessor {
 		/* END OF VARIANT INFO FILTER HANDLING */
 	}
 
-	Weigher<String, Collection<Long>> weigher = new Weigher<String, Collection<Long>>(){
+	Weigher<String, Collection<String>> weigher = new Weigher<String, Collection<String>>(){
 		@Override
-		public int weigh(String key, Collection<Long> value) {
+		public int weigh(String key, Collection<String> value) {
 			return value.size();
 		}
 	};
 
-	LoadingCache<String, Set<Long>> infoCache = CacheBuilder.newBuilder()
-			.maximumWeight(1000000000).weigher(weigher).build(new CacheLoader<String, Set<Long>>() {
+	LoadingCache<String, Set<String>> infoCache = CacheBuilder.newBuilder()
+			.maximumWeight(500000000).weigher(weigher).build(new CacheLoader<String, Set<String>>() {
 
 				@Override
-				public Set<Long> load(String infoColumn_valueKey) throws Exception {
+				public Set<String> load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
 					String[] variantList = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
-					ConcurrentHashMap<Long, Long> variantSet = new ConcurrentHashMap<Long, Long>(variantList.length);
+					ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantList.length);
 					Arrays.stream(variantList).parallel().forEach((variant)->{
-						variantSet.put(variantToLong(variant), variantToLong(variant));
+						variantSet.put(variant, variant);
 					});
 					return variantSet.keySet();
 				}
 			});
 
-	ArrayList<String> contigList = new ArrayList<>();
-	ArrayList<String> alleleList = new ArrayList<>();
-	private Long variantToLong(String variant) {
-		VariantSpec spec = new VariantSpec(variant);
-		int contigIndex = contigList.indexOf(spec.metadata.chromosome);
-		if(contigIndex==-1) {
-			contigList.add(spec.metadata.chromosome);
-			contigIndex = contigList.size()-1;
-		}
-		String allele = spec.metadata.ref + "," + spec.metadata.alt;
-		int alleleIndex = alleleList.indexOf(allele);
-		if(contigIndex==-1) {
-			alleleList.add(spec.metadata.chromosome);
-			alleleIndex = alleleList.size()-1;
-		}
-		return (alleleIndex * 1000000000000l) + 
-				(contigIndex * 1000000000l) + 
-				spec.metadata.offset;
-	}
-	
-	private String variantToString(Long variant) {
-		int alleleIndex = (int) (variant /1000000000000l);
-		long alleleMask = alleleIndex * 1000000000000l;
-		int contigIndex = (int) (variant - alleleMask);
-		long contigMask = contigIndex * 1000000000l;
-		int offset = (int) (variant - (alleleMask + contigMask));
-		return contigList.get(contigIndex) + "," + offset  + "," + alleleList.get(alleleIndex);
-	}
-	
-	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<Long>> variantSets) {
+	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<Set<String>> variantSets) {
 		// Add variant sets for each filter
 		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
 			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
@@ -569,7 +535,7 @@ public abstract class AbstractProcessor {
 				doubleFilter.getMax();
 				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
 				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-				Set<Long> variants = new LinkedHashSet<Long>();
+				Set<String> variants = new LinkedHashSet<String>();
 				for(String value : valuesInRange) {
 					try {
 						variants = Sets.union(variants, infoCache.get(columnAndKey(column, value)));
@@ -582,7 +548,7 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private void addVariantsMatchingCategoryFilter(ArrayList<Set<Long>> variantSets, Entry<String, String[]> entry) {
+	private void addVariantsMatchingCategoryFilter(ArrayList<Set<String>> variantSets, Entry<String, String[]> entry) {
 		String column = entry.getKey();
 		String[] values = entry.getValue();
 		Arrays.sort(values);
@@ -601,7 +567,7 @@ public abstract class AbstractProcessor {
 			 */
 			infoKeys.parallelStream().forEach((key)->{
 				try {
-					Set<Long> variantsForColumnAndValue = infoCache.get(columnAndKey(column, key));
+					Set<String> variantsForColumnAndValue = infoCache.get(columnAndKey(column, key));
 					synchronized(categoryVariantSets) {
 						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
 					}
@@ -637,7 +603,7 @@ public abstract class AbstractProcessor {
 	}
 
 	private void addPatientIdsForIntersectionOfVariantSets(ArrayList<Set<Integer>> filteredIdSets,
-			Collection<String> intersectionOfInfoFilters) {
+			Set<String> intersectionOfInfoFilters) {
 		if(!intersectionOfInfoFilters.isEmpty()) {
 			Set<Integer> patientsInScope;
 			Set<Integer> patientIds = Arrays.asList(
@@ -713,7 +679,7 @@ public abstract class AbstractProcessor {
 							return ((!entry.categoryVariantInfoFilters.isEmpty()) 
 									|| (!entry.numericVariantInfoFilters.isEmpty()));
 						}))) {
-			Set<Long> unionOfInfoFilters = new HashSet<>();
+			Set<String> unionOfInfoFilters = new HashSet<>();
 
 			if(query.variantInfoFilters.size()>1) {
 				for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -730,24 +696,19 @@ public abstract class AbstractProcessor {
 							.collect(Collectors.toList())));
 			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
-			Collection<String> variantsInScope = new ArrayList<String>(unionOfInfoFilters.size());
-			for(Long variant: unionOfInfoFilters) {
-				variantsInScope.add(variantToString(variant));
-			}
-			
 			// If we have all patients then no variants would be filtered, so no need to do further processing
 			if(patientSubset.size()==variantStore.getPatientIds().length) {
-				return variantsInScope;
+				return new ArrayList<String>(unionOfInfoFilters);
 			}
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
-			variantsInScope = bucketIndex.filterVariantSetForPatientSet(variantsInScope, new ArrayList<>(patientSubset));
+			unionOfInfoFilters = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 
-			if(variantsInScope.size()<100000) {
-				variantsInScope.parallelStream().forEach((String variantKey)->{
+			if(unionOfInfoFilters.size()<100000) {
+				unionOfInfoFilters.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
 					try {
 						masks = variantStore.getMasks(variantKey, new VariantMaskBucketHolder());
@@ -764,21 +725,21 @@ public abstract class AbstractProcessor {
 					}
 				});
 			}else {
-				return variantsInScope;
+				return unionOfInfoFilters;
 			}
 			return variantsWithPatients;
 		}
 		return new ArrayList<>();
 	}
 
-	private Set<Long> addVariantsForInfoFilter(Set<Long> unionOfInfoFilters, VariantInfoFilter filter) {
-		ArrayList<Set<Long>> variantSets = new ArrayList<>();
+	private Set<String> addVariantsForInfoFilter(Set<String> unionOfInfoFilters, VariantInfoFilter filter) {
+		ArrayList<Set<String>> variantSets = new ArrayList<>();
 		addVariantsMatchingFilters(filter, variantSets);
 
 		if(!variantSets.isEmpty()) {
 			if(variantSets.size()>1) {
-				Set<Long> intersectionOfInfoFilters = variantSets.get(0);
-				for(Set<Long> variantSet : variantSets) {
+				Set<String> intersectionOfInfoFilters = variantSets.get(0);
+				for(Set<String> variantSet : variantSets) {
 					//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
 					intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 				}

@@ -7,7 +7,6 @@ import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -81,7 +80,7 @@ public class BucketIndexBySample implements Serializable {
 		fbbis.complete();
 	}
 
-	public Set<String> filterVariantSetForPatientSet(Collection<String> variantSet, List<Integer> patientSet){
+	public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
 		
 		// Build a list of buckets represented in the variantSet
 		ConcurrentHashMap<Integer,Integer> bucketsFromVariants = new ConcurrentHashMap<Integer, Integer>();
