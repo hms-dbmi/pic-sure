@@ -32,6 +32,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -620,41 +621,48 @@ public abstract class AbstractProcessor {
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			ArrayList<List<String>> variantsInScope__ = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream().collect(Collectors.groupingByConcurrent((variantSpec)->{return variantSpec.hashCode()%1000;})).values());
+			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
+					.collect(Collectors.groupingByConcurrent((variantSpec)->{
+						return new VariantSpec(variantSpec).metadata.offset/1000;
+					})).values());
 
-			int variantsInScopeSize = variantsInScope__.size();
+			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, Runtime.getRuntime().availableProcessors());
+
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
-					x<variantsInScopeSize 
+					x<variantPartitions.size() 
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
-				variantsInScope__.get(x).parallelStream().forEach((variantSpec)->{
-					VariantMasks masks;
-					BigInteger heteroMask = variantStore.emptyBitmask();
-					BigInteger homoMask = variantStore.emptyBitmask();
-					try {
-						masks = variantStore.getMasks(variantSpec, bucketCache);
-						if(masks != null) {
-							// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
-							if(Level.DEBUG.equals(log.getEffectiveLevel())) {
-								log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-										+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-										+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-										+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
-							}
+				List<List<String>> variantBuckets = variantPartitions.get(x);
+				variantBuckets.parallelStream().forEach((variantBucket)->{
+					variantBucket.parallelStream().forEach((variantSpec)->{
+						VariantMasks masks;
+						BigInteger heteroMask = variantStore.emptyBitmask();
+						BigInteger homoMask = variantStore.emptyBitmask();
+						try {
+							masks = variantStore.getMasks(variantSpec, bucketCache);
+							if(masks != null) {
+								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
+								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
+									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+								}
 
-							heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
-							homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
-							BigInteger orMasks = heteroMask.or(homoMask);
-							BigInteger andMasks = orMasks.and(patientsInScopeMask);
-							synchronized(matchingPatients) {
-								matchingPatients[0] = matchingPatients[0].or(andMasks);
+								heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
+								homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
+								BigInteger orMasks = heteroMask.or(homoMask);
+								BigInteger andMasks = orMasks.and(patientsInScopeMask);
+								synchronized(matchingPatients) {
+									matchingPatients[0] = matchingPatients[0].or(andMasks);
+								}
 							}
+						} catch (IOException e) {
+							log.error(e);
 						}
-					} catch (IOException e) {
-						log.error(e);
-					}
+					});
 				});
 			}
 			Set<Integer> ids = new TreeSet<Integer>();
