@@ -81,24 +81,39 @@ public class BucketIndexBySample implements Serializable {
 	}
 
 	public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
+		
+		// Build a list of buckets represented in the variantSet
+		ConcurrentHashMap<Integer,Integer> bucketsFromVariants = new ConcurrentHashMap<Integer, Integer>();
+		variantSet.parallelStream().map((String variantSpec)->{
+			return bucketFromVariantSpec(variantSpec);
+		}).forEach((bucket)->{
+			bucketsFromVariants.put(bucket, bucket);
+		});
+		Set<Integer>  bucketSetFromVariants = bucketsFromVariants.keySet();
+		
+		// Build a set of buckets from  variantSet in which at least one selected patient has a variant 
 		Integer firstPatientId = patientSet.iterator().next();
 		patientSet.remove(firstPatientId);
-
-		// Build a set of buckets in which at least one selected patient has a variant
-		Set<Integer>[] bucketSet = new Set[] {getBucketSetForPatientId(firstPatientId)};
+		Set<Integer>[] bucketSet = new Set[] {
+				Sets.intersection(bucketSetFromVariants, getBucketSetForPatientId(firstPatientId))};
 		for(Integer patientId : patientSet) {
-			bucketSet[0] = Sets.union(bucketSet[0], getBucketSetForPatientId(patientId));
+			bucketSet[0] = Sets.union(bucketSet[0],
+					Sets.intersection(bucketSetFromVariants, getBucketSetForPatientId(patientId)));
 		}
 
 		// Filter out variants outside the buckets in which patients in the set have variants
 		ConcurrentHashMap<String,String> filteredSet = new ConcurrentHashMap<String, String>();
 		variantSet.parallelStream().filter((variantSpec)->{
-			String[] spec = variantSpec.split(",");
-			return  bucketSet[0].contains((contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000));
+			return  bucketSet[0].contains(bucketFromVariantSpec(variantSpec));
 		}).forEach((variantSpec)->{
 			filteredSet.put(variantSpec, variantSpec);
 		});
 		return filteredSet.keySet();
+	}
+
+	private Integer bucketFromVariantSpec(String variantSpec) {
+		String[] spec = variantSpec.split(",");
+		return (contigSet.indexOf(spec[0]) * CONTIG_SCALE) + (Integer.parseInt(spec[1])/1000);
 	}
 
 	private HashSet<Integer> getBucketSetForPatientId(Integer patientId) {
