@@ -562,7 +562,7 @@ public abstract class AbstractProcessor {
 	private String variantToString(Long variant) {
 		int alleleIndex = (int) (variant /1000000000000l);
 		long alleleMask = alleleIndex * 1000000000000l;
-		int contigIndex = (int) (variant - alleleMask);
+		int contigIndex = (int) ((variant - alleleMask)/1000000000l);
 		long contigMask = contigIndex * 1000000000l;
 		int offset = (int) (variant - (alleleMask + contigMask));
 		return contigList.get(contigIndex) + "," + offset  + "," + alleleList.get(alleleIndex);
