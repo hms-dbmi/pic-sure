@@ -707,19 +707,9 @@ public abstract class AbstractProcessor {
 			variantList = processVariantList(query);
 			if(variantList.size() < 10000) {
 				variantListCache.put(queryJson, variantList);
-				provideTimeForConsistency();
 			}
 		}
 		return variantList;
-	}
-
-	private void provideTimeForConsistency() {
-		try {
-			Thread.sleep(100);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 	}
 
 	private Collection<String> processVariantList(Query query) {
