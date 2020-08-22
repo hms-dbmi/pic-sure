@@ -507,7 +507,7 @@ public abstract class AbstractProcessor {
 	};
 
 	LoadingCache<String, Set<String>> infoCache = CacheBuilder.newBuilder()
-			.maximumWeight(500000000).weigher(weigher).build(new CacheLoader<String, Set<String>>() {
+			.softValues().build(new CacheLoader<String, Set<String>>() {
 
 				@Override
 				public Set<String> load(String infoColumn_valueKey) throws Exception {
