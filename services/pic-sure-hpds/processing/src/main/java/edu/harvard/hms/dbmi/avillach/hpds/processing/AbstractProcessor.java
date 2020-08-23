@@ -60,7 +60,7 @@ public abstract class AbstractProcessor {
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 			if(bucketIndex==null) {
-				if(variantIndex.isEmpty()) {
+				if(variantIndex==null) {
 					synchronized(variantIndex) {
 						if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
 							populateVariantIndex();	
@@ -74,11 +74,11 @@ public abstract class AbstractProcessor {
 							}
 						}else {
 							try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FILE)));){
-								variantIndex = (CopyOnWriteArrayList<String>) objectInputStream.readObject();
+								variantIndex = (String[]) objectInputStream.readObject();
 							} catch (IOException | ClassNotFoundException e) {
 								log.error(e);
 							}
-							log.info("Found " +variantIndex.size() + " total variants.");
+							log.info("Found " + variantIndex.length + " total variants.");
 						}
 					}
 				}
@@ -535,6 +535,7 @@ public abstract class AbstractProcessor {
 	};
 
 	private void populateVariantIndex() {
+		ConcurrentSkipListSet<String> variantIndex = new ConcurrentSkipListSet<String>();
 		variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
 			storage.keys().stream().forEach((bucket)->{
@@ -546,11 +547,13 @@ public abstract class AbstractProcessor {
 			});
 			log.info("Finished caching contig: " + entry.getKey());
 		});
-		Collections.sort(variantIndex);
-		log.info("Found " + variantIndex.size() + " total variants.");
+		this.variantIndex = variantIndex.toArray(new String[variantIndex.size()]);
+		// This should already be sorted, but just in case
+		Arrays.sort(this.variantIndex);
+		log.info("Found " + this.variantIndex.length + " total variants.");
 	}
 	
-	CopyOnWriteArrayList<String> variantIndex = new CopyOnWriteArrayList<String>();
+	String[] variantIndex = null;
 
 	LoadingCache<String, int[]> infoCache = CacheBuilder.newBuilder()
 			.weigher(weigher).maximumWeight(500000000).build(new CacheLoader<String, int[]>() {
@@ -561,7 +564,7 @@ public abstract class AbstractProcessor {
 					int[] variantIndexArray = new int[variantArray.length];
 					int x = 0;
 					for(String variantSpec : variantArray) {
-						variantIndexArray[x++] = variantIndex.indexOf(variantSpec);
+						variantIndexArray[x++] = Arrays.binarySearch(variantIndex, variantSpec);
 					}
 					return variantIndexArray;
 				}
@@ -597,7 +600,7 @@ public abstract class AbstractProcessor {
 	private Set<String> arrayToSet(int[] variantSpecs) {
 		ConcurrentHashMap<String, String> setMap = new ConcurrentHashMap<String, String>(variantSpecs.length);
 		Arrays.stream(variantSpecs).parallel().forEach((index)->{
-			String variantSpec = variantIndex.get(index);
+			String variantSpec = variantIndex[index];
 			setMap.put(variantSpec, variantSpec);
 		});
 		return setMap.keySet();
