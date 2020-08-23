@@ -502,25 +502,25 @@ public abstract class AbstractProcessor {
 		/* END OF VARIANT INFO FILTER HANDLING */
 	}
 
-	Weigher<String, Collection<String>> weigher = new Weigher<String, Collection<String>>(){
+	Weigher<String, String[]> weigher = new Weigher<String, String[]>(){
 		@Override
-		public int weigh(String key, Collection<String> value) {
-			return value.size();
+		public int weigh(String key, String[] value) {
+			return value.length;
 		}
 	};
 
-	LoadingCache<String, Set<String>> infoCache = CacheBuilder.newBuilder()
-			.weigher(weigher).maximumWeight(100000000).build(new CacheLoader<String, Set<String>>() {
+	LoadingCache<String, String[]> infoCache = CacheBuilder.newBuilder()
+			.weigher(weigher).maximumWeight(1000000000).build(new CacheLoader<String, String[]>() {
 
 				@Override
-				public Set<String> load(String infoColumn_valueKey) throws Exception {
+				public String[] load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
 					String[] variantList = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
 					ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantList.length);
 					Arrays.stream(variantList).parallel().forEach((variant)->{
 						variantSet.put(variant, variant);
 					});
-					return variantSet.keySet();
+					return variantSet.keySet().toArray(new String[variantSet.size()]);
 				}
 			});
 
@@ -541,7 +541,7 @@ public abstract class AbstractProcessor {
 				Set<String> variants = new LinkedHashSet<String>();
 				for(String value : valuesInRange) {
 					try {
-						variants = Sets.union(variants, infoCache.get(columnAndKey(column, value)));
+						variants = Sets.union(variants, arrayToSet(infoCache.get(columnAndKey(column, value))));
 					} catch (ExecutionException e) {
 						log.error(e);
 					}
@@ -549,6 +549,14 @@ public abstract class AbstractProcessor {
 				variantSets.add(variants);
 			});
 		}
+	}
+
+	private Set<String> arrayToSet(String[] variantSpecs) {
+		ConcurrentHashMap<String, String> setMap = new ConcurrentHashMap<String, String>(variantSpecs.length);
+		Arrays.stream(variantSpecs).parallel().forEach((variantMask)->{
+			setMap.put(variantMask, variantMask);
+		});
+		return setMap.keySet();
 	}
 
 	private void addVariantsMatchingCategoryFilter(ArrayList<Set<String>> variantSets, Entry<String, String[]> entry) {
@@ -570,7 +578,7 @@ public abstract class AbstractProcessor {
 			 */
 			infoKeys.parallelStream().forEach((key)->{
 				try {
-					Set<String> variantsForColumnAndValue = infoCache.get(columnAndKey(column, key));
+					Set<String> variantsForColumnAndValue = arrayToSet(infoCache.get(columnAndKey(column, key)));
 					synchronized(categoryVariantSets) {
 						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
 					}
@@ -580,7 +588,7 @@ public abstract class AbstractProcessor {
 			});
 		} else {
 			try {
-				categoryVariantSets[0] = infoCache.get(columnAndKey(column, infoKeys.get(0)));
+				categoryVariantSets[0] = arrayToSet(infoCache.get(columnAndKey(column, infoKeys.get(0))));
 			} catch (ExecutionException e) {
 				log.error(e);
 			}
