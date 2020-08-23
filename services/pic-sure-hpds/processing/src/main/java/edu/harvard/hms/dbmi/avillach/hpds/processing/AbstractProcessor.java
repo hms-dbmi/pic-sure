@@ -61,7 +61,7 @@ public abstract class AbstractProcessor {
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 			if(bucketIndex==null) {
 				if(variantIndex==null) {
-					synchronized(variantIndex) {
+					synchronized(AbstractProcessor.class) {
 						if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
 							populateVariantIndex();	
 							try (
