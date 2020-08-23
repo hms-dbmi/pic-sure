@@ -5,9 +5,7 @@ import java.math.BigInteger;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
@@ -17,9 +15,6 @@ import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.ChiSquareTest;
 //import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.JsonParseException;
-import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -535,25 +530,25 @@ public abstract class AbstractProcessor {
 	};
 
 	private void populateVariantIndex() {
-		ConcurrentSkipListSet<String> variantIndex = new ConcurrentSkipListSet<String>();
+		ConcurrentSkipListSet<String> variantIndexSet = new ConcurrentSkipListSet<String>();
 		variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
 			storage.keys().stream().forEach((bucket)->{
 				try {
-					variantIndex.addAll(storage.get(bucket).keySet());
+					variantIndexSet.addAll(storage.get(bucket).keySet());
 				} catch (IOException e) {
 					log.error(e);
 				}
 			});
 			log.info("Finished caching contig: " + entry.getKey());
 		});
-		this.variantIndex = variantIndex.toArray(new String[variantIndex.size()]);
+		variantIndex = variantIndexSet.toArray(new String[variantIndexSet.size()]);
 		// This should already be sorted, but just in case
-		Arrays.sort(this.variantIndex);
-		log.info("Found " + this.variantIndex.length + " total variants.");
+		Arrays.sort(variantIndex);
+		log.info("Found " + variantIndex.length + " total variants.");
 	}
 	
-	String[] variantIndex = null;
+	protected static String[] variantIndex = null;
 
 	LoadingCache<String, int[]> infoCache = CacheBuilder.newBuilder()
 			.weigher(weigher).maximumWeight(500000000).build(new CacheLoader<String, int[]>() {
