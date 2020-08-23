@@ -331,8 +331,7 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VARIANT_COUNT_FOR_QUERY : {
-					int variantCount = countProcessor.runVariantCount(incomingQuery);
-					return Response.ok(variantCount > 100000 ? "approximately " + ((variantCount/100000)*100000) : variantCount).build();
+					return Response.ok(countProcessor.runVariantCount(incomingQuery)).build();
 				}
 				
 				case VARIANT_LIST_FOR_QUERY : {
