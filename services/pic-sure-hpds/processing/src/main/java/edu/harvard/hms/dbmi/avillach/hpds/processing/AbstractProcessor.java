@@ -49,6 +49,7 @@ public abstract class AbstractProcessor {
 
 	private static boolean dataFilesLoaded = false;
 	private static BucketIndexBySample bucketIndex;
+	private static final String VARIANT_INDEX_FILE = "/opt/local/hpds/all/variantIndex.javabin";
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -59,7 +60,28 @@ public abstract class AbstractProcessor {
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 			if(bucketIndex==null) {
-				populateVariantIndex();
+				if(variantIndex.isEmpty()) {
+					synchronized(variantIndex) {
+						if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
+							populateVariantIndex();	
+							try (
+									FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
+									GZIPOutputStream gzos = new GZIPOutputStream(fos);
+									ObjectOutputStream oos = new ObjectOutputStream(gzos);
+									){
+								oos.writeObject(variantIndex);
+								oos.flush();oos.close();
+							}
+						}else {
+							try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FILE)));){
+								variantIndex = (CopyOnWriteArrayList<String>) objectInputStream.readObject();
+							} catch (IOException | ClassNotFoundException e) {
+								log.error(e);
+							}
+							log.info("Found " +variantIndex.size() + " total variants.");
+						}
+					}
+				}
 				if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
 					bucketIndex = new BucketIndexBySample(variantStore);
 					try (
@@ -513,16 +535,16 @@ public abstract class AbstractProcessor {
 	};
 
 	private void populateVariantIndex() {
-		variantStore.variantMaskStorage.forEach((String contig, 
-				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage)->{
-			storage.keys().parallelStream().forEach((bucket)->{
+		variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
+			storage.keys().stream().forEach((bucket)->{
 				try {
 					variantIndex.addAll(storage.get(bucket).keySet());
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+					log.error(e);
 				}
 			});
+			log.info("Finished caching contig: " + entry.getKey());
 		});
 		Collections.sort(variantIndex);
 		log.info("Found " + variantIndex.size() + " total variants.");
