@@ -7,6 +7,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
@@ -42,6 +43,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public abstract class AbstractProcessor {
 
@@ -57,6 +59,7 @@ public abstract class AbstractProcessor {
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 			if(bucketIndex==null) {
+				populateVariantIndex();
 				if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
 					bucketIndex = new BucketIndexBySample(variantStore);
 					try (
@@ -502,20 +505,43 @@ public abstract class AbstractProcessor {
 		/* END OF VARIANT INFO FILTER HANDLING */
 	}
 
-	Weigher<String, String[]> weigher = new Weigher<String, String[]>(){
+	Weigher<String, int[]> weigher = new Weigher<String, int[]>(){
 		@Override
-		public int weigh(String key, String[] value) {
+		public int weigh(String key, int[] value) {
 			return value.length;
 		}
 	};
 
-	LoadingCache<String, String[]> infoCache = CacheBuilder.newBuilder()
-			.weigher(weigher).maximumWeight(500000000).build(new CacheLoader<String, String[]>() {
+	private void populateVariantIndex() {
+		variantStore.variantMaskStorage.forEach((String contig, 
+				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage)->{
+			storage.keys().parallelStream().forEach((bucket)->{
+				try {
+					variantIndex.addAll(storage.get(bucket).keySet());
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			});
+		});
+		Collections.sort(variantIndex);
+		log.info("Found " + variantIndex.size() + " total variants.");
+	}
+	
+	CopyOnWriteArrayList<String> variantIndex = new CopyOnWriteArrayList<String>();
 
+	LoadingCache<String, int[]> infoCache = CacheBuilder.newBuilder()
+			.weigher(weigher).maximumWeight(500000000).build(new CacheLoader<String, int[]>() {
 				@Override
-				public String[] load(String infoColumn_valueKey) throws Exception {
+				public int[] load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
-					return infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
+					String[] variantArray = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
+					int[] variantIndexArray = new int[variantArray.length];
+					int x = 0;
+					for(String variantSpec : variantArray) {
+						variantIndexArray[x++] = variantIndex.indexOf(variantSpec);
+					}
+					return variantIndexArray;
 				}
 			});
 
@@ -546,10 +572,11 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	private Set<String> arrayToSet(String[] variantSpecs) {
+	private Set<String> arrayToSet(int[] variantSpecs) {
 		ConcurrentHashMap<String, String> setMap = new ConcurrentHashMap<String, String>(variantSpecs.length);
-		Arrays.stream(variantSpecs).parallel().forEach((variantMask)->{
-			setMap.put(variantMask, variantMask);
+		Arrays.stream(variantSpecs).parallel().forEach((index)->{
+			String variantSpec = variantIndex.get(index);
+			setMap.put(variantSpec, variantSpec);
 		});
 		return setMap.keySet();
 	}
