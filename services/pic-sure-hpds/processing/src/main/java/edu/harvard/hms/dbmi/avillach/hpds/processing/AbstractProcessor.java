@@ -510,17 +510,12 @@ public abstract class AbstractProcessor {
 	};
 
 	LoadingCache<String, String[]> infoCache = CacheBuilder.newBuilder()
-			.weigher(weigher).maximumWeight(1000000000).build(new CacheLoader<String, String[]>() {
+			.weigher(weigher).maximumWeight(500000000).build(new CacheLoader<String, String[]>() {
 
 				@Override
 				public String[] load(String infoColumn_valueKey) throws Exception {
 					String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
-					String[] variantList = infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
-					ConcurrentHashMap<String, String> variantSet = new ConcurrentHashMap<String, String>(variantList.length);
-					Arrays.stream(variantList).parallel().forEach((variant)->{
-						variantSet.put(variant, variant);
-					});
-					return variantSet.keySet().toArray(new String[variantSet.size()]);
+					return infoStores.get(column_and_value[0]).allValues.get(column_and_value[1]);
 				}
 			});
 
