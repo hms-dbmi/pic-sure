@@ -1,23 +1,24 @@
 package edu.harvard.hms.dbmi.avillach.auth.service;
 
+import java.util.Arrays;
+import java.util.List;
+
+import javax.inject.Inject;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.Option;
+import com.jayway.jsonpath.*;
+
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.UserService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Inject;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * <p>Matches users created by admins with user profiles created by a 3rd party Oauth provider.</p>
@@ -98,10 +99,16 @@ public class OauthUserMatchingService {
 				}
 				String auth0value = auth0values.get(0);
 				for (User u : users) {
-					List<String> values = JsonPath.using(conf).parse(u.getGeneralMetadata()).read(umm.getGeneralMetadataJsonPath());
+					List<String> values = null;
+					try{
+						values = JsonPath.using(conf).parse(u.getGeneralMetadata()).read(umm.getGeneralMetadataJsonPath());
+					} catch (JsonPathException e) {
+						logger.warn("User " + u.getUuid() + " has invalid general metadata: " + u.getGeneralMetadata());
+						continue;
+					}
 					if (values == null || values.isEmpty()) {
-						logger.info("User " + u.getUuid() + " has no value at " + umm.getGeneralMetadataJsonPath());
-						break;
+						logger.warn("User " + u.getUuid() + " has no value at " + umm.getGeneralMetadataJsonPath());
+						continue;
 					}
 					String generalValue = values.get(0);
 					if (auth0value.equalsIgnoreCase(generalValue)) {
