@@ -97,10 +97,15 @@ public class CountProcessor extends AbstractProcessor {
 	 * @param incomingQuery
 	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
 	 */
-	public int runVariantCount(Query query) {
+	public Map<String, Object> runVariantCount(Query query) {
+		TreeMap<String, Object> response = new TreeMap<String, Object>();
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			return getVariantList(query).size();
+			response.put("count", getVariantList(query).size());
+			response.put("message", "Query ran successfully");
+		} else {
+			response.put("count", "0");
+			response.put("message", "No variant filters were supplied, so no query was run.");
 		}
-		return 0;
+		return response;
 	}
 }
