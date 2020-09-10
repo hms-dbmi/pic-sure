@@ -70,6 +70,7 @@ define(["backbone","handlebars", "user/addUser", "text!user/userManagement.hbs",
 			}.bind(this));
 		},
 		editUserMenu: function (events) {
+            if ($(".noty_type__alert").length > 0) return;
 			var user = this.model.get("selectedUser");
 			this.connections(function(connections){
 				var requiredFields = _.where(connections, {id: user.connection.id})[0].requiredFields;
