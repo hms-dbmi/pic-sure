@@ -36,7 +36,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 
-public final class HttpClientUtil {
+public class HttpClientUtil {
 	private static final ObjectMapper json = new ObjectMapper();
 
 	private static final Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
@@ -56,7 +56,7 @@ public final class HttpClientUtil {
 		try {
 			logger.debug("HttpClientUtil retrieveGetResponse()");
 
-			HttpClient client = HttpClientBuilder.create().build();
+			HttpClient client = HttpClientBuilder.create().useSystemProperties().build();
 			return simpleGet(client, uri, headers);
 		} catch (ApplicationException e) {
 			throw new ResourceInterfaceException(uri, e);
@@ -104,7 +104,7 @@ public final class HttpClientUtil {
 				headerList = new ArrayList<>(Arrays.asList(headers));
 			headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
 
-			HttpClient client = HttpClientBuilder.create().build();
+			HttpClient client = HttpClientBuilder.create().useSystemProperties().build();
 			return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
 		} catch (ApplicationException | UnsupportedEncodingException e) {
 			throw new ResourceInterfaceException(uri, e);
@@ -188,7 +188,7 @@ public final class HttpClientUtil {
 	public static HttpResponse simplePost(String uri, HttpClient client, StringEntity requestBody, Header... headers)
 			throws ApplicationException {
 		if (client == null) {
-			client = HttpClientBuilder.create().build();
+			client = HttpClientBuilder.create().useSystemProperties().build();
 		}
 
 		HttpPost post = new HttpPost(uri);
@@ -255,7 +255,7 @@ public final class HttpClientUtil {
 	 */
 	public static HttpResponse simpleGet(HttpClient client, String uri, Header... headers) throws ApplicationException {
 		if (client == null) {
-			client = HttpClientBuilder.create().build();
+			client = HttpClientBuilder.create().useSystemProperties().build();
 		}
 
 		HttpGet get = new HttpGet(uri);
