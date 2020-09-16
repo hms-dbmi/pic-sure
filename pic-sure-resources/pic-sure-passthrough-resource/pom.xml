@@ -80,11 +80,5 @@
 			<artifactId>jersey-common</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-			<artifactId>client-api</artifactId>
-			<scope>test</scope>
-			<version>1.0-SNAPSHOT</version>
-		</dependency>
 	</dependencies>
 </project>
