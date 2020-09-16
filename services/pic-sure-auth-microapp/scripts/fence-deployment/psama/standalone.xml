@@ -158,7 +158,7 @@
                     </security>
                 </datasource>
                 <datasource jndi-name="java:jboss/datasources/AuthDS" pool-name="AuthDS" use-java-context="true">
-                    <connection-url>jdbc:mysql://${env.PSAMA_DB_HOST}/${env.PSAMA_DB_NAME}?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true</connection-url>
+                    <connection-url>jdbc:mysql://${env.PSAMA_DB_HOST}/${env.PSAMA_DB_NAME}?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true&amp;useSSL=false</connection-url>
                     <driver>mysql</driver>
                     <pool>
                         <min-pool-size>5</min-pool-size>
@@ -179,7 +179,7 @@
                 </datasource>
 
                 <datasource jndi-name="java:jboss/datasources/PicsureDS" pool-name="PicsureDS" use-java-context="true">
-                    <connection-url>jdbc:mysql://${env.PSAMA_DB_HOST}/${env.PICSURE_DB_NAME}?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true</connection-url>
+                    <connection-url>jdbc:mysql://${env.PSAMA_DB_HOST}/${env.PICSURE_DB_NAME}?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;autoReconnectForPools=true&amp;useSSL=false</connection-url>
                     <driver>mysql</driver>
                     <pool>
                         <min-pool-size>5</min-pool-size>
