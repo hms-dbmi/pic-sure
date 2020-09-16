@@ -107,7 +107,7 @@ public class AuthUtils {
 		logger.debug("getUserProfileResponse() acceptedTOS is set");
 
 		boolean acceptedTOS = JAXRSConfiguration.tosEnabled.startsWith("true") ?
-				tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("subject").toString()) : true;
+				tosService.getLatest() == null || tosService.hasUserAcceptedLatest(claims.get("sub").toString()) : true;
 
 		responseMap.put("acceptedTOS", ""+acceptedTOS);
 

@@ -33,6 +33,9 @@ define(["Noty"],
     }.bind(notification);
 
     notification.showConfirmationDialog = function (callback, layout, text) {
+        // exit if another confirmation is currently displayed
+        if ($(".noty_type__alert").length > 0) return;
+        // show dialog box
         var n = new Noty({
             text: text? text: 'Do you want to continue?',
             layout: layout?layout:'topCenter',
@@ -46,7 +49,6 @@ define(["Noty"],
                 })
             ]
         }).show();
-
     }.bind(notification);
 
 	return notification;

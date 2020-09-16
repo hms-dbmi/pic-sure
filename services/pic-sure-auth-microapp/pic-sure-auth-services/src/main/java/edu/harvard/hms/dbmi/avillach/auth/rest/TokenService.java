@@ -265,8 +265,11 @@ public class TokenService {
         if (application.getPrivileges() == null || application.getPrivileges().isEmpty()){
             // if no privileges associated
             isAuthorizationPassed = true;
-        } else if (user != null
-                && !isLongTermTokenCompromised
+            //we still want to log this, though.
+            logger.info("ACCESS_LOG ___ " + user.getUuid() + "," + user.getEmail() + "," + user.getName() + 
+					" ___ has been granted access to execute query ___ " + inputMap.get("request") + " ___ in application ___ " + application.getName()
+                    + " ___ NO APP PRIVILEGES DEFINED");
+        } else if ( !isLongTermTokenCompromised
                 && user.getRoles() != null
                 // The protocol between applications and PSAMA is application will
                 // attach everything that needs to be verified in request field of inputMap

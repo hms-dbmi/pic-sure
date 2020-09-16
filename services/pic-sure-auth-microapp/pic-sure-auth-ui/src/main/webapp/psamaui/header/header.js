@@ -114,7 +114,10 @@ define(["backbone","handlebars", 'picSure/settings', "text!header/header.hbs", "
             $("#modalDialog").hide();
         },
         logout: function (event) {
+        	//save redirection URL so we can log back in after logging out
+        	redirection_url = sessionStorage.redirection_url;
             sessionStorage.clear();
+            sessionStorage.redirection_url = redirection_url;
             localStorage.clear();
         },
         render: function () {
