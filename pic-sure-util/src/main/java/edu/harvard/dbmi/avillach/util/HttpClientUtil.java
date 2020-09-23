@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.util;
 
+import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -196,7 +198,7 @@ public class HttpClientUtil {
 		post.setEntity(requestBody);
 
 		try {
-			return client.execute(post);
+			return client.execute(post, buildHttpClientContext());
 		} catch (IOException ex) {
 			logger.error("simplePost() Exception: {}, cannot get response by POST from url: {}", ex.getMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
@@ -262,7 +264,7 @@ public class HttpClientUtil {
 		get.setHeaders(headers);
 
 		try {
-			return client.execute(get);
+			return client.execute(get, buildHttpClientContext());
 		} catch (IOException ex) {
 			logger.error("simpleGet() cannot get response by GET from url: {}", uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
@@ -276,7 +278,7 @@ public class HttpClientUtil {
 		HttpResponse response;
 
 		try {
-			response = client.execute(get);
+			response = client.execute(get, buildHttpClientContext());
 		} catch (IOException ex) {
 			logger.error("simpleGet() cannot get response by GET from url: {}", uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
