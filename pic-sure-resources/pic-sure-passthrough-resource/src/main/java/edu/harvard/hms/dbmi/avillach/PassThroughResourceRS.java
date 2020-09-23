@@ -28,7 +28,7 @@ import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
-@Path("/PIC-SURE-AGG")
+@Path("/PIC-SURE-PASSTHRU")
 @Produces("application/json")
 @Consumes("application/json")
 public class PassThroughResourceRS implements IResourceRS {
