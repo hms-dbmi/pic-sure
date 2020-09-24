@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach;
+package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,6 +35,9 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import edu.harvard.hms.dbmi.avillach.resource.passthru.ApplicationProperties;
+import edu.harvard.hms.dbmi.avillach.resource.passthru.HttpClient;
+import edu.harvard.hms.dbmi.avillach.resource.passthru.PassThroughResourceRS;
 
 @ExtendWith(MockitoExtension.class)
 class PassThroughResourceRSTest {

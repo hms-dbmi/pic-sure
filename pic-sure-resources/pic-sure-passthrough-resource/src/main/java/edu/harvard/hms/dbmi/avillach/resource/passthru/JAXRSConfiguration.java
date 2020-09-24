@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach;
+package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
 import javax.inject.Inject;
 import javax.servlet.ServletContext;

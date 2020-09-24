@@ -1,6 +1,6 @@
-<?xml version="1.0"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
-	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
@@ -10,7 +10,6 @@
 	<artifactId>pic-sure-passthrough-resource</artifactId>
 	<name>pic-sure-passthrough-resource</name>
 	<packaging>war</packaging>
-	<url>http://maven.apache.org</url>
 	<properties>
 		<wildfly.version>13.0.0.Final</wildfly.version>
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
@@ -81,4 +80,16 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+	<build>
+		<finalName>${project.artifactId}</finalName>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-war-plugin</artifactId>
+				<configuration>
+					<failOnMissingWebXml>false</failOnMissingWebXml>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
 </project>

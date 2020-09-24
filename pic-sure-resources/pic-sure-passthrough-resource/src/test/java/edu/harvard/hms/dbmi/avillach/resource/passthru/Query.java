@@ -1,12 +1,12 @@
-package edu.harvard.hms.dbmi.avillach;
+package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import edu.harvard.hms.dbmi.avillach.Filter.DoubleFilter;
-import edu.harvard.hms.dbmi.avillach.Filter.FloatFilter;
+import edu.harvard.hms.dbmi.avillach.resource.passthru.Filter.DoubleFilter;
+import edu.harvard.hms.dbmi.avillach.resource.passthru.Filter.FloatFilter;
 
 public class Query {
 
