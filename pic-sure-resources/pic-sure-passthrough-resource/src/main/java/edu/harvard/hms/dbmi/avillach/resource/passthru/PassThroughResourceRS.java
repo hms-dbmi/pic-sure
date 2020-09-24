@@ -28,7 +28,7 @@ import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
-@Path("/PIC-SURE-PASSTHRU")
+@Path("/passthru")
 @Produces("application/json")
 @Consumes("application/json")
 public class PassThroughResourceRS implements IResourceRS {
@@ -56,16 +56,35 @@ public class PassThroughResourceRS implements IResourceRS {
 	@Path("/info")
 	public ResourceInfo info(QueryRequest infoRequest) {
 		String pathName = "/info";
-		HttpResponse response = httpClient.retrieveGetResponse(
-				httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader());
-		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
-					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
-		}
 
-		ResourceInfo resourceInfo = httpClient.readObjectFromResponse(response, ResourceInfo.class);
-		return resourceInfo;
+		try {
+			QueryRequest chainRequest = new QueryRequest();
+			chainRequest.setQuery(infoRequest.getQuery());
+			chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+
+			String payload = objectMapper.writeValueAsString(chainRequest);
+
+			HttpResponse response = httpClient.retrievePostResponse(
+					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+			}
+
+			ResourceInfo resourceInfo = httpClient.readObjectFromResponse(response, ResourceInfo.class);
+			if (infoRequest.getResourceUUID() != null) {
+				resourceInfo.setId(infoRequest.getResourceUUID());
+			}
+			return resourceInfo;
+		} catch (IOException e) {
+			throw new ApplicationException(
+					"Error encoding query for resource with id " + infoRequest.getResourceUUID());
+		} catch (ClassCastException | IllegalArgumentException e) {
+			logger.error(e.getMessage());
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
 	}
 
 	@POST
@@ -82,8 +101,6 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query";
 
 		try {
-			UUID resourceID = queryRequest.getResourceUUID();
-
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(queryRequest.getQuery());
 			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
@@ -99,7 +116,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
-			queryStatus.setResourceID(resourceID);
+			queryStatus.setResourceID(queryRequest.getResourceUUID());
 			return queryStatus;
 		} catch (IOException e) {
 			throw new ApplicationException(
@@ -157,7 +174,6 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query/" + queryId + "/status";
 
 		try {
-			UUID resourceID = statusRequest.getResourceUUID();
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(statusRequest.getQuery());
 			chainRequest.setResourceCredentials(statusRequest.getResourceCredentials());
@@ -173,7 +189,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
-			queryStatus.setResourceID(resourceID);
+			queryStatus.setResourceID(statusRequest.getResourceUUID());
 			return queryStatus;
 		} catch (IOException e) {
 			throw new ApplicationException(
