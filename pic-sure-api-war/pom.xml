@@ -3,15 +3,15 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<artifactId>pic-sure-api</artifactId>
 		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
 		<version>2.0.0-SNAPSHOT</version>
 	</parent>
 	<artifactId>pic-sure-api-war</artifactId>
-	<packaging>war</packaging>
 	<name>PIC-SURE API war</name>
+	<packaging>war</packaging>
 	<properties>
-		<!--<argLine>&#45;&#45;add-modules jdk.incubator.httpclient</argLine>-->
+		<!--<argLine>&#45;&#45;add-modules jdk.incubator.httpclient</argLine> -->
 	</properties>
 	<dependencies>
 		<dependency>
@@ -28,7 +28,7 @@
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt</artifactId>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>javax</groupId>
 			<artifactId>javaee-api</artifactId>
@@ -73,10 +73,10 @@
 			<artifactId>mockito-core</artifactId>
 			<scope>test</scope>
 		</dependency>
-        <dependency>
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-common</artifactId>
-        </dependency>
+		<dependency>
+			<groupId>org.glassfish.jersey.core</groupId>
+			<artifactId>jersey-common</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.apache.cxf</groupId>
 			<artifactId>cxf-bundle-jaxrs</artifactId>
@@ -120,15 +120,6 @@
 					<failOnMissingWebXml>false</failOnMissingWebXml>
 				</configuration>
 			</plugin>
-			<!--<plugin>-->
-				<!--<groupId>org.apache.maven.plugins</groupId>-->
-				<!--<artifactId>maven-compiler-plugin</artifactId>-->
-				<!--<configuration>-->
-					<!--<source>9</source>-->
-					<!--<target>9</target>-->
-					<!--<compilerArgument>&#45;&#45;add-modules=jdk.incubator.httpclient</compilerArgument>-->
-				<!--</configuration>-->
-			<!--</plugin>-->
 		</plugins>
 	</build>
 </project>
