@@ -19,8 +19,11 @@ COPY target/modules/system/layers/base/com/sql/mysql/main/* /modules/
 # Copy standalone.xml
 COPY src/main/resources/wildfly-configuration/standalone.xml wildfly/standalone/configuration/
 
-# Copy war file
+# Copy api war file
 COPY target/pic-sure-api-war.war wildfly/standalone/deployments/pic-sure-api-2.war
+
+# Copy passthrough resource war file
+COPY ../pic-sure-resources/pic-sure-passthrough-resource/target/pic-sure-passthrough-resource.war wildfly/standalone/deployments/pic-sure-passthru.war
 
 ## install modules
 #RUN wildfly/bin/jboss-cli.sh --command="module add --name=com.sql.mysql \
