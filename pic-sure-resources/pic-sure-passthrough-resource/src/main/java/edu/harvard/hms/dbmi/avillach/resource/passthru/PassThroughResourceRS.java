@@ -38,8 +38,13 @@ public class PassThroughResourceRS implements IResourceRS {
 	private static final ObjectMapper objectMapper = new ObjectMapper();
 	private static final Logger logger = LoggerFactory.getLogger(PassThroughResourceRS.class);
 
+	@Inject
 	private ApplicationProperties properties;
+	@Inject
 	private HttpClient httpClient;
+
+	public PassThroughResourceRS() {
+	}
 
 	@Inject
 	public PassThroughResourceRS(ApplicationProperties applicationProperties, HttpClient httpClient) {
