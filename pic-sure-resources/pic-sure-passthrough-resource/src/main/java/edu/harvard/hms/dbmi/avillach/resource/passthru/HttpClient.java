@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
+import javax.enterprise.inject.Default;
+
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 
@@ -9,6 +11,7 @@ import org.apache.http.HttpResponse;
  * @author nixl5s
  *
  */
+@Default
 public class HttpClient {
 	public String composeURL(String baseURL, String pathName) {
 		return edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL(baseURL, pathName);
