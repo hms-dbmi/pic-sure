@@ -8,17 +8,19 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import javax.ws.rs.NotAuthorizedException;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
-import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
+import org.apache.http.entity.StringEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,9 +37,6 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
-import edu.harvard.hms.dbmi.avillach.resource.passthru.ApplicationProperties;
-import edu.harvard.hms.dbmi.avillach.resource.passthru.HttpClient;
-import edu.harvard.hms.dbmi.avillach.resource.passthru.PassThroughResourceRS;
 
 @ExtendWith(MockitoExtension.class)
 class PassThroughResourceRSTest {
@@ -66,13 +65,11 @@ class PassThroughResourceRSTest {
 	void testInfo() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("".getBytes()));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
-		when(httpClient.retrieveGetResponse(anyString(), any(Header[].class))).thenReturn(httpResponse);
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
+		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		when(statusLine.getStatusCode()).thenReturn(500);
 		assertThrows(ResourceInterfaceException.class, () -> {
@@ -86,8 +83,8 @@ class PassThroughResourceRSTest {
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		ResourceInfo resourceInfo = newResourceInfo();
-		when(httpEntity.getContent())
-				.thenReturn(new ByteArrayInputStream(objectMapper.writeValueAsBytes(resourceInfo)));
+		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(resourceInfo)));
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		ResourceInfo returnVal = resource.info(new QueryRequest());
 		assertEquals(resourceInfo.getId(), returnVal.getId(), "Downstream ResourceInfo Id should match output");
 		assertEquals(resourceInfo.getName(), returnVal.getName(), "Downstream ResourceInfo Name should match output");
@@ -99,13 +96,11 @@ class PassThroughResourceRSTest {
 	void testQuery() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
 		when(statusLine.getStatusCode()).thenReturn(200);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("".getBytes()));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
@@ -128,7 +123,8 @@ class PassThroughResourceRSTest {
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		QueryStatus queryStatus = newQueryStatus(null);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(objectMapper.writeValueAsBytes(queryStatus)));
+		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(queryStatus)));
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest("test");
 		QueryStatus returnVal = resource.query(queryRequest);
 		assertEquals(queryRequest.getResourceUUID(), returnVal.getResourceID());
@@ -138,13 +134,11 @@ class PassThroughResourceRSTest {
 	void testQueryResult() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
 		when(statusLine.getStatusCode()).thenReturn(200);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("".getBytes()));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
@@ -169,10 +163,11 @@ class PassThroughResourceRSTest {
 		String resultId = UUID.randomUUID().toString();
 		UUID queryId = UUID.randomUUID();
 		when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("4".getBytes()));
+		httpResponseEntity = new StringEntity("4");
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(null);
 		javax.ws.rs.core.Response returnVal = resource.queryResult(queryId.toString(), queryRequest);
-		assertEquals("4", returnVal.getEntity().toString());
+		assertEquals("4", IOUtils.toString((InputStream) returnVal.getEntity(), StandardCharsets.UTF_8));
 		assertEquals(resultId, returnVal.getHeaderString("resultId"));
 	}
 
@@ -180,14 +175,11 @@ class PassThroughResourceRSTest {
 	void testQueryStatus() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
 		when(statusLine.getStatusCode()).thenReturn(200);
-		when(httpEntity.getContent())
-				.thenReturn(new ByteArrayInputStream(objectMapper.writeValueAsBytes(newQueryStatus(null))));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
@@ -211,7 +203,8 @@ class PassThroughResourceRSTest {
 		when(statusLine.getStatusCode()).thenReturn(200);
 		UUID queryId = UUID.randomUUID();
 		QueryStatus queryStatus = newQueryStatus(queryId);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(objectMapper.writeValueAsBytes(queryStatus)));
+		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(queryStatus)));
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(null);
 		QueryStatus returnVal = resource.queryStatus(queryId.toString(), queryRequest);
 		assertEquals(queryId, returnVal.getPicsureResultId());
@@ -223,13 +216,11 @@ class PassThroughResourceRSTest {
 	void testQuerySync() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
 		when(statusLine.getStatusCode()).thenReturn(200);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("".getBytes()));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
@@ -253,10 +244,11 @@ class PassThroughResourceRSTest {
 		when(statusLine.getStatusCode()).thenReturn(200);
 		String resultId = UUID.randomUUID().toString();
 		when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("4".getBytes()));
+		httpResponseEntity = new StringEntity("4");
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(newQuery());
 		javax.ws.rs.core.Response returnVal = resource.querySync(queryRequest);
-		assertEquals("4", returnVal.getEntity().toString());
+		assertEquals("4", IOUtils.toString((InputStream) returnVal.getEntity(), StandardCharsets.UTF_8));
 		assertEquals(resultId, returnVal.getHeaderString("resultId"));
 	}
 
@@ -264,13 +256,11 @@ class PassThroughResourceRSTest {
 	void testSearch() throws Exception {
 		// setup http response mocks
 		HttpResponse httpResponse = mock(HttpResponse.class);
-		HttpEntity httpEntity = mock(HttpEntity.class);
+		StringEntity httpResponseEntity = new StringEntity("");
 		StatusLine statusLine = mock(StatusLine.class);
 		when(statusLine.getStatusCode()).thenReturn(200);
-		when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("".getBytes()));
 		when(httpResponse.getStatusLine()).thenReturn(statusLine);
-		when(httpResponse.getEntity()).thenReturn(httpEntity);
-
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
@@ -295,8 +285,8 @@ class PassThroughResourceRSTest {
 		when(statusLine.getStatusCode()).thenReturn(200);
 		SearchResults searchResults = new SearchResults();
 		searchResults.setSearchQuery(queryText);
-		when(httpEntity.getContent())
-				.thenReturn(new ByteArrayInputStream(objectMapper.writeValueAsBytes(searchResults)));
+		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(searchResults)));
+		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(queryText);
 		SearchResults returnVal = resource.search(queryRequest);
 		assertEquals(queryText, returnVal.getSearchQuery());
