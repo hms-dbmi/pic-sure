@@ -154,7 +154,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
-			return Response.ok(objectMapper.readTree(response.getEntity().getContent()))
+			return Response.ok(response.getEntity().getContent())
 					.header("resultId", response.getFirstHeader("resultId").getValue()).build();
 		} catch (IOException e) {
 			throw new ApplicationException(
@@ -232,7 +232,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
-			return Response.ok(objectMapper.readTree(response.getEntity().getContent()))
+			return Response.ok(response.getEntity().getContent())
 					.header("resultId", response.getFirstHeader("resultId").getValue()).build();
 		} catch (IOException e) {
 			throw new ApplicationException(
