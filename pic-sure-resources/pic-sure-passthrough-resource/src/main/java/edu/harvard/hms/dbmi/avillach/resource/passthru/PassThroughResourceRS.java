@@ -59,8 +59,10 @@ public class PassThroughResourceRS implements IResourceRS {
 
 		try {
 			QueryRequest chainRequest = new QueryRequest();
-			chainRequest.setQuery(infoRequest.getQuery());
-			chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+			if (infoRequest != null) {
+				chainRequest.setQuery(infoRequest.getQuery());
+				chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+			}
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
@@ -74,7 +76,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			}
 
 			ResourceInfo resourceInfo = httpClient.readObjectFromResponse(response, ResourceInfo.class);
-			if (infoRequest.getResourceUUID() != null) {
+			if (infoRequest != null && infoRequest.getResourceUUID() != null) {
 				resourceInfo.setId(infoRequest.getResourceUUID());
 			}
 			return resourceInfo;
