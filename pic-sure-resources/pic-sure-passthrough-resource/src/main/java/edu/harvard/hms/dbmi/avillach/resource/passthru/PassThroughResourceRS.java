@@ -154,8 +154,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
-			return Response.ok(response.getEntity().getContent())
-					.header("resultId", response.getFirstHeader("resultId").getValue()).build();
+			return Response.ok(response.getEntity().getContent()).build();
 		} catch (IOException e) {
 			throw new ApplicationException(
 					"Error encoding query for resource with id " + resultRequest.getResourceUUID());
@@ -232,8 +231,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
-			return Response.ok(response.getEntity().getContent())
-					.header("resultId", response.getFirstHeader("resultId").getValue()).build();
+			return Response.ok(response.getEntity().getContent()).build();
 		} catch (IOException e) {
 			throw new ApplicationException(
 					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
