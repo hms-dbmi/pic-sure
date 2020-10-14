@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.NotAuthorizedException;
@@ -317,12 +319,13 @@ class PassThroughResourceRSTest {
 		request.setQuery(query);
 		return request;
 	}
-
-	private Query newQuery() {
-		Query query = new Query();
-		query.requiredFields = ImmutableList.of("\\TEST");
-		query.expectedResultType = ResultType.COUNT;
-		return query;
+	
+	// replace with Map 
+	private Map<String,String> newQuery() {
+		Map<String,String> queryMap = new HashMap<>();
+		queryMap.put("requiredFields", "\\TEST");
+		queryMap.put("expectedResultType", "COUNT");
+		return queryMap;
 	}
 
 	private Header newHeader(final String name, final String value) {
