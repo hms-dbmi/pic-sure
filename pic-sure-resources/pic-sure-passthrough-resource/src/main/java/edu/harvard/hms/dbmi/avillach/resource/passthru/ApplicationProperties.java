@@ -38,7 +38,8 @@ public class ApplicationProperties implements Serializable {
 	public void init(String contextPath) {
 		this.contextPath = contextPath;
 
-		Path configFile = Path.of(System.getProperty("jboss.server.config.dir"), contextPath, "resource.properties");
+		Path configFile = Path.of(System.getProperty("jboss.server.config.dir"), "passthru", contextPath,
+				"resource.properties");
 		Properties properties = null;
 		try {
 			properties = new Properties();
