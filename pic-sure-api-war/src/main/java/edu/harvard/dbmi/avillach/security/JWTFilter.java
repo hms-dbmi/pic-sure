@@ -14,7 +14,6 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 import io.jsonwebtoken.JwtException;
 import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
@@ -37,7 +36,6 @@ import javax.ws.rs.ext.Provider;
 import java.io.*;
 import java.util.*;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.applyProxySettings;
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
 @Provider
@@ -136,7 +134,6 @@ public class JWTFilter implements ContainerRequestFilter {
 		CloseableHttpClient client = PicSureWarInit.CLOSEABLE_HTTP_CLIENT;
 
 		HttpPost post = new HttpPost(token_introspection_url);
-		applyProxySettings(post);
 
 		Map<String, Object> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
