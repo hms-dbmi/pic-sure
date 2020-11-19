@@ -147,7 +147,7 @@ public class HttpClientUtil {
 			logger.debug(
 					"readObjectFromResponse() line: IOUtils.toString(response.getEntity().getContent(), \"UTF-8\"), took {}",
 					(System.nanoTime() - startTime));
-			logger.debug("readObjectFromResponse() responseBody {}", responseBody);
+			logger.trace("readObjectFromResponse() responseBody {}", responseBody);
 
 			startTime = System.nanoTime();
 			T t = json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
