@@ -131,11 +131,9 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
-		do {
+		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
 			maxSearchIndex++;
 		}
-		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0);
-		
 		return maxSearchIndex;
 	}
 
