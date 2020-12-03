@@ -119,12 +119,10 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
-		do {
+		while(minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry)>=0) {
 			minSearchIndex--;
 		}
-		while(minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry)>=0);
-		
-		return Math.max(0, minSearchIndex);
+		return Math.max(0, minSearchIndex+1);
 	}
 
 	private int seekForMaxIndex(int maxSearchIndex, KeyAndValue<V> maxEntry, KeyAndValue<V>[] sortedByValue) {
