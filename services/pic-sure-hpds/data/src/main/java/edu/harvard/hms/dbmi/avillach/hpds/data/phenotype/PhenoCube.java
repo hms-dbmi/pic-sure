@@ -109,7 +109,20 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			maxIndex = seekForMaxIndex(Math.abs(maxSearchIndex), maxKeyAndValue, sortedByValue);
+			/* 
+			 * Arrays.binarySearch returns the insertion index of the new value if there is
+			 * no exact match for the value. 
+			 * 
+			 * Sometimes this is an index that already has a value higher than our max, which 
+			 * would be shifted to the right on insertion. To still make use of the advantage
+			 * of the binary search we invert this insertion index AND decrement it once.
+			 * 
+			 * This prevents us from including one extra value in these cases.
+			 */
+			if(maxSearchIndex < 0) {
+				maxSearchIndex = (maxSearchIndex * -1)-1;
+			}
+			maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
 		}
 		
 		return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
