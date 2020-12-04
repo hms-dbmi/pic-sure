@@ -58,7 +58,7 @@ public class PicSureService implements IResourceRS {
 	private TimelineProcessor timelineProcessor;
 	
 	private CountProcessor countProcessor;
-	
+
 	private VariantListProcessor variantListProcessor;
 	
 	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
@@ -228,7 +228,6 @@ public class PicSureService implements IResourceRS {
 		        Map<String, Object> metadata = new HashMap<String, Object>();
 		        metadata.put(QUERY_METADATA_FIELD, e.getResult());
 		        status.setResultMetadata(metadata);
-		        
 				return status;
 			} catch (ClassNotFoundException e) {
 				throw new ServerErrorException(500);

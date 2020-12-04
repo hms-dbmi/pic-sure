@@ -149,9 +149,10 @@ public class NewVCFLoader {
 		convertInfoStoresToByteIndexed();
 
 		if(Level.DEBUG.equals(logger.getEffectiveLevel())) {
+			//Log out the first and last 50 variants
 			int[] count = {0};
-			Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
-			Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
+//			Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
+//			Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
 			for(String contig : store.variantMaskStorage.keySet()) {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage.get(contig);
@@ -407,8 +408,10 @@ public class NewVCFLoader {
 				try {
 					
 					int currentLineOffset = startOffsetForLine[0];
-					for(; currentLineOffset<currentLine.length(); currentLineOffset++) {
+					//added index boundary condition from master
+					for(; index<indices.size() && currentLineOffset<currentLine.length(); currentLineOffset++) {
 						if(currentLine.charAt(currentLineOffset - 1) == '\t'){
+							//and index lookup from variant explorer branch
 							if(vcfIndexLookup.containsKey(index)) {
 								setMasksForSample(zygosityMaskStrings, vcfIndexLookup.get(index), currentLineOffset);
 							}
@@ -419,7 +422,6 @@ public class NewVCFLoader {
 				} catch ( IndexOutOfBoundsException e) {
 					logger.warn("INDEX out of bounds " + currentLine.substring(0, Math.min(50, currentLine.length())), e);
 				}
-				
 			}else {
 				indices.parallelStream().forEach((index)->{
 					setMasksForSample(zygosityMaskStrings, index, startOffsetForLine[0] + vcfOffsets[index]);
