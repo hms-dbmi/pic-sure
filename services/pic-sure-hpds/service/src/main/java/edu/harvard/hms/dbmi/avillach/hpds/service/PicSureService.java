@@ -331,7 +331,7 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VARIANT_COUNT_FOR_QUERY : {
-					return Response.ok(countProcessor.runVariantCount(incomingQuery)).build();
+					return Response.ok(countProcessor.runVariantCount(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 				}
 				
 				case VARIANT_LIST_FOR_QUERY : {
