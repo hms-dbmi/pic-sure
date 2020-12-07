@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 
+import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.NotAuthorizedException;
@@ -37,15 +38,21 @@ public class SystemService {
 
 	@Inject
 	PicSureWarInit picSureWarInit;
-
-	String token_introspection_url = picSureWarInit.getToken_introspection_url();
-	String token_introspection_token = picSureWarInit.getToken_introspection_token();
 	
 	String lastStatus = "UNTESTED";
 	long lastStatusCheck = 0l;
 
 	@Inject
 	ResourceRepository resourceRepo;
+	
+	String token_introspection_url;
+	String token_introspection_token;
+	
+	@PostConstruct
+	public void init() {
+		token_introspection_url = picSureWarInit.getToken_introspection_url();
+		token_introspection_token = picSureWarInit.getToken_introspection_token();
+	}
 
 	@GET
 	@Path("/status")
