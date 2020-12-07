@@ -21,10 +21,10 @@ public class MultialleleCounter {
 				){
 			VariantStore variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(fis)).readObject();
 			variantStore.open();
-			for(int x = 1;x<23;x++) {
-				System.out.println("Starting chromosome : " + x);
+			for(String contig : variantStore.variantMaskStorage.keySet()) {
+				System.out.println("Starting contig : " + contig);
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> 
-				currentChromosome = variantStore.variantMaskStorage[x];
+				currentChromosome = variantStore.variantMaskStorage.get(contig);
 				currentChromosome.keys().parallelStream().forEach((offsetBucket)->{
 					System.out.println("Starting bucket : " + offsetBucket);
 					ConcurrentHashMap<String, VariantMasks> maskMap;
