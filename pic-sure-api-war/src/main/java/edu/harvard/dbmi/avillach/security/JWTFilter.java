@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
 import javax.inject.Inject;
+import javax.ws.rs.HttpMethod;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
@@ -45,10 +46,10 @@ public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
 	ResourceInfo resourceInfo;
-	
+
 	@Inject
 	ResourceRepository resourceRepo;
-	
+
 	@Inject
 	ResourceWebClient resourceWebClient;
 
@@ -58,10 +59,10 @@ public class JWTFilter implements ContainerRequestFilter {
 	private String userIdClaim;
 
 	ObjectMapper mapper = new ObjectMapper();
-	
+
 	@Inject
 	PicSureWarInit picSureWarInit;
-	
+
 	@Inject
 	QueryRepository queryRepo;
 
@@ -69,43 +70,49 @@ public class JWTFilter implements ContainerRequestFilter {
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
 
-		String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
-		if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-			throw new NotAuthorizedException("No authorization header found.");
-		}
-		String token = authorizationHeader.substring(6).trim();
-
-		String userForLogging = null;
-
-		try {
-			User authenticatedUser = null;
-
-			authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
-
-			if (authenticatedUser == null) {
-				logger.error("Cannot extract a user from token: " + token);
-				throw new NotAuthorizedException("Cannot find or create a user");
+		if(requestContext.getUriInfo().getPath().contentEquals("/system/status") && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)) {
+			// GET calls to /system/status do not require authentication or authorization
+			requestContext.setProperty("username", "SYSTEM_MONITOR");
+		}else {
+			// Everything else goes through PSAMA token introspection
+			String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+			if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+				throw new NotAuthorizedException("No authorization header found.");
 			}
+			String token = authorizationHeader.substring(6).trim();
 
-			userForLogging = authenticatedUser.getUserId();
+			String userForLogging = null;
 
-			//The request context wants to remember who the user is
-			requestContext.setProperty("username", userForLogging);
+			try {
+				User authenticatedUser = null;
 
-			logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+				authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
 
-		} catch (JwtException e) {
-			logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + token + " - is invalid: " + e.getMessage());
-			requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
-		} catch (NotAuthorizedException e) {
-			// the detail of this exception should be logged right before the exception thrown out
-			//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
-			// we should show different response based on role
-			requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
-		} catch (Exception e){
-			// we should show different response based on role
-			e.printStackTrace();
-			requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
+				if (authenticatedUser == null) {
+					logger.error("Cannot extract a user from token: " + token);
+					throw new NotAuthorizedException("Cannot find or create a user");
+				}
+
+				userForLogging = authenticatedUser.getUserId();
+
+				//The request context wants to remember who the user is
+				requestContext.setProperty("username", userForLogging);
+
+				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
+
+			} catch (JwtException e) {
+				logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + token + " - is invalid: " + e.getMessage());
+				requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
+			} catch (NotAuthorizedException e) {
+				// the detail of this exception should be logged right before the exception thrown out
+				//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
+				// we should show different response based on role
+				requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
+			} catch (Exception e){
+				// we should show different response based on role
+				e.printStackTrace();
+				requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
+			}
 		}
 	}
 
@@ -137,23 +144,23 @@ public class JWTFilter implements ContainerRequestFilter {
 
 		Map<String, Object> tokenMap = new HashMap<>();
 		tokenMap.put("token", token);
-		
-		
+
+
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		HashMap<String, Object> requestMap = new HashMap<String, Object>();
 		try {
 			String requestPath = requestContext.getUriInfo().getPath();
 			requestMap.put("Target Service", requestPath);
-			
+
 			Query initialQuery = null;
 			//Read the query from the backing store if we are getting the results (full query may not be specified in request)
 			if(requestPath.startsWith("/query/") && requestPath.endsWith("result")) {
-				 //Path:   /query/{queryId}/result
+				//Path:   /query/{queryId}/result
 				String[] pathParts = requestPath.split("/");
 				UUID uuid = UUID.fromString(pathParts[2]);
 				initialQuery = queryRepo.getById(uuid);
 			}
-			
+
 			if(initialQuery != null) {
 				IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
 			} else {
@@ -162,7 +169,7 @@ public class JWTFilter implements ContainerRequestFilter {
 				IOUtils.copy(entityStream, buffer);
 				requestContext.setEntityStream(new ByteArrayInputStream(buffer.toByteArray()));
 			}
-			
+
 			if(buffer.size()>0) {
 				//I think here we are removing any existing credentials from the query; PIC-SURE has it's own static token that will be used
 				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
@@ -178,13 +185,13 @@ public class JWTFilter implements ContainerRequestFilter {
 				requestMap.put("query", queryObject);
 
 				if(requestPath.startsWith("/query/")) {
-					
+
 					UUID resourceUUID = null;
 					String resourceUUIDStr = (String) ((Map)queryObject).get("resourceUUID");
 					if(resourceUUIDStr != null) {
 						resourceUUID = UUID.fromString(resourceUUIDStr);
 					}
-					
+
 					if(resourceUUID != null) {
 						edu.harvard.dbmi.avillach.data.entity.Resource resource = resourceRepo.getById(resourceUUID);
 						//logger.info("resource obj: " + resource + "    path: " + resource.getResourceRSPath());
