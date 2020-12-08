@@ -503,6 +503,7 @@ public abstract class AbstractProcessor {
 					// INTERSECT all the variant sets.
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
 					for(Set<String> variantSet : variantSets) {
+						System.out.println("looking at variant set " + Arrays.deepToString(variantSet.toArray()));
 						intersectionOfInfoFilters = Sets.intersection(intersectionOfInfoFilters, variantSet);
 					}
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
@@ -748,6 +749,7 @@ public abstract class AbstractProcessor {
 			if(query.variantInfoFilters.size()>1) {
 				for(VariantInfoFilter filter : query.variantInfoFilters){
 					unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
+					log.info("filter " + filter + "  sets: " + Arrays.deepToString(unionOfInfoFilters.toArray()));
 				}
 			} else {
 				unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.variantInfoFilters.get(0));
@@ -809,7 +811,7 @@ public abstract class AbstractProcessor {
 				}
 				unionOfInfoFilters = Sets.union(unionOfInfoFilters, intersectionOfInfoFilters);
 			} else {
-				unionOfInfoFilters = variantSets.get(0);
+				unionOfInfoFilters = Sets.union(unionOfInfoFilters, variantSets.get(0));
 			}
 		} else {
 			log.warn("No info filters included in query.");
