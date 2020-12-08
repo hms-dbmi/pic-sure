@@ -128,7 +128,7 @@ public class BucketIndexBySample implements Serializable {
 	}
 
 
-	LoadingCache<Integer, HashSet<Integer>> bucketSetCache = CacheBuilder.newBuilder()
+	transient LoadingCache<Integer, HashSet<Integer>> bucketSetCache = CacheBuilder.newBuilder()
 			.maximumSize(1000).build(new CacheLoader<Integer, HashSet<Integer>>() {
 				@Override
 				public HashSet<Integer> load(Integer patientId) throws Exception {
