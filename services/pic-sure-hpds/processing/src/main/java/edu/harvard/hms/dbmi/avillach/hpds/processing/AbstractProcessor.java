@@ -534,6 +534,10 @@ public abstract class AbstractProcessor {
 		ConcurrentSkipListSet<String> variantIndexSet = new ConcurrentSkipListSet<String>();
 		variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
+			if(storage == null) {
+				log.warn("No Store for key " + entry.getKey());
+				return;
+			}
 			storage.keys().stream().forEach((bucket)->{
 				try {
 					variantIndexSet.addAll(storage.get(bucket).keySet());
