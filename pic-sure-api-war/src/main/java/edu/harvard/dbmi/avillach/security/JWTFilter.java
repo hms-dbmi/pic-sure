@@ -12,7 +12,6 @@ import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import io.jsonwebtoken.JwtException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -53,8 +52,6 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Inject
 	ResourceWebClient resourceWebClient;
 
-	@Resource(mappedName = "java:global/client_secret")
-	private String clientSecret;
 	@Resource(mappedName = "java:global/user_id_claim")
 	private String userIdClaim;
 
@@ -70,7 +67,8 @@ public class JWTFilter implements ContainerRequestFilter {
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
 
-		if(requestContext.getUriInfo().getPath().contentEquals("/system/status") && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)) {
+		if(requestContext.getUriInfo().getPath().contentEquals("/system/status") 
+				&& requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)) {
 			// GET calls to /system/status do not require authentication or authorization
 			requestContext.setProperty("username", "SYSTEM_MONITOR");
 		}else {
@@ -100,9 +98,6 @@ public class JWTFilter implements ContainerRequestFilter {
 
 				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
-			} catch (JwtException e) {
-				logger.error("Exception "+ e.getClass().getSimpleName()+": token - " + token + " - is invalid: " + e.getMessage());
-				requestContext.abortWith(PICSUREResponse.unauthorizedError("Token is invalid."));
 			} catch (NotAuthorizedException e) {
 				// the detail of this exception should be logged right before the exception thrown out
 				//			logger.error("User - " + userForLogging + " - is not authorized. " + e.getChallenges());
@@ -154,7 +149,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 			Query initialQuery = null;
 			//Read the query from the backing store if we are getting the results (full query may not be specified in request)
-			if(requestPath.startsWith("/query/") && requestPath.endsWith("result")) {
+			if(requestPath.startsWith("/query/") && (requestPath.endsWith("result") || requestPath.endsWith("result/"))) {
 				//Path:   /query/{queryId}/result
 				String[] pathParts = requestPath.split("/");
 				UUID uuid = UUID.fromString(pathParts[2]);
@@ -171,7 +166,11 @@ public class JWTFilter implements ContainerRequestFilter {
 			}
 
 			if(buffer.size()>0) {
-				//I think here we are removing any existing credentials from the query; PIC-SURE has it's own static token that will be used
+				/*
+				 * We remove the resourceCredentials from the token introspection copy of the query to prevent logging them as 
+				 * part of token introspection. These credentials are between the backing resource and the user, PIC-SURE should
+				 * do its best to keep them confidential.
+				 */
 				Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
 				if (queryObject instanceof Collection) {
 					for (Object query: (Collection)queryObject) {
@@ -262,5 +261,9 @@ public class JWTFilter implements ContainerRequestFilter {
 		}
 
 		return null;
+	}
+
+	void setUserIdClaim(String userIdClaim) {
+		this.userIdClaim = userIdClaim;
 	}
 }
