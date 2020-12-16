@@ -34,6 +34,12 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 
 @Path("/system")
 public class SystemService {
+	static int max_test_frequency = 60000;
+
+	static final String RUNNING = "RUNNING";
+
+	static final String ONE_OR_MORE_COMPONENTS_DEGRADED = "ONE OR MORE COMPONENTS DEGRADED";
+
 	Logger logger = LoggerFactory.getLogger(SystemService.class);
 
 	@Inject
@@ -52,6 +58,10 @@ public class SystemService {
 	public void init() {
 		token_introspection_url = picSureWarInit.getToken_introspection_url();
 		token_introspection_token = picSureWarInit.getToken_introspection_token();
+		if(token_introspection_url == null || token_introspection_token  == null) {
+			throw new RuntimeException(
+					"token_introspection_url and token_introspection_token not configured");
+		}
 	}
 
 	@GET
@@ -60,35 +70,30 @@ public class SystemService {
 	public String status() {
 		// Because there is no auth on this service we limit actually performing the checking to 1 per minute to avoid DOS scenarios.
 		long timeOfRequest = System.currentTimeMillis();
-		if(timeOfRequest-lastStatusCheck < 60000) {
+		if(timeOfRequest-lastStatusCheck < max_test_frequency) {
 			return lastStatus;
 		}else {
 			lastStatusCheck = timeOfRequest;
 			try{
 				List<Resource> resourcesToTest = resourceRepo.list();
 				if( resourcesToTest != null &&  // This proves the MySQL database is serving queries
+						!resourcesToTest.isEmpty() && // This proves at least one resources is configured
 						testPSAMAResponds() &&  // This proves we can perform token introspection
 						testResourcesRespond(resourcesToTest) ){ // This proves all resources are at least serving info requests.
-					lastStatus = "RUNNING";
+					lastStatus = RUNNING;
 					return lastStatus;
 				}else {
-					lastStatus = "ONE OR MORE COMPONENTS DEGRADED";
+					lastStatus = ONE_OR_MORE_COMPONENTS_DEGRADED;
 				}
 			}catch(Exception e) {
 				e.printStackTrace();
-				lastStatus = "ONE OR MORE COMPONENTS DEGRADED";
+				lastStatus = ONE_OR_MORE_COMPONENTS_DEGRADED;
 			}
 			return lastStatus;
 		}
 	}
 
 	private boolean testPSAMAResponds() throws UnsupportedOperationException, IOException {
-		if (token_introspection_url.isEmpty())
-			throw new ApplicationException("token_introspection_url is empty");
-
-		if (token_introspection_token.isEmpty()){
-			throw new ApplicationException("token_introspection_token is empty");
-		}
 		CloseableHttpClient client = PicSureWarInit.CLOSEABLE_HTTP_CLIENT;
 		ObjectMapper json = PicSureWarInit.objectMapper;
 		
