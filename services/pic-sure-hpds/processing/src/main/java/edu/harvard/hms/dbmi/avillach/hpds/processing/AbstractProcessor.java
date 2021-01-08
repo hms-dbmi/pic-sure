@@ -103,7 +103,7 @@ public abstract class AbstractProcessor {
 			throw new IllegalArgumentException("This constructor should never be used outside tests");
 		}
 	}
-
+	
 	private static final String HOMOZYGOUS_VARIANT = "1/1";
 
 	private static final String HETEROZYGOUS_VARIANT = "0/1";
@@ -964,6 +964,7 @@ public abstract class AbstractProcessor {
 						GZIPInputStream gis = new GZIPInputStream(fis);
 						ObjectInputStream ois = new ObjectInputStream(gis)
 						){
+					log.info("loading " + filename);
 					FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
 					infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
 				} catch (FileNotFoundException e) {
