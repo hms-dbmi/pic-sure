@@ -7,7 +7,6 @@
   <packaging>pom</packaging>
   <name>pic-sure-auth-microapp</name>
   <modules>
-    <module>pic-sure-auth-ui</module>
     <module>pic-sure-auth-services</module>
   </modules>
 </project>
