@@ -7,8 +7,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import org.apache.log4j.Logger;
 
@@ -34,6 +32,9 @@ public class BucketIndexBySample implements Serializable {
 	ArrayList<String> contigSet;
 	
 	private Integer variantCount;
+	
+	//used to track buckets while building the cache in a stream
+	private Integer bucketIndex;
 
 	transient Logger log = Logger.getLogger(BucketIndexBySample.class);
 	
@@ -84,30 +85,27 @@ public class BucketIndexBySample implements Serializable {
 		
 		BigInteger emptyBitmask = variantStore.emptyBitmask();
 		variantCount = 0;
-		int bucketIndex = 0;
+		bucketIndex = 0;
 		
-		for(String contig: contigSet) {
+		contigSet.parallelStream().forEach( contig -> {
 			log.info("Starting contig " + contig);
 			int contigInteger = contigSet.indexOf(contig) * CONTIG_SCALE;
-//			variantStore.variantMaskStorage.get(contig).keys().stream().forEach((bucket)->{
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore = variantStore.variantMaskStorage.get(contig);
 			
 			if(contigStore == null || contigStore.keys() == null) {
 				log.info("skipping contig " + contig);;
-				continue;
+				return;
 			}
 			
 			for( Integer bucket : variantStore.variantMaskStorage.get(contig).keys()) {
-				bucketIndexReference[bucketIndex] = contigInteger + bucket;
+				final int threadBucketIndex = bucketIndex;
+				bucketIndex++;
 				
-				//this is dumb, but we can't even reference non-global variables inside a lambda
-				// something about autoboxing primatives on the stack
-				// https://www.quora.com/Can-Java-Lambda-access-variables-outside-the-Lambda-function-What-it-be-done-by-adding-something-to-an-outside-list-or-by-a-lookup-on-a-map
-				final int workAroundIt = bucketIndex;
+				bucketIndexReference[threadBucketIndex] = contigInteger + bucket;
+				
 				try {
 					variantStore.variantMaskStorage.get(contig).get(bucket).forEach((variantSpec, masks)->{
-						
-						if( (variantCount++) % 50000 == 0) {
+						if( (variantCount++) % 100000 == 0) {
 							log.info(Thread.currentThread().getName() +   " Processed " + variantCount + " variants");
 						}
 						
@@ -115,12 +113,11 @@ public class BucketIndexBySample implements Serializable {
 								(masks.homozygousMask == null ? emptyBitmask : masks.homozygousMask).or(
 										(masks.heterozygousMask == null ? emptyBitmask : masks.heterozygousMask));
 						
-						
-						patientIds.parallelStream().forEach((id)->{
+						patientIds.forEach((id)->{
 							if(mask.testBit(patientIdIndex.get(id))) {
 								//now flip ONE BIT
-								int bucketByteIndex = workAroundIt / 8;
-								int offset = workAroundIt % 8;
+								int bucketByteIndex = threadBucketIndex / 8;
+								int offset = threadBucketIndex % 8;
 								index.get(id)[bucketByteIndex] |= bitMasks[offset];
 							}
 						});
@@ -130,14 +127,14 @@ public class BucketIndexBySample implements Serializable {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
-				bucketIndex++;
 			}
-		}
+		});
 		
 		log.info("Completed after " + variantCount + " variants");
 		fbbis.open();
-		//could parallelize this
-		index.forEach((patientId, patientBucketArr)->{
+		index.entrySet().parallelStream().forEach( entry -> {
+			Integer patientId = entry.getKey();
+			byte[] patientBucketArr = entry.getValue();
 			try {
 				HashSet<Integer> patientBucketSet = new HashSet<Integer>(patientBucketArr.length);
 				for(int i = 0; i < patientBucketArr.length; i++){
@@ -157,50 +154,6 @@ public class BucketIndexBySample implements Serializable {
 		fbbis.complete();
 	}
 	
-	
-	
-//	
-//	/**y point for piecemeal caching of patient->contig mappings
-//	 * ENtr
-//	 * @param args
-//	 * @throws ClassNotFoundException
-//	 * @throws FileNotFoundException
-//	 * @throws IOException
-//	 */
-//	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
-//		
-//		if(args[0] == null || args[0].isEmpty()) {
-//			System.out.println("No contig selected");
-//			return;
-//		} else {
-//			System.out.println("Caching contig " + args[0]);
-//		}
-//		
-//		
-//		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
-//			ObjectInputStream stream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin")));
-//			
-//			VariantStore variantStore = (VariantStore) stream.readObject();
-//			stream.close();
-//			variantStore.open();	
-//		
-//			BucketIndexBySample bucketIndex = new BucketIndexBySample(variantStore, args[0]);
-//			try (
-//					FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
-//					GZIPOutputStream gzos = new GZIPOutputStream(fos);
-//					ObjectOutputStream oos = new ObjectOutputStream(gzos);			
-//					){
-//				oos.writeObject(bucketIndex);
-//				oos.flush();oos.close();
-//			}
-//		}
-//	}
-	
-	
-	
-	
-	
-
 	public Collection<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet){
 		
 		// Build a list of buckets represented in the variantSet
