@@ -63,6 +63,7 @@ public class PicSureService implements IResourceRS {
 	
 	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
 	
+	
 	@POST
 	@Path("/info")
 	public ResourceInfo info(QueryRequest request) {

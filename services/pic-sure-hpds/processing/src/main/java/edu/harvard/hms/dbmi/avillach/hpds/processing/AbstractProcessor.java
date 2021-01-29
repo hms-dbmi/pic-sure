@@ -4,9 +4,7 @@ import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -16,20 +14,13 @@ import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.log4j.Logger;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.cache.Weigher;
+import com.google.common.cache.*;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
@@ -44,7 +35,7 @@ public abstract class AbstractProcessor {
 
 	private static boolean dataFilesLoaded = false;
 	private static BucketIndexBySample bucketIndex;
-	private static final String VARIANT_INDEX_FILE = "/opt/local/hpds/all/variantIndex.javabin";
+	private static final String VARIANT_INDEX_FILE = "/opt/local/hpds/all/variantIndex_decompressed.javabin";
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -54,49 +45,92 @@ public abstract class AbstractProcessor {
 			allIds = (TreeSet<Integer>) metadata[1];
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
-			if(bucketIndex==null) {
-				if(variantIndex==null) {
-					synchronized(AbstractProcessor.class) {
-						if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
-							populateVariantIndex();	
-							try (
-									FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
-									GZIPOutputStream gzos = new GZIPOutputStream(fos);
-									ObjectOutputStream oos = new ObjectOutputStream(gzos);
-									){
-								oos.writeObject(variantIndex);
-								oos.flush();oos.close();
+		}
+		
+		try {
+			loadGenomicCacheFiles();
+		} catch (Throwable e) {
+			log.error("Failed to load genomic data: " + e.getLocalizedMessage(), e);
+		}
+	}
+
+	
+	
+	/**
+	 * This process takes a while (even after the cache is built), so let's spin it out into it's own thread. (not done yet)
+	 * @throws FileNotFoundException
+	 * @throws IOException
+	 */
+	private void loadGenomicCacheFiles() throws FileNotFoundException, IOException {
+		if(bucketIndex==null) {
+			if(variantIndex==null) {
+				synchronized(AbstractProcessor.class) {
+					if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
+						log.info("Creating new " + VARIANT_INDEX_FILE);
+						populateVariantIndex();	
+						try (
+								FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
+//								GZIPOutputStream gzos = new GZIPOutputStream(fos);
+								ObjectOutputStream oos = new ObjectOutputStream(fos);
+								){
+							
+							oos.writeObject("" + variantIndex.length);
+							for(String variant : variantIndex) {
+								oos.writeObject(variant);
+								oos.flush(); //may want to buffer a bit instead of constantly flushing?
 							}
-						}else {
-							try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FILE)));){
-								variantIndex = (String[]) objectInputStream.readObject();
-							} catch (IOException | ClassNotFoundException e) {
-								log.error(e);
-							}
-							log.info("Found " + variantIndex.length + " total variants.");
+							
+							oos.flush();oos.close();
 						}
+					}else {
+						try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream(VARIANT_INDEX_FILE));){
+							log.info("loading " + VARIANT_INDEX_FILE);
+							
+							String variantCountStr = (String) objectInputStream.readObject();
+							Integer variantCount = Integer.parseInt(variantCountStr);
+						    variantIndex = new String[variantCount];
+							
+						    for( int i = 0; i < variantCount; i++) {
+						    	variantIndex[i] =  (String) objectInputStream.readObject();
+						    	
+						    	if(i % 1000000 == 0) {
+						    		log.info("loaded " + i + " variants in index");
+						    	}
+						    }
+						    
+							objectInputStream.close();
+						} catch (IOException | ClassNotFoundException | NumberFormatException e) {
+							log.error(e);
+						}
+						log.info("Found " + variantIndex.length + " total variants.");
 					}
 				}
-				if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
-					bucketIndex = new BucketIndexBySample(variantStore);
-					try (
-							FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
-							GZIPOutputStream gzos = new GZIPOutputStream(fos);
-							ObjectOutputStream oos = new ObjectOutputStream(gzos);			
-							){
-						oos.writeObject(bucketIndex);
-						oos.flush();oos.close();
-					}
-				}else {
-					try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
-						bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
-					} catch (IOException | ClassNotFoundException e) {
-						log.error(e);
-					} 
+			}
+			if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
+				log.info("creating new " + BucketIndexBySample.INDEX_FILE);
+				bucketIndex = new BucketIndexBySample(variantStore);
+				try (
+						FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
+						GZIPOutputStream gzos = new GZIPOutputStream(fos);
+						ObjectOutputStream oos = new ObjectOutputStream(gzos);			
+						){
+					oos.writeObject(bucketIndex);
+					oos.flush();oos.close();
 				}
+			}else {
+				try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
+					log.info("loading " + BucketIndexBySample.INDEX_FILE);
+					bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
+					objectInputStream.close();
+				} catch (IOException | ClassNotFoundException e) {
+					log.error(e);
+				} 
 			}
 		}
 	}
+
+
+
 
 	public AbstractProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
 		if(!isOnlyForTests) {
@@ -147,6 +181,7 @@ public abstract class AbstractProcessor {
 				metastoreScrubbed.put(entry.getKey().replaceAll("\\ufffd",""), entry.getValue());
 			}
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
+			objectInputStream.close();
 			return new Object[] {metastoreScrubbed, allIds};
 		} catch (IOException | ClassNotFoundException e) {
 			e.printStackTrace();
@@ -363,7 +398,6 @@ public abstract class AbstractProcessor {
 					}
 				}
 			} catch (ExecutionException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -532,21 +566,35 @@ public abstract class AbstractProcessor {
 
 	private void populateVariantIndex() {
 		ConcurrentSkipListSet<String> variantIndexSet = new ConcurrentSkipListSet<String>();
-		variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
-			if(storage == null) {
-				log.warn("No Store for key " + entry.getKey());
-				return;
-			}
-			storage.keys().stream().forEach((bucket)->{
-				try {
-					variantIndexSet.addAll(storage.get(bucket).keySet());
-				} catch (IOException e) {
-					log.error(e);
+		
+		//This can run out of memory VERY QUICKLY when using the full CPU (e.g., 120GB in 25 mintues).  
+		// so we limit the thread count with a custom pool
+        ForkJoinPool customThreadPool = new ForkJoinPool(5);
+        try {
+			customThreadPool.submit(() -> 
+			
+			variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
+				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
+				if(storage == null) {
+					log.warn("No Store for key " + entry.getKey());
+					return;
 				}
-			});
-			log.info("Finished caching contig: " + entry.getKey());
-		});
+				storage.keys().stream().forEach((bucket)->{
+					try {
+						variantIndexSet.addAll(storage.get(bucket).keySet());
+					} catch (IOException e) {
+						log.error(e);
+					}
+				});
+				log.info("Finished caching contig: " + entry.getKey());
+			})).get(); //get() makes it an overall blocking call;
+		} catch (InterruptedException | ExecutionException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			customThreadPool.shutdown();
+		}
+        
 		variantIndex = variantIndexSet.toArray(new String[variantIndexSet.size()]);
 		// This should already be sorted, but just in case
 		Arrays.sort(variantIndex);
@@ -824,8 +872,7 @@ public abstract class AbstractProcessor {
 	}
 
 	private BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
-		int index = 2; //variant bitmasks are bookended with '11'
-		StringBuilder builder = new StringBuilder("11");
+		StringBuilder builder = new StringBuilder("11"); //variant bitmasks are bookended with '11'
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
@@ -833,7 +880,6 @@ public abstract class AbstractProcessor {
 			} else {
 				builder.append("0");
 			}
-			index++;
 		}
 		builder.append("11"); // masks are bookended with '11' set this so we don't count those
 
@@ -895,7 +941,10 @@ public abstract class AbstractProcessor {
 	 */
 	protected LoadingCache<String, PhenoCube<?>> initializeCache() throws ClassNotFoundException, FileNotFoundException, IOException {
 		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
-			variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin"))).readObject();
+			
+			ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin")));
+			variantStore = (VariantStore) ois.readObject();
+			ois.close();
 			variantStore.open();			
 		} else {
 			//we still need an object to reference when checking the variant store, even if it's empty.
@@ -967,14 +1016,12 @@ public abstract class AbstractProcessor {
 					log.info("loading " + filename);
 					FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
 					infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
+					ois.close();
 				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (ClassNotFoundException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			});

@@ -27,6 +27,12 @@ public class VariantListProcessor extends AbstractProcessor {
 	private VariantMetadataIndex metadataIndex = null;
 
 	private static Logger log = Logger.getLogger(VariantListProcessor.class);
+	
+	private static final Boolean VCF_EXCERPT_ENABLED;
+	
+	static {
+		VCF_EXCERPT_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
+	}	
 
 	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
@@ -88,6 +94,13 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 */
 	public String runVcfExcerptQuery(Query query) {
+		
+		if(!VCF_EXCERPT_ENABLED) {
+			log.warn("VCF_EXCERPT query attempted, but not enabled.");
+			return "VCF_EXCERPT query type not allowed";
+		}
+		
+		
 		log.info("Running VCF Extract query");
 
 		Collection<String> variantList = getVariantList(query);
