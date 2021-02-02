@@ -36,6 +36,7 @@ public abstract class AbstractProcessor {
 	private static boolean dataFilesLoaded = false;
 	private static BucketIndexBySample bucketIndex;
 	private static final String VARIANT_INDEX_FILE = "/opt/local/hpds/all/variantIndex_decompressed.javabin";
+	private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000; 
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -68,17 +69,29 @@ public abstract class AbstractProcessor {
 					if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
 						log.info("Creating new " + VARIANT_INDEX_FILE);
 						populateVariantIndex();	
-						try (
-								FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
-//								GZIPOutputStream gzos = new GZIPOutputStream(fos);
+						try (	FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
 								ObjectOutputStream oos = new ObjectOutputStream(fos);
 								){
 							
+							log.info("Writing Cache Object in blocks of " + VARIANT_INDEX_BLOCK_SIZE);
 							oos.writeObject("" + variantIndex.length);
-							for(String variant : variantIndex) {
-								oos.writeObject(variant);
-								oos.flush(); //may want to buffer a bit instead of constantly flushing?
-							}
+							
+							 //variant index has to be a single array (we use a binary search for lookups)
+						    //but reading/writing to disk should be batched for performance
+						    
+						    int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
+						    for( int i = 0; i < bucketCount; i++) {
+						    	int blockSize = i == (bucketCount - 1) ? (variantIndex.length % VARIANT_INDEX_BLOCK_SIZE) : VARIANT_INDEX_BLOCK_SIZE; 
+						    	
+						    	String[] variantArrayBlock = new String[blockSize];
+						    	System.arraycopy(variantIndex, 0 + (i * blockSize), variantArrayBlock, 0, blockSize);
+						    	
+						    	oos.writeObject(variantArrayBlock);
+								oos.flush(); oos.reset();
+								
+								variantArrayBlock = null;  //does this help clear up mem?
+								log.info("saved " + (blockSize * i) + " variants");
+						    }
 							
 							oos.flush();oos.close();
 						}
@@ -90,12 +103,18 @@ public abstract class AbstractProcessor {
 							Integer variantCount = Integer.parseInt(variantCountStr);
 						    variantIndex = new String[variantCount];
 							
-						    for( int i = 0; i < variantCount; i++) {
-						    	variantIndex[i] =  (String) objectInputStream.readObject();
-						    	
-						    	if(i % 1000000 == 0) {
-						    		log.info("loaded " + i + " variants in index");
+						    //variant index has to be a single array (we use a binary search for lookups)
+						    //but reading/writing to disk should be batched for performance
+						    
+						    int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
+						    int offset = 0;
+						    for( int i = 0; i < bucketCount; i++) {
+						    	String[] variantIndexBucket =  (String[]) objectInputStream.readObject();
+						    	for(int j = 0; j < variantIndexBucket.length; j++) {
+						    		variantIndex[offset + j] = variantIndexBucket[j];
 						    	}
+						    	offset += variantIndexBucket.length;
+						    	log.info("loaded " + offset + " variants");
 						    }
 						    
 							objectInputStream.close();
@@ -128,9 +147,6 @@ public abstract class AbstractProcessor {
 			}
 		}
 	}
-
-
-
 
 	public AbstractProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
 		if(!isOnlyForTests) {

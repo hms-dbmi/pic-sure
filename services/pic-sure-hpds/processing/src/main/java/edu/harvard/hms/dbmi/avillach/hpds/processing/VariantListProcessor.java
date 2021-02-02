@@ -275,7 +275,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				metadataIndex = (VariantMetadataIndex) in.readObject();
 				metadataIndex.initializeRead();	
 			}catch(Exception e) {
-				throw new IOException("No Metadata Index found at " + metadataIndexPath);
+				log.error("No Metadata Index found at " + metadataIndexPath);
 			}
 		}
 	}
