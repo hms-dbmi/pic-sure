@@ -78,7 +78,6 @@ public abstract class AbstractProcessor {
 							
 							 //variant index has to be a single array (we use a binary search for lookups)
 						    //but reading/writing to disk should be batched for performance
-						    
 						    int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
 						    int index = 0;
 						    for( int i = 0; i < bucketCount; i++) {
@@ -91,10 +90,8 @@ public abstract class AbstractProcessor {
 								oos.flush(); oos.reset();
 								
 								index += blockSize;
-								
 								log.info("saved " + index + " variants");
 						    }
-							
 							oos.flush();oos.close();
 						}
 					}else {
@@ -107,7 +104,6 @@ public abstract class AbstractProcessor {
 							
 						    //variant index has to be a single array (we use a binary search for lookups)
 						    //but reading/writing to disk should be batched for performance
-						    
 						    int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
 						    int offset = 0;
 						    for( int i = 0; i < bucketCount; i++) {
@@ -118,7 +114,6 @@ public abstract class AbstractProcessor {
 						    	offset += variantIndexBucket.length;
 						    	log.info("loaded " + offset + " variants");
 						    }
-						    
 							objectInputStream.close();
 						} catch (IOException | ClassNotFoundException | NumberFormatException e) {
 							log.error(e);
@@ -188,9 +183,6 @@ public abstract class AbstractProcessor {
 
 	protected TreeSet<Integer> allIds;
 
-
-	//	private GeneLibrary geneLibrary = new GeneLibrary();
-
 	protected Object[] loadMetadata() {
 		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
@@ -255,18 +247,18 @@ public abstract class AbstractProcessor {
 	//		});
 	//		return interestingVariants;
 	//	}
-
-	/**
-	 * Returns a new BigInteger object where each bit except the bookend bits for the bitmask parameter have been flipped.
-	 * @param bitmask
-	 * @return
-	 */
-	private BigInteger flipMask(BigInteger bitmask) {
-		for(int x = 2;x<bitmask.bitLength()-2;x++) {
-			bitmask = bitmask.flipBit(x);
-		}
-		return bitmask;
-	}
+//
+//	/**
+//	 * Returns a new BigInteger object where each bit except the bookend bits for the bitmask parameter have been flipped.
+//	 * @param bitmask
+//	 * @return
+//	 */
+//	private BigInteger flipMask(BigInteger bitmask) {
+//		for(int x = 2;x<bitmask.bitLength()-2;x++) {
+//			bitmask = bitmask.flipBit(x);
+//		}
+//		return bitmask;
+//	}
 
 	/**
 	 * For each filter in the query, return a set of patient ids that match. The order of these sets in the
@@ -545,7 +537,6 @@ public abstract class AbstractProcessor {
 	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
-		// NC - no kidding!
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
@@ -591,13 +582,12 @@ public abstract class AbstractProcessor {
         try {
 			customThreadPool.submit(() -> 			
 				variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
-//			for(Entry<String,FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> entry  : variantStore.variantMaskStorage.entrySet()){
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
 				if(storage == null) {
 					log.warn("No Store for key " + entry.getKey());
 					return;
 				}
-				//no stream here; i think it uses too much memory
+				//no stream here; I think it uses too much memory
 				for(Integer bucket: storage.keys()){
 					try {
 						variantIndexSet.addAll(storage.get(bucket).keySet());
@@ -606,10 +596,8 @@ public abstract class AbstractProcessor {
 					}
 				};
 				log.info("Finished caching contig: " + entry.getKey());
-//			}
 			})).get(); //get() makes it an overall blocking call;
 		} catch (InterruptedException | ExecutionException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} finally {
 			customThreadPool.shutdown();
