@@ -80,17 +80,19 @@ public abstract class AbstractProcessor {
 						    //but reading/writing to disk should be batched for performance
 						    
 						    int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
+						    int index = 0;
 						    for( int i = 0; i < bucketCount; i++) {
 						    	int blockSize = i == (bucketCount - 1) ? (variantIndex.length % VARIANT_INDEX_BLOCK_SIZE) : VARIANT_INDEX_BLOCK_SIZE; 
 						    	
 						    	String[] variantArrayBlock = new String[blockSize];
-						    	System.arraycopy(variantIndex, 0 + (i * blockSize), variantArrayBlock, 0, blockSize);
+						    	System.arraycopy(variantIndex, index, variantArrayBlock, 0, blockSize);
 						    	
 						    	oos.writeObject(variantArrayBlock);
 								oos.flush(); oos.reset();
 								
-								variantArrayBlock = null;  //does this help clear up mem?
-								log.info("saved " + (blockSize * i) + " variants");
+								index += blockSize;
+								
+								log.info("saved " + index + " variants");
 						    }
 							
 							oos.flush();oos.close();
@@ -110,9 +112,9 @@ public abstract class AbstractProcessor {
 						    int offset = 0;
 						    for( int i = 0; i < bucketCount; i++) {
 						    	String[] variantIndexBucket =  (String[]) objectInputStream.readObject();
-						    	for(int j = 0; j < variantIndexBucket.length; j++) {
-						    		variantIndex[offset + j] = variantIndexBucket[j];
-						    	}
+						    	
+						    	System.arraycopy(variantIndexBucket, 0, variantIndex, offset, variantIndexBucket.length);
+						    	
 						    	offset += variantIndexBucket.length;
 						    	log.info("loaded " + offset + " variants");
 						    }
@@ -399,9 +401,9 @@ public abstract class AbstractProcessor {
 			// TODO : This is probably not necessary, see TODO below. 
 			String bitmaskString = bitmask.toString(2);
 			log.debug("or'd masks : " + bitmaskString);
-			PhenoCube<String> idCube;
-			try {
-				idCube = ID_CUBE_NAME.contentEquals("NONE") ? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
+//			PhenoCube<String> idCube;
+//			try {
+//				idCube = ID_CUBE_NAME.contentEquals("NONE") ? null : (PhenoCube<String>) store.get(ID_CUBE_NAME);
 				// TODO : This is much less efficient than using bitmask.testBit(x)
 				for(int x = 2;x < bitmaskString.length()-2;x++) {
 					if('1'==bitmaskString.charAt(x)) {
@@ -413,9 +415,9 @@ public abstract class AbstractProcessor {
 						}
 					}
 				}
-			} catch (ExecutionException e) {
-				e.printStackTrace();
-			}
+//			} catch (ExecutionException e) {
+//				e.printStackTrace();
+//			}
 		}
 		// *****
 		// This code is a more efficient way to query on gene names, 
@@ -587,22 +589,24 @@ public abstract class AbstractProcessor {
 		// so we limit the thread count with a custom pool
         ForkJoinPool customThreadPool = new ForkJoinPool(5);
         try {
-			customThreadPool.submit(() -> 
-			
-			variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
+			customThreadPool.submit(() -> 			
+				variantStore.variantMaskStorage.entrySet().parallelStream().forEach((entry)->{
+//			for(Entry<String,FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> entry  : variantStore.variantMaskStorage.entrySet()){
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
 				if(storage == null) {
 					log.warn("No Store for key " + entry.getKey());
 					return;
 				}
-				storage.keys().stream().forEach((bucket)->{
+				//no stream here; i think it uses too much memory
+				for(Integer bucket: storage.keys()){
 					try {
 						variantIndexSet.addAll(storage.get(bucket).keySet());
 					} catch (IOException e) {
 						log.error(e);
 					}
-				});
+				};
 				log.info("Finished caching contig: " + entry.getKey());
+//			}
 			})).get(); //get() makes it an overall blocking call;
 		} catch (InterruptedException | ExecutionException e) {
 			// TODO Auto-generated catch block
