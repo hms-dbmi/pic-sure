@@ -43,7 +43,10 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	}
 
 	public void load(Iterable<V> values, Function<V, K> mapper) throws IOException {
-//		boolean deleted = this.storageFile.exists() ? this.storageFile.delete() : false;
+		//make sure we start fresh
+		if(this.storageFile.exists()) {
+			this.storageFile.delete();
+		}
 		this.storage = new RandomAccessFile(storageFile, "rw");
 		for(V value : values) {
 			put(mapper.apply(value), value);
