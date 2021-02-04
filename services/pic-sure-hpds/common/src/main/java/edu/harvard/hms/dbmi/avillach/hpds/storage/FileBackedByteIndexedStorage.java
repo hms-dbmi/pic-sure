@@ -22,7 +22,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	private ConcurrentHashMap<K, Long[]> index;
 	private File storageFile;
 	private boolean completed = false;
-	private Long maxStorageSize;
+	private Long maxStorageSize;  //leave this in to not break serialization
 
 	public FileBackedByteIndexedStorage(Class<K> keyClass, Class<V> valueClass, File storageFile) throws FileNotFoundException {
 		this.index = new ConcurrentHashMap<K, Long[]>();
