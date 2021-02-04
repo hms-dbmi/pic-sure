@@ -1,22 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
-import javax.ws.rs.NotSupportedException;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.ServerErrorException;
+import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
@@ -32,11 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
-import edu.harvard.dbmi.avillach.domain.QueryFormat;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
@@ -44,10 +29,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInf
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.TimelineProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 
 @Path("PIC-SURE")
 @Produces("application/json")
@@ -57,6 +39,7 @@ public class PicSureService implements IResourceRS {
 		try {
 			countProcessor = new CountProcessor();
 			timelineProcessor = new TimelineProcessor();
+			variantListProcessor = new VariantListProcessor();
 		} catch (ClassNotFoundException | IOException e3) {
 			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
@@ -76,7 +59,10 @@ public class PicSureService implements IResourceRS {
 	
 	private CountProcessor countProcessor;
 
+	private VariantListProcessor variantListProcessor;
+	
 	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
+	
 	
 	@POST
 	@Path("/info")
@@ -239,9 +225,10 @@ public class PicSureService implements IResourceRS {
 				} catch (JsonProcessingException e2) {
 					log.error("JsonProcessingException  caught: ", e);
 				}
-				Map<String, Object> metadata = new HashMap<String, Object>();
-				metadata.put(QUERY_METADATA_FIELD, e.getResult());
-				status.setResultMetadata(metadata);
+					 
+		        Map<String, Object> metadata = new HashMap<String, Object>();
+		        metadata.put(QUERY_METADATA_FIELD, e.getResult());
+		        status.setResultMetadata(metadata);
 				return status;
 			} catch (ClassNotFoundException e) {
 				throw new ServerErrorException(500);
@@ -324,16 +311,7 @@ public class PicSureService implements IResourceRS {
 					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
 				}
 				
-				case DATAFRAME : {
-					QueryStatus status = query(resultRequest);
-					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-						status = queryStatus(status.getResourceResultId(), null);
-					}
-					log.info(status.toString());
-					return queryResult(status.getResourceResultId(), null);
-					
-				}
-				
+				case DATAFRAME : 
 				case DATAFRAME_MERGED : {
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
@@ -353,15 +331,15 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VARIANT_COUNT_FOR_QUERY : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(countProcessor.runVariantCount(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 				}
 				
 				case VARIANT_LIST_FOR_QUERY : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(variantListProcessor.runVariantListQuery(incomingQuery)).build();
 				}
 				
 				case VCF_EXCERPT : {
-					throw new RuntimeException("Not yet implemented");
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery)).build();
 				}
 				
 				case TIMELINE_DATA : {

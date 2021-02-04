@@ -49,7 +49,7 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 
 	@Override
 	public int compareTo(KeyAndValue<?> o) {
-		return o.key - this.key;
+		return this.key - o.key;
 	}
 
 	public Long getTimestamp() {
@@ -59,5 +59,4 @@ public class KeyAndValue<V extends Comparable<V>> implements Serializable, Compa
 	public void setTimestamp(Long timestamp) {
 		this.timestamp = timestamp;
 	}
-	
 }

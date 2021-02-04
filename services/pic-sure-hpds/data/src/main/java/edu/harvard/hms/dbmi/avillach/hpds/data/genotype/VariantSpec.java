@@ -27,7 +27,11 @@ public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 		this.metadata.name = r.get(NAME);
 		this.metadata.ref = r.get(REF);
 		this.metadata.alt = r.get(ALT);
-		this.metadata.qual = Integer.parseInt(r.get(QUAL));
+		try {
+			this.metadata.qual = Integer.parseInt(r.get(QUAL));
+		}catch(NumberFormatException e) { 
+			this.metadata.qual  = -1;
+		}
 	}
 
 	public VariantSpec(String variant) {

@@ -22,7 +22,7 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 	private ConcurrentHashMap<K, Long[]> index;
 	private File storageFile;
 	private boolean completed = false;
-	private Long maxStorageSize;
+	private Long maxStorageSize;  //leave this in to not break serialization
 
 	public FileBackedByteIndexedStorage(Class<K> keyClass, Class<V> valueClass, File storageFile) throws FileNotFoundException {
 		this.index = new ConcurrentHashMap<K, Long[]>();
@@ -38,16 +38,15 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		if(completed) {
 			throw new RuntimeException("A completed FileBackedByteIndexedStorage cannot be modified.");
 		}
-		Long[] recordIndex = new Long[2];
-		recordIndex[0] = storage.getFilePointer();
-		store(value);
-		recordIndex[1] = storage.getFilePointer() - recordIndex[0];
-		maxStorageSize = recordIndex[1];
+		Long[] recordIndex = store(value);
 		index.put(key, recordIndex);
 	}
 
 	public void load(Iterable<V> values, Function<V, K> mapper) throws IOException {
-		boolean deleted = this.storageFile.exists() ? this.storageFile.delete() : false;
+		//make sure we start fresh
+		if(this.storageFile.exists()) {
+			this.storageFile.delete();
+		}
 		this.storage = new RandomAccessFile(storageFile, "rw");
 		for(V value : values) {
 			put(mapper.apply(value), value);
@@ -64,15 +63,22 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		this.completed = true;
 	}
 
-	private void store(V value) throws IOException {
+	private Long[] store(V value) throws IOException {
+		
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(out));
 		oos.writeObject(value);
 		oos.flush();
 		oos.close();
+		
+		Long[] recordIndex = new Long[2];
 		synchronized(storage) {
-			storage.write(out.toByteArray());			
+			recordIndex[0] = storage.getFilePointer();
+			storage.write(out.toByteArray());	
+			recordIndex[1] = storage.getFilePointer() - recordIndex[0];
+			maxStorageSize = recordIndex[1];
 		}
+		return recordIndex;
 	}
 
 	public V get(K key) throws IOException {

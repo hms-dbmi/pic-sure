@@ -1,31 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
@@ -170,13 +149,15 @@ public class NewVCFLoader {
 		convertInfoStoresToByteIndexed();
 
 		if(Level.DEBUG.equals(logger.getEffectiveLevel())) {
+			//Log out the first and last 50 variants
 			int[] count = {0};
-			Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
-			Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
+//			Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
+//			Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
 			for(String contig : store.variantMaskStorage.keySet()) {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage.get(contig);
 				if(chromosomeStorage!=null) {
+					//print out the top and bottom 50 variants in the store (that have masks)
 					chunkIds.addAll(chromosomeStorage.keys());
 					for(Integer chunkId : chunkIds){
 						for(String variantSpec : chromosomeStorage.get(chunkId).keySet()){
@@ -231,18 +212,6 @@ public class NewVCFLoader {
 			for(int x = 2;x<heterozygousMask.bitLength()-2;x++) {
 				if(heterozygousMask.testBit(heterozygousMask.bitLength() - 1 - x)) {
 					idList+=sampleIds[x-2]+",";
-				}
-			}
-		}
-		return idList;
-	}
-
-	private static String patientIdsForMask(Integer[] patientIds, BigInteger heterozygousMask) {
-		String idList = "";
-		if(heterozygousMask!=null) {
-			for(int x = 2;x<heterozygousMask.bitLength()-2;x++) {
-				if(heterozygousMask.testBit(heterozygousMask.bitLength() - 1 - x)) {
-					idList+=patientIds[x-2]+",";
 				}
 			}
 		}
@@ -388,6 +357,7 @@ public class NewVCFLoader {
 		private List<Integer> indices;
 		private Integer[] vcfOffsets;
 		private Integer[] bitmaskOffsets;
+		private HashMap<Integer, Integer> vcfIndexLookup;
 		private String currentLine;
 		private String[] currentLineSplit;
 		private BufferedReader vcfReader;
@@ -401,6 +371,7 @@ public class NewVCFLoader {
 			this.vcfIndexLine = vcfIndexLine;
 			this.vcfOffsets = new Integer[vcfIndexLine.patientIds.length];
 			this.bitmaskOffsets = new Integer[vcfIndexLine.patientIds.length];
+			vcfIndexLookup = new HashMap<Integer, Integer>(vcfOffsets.length);
 			indices = new ArrayList<>();
 			for(int x = 0;x<vcfOffsets.length;x++) {
 				indices.add(x);
@@ -428,15 +399,28 @@ public class NewVCFLoader {
 					}
 				}
 			}
+			
 			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
 		
 			if(!formatIsGTOnly) {
+				//index is sample index in vcf
 				int index = 0;
-				for(int currentLineOffset = startOffsetForLine[0]; index<indices.size() && currentLineOffset<currentLine.length(); currentLineOffset++) {
-					if(currentLine.charAt(currentLineOffset - 1) == '\t'){
-						setMasksForSample(zygosityMaskStrings, index, currentLineOffset);
-						index++;
-					}
+				try {
+					
+					int currentLineOffset = startOffsetForLine[0];
+					//added index boundary condition from master
+					for(; index<indices.size() && currentLineOffset<currentLine.length(); currentLineOffset++) {
+						if(currentLine.charAt(currentLineOffset - 1) == '\t'){
+							//and index lookup from variant explorer branch
+							if(vcfIndexLookup.containsKey(index)) {
+								setMasksForSample(zygosityMaskStrings, vcfIndexLookup.get(index), currentLineOffset);
+							}
+							index++;
+						}
+					} 
+					
+				} catch ( IndexOutOfBoundsException e) {
+					logger.warn("INDEX out of bounds " + currentLine.substring(0, Math.min(50, currentLine.length())), e);
 				}
 			}else {
 				indices.parallelStream().forEach((index)->{
@@ -491,10 +475,18 @@ public class NewVCFLoader {
 
 			// Set vcf offsets by sampleIds
 			for(int x = 0;x < vcfIndexLine.sampleIds.length;x++) {
+				//y is index into vcf samples
+				
+				//x is index into patient IDs
 				int y;
 				for(y = 0;y < vcfHeaderSamples.length && ! vcfHeaderSamples[y].contentEquals(vcfIndexLine.sampleIds[x]);y++);
 				vcfOffsets[x] = y * 4;
+				vcfIndexLookup.put(y, x);
 			}
+			
+			//add not GT only logic
+			
+			
 			nextLine();
 		}
 
