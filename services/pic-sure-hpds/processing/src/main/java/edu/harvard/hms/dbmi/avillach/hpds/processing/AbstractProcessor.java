@@ -63,10 +63,17 @@ public abstract class AbstractProcessor {
 	 * @throws IOException
 	 */
 	private void loadGenomicCacheFiles() throws FileNotFoundException, IOException {
+		//skip if we have no variants
+		if(variantStore.getPatientIds().length == 0) {
+			variantIndex = new String[0];
+			log.warn("No Genomic Data found.  Skipping variant Indexing");
+			return;
+		}
+		
 		if(bucketIndex==null) {
 			if(variantIndex==null) {
 				synchronized(AbstractProcessor.class) {
-					if(variantStore!=null && !new File(VARIANT_INDEX_FILE).exists()) {
+					if(!new File(VARIANT_INDEX_FILE).exists()) {
 						log.info("Creating new " + VARIANT_INDEX_FILE);
 						populateVariantIndex();	
 						try (	FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
@@ -122,7 +129,7 @@ public abstract class AbstractProcessor {
 					}
 				}
 			}
-			if(variantStore!=null && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
+			if(variantStore.getPatientIds().length > 0 && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
 				log.info("creating new " + BucketIndexBySample.INDEX_FILE);
 				bucketIndex = new BucketIndexBySample(variantStore);
 				try (
@@ -177,6 +184,7 @@ public abstract class AbstractProcessor {
 
 	protected static LoadingCache<String, PhenoCube<?>> store;
 
+	//variantStore will never be null; it is initialized to an empty object.
 	protected static VariantStore variantStore;
 
 	protected static TreeMap<String, ColumnMeta> metaStore;
@@ -302,7 +310,7 @@ public abstract class AbstractProcessor {
 
 		TreeSet<Integer> idList;
 		if(filteredIdSets.isEmpty()) {
-			if(variantStore!=null) {
+			if(variantStore.getPatientIds().length > 0 ) {
 				idList = new TreeSet(
 						Sets.union(allIds, 
 								new TreeSet(Arrays.asList(
@@ -340,8 +348,7 @@ public abstract class AbstractProcessor {
 			query.anyRecordOf.parallelStream().forEach(path->{
 				if(patientsInScope.size()<Math.max(
 						allIds.size(),
-						(variantStore==null || variantStore.getPatientIds()==null) ? 
-								0 : variantStore.getPatientIds().length)) {
+						variantStore.getPatientIds().length)) {
 					if(pathIsVariantSpec(path)) {
 						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope, bucketCache);
 					} else {
@@ -1012,25 +1019,28 @@ public abstract class AbstractProcessor {
 
 			}
 			infoStores = new HashMap<>();
-			Arrays.stream(new File("/opt/local/hpds/all/").list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-			.forEach((String filename)->{
-				try (
-						FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
-						GZIPInputStream gis = new GZIPInputStream(fis);
-						ObjectInputStream ois = new ObjectInputStream(gis)
-						){
-					log.info("loading " + filename);
-					FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-					infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
-					ois.close();
-				} catch (FileNotFoundException e) {
-					e.printStackTrace();
-				} catch (IOException e) {
-					e.printStackTrace();
-				} catch (ClassNotFoundException e) {
-					e.printStackTrace();
-				}
-			});
+			File genomicDataDirectory = new File("/opt/local/hpds/all/");
+			if(genomicDataDirectory.exists() && genomicDataDirectory.isDirectory()) {
+				Arrays.stream(genomicDataDirectory.list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
+				.forEach((String filename)->{
+					try (
+							FileInputStream fis = new FileInputStream("/opt/local/hpds/all/" + filename);
+							GZIPInputStream gis = new GZIPInputStream(fis);
+							ObjectInputStream ois = new ObjectInputStream(gis)
+							){
+						log.info("loading " + filename);
+						FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+						infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);	
+						ois.close();
+					} catch (FileNotFoundException e) {
+						e.printStackTrace();
+					} catch (IOException e) {
+						e.printStackTrace();
+					} catch (ClassNotFoundException e) {
+						e.printStackTrace();
+					}
+				});
+			}
 			dataFilesLoaded = true;
 		}
 	}
