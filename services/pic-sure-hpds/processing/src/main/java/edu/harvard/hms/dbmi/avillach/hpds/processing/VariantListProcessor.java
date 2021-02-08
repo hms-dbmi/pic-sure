@@ -29,9 +29,11 @@ public class VariantListProcessor extends AbstractProcessor {
 	private static Logger log = Logger.getLogger(VariantListProcessor.class);
 	
 	private static final Boolean VCF_EXCERPT_ENABLED;
+	private static final Boolean VARIANT_LIST_ENABLED;
 	
 	static {
 		VCF_EXCERPT_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
+		VARIANT_LIST_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
 	}	
 
 	public VariantListProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
@@ -62,6 +64,12 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
 	 */
 	public String runVariantListQuery(Query query) {
+		
+		if(!VARIANT_LIST_ENABLED) {
+			log.warn("VARIANT_LIST query attempted, but not enabled.");
+			return "VARIANT_LIST query type not allowed";
+		}
+		
 		return  Arrays.toString( getVariantList(query).toArray());
 	}
 	
