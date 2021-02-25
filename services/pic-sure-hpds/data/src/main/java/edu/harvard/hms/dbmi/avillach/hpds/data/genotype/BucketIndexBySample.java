@@ -179,7 +179,7 @@ public class BucketIndexBySample implements Serializable {
 		
 		return bucketSetsInScope[0].parallelStream().map((bucketSet)->{
 			return bucketsFromVariants.get(bucketSet);
-		}).flatMap((bucketSet)->{return bucketSet.stream();}).collect(Collectors.toList());
+		}).flatMap((bucketSet)->{return bucketSet.stream();}).collect(Collectors.toList());  //nc 02/21 - this should probably return a SET
 	}
 
 	private Integer bucketFromVariantSpec(String variantSpec) {
