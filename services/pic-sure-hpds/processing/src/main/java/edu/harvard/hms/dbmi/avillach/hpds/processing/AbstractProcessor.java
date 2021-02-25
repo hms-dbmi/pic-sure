@@ -736,7 +736,7 @@ public abstract class AbstractProcessor {
 
 			VariantMaskBucketHolder bucketCache = new VariantMaskBucketHolder();
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
-
+			intersectionOfInfoFilters = (Set<String>) bucketIndex.filterVariantSetForPatientSet(intersectionOfInfoFilters, new ArrayList<>(patientsInScope));
 			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
 					.collect(Collectors.groupingByConcurrent((variantSpec)->{
 						return new VariantSpec(variantSpec).metadata.offset/1000;
