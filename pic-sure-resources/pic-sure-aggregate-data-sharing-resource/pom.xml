@@ -15,6 +15,10 @@
         <jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+    <build>
+	    <finalName>pic-sure-aggregate-data-sharing-resource</finalName>
+	</build>
+    
     <dependencies>
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>

@@ -164,6 +164,7 @@ class PassThroughResourceRSTest {
 		when(statusLine.getStatusCode()).thenReturn(200);
 		String resultId = UUID.randomUUID().toString();
 		UUID queryId = UUID.randomUUID();
+		lenient().when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
 		httpResponseEntity = new StringEntity("4");
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(null);
@@ -244,6 +245,7 @@ class PassThroughResourceRSTest {
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		String resultId = UUID.randomUUID().toString();
+		lenient().when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
 		httpResponseEntity = new StringEntity("4");
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
 		QueryRequest queryRequest = newQueryRequest(newQuery());
