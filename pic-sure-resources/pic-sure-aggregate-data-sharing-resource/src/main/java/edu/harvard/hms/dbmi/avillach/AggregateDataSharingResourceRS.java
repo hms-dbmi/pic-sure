@@ -36,6 +36,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	@Inject
 	private ApplicationProperties properties;
+	
+	private Header[] headers;
 
 	private static final String BEARER_STRING = "Bearer ";
 
@@ -53,6 +55,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties = new ApplicationProperties();
 			properties.init("pic-sure-aggregate-resource");
 		}
+		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 
 	}
 
@@ -65,10 +68,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties = new ApplicationProperties();
 			properties.init("pic-sure-aggregate-resource");
 		}
+		
+		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 	}
 
-	private Header[] headers = {
-			new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken()) };
+	
 
 	@GET
 	@Path("/status")
