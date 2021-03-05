@@ -8,6 +8,9 @@ import java.util.Properties;
 
 import javax.enterprise.context.ApplicationScoped;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 
@@ -18,6 +21,8 @@ public class ApplicationProperties implements Serializable {
     private String targetPicsureUrl;
     private String targetPicsureToken;
     private String targetPicsureObfuscationThreshold;
+    
+    private Logger logger = LoggerFactory.getLogger(this.getClass());
 
     public String getContextPath() {
         return contextPath;
@@ -36,7 +41,9 @@ public class ApplicationProperties implements Serializable {
     }
 
     public void init(String contextPath) {
-        this.contextPath = contextPath;
+    	logger.info("initializing aggregate Resource properties");
+
+    	this.contextPath = contextPath;
 
         Path configFile = Path.of(System.getProperty("jboss.server.config.dir"), "aggregate-data-sharing", contextPath, "resource.properties");
         Properties properties = null;
