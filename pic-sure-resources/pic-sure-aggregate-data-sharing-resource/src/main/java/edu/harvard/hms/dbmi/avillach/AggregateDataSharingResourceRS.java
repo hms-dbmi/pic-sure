@@ -141,6 +141,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
+			
+			logger.debug("result type " + expectedResultType + ".");
+			logger.debug("allowed types " + Arrays.deepToString(ResultType.values()));
+			
 			if (!Arrays.asList(ResultType.values()).contains(expectedResultType)) {
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
