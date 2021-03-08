@@ -150,14 +150,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 //				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
+			logger.warn("XX");
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
+			logger.warn("targetPicsureUrl: " + targetPicsureUrl);
 			String targetPicsureObfuscationThreshold = properties.getTargetPicsureObfuscationThreshold();
-
+			logger.warn("query: " + queryRequest.toString());
 			String queryString = json.writeValueAsString(queryRequest);
+			logger.warn("queryString " + queryString);
 			String pathName = "/query/sync";
+			logger.warn("XX");
 			String composedURL = composeURL(targetPicsureUrl, pathName);
+			logger.warn("XX");
 			logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-
+			logger.warn("XX");
 			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error(
