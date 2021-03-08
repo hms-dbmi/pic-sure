@@ -27,8 +27,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		this.name = name;
 	}
 
-	public void add(Integer key, V value) {
-		loadingMap.add(new KeyAndValue<V>(key, value));
+	public void add(Integer key, V value, Date date) {
+		loadingMap.add(new KeyAndValue<V>(key, value, date!=null?date.getTime():null));
 	}
 	
 	public V getValueForKey(Integer key) {
@@ -40,7 +40,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	public Set<Integer> getKeysForValue(V value) {
 		
 		if(isStringType()) {
-			return categoryMap.get(value);
+			Set<Integer> keys = categoryMap.get(value);
+			return keys == null ? new TreeSet<Integer>() : keys;
 		} else {
 			int minIndex;
 			KeyAndValue<V> keyAndValue = new KeyAndValue<V>(1, value);
@@ -99,7 +100,7 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int minSearchIndex = Arrays.binarySearch(sortedByValue, minKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);			
+			minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);
 		}
 		
 		if(max == null) {
@@ -108,33 +109,40 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
 				return a.value.compareTo(b.value);
 			});
-			maxIndex = seekForMaxIndex(Math.abs(maxSearchIndex), maxKeyAndValue, sortedByValue);			
+			/* 
+			 * Arrays.binarySearch returns the insertion index of the new value if there is
+			 * no exact match for the value. 
+			 * 
+			 * Sometimes this is an index that already has a value higher than our max, which 
+			 * would be shifted to the right on insertion. To still make use of the advantage
+			 * of the binary search we invert this insertion index AND decrement it once.
+			 * 
+			 * This prevents us from including one extra value in these cases.
+			 */
+			if(maxSearchIndex < 0) {
+				maxSearchIndex = (maxSearchIndex * -1)-1;
+			}
+			maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
 		}
 		
 		return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
 	}
 
 	private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
-		if(minSearchIndex==0) {
-			return 0;
-		}
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
 		while(minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry)>=0) {
 			minSearchIndex--;
 		}
-		return minSearchIndex+1;
+		return Math.max(0, minSearchIndex+1);
 	}
 
 	private int seekForMaxIndex(int maxSearchIndex, KeyAndValue<V> maxEntry, KeyAndValue<V>[] sortedByValue) {
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
-		if(maxSearchIndex > sortedByValue.length - 1) {
-			return sortedByValue.length - 1;
-		}
-		while(maxSearchIndex > -1 && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
+		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
 			maxSearchIndex++;
 		}
 		return maxSearchIndex;
@@ -150,6 +158,14 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 			return o1.value.compareTo(o2.value);
 		});
 		return sortedByValue;
+	}
+
+	public KeyAndValue<V>[] sortedByTimestamp() {
+		KeyAndValue<V>[] sortedByTimestamp = Arrays.copyOf(sortedByKey(), sortedByKey().length);
+		Arrays.sort(sortedByTimestamp, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
+			return o1.getTimestamp()==null? -1 : o1.getTimestamp().compareTo(o2.getTimestamp());
+		});
+		return sortedByTimestamp;
 	}
 
 	public List<Integer> keyBasedIndex() {
@@ -192,6 +208,21 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 
 	public List<KeyAndValue<V>> getLoadingMap() {
 		return loadingMap;
+	}
+
+	public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
+		List<KeyAndValue<V>> values = new ArrayList<>();
+		int x = 0;
+		for(Integer id : patientIds) {
+			while(x < sortedByKey.length && sortedByKey[x].key<id) {
+				x++;
+			}
+			while(x < sortedByKey.length && sortedByKey[x].key==id) {
+				values.add(sortedByKey[x]);
+				x++;
+			}
+		}
+		return values;
 	}
 
 }

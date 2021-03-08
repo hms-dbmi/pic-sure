@@ -21,10 +21,10 @@ public class VariantCounter {
 				){
 			VariantStore variantStore = (VariantStore) new ObjectInputStream(new GZIPInputStream(fis)).readObject();
 			variantStore.open();
-			for(int x = 1;x<23;x++) {
+			for(String contig : variantStore.variantMaskStorage.keySet()) {
 				int[] countOfVariants = {0};
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> 
-				currentChromosome = variantStore.variantMaskStorage[x];
+				currentChromosome = variantStore.variantMaskStorage.get(contig);
 				currentChromosome.keys().parallelStream().forEach((offsetBucket)->{
 					ConcurrentHashMap<String, VariantMasks> maskMap;
 					try {
@@ -38,7 +38,7 @@ public class VariantCounter {
 						e.printStackTrace();
 					}
 				});
-				System.out.println(x + "," + countOfVariants[0]);
+				System.out.println(contig + "," + countOfVariants[0]);
 			}
 		}
 	}

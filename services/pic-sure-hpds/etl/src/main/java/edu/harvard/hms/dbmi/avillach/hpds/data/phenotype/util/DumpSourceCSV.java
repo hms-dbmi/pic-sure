@@ -44,6 +44,8 @@ public class DumpSourceCSV {
 
 	private static final int TEXT_VALUE = 3;
 	
+	private static final int TIMESTAMP = 4;
+
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 		Object[] metadata = loadMetadata();
 		metaStoreSource = (TreeMap<String, ColumnMeta>) metadata[0];
@@ -51,17 +53,18 @@ public class DumpSourceCSV {
 		store = initializeCache(); 
 		FileWriter fWriter = new FileWriter("/opt/local/hpds/allConcepts.csv");
 		CSVPrinter writer = CSVFormat.DEFAULT.print(fWriter);
-		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE"}));
+		writer.printRecord(ImmutableList.of(new String[] {"PATIENT_NUM","CONCEPT_PATH","NUMERIC_VALUE","TEXT_VALUE","TIMESTAMP"}));
 		metaStoreSource.keySet().forEach((String key)->{
 			try {
 				PhenoCube cube = store.get(key);
 				ArrayList<String[]> cubeLines = new ArrayList<>();
 				for(KeyAndValue kv : cube.sortedByKey()) {
-					String[] line = new String[4];
+					String[] line = new String[5];
 					line[PATIENT_NUM] = kv.getKey().toString();
 					line[CONCEPT_PATH] = key;
 					line[NUMERIC_VALUE] = cube.isStringType() ? "" : kv.getValue().toString();
 					line[TEXT_VALUE] = cube.isStringType() ? kv.getValue().toString() : "";
+					line[TIMESTAMP] = kv.getTimestamp() == null ? null : kv.getTimestamp().toString();
 					cubeLines.add(line);
 				}
 				writer.printRecords(cubeLines);

@@ -27,7 +27,7 @@ public class VCFPerPatientInfoStoreToFBBIISConverter {
 		File outputFolder = new File(outputPath);
 
 		List<File> inputFileList = Arrays.asList(inputFiles);
-		inputFileList.parallelStream().forEach((file)->{
+		inputFileList.stream().forEach((file)->{
 			convert(outputFolder, file);
 		});
 	}

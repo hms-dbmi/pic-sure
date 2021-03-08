@@ -34,6 +34,16 @@
 			<artifactId>ojdbc6</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>42.2.12</version>
+		</dependency>
+		<dependency>
+			<groupId>com.microsoft.sqlserver</groupId>
+			<artifactId>mssql-jdbc</artifactId>
+			<version>8.2.2.jre11</version>
+		</dependency>
+		<dependency>
 			<groupId>com.github.samtools</groupId>
 			<artifactId>htsjdk</artifactId>
 			<version>2.19.0</version>
@@ -71,7 +81,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.IndexedVCFLocalLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -80,6 +90,26 @@
 							</descriptorRefs>
 							<classifier>VCFLocalLoader</classifier>
 							<finalName>VCFLocalLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>buildPerPatientUnifiedVCFLocalLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>UnifiedVCFLocalLoader</classifier>
+							<finalName>UnifiedVCFLocalLoader</finalName>
 						</configuration>
 						<phase>package</phase>
 						<goals>
@@ -166,6 +196,26 @@
 							<goal>single</goal>
 						</goals>
 					</execution>
+					<execution>
+						<id>buildVariantMetadataLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>VariantMetadataLoader</classifier>
+							<finalName>VariantMetadataLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>					
 				</executions>
 			</plugin>
 		</plugins>
