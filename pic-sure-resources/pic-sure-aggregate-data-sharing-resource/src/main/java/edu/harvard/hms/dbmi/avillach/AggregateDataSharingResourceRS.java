@@ -165,25 +165,28 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			logger.warn("XX");
 			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
 			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("Not 200 status!");
 				logger.error(
 						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				throwResponseError(response, targetPicsureUrl);
 			}
-
+			logger.warn("YY");
 			int threshold = Integer.parseInt(targetPicsureObfuscationThreshold);
+			logger.warn("YY");
 			HttpEntity entity = response.getEntity();
+			logger.warn("YY");
 			String entityString = EntityUtils.toString(entity, "UTF-8");
+			logger.warn("YY");
+			String responseString = entityString;
 			int queryResult = Integer.parseInt(entityString);
 			if (queryResult < threshold) {
-				String obfuscation = "< " + targetPicsureObfuscationThreshold;
-				entity = EntityBuilder.create().setText(obfuscation).build();
-				response.setEntity(entity);
+				responseString = "< " + targetPicsureObfuscationThreshold;
 			}
-
-			return Response.ok(response.getEntity().getContent()).build();
+			logger.warn("ZZ");
+			return Response.ok(responseString).build();
 		} catch (IOException e) {
-			logger.error(e.getMessage());
+			logger.error(e.getMessage(), e);
 			throw new ApplicationException(
 					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
 		} catch (ClassCastException | IllegalArgumentException e) {
