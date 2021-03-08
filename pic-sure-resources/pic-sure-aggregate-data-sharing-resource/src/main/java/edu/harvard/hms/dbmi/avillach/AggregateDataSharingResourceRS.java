@@ -145,8 +145,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			logger.debug("result type " + expectedResultType + ".");
 			logger.debug("allowed types " + Arrays.deepToString(ResultType.values()));
 			
-			if (!Arrays.asList(ResultType.values()).contains(expectedResultType)) {
-				return Response.status(Response.Status.BAD_REQUEST).build();
+			if (! (Arrays.asList(ResultType.values()).contains(expectedResultType))) {
+				logger.warn("Incorrect Result Type: " + expectedResultType);
+//				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
