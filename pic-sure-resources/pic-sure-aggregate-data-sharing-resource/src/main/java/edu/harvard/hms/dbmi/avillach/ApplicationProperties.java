@@ -19,6 +19,7 @@ public class ApplicationProperties implements Serializable {
 
     private String contextPath;
     private String targetPicsureUrl;
+    private String targetResourceId;
     private String targetPicsureToken;
     private String targetPicsureObfuscationThreshold;
     
@@ -31,6 +32,10 @@ public class ApplicationProperties implements Serializable {
     public String getTargetPicsureUrl() {
         return targetPicsureUrl;
     }
+    
+    public String getTargetResourceId() {
+		return targetResourceId;
+	}
 
     public String getTargetPicsureToken() {
         return targetPicsureToken;
@@ -59,6 +64,11 @@ public class ApplicationProperties implements Serializable {
             throw new PicsureQueryException("target.picsure.url property must be set.");
         }
 
+        //target resource ID can be empty
+        targetResourceId = properties.getProperty("target.resource.id");
+		if (targetResourceId == null)
+			targetResourceId = "";
+			
         targetPicsureToken = properties.getProperty("target.picsure.token");
         if (targetPicsureToken == null) {
             throw new PicsureQueryException("target.picsure.token property must be set.");

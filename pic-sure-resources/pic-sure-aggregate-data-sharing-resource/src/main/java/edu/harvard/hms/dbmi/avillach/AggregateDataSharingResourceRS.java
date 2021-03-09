@@ -1,33 +1,34 @@
 package edu.harvard.hms.dbmi.avillach;
 
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.throwResponseError;
+
 import java.io.IOException;
 import java.util.*;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
-import javax.annotation.Resource;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-
-import org.apache.http.Header;
-import org.apache.http.message.BasicHeader;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpEntity;
-import org.apache.http.util.EntityUtils;
-import org.apache.http.client.entity.EntityBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 @Path("/aggregate-data-sharing")
 @Produces("application/json")
@@ -37,6 +38,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@Inject
 	private ApplicationProperties properties;
 	
+	private static final ObjectMapper objectMapper = new ObjectMapper();
+	
 	private Header[] headers;
 
 	private static final String BEARER_STRING = "Bearer ";
@@ -44,9 +47,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	public enum ResultType {
-		COUNT, CROSS_COUNT, INFO_COLUMN_LISTING
-	}
+	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
+		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
+	});
 
 	public AggregateDataSharingResourceRS() {
 		logger.info("initialize Aggregate Resource NO INJECTION");
@@ -84,17 +87,77 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@POST
 	@Path("/info")
 	@Override
-	public ResourceInfo info(QueryRequest queryRequest) {
+	public ResourceInfo info(QueryRequest infoRequest) {
 		logger.debug("Calling Aggregate Data Sharing Resource info()");
-		return new ResourceInfo();
+		String pathName = "/info";
+
+		try {
+			QueryRequest chainRequest = new QueryRequest();
+			if (infoRequest != null) {
+				chainRequest.setQuery(infoRequest.getQuery());
+				chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+			}
+			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+
+			String payload = objectMapper.writeValueAsString(chainRequest);
+
+			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, payload);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				throwResponseError(response, properties.getTargetPicsureUrl());
+			}
+			
+			//if we are proxying an info request, we need to return our own resource ID
+			ResourceInfo resourceInfo = readObjectFromResponse(response, ResourceInfo.class);
+			if (infoRequest != null && infoRequest.getResourceUUID() != null) {
+				resourceInfo.setId(infoRequest.getResourceUUID());
+			}
+			return resourceInfo;
+		} catch (IOException e) {
+			throw new ApplicationException(
+					"Error encoding query for resource with id " + infoRequest.getResourceUUID());
+		} catch (ClassCastException | IllegalArgumentException e) {
+			logger.error(e.getMessage());
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
 	}
 
 	@POST
 	@Path("/search")
 	@Override
-	public SearchResults search(QueryRequest searchJson) {
-		logger.debug("Calling Aggregate Data Sharing Resource search()");
-		return new SearchResults();
+	public SearchResults search(QueryRequest searchRequest) {
+		logger.debug("Calling Aggregate Data Sharing Search");
+		if (searchRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Object search = searchRequest.getQuery();
+		if (search == null) {
+			throw new ProtocolException((ProtocolException.MISSING_DATA));
+		}
+
+		String pathName = "/search";
+		try {
+			QueryRequest chainRequest = new QueryRequest();
+			chainRequest.setQuery(searchRequest.getQuery());
+			chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
+			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+
+			String payload = objectMapper.writeValueAsString(chainRequest);
+			
+			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, payload);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				throwResponseError(response, properties.getTargetPicsureUrl());
+			}
+			return readObjectFromResponse(response, SearchResults.class);
+		} catch (IOException e) {
+			// Note: this shouldn't ever happen
+			logger.error("Error encoding search payload", e);
+			throw new ApplicationException(
+					"Error encoding search for resource with id " + searchRequest.getResourceUUID());
+		}
 	}
 
 	@POST
@@ -142,27 +205,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
 			
-			logger.debug("result type " + expectedResultType + ".");
-			logger.debug("allowed types " + Arrays.deepToString(ResultType.values()));
-			
-			if (! (Arrays.asList(ResultType.values()).contains(expectedResultType))) {
+			if (! ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
 //				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			logger.warn("XX");
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			logger.warn("targetPicsureUrl: " + targetPicsureUrl);
 			String targetPicsureObfuscationThreshold = properties.getTargetPicsureObfuscationThreshold();
-			logger.warn("query: " + queryRequest.toString());
 			String queryString = json.writeValueAsString(queryRequest);
-			logger.warn("queryString " + queryString);
 			String pathName = "/query/sync";
-			logger.warn("XX");
 			String composedURL = composeURL(targetPicsureUrl, pathName);
-			logger.warn("XX");
 			logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-			logger.warn("XX");
 			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error("Not 200 status!");
@@ -171,19 +224,33 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				throwResponseError(response, targetPicsureUrl);
 			}
-			logger.warn("YY");
-			int threshold = Integer.parseInt(targetPicsureObfuscationThreshold);
-			logger.warn("YY");
+			
+			int thresholdInt = Integer.parseInt(targetPicsureObfuscationThreshold);
 			HttpEntity entity = response.getEntity();
-			logger.warn("YY");
 			String entityString = EntityUtils.toString(entity, "UTF-8");
-			logger.warn("YY");
 			String responseString = entityString;
-			int queryResult = Integer.parseInt(entityString);
-			if (queryResult < threshold) {
-				responseString = "< " + targetPicsureObfuscationThreshold;
+			
+			if(expectedResultType.equals("COUNT")) {
+				int queryResult = Integer.parseInt(entityString);
+				if (queryResult < thresholdInt) {
+					responseString = "< " + targetPicsureObfuscationThreshold;
+				}
+			} else if(expectedResultType.equals("CROSS_COUNT")) {
+				Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<Map<String,String>>(){});
+				
+				if(crossCounts != null) {
+					for( String key : crossCounts.keySet()) {
+						String countStr = crossCounts.get(key);
+						Integer countInt = Integer.parseInt(countStr);
+						if (countInt < thresholdInt) {
+							crossCounts.put(key, "< " + targetPicsureObfuscationThreshold);
+						}
+					}
+				}
+				
+				responseString = objectMapper.writeValueAsString(crossCounts);
 			}
-			logger.warn("ZZ");
+			
 			return Response.ok(responseString).build();
 		} catch (IOException e) {
 			logger.error(e.getMessage(), e);
