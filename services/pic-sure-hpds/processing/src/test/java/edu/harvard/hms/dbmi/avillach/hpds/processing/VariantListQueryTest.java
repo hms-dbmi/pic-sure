@@ -15,6 +15,10 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 
 public class VariantListQueryTest {
 
+	static {
+		System.setProperty("VCF_EXCERPT_ENABLED", "TRUE");
+	}
+	
 	public class TestableVariantListProcessor extends VariantListProcessor {
 		private List<ArrayList<Set<String>>> testVariantSets;
 		private int callCount = 0;
