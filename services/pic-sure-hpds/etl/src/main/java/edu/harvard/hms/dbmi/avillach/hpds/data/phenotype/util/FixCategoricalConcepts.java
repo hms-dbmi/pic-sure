@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
 import java.io.*;
+import java.util.Date;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -43,6 +44,8 @@ public class FixCategoricalConcepts {
 	private static final int NUMERIC_VALUE = 2;
 
 	private static final int TEXT_VALUE = 3;
+
+	private static final int TIMESTAMP = 4;
 
 	public static void main(String[] args) throws IOException, ClassNotFoundException, ExecutionException {
 		sourceStore = initializeCache(); 
@@ -122,7 +125,7 @@ public class FixCategoricalConcepts {
 			if(value != null && !value.trim().isEmpty() && ((isAlpha && currentConcept[0].vType == String.class)||(!isAlpha && currentConcept[0].vType == Double.class))) {
 				value = value.trim();
 				currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
-				currentConcept[0].add(Integer.parseInt(record.get(PATIENT_NUM)), isAlpha ? value : Double.parseDouble(value));
+				currentConcept[0].add(Integer.parseInt(record.get(PATIENT_NUM)), isAlpha ? value : Double.parseDouble(value), new Date(record.get(TIMESTAMP)));
 				store.allIds.add(Integer.parseInt(record.get(PATIENT_NUM)));
 			}
 		} catch (ExecutionException e) {
