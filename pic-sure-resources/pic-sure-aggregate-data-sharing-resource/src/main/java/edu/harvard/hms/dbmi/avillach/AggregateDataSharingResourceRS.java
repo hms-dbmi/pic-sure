@@ -46,6 +46,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
+	
+	private static int threshold;
 
 	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
 		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
@@ -58,6 +60,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties = new ApplicationProperties();
 			properties.init("pic-sure-aggregate-resource");
 		}
+		
+		threshold = Integer.parseInt(properties.getTargetPicsureObfuscationThreshold());
+		
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 
 	}
@@ -96,8 +101,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			if (infoRequest != null) {
 				chainRequest.setQuery(infoRequest.getQuery());
 				chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+				//set a default value of the existing uuid here (can override in properties file)
+				chainRequest.setResourceUUID(infoRequest.getResourceUUID());
 			}
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			if(properties.getTargetResourceId() != null && !properties.getTargetResourceId().isEmpty()) {
+				chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			}
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
 
@@ -141,7 +150,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(searchRequest.getQuery());
 			chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			
+			if(properties.getTargetResourceId() != null && !properties.getTargetResourceId().isEmpty()) {
+				chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			} else {
+				chainRequest.setResourceUUID(searchRequest.getResourceUUID());
+			}
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			
@@ -207,11 +221,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			
 			if (! ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
-//				return Response.status(Response.Status.BAD_REQUEST).build();
+				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String targetPicsureObfuscationThreshold = properties.getTargetPicsureObfuscationThreshold();
 			String queryString = json.writeValueAsString(queryRequest);
 			String pathName = "/query/sync";
 			String composedURL = composeURL(targetPicsureUrl, pathName);
@@ -225,26 +238,18 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				throwResponseError(response, targetPicsureUrl);
 			}
 			
-			int thresholdInt = Integer.parseInt(targetPicsureObfuscationThreshold);
+			
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
 			
 			if(expectedResultType.equals("COUNT")) {
-				int queryResult = Integer.parseInt(entityString);
-				if (queryResult < thresholdInt) {
-					responseString = "< " + targetPicsureObfuscationThreshold;
-				}
+				responseString = aggregateCount(entityString);
 			} else if(expectedResultType.equals("CROSS_COUNT")) {
 				Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<Map<String,String>>(){});
-				
 				if(crossCounts != null) {
 					for( String key : crossCounts.keySet()) {
-						String countStr = crossCounts.get(key);
-						Integer countInt = Integer.parseInt(countStr);
-						if (countInt < thresholdInt) {
-							crossCounts.put(key, "< " + targetPicsureObfuscationThreshold);
-						}
+						crossCounts.put(key, aggregateCount(crossCounts.get(key)));
 					}
 				}
 				
@@ -260,5 +265,22 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			logger.error(e.getMessage());
 			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
+	}
+	
+	/**
+	 * Here's the core of this resource - make sure we do not return results with small (potentially identifiable) cohorts.
+	 * @param actualCount
+	 * @return
+	 */
+	private String aggregateCount(String actualCount) {
+		try {
+			int queryResult = Integer.parseInt(actualCount);
+			if (queryResult > 0 && queryResult < threshold) {
+				return "< " + threshold;
+			}
+		} catch (NumberFormatException nfe) {
+			logger.warn("Count was not a number! " + actualCount);
+		}
+		return actualCount;
 	}
 }
