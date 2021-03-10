@@ -55,7 +55,7 @@ public class ResourceWebClient {
             logger.debug("Calling /info at ResourceURL: {}", rsURL);
             String pathName = "/info";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
@@ -82,7 +82,7 @@ public class ResourceWebClient {
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
 
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(searchQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
@@ -109,7 +109,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(dataQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
@@ -140,7 +140,7 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(queryRequest);
             logger.debug(composeURL(rsURL, pathName));
             logger.debug(body);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
@@ -169,7 +169,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
@@ -198,7 +198,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query/format";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             int status = resourcesResponse.getStatusLine().getStatusCode();
             if (status != 200) {
                 logger.error("ResourceRS did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
@@ -228,7 +228,7 @@ public class ResourceWebClient {
 
             String pathName = "/query/sync";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createAuthorizationHeader(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);
             }
@@ -258,9 +258,10 @@ public class ResourceWebClient {
 
     }
 
-    private Header[] createAuthorizationHeader(Map<String, String> resourceCredentials){
+    private Header[] createHeaders(Map<String, String> resourceCredentials){
         Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + resourceCredentials.get(BEARER_TOKEN_KEY));
-        Header[] headers = {authorizationHeader};
+        Header contentTypeHeader = new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+        Header[] headers = {authorizationHeader, contentTypeHeader};
         return headers;
     }
 
