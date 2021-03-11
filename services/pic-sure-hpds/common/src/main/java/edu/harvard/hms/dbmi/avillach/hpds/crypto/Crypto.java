@@ -42,14 +42,6 @@ public class Crypto {
 		loadKey(DEFAULT_KEY_NAME, DEFAULT_ENCRYPTION_KEY_PATH);
 	}
 
-	public static byte[] encryptData(byte[] plaintextBytes) {
-		return encryptData(DEFAULT_KEY_NAME, plaintextBytes);
-	}
-
-	public static byte[] decryptData(byte[] encrypted) {
-		return decryptData(DEFAULT_KEY_NAME, encrypted);
-	}
-
 	public static void loadKey(String keyName, String filePath) {
 		try {
 			setKey(keyName, IOUtils.toString(new FileInputStream(filePath), Charset.forName("UTF-8")).trim().getBytes());
@@ -57,6 +49,10 @@ public class Crypto {
 		} catch (IOException e) {
 			LOGGER.error("****CRYPTO KEY NOT FOUND****", e);
 		}
+	}
+
+	public static byte[] encryptData(byte[] plaintextBytes) {
+		return encryptData(DEFAULT_KEY_NAME, plaintextBytes);
 	}
 	
 	public static byte[] encryptData(String keyName, byte[] plaintextBytes) {
@@ -83,6 +79,10 @@ public class Crypto {
 		} catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException | ShortBufferException | IllegalBlockSizeException | BadPaddingException e) {
 			throw new RuntimeException("Exception while trying to encrypt data : ", e);
 		}
+	}
+
+	public static byte[] decryptData(byte[] encrypted) {
+		return decryptData(DEFAULT_KEY_NAME, encrypted);
 	}
 
 	public static byte[] decryptData(String keyName, byte[] encrypted) {
