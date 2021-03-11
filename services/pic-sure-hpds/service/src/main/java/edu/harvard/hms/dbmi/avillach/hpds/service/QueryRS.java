@@ -86,7 +86,7 @@ public class QueryRS {
 	@POST
 	@Path("/count")
 	public Response querySync(Query resultRequest) throws JsonParseException, JsonMappingException, JsonProcessingException, IOException, ClassNotFoundException {
-		if(Crypto.hasKey()){
+		if(Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)){
 			return Response.ok(new CountProcessor().runCounts(resultRequest)).build();
 		} else {
 			return Response.status(403).entity("Resource is locked").build();
