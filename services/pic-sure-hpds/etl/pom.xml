@@ -215,6 +215,26 @@
 						<goals>
 							<goal>single</goal>
 						</goals>
+					</execution>
+					<execution>
+						<id>buildRekeyDatasets</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util.RekeyDataset</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>RekeyDataset</classifier>
+							<finalName>RekeyDataset</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
 					</execution>					
 				</executions>
 			</plugin>

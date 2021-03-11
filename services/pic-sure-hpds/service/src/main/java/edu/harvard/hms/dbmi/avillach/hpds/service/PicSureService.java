@@ -43,6 +43,7 @@ public class PicSureService implements IResourceRS {
 		} catch (ClassNotFoundException | IOException e3) {
 			log.error("ClassNotFoundException or IOException caught: ", e3);
 		}
+		Crypto.loadDefaultKey();
 	}
 	
 	@Autowired
@@ -191,26 +192,7 @@ public class PicSureService implements IResourceRS {
 	public QueryStatus query(QueryRequest queryJson) {
 		Query query;
 		QueryStatus queryStatus = new QueryStatus();
-		if(queryJson.getResourceCredentials()!=null && queryJson.getResourceCredentials().containsKey("key")) {
-			byte[] keyBytes = queryJson.getResourceCredentials().get("key").trim().getBytes();
-			if(keyBytes.length == 32) {
-				try {
-					Crypto.setKey(keyBytes);
-					log.info("Key is set");
-					queryService.processor.loadAllDataFiles();
-					log.info("Data is loaded");
-					queryStatus.setResourceStatus("Resource unlocked.");
-				} catch(Exception e) {
-					Crypto.setKey(null);
-					e.printStackTrace();
-					queryStatus.setResourceStatus("Resource locked.");
-				}
-				return queryStatus;
-			}else {
-				queryStatus.setResourceStatus("Resource locked.");
-				return queryStatus;
-			}
-		} else if(Crypto.hasKey()){
+		if(Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)){
 			try {
 				query = convertIncomingQuery(queryJson);
 				return convertToQueryStatus(queryService.runQuery(query));		
@@ -293,7 +275,7 @@ public class PicSureService implements IResourceRS {
 	@Path("/query/sync")
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
 	public Response querySync(QueryRequest resultRequest) {
-		if(Crypto.hasKey()){
+		if(Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)){
 			Query incomingQuery;
 			try {
 				incomingQuery = convertIncomingQuery(resultRequest);

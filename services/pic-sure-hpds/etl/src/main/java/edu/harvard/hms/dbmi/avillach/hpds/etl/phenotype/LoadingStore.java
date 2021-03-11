@@ -51,7 +51,9 @@ public class LoadingStore {
 				@Override
 				public void onRemoval(RemovalNotification<String, PhenoCube> arg0) {
 					log.info("removing " + arg0.getKey());
-					complete(arg0.getValue());
+					if(arg0.getValue().getLoadingMap()!=null) {
+						complete(arg0.getValue());
+					}
 					try {
 						ColumnMeta columnMeta = new ColumnMeta().setName(arg0.getKey()).setWidthInBytes(arg0.getValue().getColumnWidth()).setCategorical(arg0.getValue().isStringType());
 

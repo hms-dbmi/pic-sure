@@ -996,7 +996,7 @@ public abstract class AbstractProcessor {
 	 */
 	public synchronized void loadAllDataFiles() {
 		if(!dataFilesLoaded) {
-			if(Crypto.hasKey()) {
+			if(Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
 				List<String> cubes = new ArrayList<String>(metaStore.keySet());
 				int conceptsToCache = Math.min(metaStore.size(), CACHE_SIZE);
 				for(int x = 0;x<conceptsToCache;x++){
