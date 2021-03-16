@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.TreeMap;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 /**
@@ -40,7 +42,7 @@ public class RemoveConceptFromMetadata {
 
 		TreeMap<String, ColumnMeta> metadata = removeMetadata(Paths.get(CONCEPTS_TO_REMOVE));
 			
-		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File(COLUMN_META_FILE)));
+		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(COLUMN_META_FILE))));
 			
 		metaOut.writeObject(metadata); 
 
@@ -48,7 +50,7 @@ public class RemoveConceptFromMetadata {
 	
 	protected static TreeMap<String, ColumnMeta> removeMetadata(Path filePath) {
 		
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream(COLUMN_META_FILE));){
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(COLUMN_META_FILE)))){
 		
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			try(BufferedReader reader = Files.newBufferedReader(filePath)) {
