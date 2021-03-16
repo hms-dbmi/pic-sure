@@ -26,19 +26,19 @@ public class RemoveConceptFromMetadata {
 	
 	protected static final String COLUMN_META_FILE = "/opt/local/hpds/columnMeta.javabin";
 		
-	protected static final String COLUMNS_TO_REMOVE = "/opt/local/hpds/columnsToRemove.txt";
+	protected static final String CONCEPTS_TO_REMOVE = "/opt/local/hpds/conceptsToRemove.txt";
 	
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 	
-		if(Files.exists(Paths.get(COLUMNS_TO_REMOVE))) {
-			throw new RuntimeException("Columns to remove file - " + COLUMNS_TO_REMOVE  + " -  does not exist!");
+		if(Files.exists(Paths.get(CONCEPTS_TO_REMOVE))) {
+			throw new RuntimeException("Columns to remove file - " + CONCEPTS_TO_REMOVE  + " -  does not exist!");
 
 		}
 		if(Files.exists(Paths.get(COLUMN_META_FILE))) {
 			throw new RuntimeException("Column Metadata file - " + COLUMN_META_FILE  + " -  does not exist!");
 		}			
 
-		TreeMap<String, ColumnMeta> metadata = removeMetadata(Paths.get(COLUMNS_TO_REMOVE));
+		TreeMap<String, ColumnMeta> metadata = removeMetadata(Paths.get(CONCEPTS_TO_REMOVE));
 			
 		ObjectOutputStream metaOut = new ObjectOutputStream(new FileOutputStream(new File(COLUMN_META_FILE)));
 			
