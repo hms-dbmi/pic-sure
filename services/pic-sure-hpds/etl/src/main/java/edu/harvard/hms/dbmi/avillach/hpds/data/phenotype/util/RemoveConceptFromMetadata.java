@@ -30,11 +30,11 @@ public class RemoveConceptFromMetadata {
 	
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 	
-		if(Files.exists(Paths.get(CONCEPTS_TO_REMOVE))) {
+		if(!Files.exists(Paths.get(CONCEPTS_TO_REMOVE))) {
 			throw new RuntimeException("Columns to remove file - " + CONCEPTS_TO_REMOVE  + " -  does not exist!");
 
 		}
-		if(Files.exists(Paths.get(COLUMN_META_FILE))) {
+		if(!Files.exists(Paths.get(COLUMN_META_FILE))) {
 			throw new RuntimeException("Column Metadata file - " + COLUMN_META_FILE  + " -  does not exist!");
 		}			
 
