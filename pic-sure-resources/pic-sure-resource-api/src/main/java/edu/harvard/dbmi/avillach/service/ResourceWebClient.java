@@ -201,7 +201,7 @@ public class ResourceWebClient {
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             int status = resourcesResponse.getStatusLine().getStatusCode();
             if (status != 200) {
-                logger.error("ResourceRS did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
+                logger.error("Query format request did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
                 return Response.status(status).entity(resourcesResponse.getEntity().getContent()).build();
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
