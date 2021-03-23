@@ -11,7 +11,9 @@ import java.io.ObjectOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -29,6 +31,7 @@ public class RemoveConceptFromMetadata {
 	protected static final String COLUMN_META_FILE = "/opt/local/hpds/columnMeta.javabin";
 		
 	protected static final String CONCEPTS_TO_REMOVE = "/opt/local/hpds/conceptsToRemove.txt";
+	protected static Set<Integer> allIds;
 	
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
 	
@@ -45,7 +48,9 @@ public class RemoveConceptFromMetadata {
 		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(COLUMN_META_FILE))));
 			
 		metaOut.writeObject(metadata); 
-
+		metaOut.writeObject(allIds); 
+		metaOut.flush();
+		metaOut.close();
 	}
 	
 	protected static TreeMap<String, ColumnMeta> removeMetadata(Path filePath) {
@@ -53,6 +58,9 @@ public class RemoveConceptFromMetadata {
 		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(COLUMN_META_FILE)))){
 		
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
+			
+			allIds = (TreeSet<Integer>) objectInputStream.readObject();
+			
 			try(BufferedReader reader = Files.newBufferedReader(filePath)) {
 				
 				String conceptPathToRemove;
