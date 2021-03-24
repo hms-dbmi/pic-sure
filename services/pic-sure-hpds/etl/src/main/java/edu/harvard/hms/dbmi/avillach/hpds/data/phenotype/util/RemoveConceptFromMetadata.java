@@ -48,6 +48,7 @@ public class RemoveConceptFromMetadata {
 		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(COLUMN_META_FILE))));
 			
 		metaOut.writeObject(metadata); 
+		
 		metaOut.writeObject(allIds); 
 		metaOut.flush();
 		metaOut.close();
@@ -60,6 +61,8 @@ public class RemoveConceptFromMetadata {
 			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
 			
 			allIds = (TreeSet<Integer>) objectInputStream.readObject();
+			
+			System.out.println("allIds size = " + allIds.size());
 			
 			try(BufferedReader reader = Files.newBufferedReader(filePath)) {
 				
