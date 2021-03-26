@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
+ package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
 import java.io.*;
 import java.util.Set;
@@ -38,7 +38,9 @@ public class RekeyDataset {
 		Object[] metadata = loadMetadata();
 		sourceMetaStore = (TreeMap<String, ColumnMeta>) metadata[0];
 		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		store.allIds = (TreeSet<Integer>) metadata[1];
 		initialLoad();
+		
 		store.saveStore();
 	}
 

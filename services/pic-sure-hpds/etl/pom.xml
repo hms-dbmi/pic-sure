@@ -235,6 +235,26 @@
 						<goals>
 							<goal>single</goal>
 						</goals>
+					</execution>
+					<execution>
+						<id>RemoveConceptFromMetadata</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util.RemoveConceptFromMetadata</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>RemoveConceptFromMetadata</classifier>
+							<finalName>RemoveConceptFromMetadata</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
 					</execution>					
 				</executions>
 			</plugin>
