@@ -35,8 +35,9 @@ public abstract class AbstractProcessor {
 
 	private static boolean dataFilesLoaded = false;
 	private static BucketIndexBySample bucketIndex;
-	private static final String VARIANT_INDEX_FILE = "/opt/local/hpds/all/variantIndex_decompressed.javabin";
-	private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000; 
+	private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000;
+	private static final String VARIANT_INDEX_FBBIS_STORAGE_FILE = "/opt/local/hpds/all/variantIndex_fbbis_storage.javabin";
+	private static final String VARIANT_INDEX_FBBIS_FILE = "/opt/local/hpds/all/variantIndex_fbbis.javabin";
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -61,8 +62,9 @@ public abstract class AbstractProcessor {
 	 * This process takes a while (even after the cache is built), so let's spin it out into it's own thread. (not done yet)
 	 * @throws FileNotFoundException
 	 * @throws IOException
+	 * @throws InterruptedException
 	 */
-	private void loadGenomicCacheFiles() throws FileNotFoundException, IOException {
+	private void loadGenomicCacheFiles() throws FileNotFoundException, IOException, InterruptedException {
 		//skip if we have no variants
 		if(variantStore.getPatientIds().length == 0) {
 			variantIndex = new String[0];
@@ -73,15 +75,15 @@ public abstract class AbstractProcessor {
 		if(bucketIndex==null) {
 			if(variantIndex==null) {
 				synchronized(AbstractProcessor.class) {
-					if(!new File(VARIANT_INDEX_FILE).exists()) {
-						log.info("Creating new " + VARIANT_INDEX_FILE);
+					if(!new File(VARIANT_INDEX_FBBIS_FILE).exists()) {
+						log.info("Creating new " + VARIANT_INDEX_FBBIS_FILE);
 						populateVariantIndex();	
-						try (	FileOutputStream fos = new FileOutputStream(VARIANT_INDEX_FILE);
-								ObjectOutputStream oos = new ObjectOutputStream(fos);
+						FileBackedByteIndexedStorage<Integer, String[]> fbbis = 
+								new FileBackedByteIndexedStorage<Integer, String[]>(Integer.class, String[].class, new File(VARIANT_INDEX_FBBIS_STORAGE_FILE));
+						try (ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(VARIANT_INDEX_FBBIS_FILE)));
 								){
 							
 							log.info("Writing Cache Object in blocks of " + VARIANT_INDEX_BLOCK_SIZE);
-							oos.writeObject("" + variantIndex.length);
 							
 							 //variant index has to be a single array (we use a binary search for lookups)
 						    //but reading/writing to disk should be batched for performance
@@ -92,36 +94,52 @@ public abstract class AbstractProcessor {
 						    	
 						    	String[] variantArrayBlock = new String[blockSize];
 						    	System.arraycopy(variantIndex, index, variantArrayBlock, 0, blockSize);
-						    	
-						    	oos.writeObject(variantArrayBlock);
-								oos.flush(); oos.reset();
+								fbbis.put(i, variantArrayBlock);
 								
 								index += blockSize;
 								log.info("saved " + index + " variants");
 						    }
+							fbbis.complete();
+							oos.writeObject("" + variantIndex.length);
+							oos.writeObject(fbbis);
 							oos.flush();oos.close();
 						}
 					}else {
-						try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream(VARIANT_INDEX_FILE));){
-							log.info("loading " + VARIANT_INDEX_FILE);
+						ExecutorService ex = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+						try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FBBIS_FILE)));){
+							Integer variantCount = Integer.parseInt((String) objectInputStream.readObject());
+							FileBackedByteIndexedStorage<Integer, String[]> indexStore = (FileBackedByteIndexedStorage<Integer, String[]>) objectInputStream.readObject();
+							log.info("loading " + VARIANT_INDEX_FBBIS_FILE);
+
+							variantIndex = new String[variantCount];
+							String[] _varaiantIndex2 = variantIndex;
+
+							//variant index has to be a single array (we use a binary search for lookups)
+							//but reading/writing to disk should be batched for performance
+							int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
 							
-							String variantCountStr = (String) objectInputStream.readObject();
-							Integer variantCount = Integer.parseInt(variantCountStr);
-						    variantIndex = new String[variantCount];
-							
-						    //variant index has to be a single array (we use a binary search for lookups)
-						    //but reading/writing to disk should be batched for performance
-						    int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
-						    int offset = 0;
-						    for( int i = 0; i < bucketCount; i++) {
-						    	String[] variantIndexBucket =  (String[]) objectInputStream.readObject();
-						    	
-						    	System.arraycopy(variantIndexBucket, 0, variantIndex, offset, variantIndexBucket.length);
-						    	
-						    	offset += variantIndexBucket.length;
-						    	log.info("loaded " + offset + " variants");
-						    }
+							for( int i = 0; i < bucketCount; i++) {
+								final int _i = i;
+								ex.submit(new Runnable() {
+									@Override
+									public void run() {
+										try {
+											String[] variantIndexBucket = indexStore.get(_i);
+											System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
+											log.info("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
+										} catch (IOException e) {
+											// TODO Auto-generated catch block
+											e.printStackTrace();
+										}
+									}
+								});
+							}
 							objectInputStream.close();
+							ex.shutdown();
+							while(! ex.awaitTermination(60, TimeUnit.SECONDS)) {
+								System.out.println("Waiting for tasks to complete");
+								Thread.sleep(10000);
+							}
 						} catch (IOException | ClassNotFoundException | NumberFormatException e) {
 							log.error(e);
 						}
