@@ -520,7 +520,6 @@ public abstract class AbstractProcessor {
 	private void populateVariantIndex() throws InterruptedException {
 		int[] numVariants = {0};
 		HashMap<String, String[]> contigMap = new HashMap<>();
-		//for(Entry<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> entry : variantStore.variantMaskStorage.entrySet()) {
 		
 		ExecutorService ex = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 		variantStore.variantMaskStorage.entrySet().forEach(entry->{
