@@ -436,75 +436,7 @@ public abstract class AbstractProcessor {
 //				e.printStackTrace();
 //			}
 		}
-		// *****
-		// This code is a more efficient way to query on gene names, 
-		// look at the history from Dec 2018 for the rest of the implementation
-		//
-		//				} else if(pathIsGeneName(key)) {
-		//					try {
-		//						List<VCFPerPatientVariantMasks> matchingMasks = 
-		//								variantStore.getMasksForRangesOfChromosome(
-		//										geneLibrary.getChromosomeForGene(key), 
-		//										geneLibrary.offsetsForGene(key),
-		//										geneLibrary.rangeSetForGene(key));
-		//						System.out.println("Found " + matchingMasks.size() + " masks for variant " + key);
-		//						BigInteger matchingPatients = variantStore.emptyBitmask();
-		//						for(String zygosity : query.categoryFilters.get(key)) {
-		//							if(zygosity.equals(HETEROZYGOUS_VARIANT)) {
-		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-		//									if(masks!=null) {
-		//										if(masks.heterozygousMask != null) {
-		//											//											String bitmaskString = masks.heterozygousMask.toString(2);
-		//											//											System.out.println("heterozygousMask : " + bitmaskString);
-		//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
-		//										}
-		//									}
-		//								}
-		//							}else if(zygosity.equals(HOMOZYGOUS_VARIANT)) {
-		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-		//									if(masks!=null) {
-		//										if(masks.homozygousMask != null) {
-		//											//											String bitmaskString = masks.homozygousMask.toString(2);
-		//											//											System.out.println("homozygousMask : " + bitmaskString);
-		//											matchingPatients = matchingPatients.or(masks.homozygousMask);
-		//										}
-		//									}
-		//								}					
-		//							}else if(zygosity.equals("")) {
-		//								for(VCFPerPatientVariantMasks masks : matchingMasks) {
-		//									if(masks!=null) {
-		//										if(masks.homozygousMask != null) {
-		//											//											String bitmaskString = masks.homozygousMask.toString(2);
-		//											//											System.out.println("homozygousMask : " + bitmaskString);
-		//											matchingPatients = matchingPatients.or(masks.homozygousMask);
-		//										}
-		//										if(masks.heterozygousMask != null) {
-		//											//											String bitmaskString = masks.heterozygousMask.toString(2);
-		//											//											System.out.println("heterozygousMask : " + bitmaskString);
-		//											matchingPatients = matchingPatients.or(masks.heterozygousMask);
-		//										}
-		//									}
-		//								}	
-		//							}
-		//						}
-		//						String bitmaskString = matchingPatients.toString(2);
-		//						System.out.println("or'd masks : " + bitmaskString);
-		//						PhenoCube idCube = store.get(ID_CUBE_NAME);
-		//						for(int x = 2;x < bitmaskString.length()-2;x++) {
-		//							if('1'==bitmaskString.charAt(x)) {
-		//								String patientId = variantStore.getPatientIds()[x-2];
-		//								int id = -1;
-		//								for(KeyAndValue<String> ids : idCube.sortedByValue()) {
-		//									if(patientId.equalsIgnoreCase(ids.getValue())) {
-		//										id = ids.getKey();
-		//									}
-		//								}
-		//								ids.add(id);
-		//							}
-		//						}
-		//					} catch (IOException | ExecutionException e) {
-		//						log.error(e);
-		//					} 
+
 	}
 
 	private ArrayList<BigInteger> getBitmasksForVariantSpecCategoryFilter(String[] zygosities, String variantName, VariantMaskBucketHolder bucketCache) {
