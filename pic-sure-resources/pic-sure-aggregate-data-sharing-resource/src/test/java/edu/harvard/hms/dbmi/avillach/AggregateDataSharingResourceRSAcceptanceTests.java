@@ -17,6 +17,7 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Random;
 import java.util.regex.Pattern;
 
 import javax.ws.rs.core.Response;
@@ -26,6 +27,15 @@ import org.apache.commons.io.IOUtils;
 
 /*
  * Note: All json is in /src/main/resources, see the convenience methods at the bottom of the class.
+ * 
+ * 		
+		long randomNumber = ("query"+"random_string").hashCode();
+		int zero_to_6 = (int) (randomNumber % 7);
+		int adjustment = 3 - zero_to_6;
+		
+		Random rnd = new Random(randomNumber);
+		int count = (int) (33 + (3-(7 * rnd.nextDouble())));
+
  */
 public class AggregateDataSharingResourceRSAcceptanceTests {
 
@@ -118,7 +128,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
-		assertTrue(allNumericResult > 299 && allNumericResult < 337);
+		assertTrue(allNumericResult > 329 && allNumericResult < 337);
 	}
 
 	@Test
@@ -156,7 +166,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
-		assertTrue(allNumericResult > 299 && allNumericResult < 337);
+		assertTrue(allNumericResult > 329 && allNumericResult < 337);
 	}
 
 	@Test
@@ -200,7 +210,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
-		assertTrue(allNumericResult > 299 && allNumericResult < 337);
+		assertTrue(allNumericResult > 329 && allNumericResult < 337);
 	}
 
 	@Test
@@ -212,25 +222,6 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 				.match(obfuscated_2)
 				.isExactMatch());
 	}
-
-	@Test
-	public void testChangeToQueryCausesChangeInObfuscation() throws IOException {
-		String obfuscated_1 = getObfuscatedResponseForResult("one_obfuscated_open_access_cross_count_result");
-		wireMockRule.stubFor(post(urlEqualTo("/query/sync"))
-				.withRequestBody(equalToJson(getObfuscatedTestQueryJson2()))
-				.willReturn(aResponse()
-						.withStatus(200)
-						.withBody(getTestJson("one_obfuscated_open_access_cross_count_result"))));
-		
-		Response response = objectUnderTest.querySync(getTestQuery());
-		String obfuscated_2 = (String) response.getEntity();
-		
-		assertFalse(
-				equalToJson(obfuscated_1)
-				.match(obfuscated_2)
-				.isExactMatch());
-	}
-
 
 	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
 		return mapper.readValue(getTestJson("test_cross_count_query"), QueryRequest.class);
