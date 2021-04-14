@@ -11,6 +11,23 @@
         "numericVariantInfoFilters": {}
       }
     ],
-    "expectedResultType": "OBFUSCATED_CROSS_COUNT"
+    "expectedResultType": "CROSS_COUNT",
+    "crossCountFields": [
+      "\\all\\a\\",
+      "\\all\\a\\1\\",
+      "\\all\\b\\",
+      "\\all\\b\\1\\",
+      "\\all\\b\\2\\",
+      "\\all\\c\\",
+      "\\all\\c\\1\\",
+      "\\all\\c\\2\\",
+      "\\all\\c\\3\\",
+      "\\all\\d\\",
+      "\\all\\d\\1\\",
+      "\\all\\d\\2\\",
+      "\\all\\d\\3\\",
+      "\\all\\d\\4\\",
+      "\\all\\"
+    ]
   }
 }

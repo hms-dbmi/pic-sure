@@ -94,7 +94,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	}
 
 	@Test
-	public void testObfuscationPropagated() throws IOException {
+	public void testSingleObfuscationPropagated() throws IOException {
 		String obfuscated = getObfuscatedResponseForResult("one_obfuscated_open_access_cross_count_result");
 		Map result = mapper.readValue(obfuscated, Map.class);
 		
@@ -114,6 +114,88 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allCNumericResult = getObfuscatedNumericResult(allCResult);
 		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
+		
+		// \\all\\ should be some number between 300 and 336 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
+		int allNumericResult = getObfuscatedNumericResult(allResult);
+		assertTrue(allNumericResult > 299 && allNumericResult < 337);
+	}
+
+	@Test
+	public void testMultipleObfuscationPropagated() throws IOException {
+		String obfuscated = getObfuscatedResponseForResult("two_obfuscated_open_access_cross_count_result");
+		Map result = mapper.readValue(obfuscated, Map.class);
+		
+		// The parts of the result which don't need obfuscation should be unmodified
+		String allC2Result = (String) result.remove("\\all\\c\\2\\");
+		String allCResult = (String) result.remove("\\all\\c\\");
+		String allD2Result = (String) result.remove("\\all\\d\\2\\");
+		String allD3Result = (String) result.remove("\\all\\d\\3\\");
+		String allDResult = (String) result.remove("\\all\\d\\");
+		String allResult = (String) result.remove("\\all\\");
+		assertTrue(
+				equalToJson(mapper.writeValueAsString(result))
+				.match(getTestJson("two_obfuscated_open_access_cross_count_result_without_obfuscated_elements"))
+				.isExactMatch());
+		
+		// \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
+		assertEquals(allC2Result, "< 10");
+		assertEquals(allD2Result, "< 10");
+		assertEquals(allD3Result, "< 10");
+		
+		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
+		int allCNumericResult = getObfuscatedNumericResult(allCResult);
+		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
+		
+		// \\all\\d\\ should be some number between 52 and 58 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
+		int allDNumericResult = getObfuscatedNumericResult(allDResult);
+		assertTrue(allDNumericResult > 51 && allDNumericResult < 59);
+		
+		// \\all\\ should be some number between 300 and 336 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
+		int allNumericResult = getObfuscatedNumericResult(allResult);
+		assertTrue(allNumericResult > 299 && allNumericResult < 337);
+	}
+
+	@Test
+	public void testMiddleLessTenObfuscationPropagated() throws IOException {
+		String obfuscated = getObfuscatedResponseForResult("middle_less_ten_obfuscated_open_access_cross_count_result");
+		Map result = mapper.readValue(obfuscated, Map.class);
+		
+		// The parts of the result which don't need obfuscation should be unmodified
+		String allC2Result = (String) result.remove("\\all\\c\\2\\");
+		String allCResult = (String) result.remove("\\all\\c\\");
+		String allD2Result = (String) result.remove("\\all\\d\\2\\");
+		String allD3Result = (String) result.remove("\\all\\d\\3\\");
+		String allDResult = (String) result.remove("\\all\\d\\");
+		String allB1Result = (String) result.remove("\\all\\b\\1\\");
+		String allB2Result = (String) result.remove("\\all\\b\\2\\");
+		String allBResult = (String) result.remove("\\all\\b\\");
+		String allResult = (String) result.remove("\\all\\");
+		assertTrue(
+				equalToJson(mapper.writeValueAsString(result))
+				.match(getTestJson("middle_less_ten_obfuscated_open_access_cross_count_result_without_obfuscated_elements"))
+				.isExactMatch());
+		
+		// \\all\\b\\1\\, \\all\\b\\2\\, \\all\\b\\, \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
+		assertEquals(allBResult, "< 10");
+		assertEquals(allB1Result, "< 10");
+		assertEquals(allB2Result, "< 10");
+		assertEquals(allC2Result, "< 10");
+		assertEquals(allD2Result, "< 10");
+		assertEquals(allD3Result, "< 10");
+		
+		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
+		int allCNumericResult = getObfuscatedNumericResult(allCResult);
+		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
+		
+		// \\all\\d\\ should be some number between 52 and 58 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
+		int allDNumericResult = getObfuscatedNumericResult(allDResult);
+		assertTrue(allDNumericResult > 51 && allDNumericResult < 59);
 		
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
