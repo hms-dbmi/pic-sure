@@ -1,0 +1,16 @@
+{
+  "resourceUUID": "7bec1300-ae93-5ffc-11eb-0242a0c83702",
+  "query": {
+	"categoryFilters": {"something":["something"]},
+    "numericFilters": {},
+    "requiredFields": [],
+    "anyRecordOf": [],
+    "variantInfoFilters": [
+      {
+        "categoryVariantInfoFilters": {},
+        "numericVariantInfoFilters": {}
+      }
+    ],
+    "expectedResultType": "OBFUSCATED_CROSS_COUNT"
+  }
+}
