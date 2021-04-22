@@ -129,6 +129,9 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	}
 
 	private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
+		
+		minSearchIndex--;
+		
 		Comparator<KeyAndValue<V>> comparator = (a,b)->{
 			return a.value.compareTo(b.value);
 		};
