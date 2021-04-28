@@ -7,6 +7,9 @@ import static edu.harvard.dbmi.avillach.util.HttpClientUtil.throwResponseError;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
@@ -48,6 +51,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 	
 	private static int threshold;
+	private static int variance;
+
+	private final String randomSalt;
 
 	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
 		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
@@ -62,6 +68,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 		
 		threshold = Integer.parseInt(properties.getTargetPicsureObfuscationThreshold());
+		variance = Integer.parseInt(properties.getTargetPicsureObfuscationVariance());
+		randomSalt = properties.getTargetPicsureObfuscationSalt().orElseGet(() -> UUID.randomUUID().toString());
 		
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 
@@ -76,6 +84,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties = new ApplicationProperties();
 			properties.init("pic-sure-aggregate-resource");
 		}
+
+		threshold = Integer.parseInt(properties.getTargetPicsureObfuscationThreshold());
+		variance = Integer.parseInt(properties.getTargetPicsureObfuscationVariance());
+		randomSalt = properties.getTargetPicsureObfuscationSalt().orElseGet(() -> UUID.randomUUID().toString());
 		
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 	}
@@ -242,17 +254,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
-			
+
 			if(expectedResultType.equals("COUNT")) {
-				responseString = aggregateCount(entityString);
+				responseString = aggregateCount(entityString).orElse(entityString);
 			} else if(expectedResultType.equals("CROSS_COUNT")) {
-				Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<Map<String,String>>(){});
-				if(crossCounts != null) {
-					for( String key : crossCounts.keySet()) {
-						crossCounts.put(key, aggregateCount(crossCounts.get(key)));
-					}
-				}
-				
+				Map<String, String> crossCounts = processCrossCounts(entityString);
+
 				responseString = objectMapper.writeValueAsString(crossCounts);
 			}
 			
@@ -266,21 +273,67 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
 	}
-	
+
+	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
+		int requestVariance = generateRequestVariance(entityString);
+		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<Map<String,String>>(){});
+		Set<String> obfuscatedKeys = new HashSet<>();
+		if(crossCounts != null) {
+			crossCounts.keySet().forEach(key -> {
+				String crossCount = crossCounts.get(key);
+				Optional<String> aggregatedCount = aggregateCount(crossCount);
+				aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
+				crossCounts.put(key, aggregatedCount.orElse(crossCount));
+			});
+			Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
+				return generateParents(key);
+			}).collect(Collectors.toSet());
+			crossCounts.keySet().forEach(key -> {
+				String crossCount = crossCounts.get(key);
+				if (!obfuscatedKeys.contains(key) && obfuscatedParents.contains(key)) {
+					crossCounts.put(key, randomize(crossCount, requestVariance));
+				}
+			});
+		}
+
+		return crossCounts;
+	}
+
+	private int generateRequestVariance(String entityString) {
+		return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
+	}
+
+	private String randomize(String crossCount, int requestVariance) {
+		return (Integer.parseInt(crossCount) + requestVariance)  + " \u00B1" + variance;
+	}
+
+	private Stream<String> generateParents(String key) {
+		StringJoiner stringJoiner = new StringJoiner("\\", "\\", "\\");
+
+		String[] split = key.split("\\\\");
+		if (split.length > 1) {
+			return Arrays.stream(Arrays.copyOfRange(split, 0, split.length - 1))
+					.filter(Predicate.not(String::isEmpty))
+					.map(segment -> stringJoiner.add(segment).toString());
+		}
+		return Stream.empty();
+	}
+
 	/**
 	 * Here's the core of this resource - make sure we do not return results with small (potentially identifiable) cohorts.
 	 * @param actualCount
 	 * @return
 	 */
-	private String aggregateCount(String actualCount) {
+	private Optional<String> aggregateCount(String actualCount) {
 		try {
 			int queryResult = Integer.parseInt(actualCount);
 			if (queryResult > 0 && queryResult < threshold) {
-				return "< " + threshold;
+				return Optional.of("< " + threshold);
 			}
 		} catch (NumberFormatException nfe) {
 			logger.warn("Count was not a number! " + actualCount);
 		}
-		return actualCount;
+		return Optional.empty();
 	}
+
 }

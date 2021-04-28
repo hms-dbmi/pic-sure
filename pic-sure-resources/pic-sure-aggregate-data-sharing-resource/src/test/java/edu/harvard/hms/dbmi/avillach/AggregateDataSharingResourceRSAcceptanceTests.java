@@ -17,7 +17,9 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.ws.rs.core.Response;
@@ -41,7 +43,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	private ObjectMapper mapper = new ObjectMapper();
 
-	private Pattern obfuscatedResultPattern = Pattern.compile("(\\d+) +-3");
+	private Pattern obfuscatedResultPattern = Pattern.compile("(\\d+) \\u00B13");
 	
 	private ApplicationProperties mockProperties;
 
@@ -59,6 +61,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		mockProperties = mock(ApplicationProperties.class);
 		when(mockProperties.getTargetResourceId()).thenReturn("f0317fa9-0945-4390-993a-840416e97d13");
 		when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn("10");
+		when(mockProperties.getTargetPicsureObfuscationVariance()).thenReturn("3");
+		when(mockProperties.getTargetPicsureObfuscationSalt()).thenReturn(Optional.of("abc123"));
 		when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
 		when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
 		objectUnderTest = new AggregateDataSharingResourceRS(mockProperties);
@@ -112,9 +116,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String allC2Result = (String) result.remove("\\all\\c\\2\\");
 		String allCResult = (String) result.remove("\\all\\c\\");
 		String allResult = (String) result.remove("\\all\\");
+		String value = mapper.writeValueAsString(result);
+		String shouldBe = getTestJson("one_obfuscated_open_access_cross_count_result_without_obfuscated_elements");
 		assertTrue(
-				equalToJson(mapper.writeValueAsString(result))
-				.match(getTestJson("one_obfuscated_open_access_cross_count_result_without_obfuscated_elements"))
+				equalToJson(value)
+				.match(shouldBe)
 				.isExactMatch());
 		
 		// \\all\\c\\2\\ should be "< 10"
@@ -143,9 +149,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String allD3Result = (String) result.remove("\\all\\d\\3\\");
 		String allDResult = (String) result.remove("\\all\\d\\");
 		String allResult = (String) result.remove("\\all\\");
+		String value = mapper.writeValueAsString(result);
+		String shouldBe = getTestJson("two_obfuscated_open_access_cross_count_result_without_obfuscated_elements");
 		assertTrue(
-				equalToJson(mapper.writeValueAsString(result))
-				.match(getTestJson("two_obfuscated_open_access_cross_count_result_without_obfuscated_elements"))
+				equalToJson(value)
+				.match(shouldBe)
 				.isExactMatch());
 		
 		// \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
@@ -184,9 +192,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String allB2Result = (String) result.remove("\\all\\b\\2\\");
 		String allBResult = (String) result.remove("\\all\\b\\");
 		String allResult = (String) result.remove("\\all\\");
+		String resultString = mapper.writeValueAsString(result);
+		String shouldBe = getTestJson("middle_less_ten_obfuscated_open_access_cross_count_result_without_obfuscated_element");
 		assertTrue(
-				equalToJson(mapper.writeValueAsString(result))
-				.match(getTestJson("middle_less_ten_obfuscated_open_access_cross_count_result_without_obfuscated_elements"))
+				equalToJson(resultString)
+				.match(shouldBe)
 				.isExactMatch());
 		
 		// \\all\\b\\1\\, \\all\\b\\2\\, \\all\\b\\, \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
@@ -240,7 +250,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	}
 	
 	private int getObfuscatedNumericResult(String allC2Result) {
-		return Integer.parseInt(obfuscatedResultPattern.matcher(allC2Result).group(1));
+		Matcher matcher = obfuscatedResultPattern.matcher(allC2Result);
+		matcher.find();
+		return Integer.parseInt(matcher.group(1));
 	}
 
 	private void expect_original_result_to_become_obfuscated_result(String originalResult, String obfuscatedResult)

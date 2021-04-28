@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Properties;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.swing.text.html.Option;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +24,9 @@ public class ApplicationProperties implements Serializable {
     private String targetResourceId;
     private String targetPicsureToken;
     private String targetPicsureObfuscationThreshold;
-    
+    private String targetPicsureObfuscationVariance;
+    private String targetPicsureObfuscationSalt;
+
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
     public String getContextPath() {
@@ -43,6 +47,14 @@ public class ApplicationProperties implements Serializable {
 
     public String getTargetPicsureObfuscationThreshold() {
         return targetPicsureObfuscationThreshold;
+    }
+
+    public String getTargetPicsureObfuscationVariance() {
+        return targetPicsureObfuscationVariance;
+    }
+
+    public Optional<String> getTargetPicsureObfuscationSalt() {
+        return Optional.ofNullable(targetPicsureObfuscationSalt);
     }
 
     public void init(String contextPath) {
@@ -78,5 +90,12 @@ public class ApplicationProperties implements Serializable {
         if (targetPicsureObfuscationThreshold == null) {
             throw new PicsureQueryException("target.picsure.obfuscation_threshold property must be set.");
         }
+
+        targetPicsureObfuscationVariance = properties.getProperty("target.picsure.obfuscation_variance");
+        if (targetPicsureObfuscationVariance == null) {
+            throw new PicsureQueryException("target.picsure.obfuscation_variance property must be set.");
+        }
+
+        targetPicsureObfuscationSalt = properties.getProperty("target.picsure.obfuscation_salt");
     }
 }
