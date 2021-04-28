@@ -254,8 +254,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
-			
-			if(expectedResultType.equals("CROSS_COUNT")) {
+
+			if(expectedResultType.equals("COUNT")) {
+				responseString = aggregateCount(entityString).orElse(entityString);
+			} else if(expectedResultType.equals("CROSS_COUNT")) {
 				Map<String, String> crossCounts = processCrossCounts(entityString);
 
 				responseString = objectMapper.writeValueAsString(crossCounts);
@@ -279,17 +281,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		if(crossCounts != null) {
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
-				try {
-					int queryResult = Integer.parseInt(crossCount);
-					if (queryResult > 0 && queryResult < threshold) {
-						crossCounts.put(key, "< " + threshold);
-						obfuscatedKeys.add(key);
-					} else {
-						crossCounts.put(key, crossCount);
-					}
-				} catch (NumberFormatException nfe) {
-					logger.warn("Count was not a number! " + crossCount);
-				}
+				Optional<String> aggregatedCount = aggregateCount(crossCount);
+				aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
+				crossCounts.put(key, aggregatedCount.orElse(crossCount));
 			});
 			Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
 				return generateParents(key);
@@ -323,6 +317,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 					.map(segment -> stringJoiner.add(segment).toString());
 		}
 		return Stream.empty();
+	}
+
+	/**
+	 * Here's the core of this resource - make sure we do not return results with small (potentially identifiable) cohorts.
+	 * @param actualCount
+	 * @return
+	 */
+	private Optional<String> aggregateCount(String actualCount) {
+		try {
+			int queryResult = Integer.parseInt(actualCount);
+			if (queryResult > 0 && queryResult < threshold) {
+				return Optional.of("< " + threshold);
+			}
+		} catch (NumberFormatException nfe) {
+			logger.warn("Count was not a number! " + actualCount);
+		}
+		return Optional.empty();
 	}
 
 }
