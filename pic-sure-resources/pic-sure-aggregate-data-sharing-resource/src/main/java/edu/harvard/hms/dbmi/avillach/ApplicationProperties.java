@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.UUID;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.swing.text.html.Option;
@@ -45,16 +46,16 @@ public class ApplicationProperties implements Serializable {
         return targetPicsureToken;
     }
 
-    public String getTargetPicsureObfuscationThreshold() {
-        return targetPicsureObfuscationThreshold;
+    public Optional<String> getTargetPicsureObfuscationThreshold() {
+        return Optional.ofNullable(targetPicsureObfuscationThreshold);
     }
 
-    public String getTargetPicsureObfuscationVariance() {
-        return targetPicsureObfuscationVariance;
+    public Optional<String> getTargetPicsureObfuscationVariance() {
+        return Optional.ofNullable(targetPicsureObfuscationVariance);
     }
 
-    public Optional<String> getTargetPicsureObfuscationSalt() {
-        return Optional.ofNullable(targetPicsureObfuscationSalt);
+    public String getTargetPicsureObfuscationSalt() {
+        return targetPicsureObfuscationSalt;
     }
 
     public void init(String contextPath) {
@@ -91,11 +92,11 @@ public class ApplicationProperties implements Serializable {
             throw new PicsureQueryException("target.picsure.obfuscation_threshold property must be set.");
         }
 
-        targetPicsureObfuscationVariance = properties.getProperty("target.picsure.obfuscation_variance");
-        if (targetPicsureObfuscationVariance == null) {
-            throw new PicsureQueryException("target.picsure.obfuscation_variance property must be set.");
-        }
+        targetPicsureObfuscationThreshold = properties.getProperty("target.picsure.obfuscation_threshold");
 
-        targetPicsureObfuscationSalt = properties.getProperty("target.picsure.obfuscation_salt");
+        targetPicsureObfuscationVariance = properties.getProperty("target.picsure.obfuscation_variance");
+
+        targetPicsureObfuscationSalt = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_salt"))
+                .orElseGet(() -> UUID.randomUUID().toString());
     }
 }
