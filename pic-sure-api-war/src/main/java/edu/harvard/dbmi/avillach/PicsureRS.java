@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach;
 
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.inject.Inject;
@@ -43,7 +43,7 @@ public class PicsureRS {
 	@GET
 	@Path("/info/resources")
 	@ApiOperation(value = "Returns list of resources available")
-	public List<UUID> resources(){
+	public Map<UUID,String> resources(){
 		return infoService.resources();
 	}
 	
