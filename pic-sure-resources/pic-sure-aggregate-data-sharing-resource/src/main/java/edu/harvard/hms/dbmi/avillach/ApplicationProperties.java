@@ -9,7 +9,6 @@ import java.util.Properties;
 import java.util.UUID;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.swing.text.html.Option;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +23,12 @@ public class ApplicationProperties implements Serializable {
     private String targetPicsureUrl;
     private String targetResourceId;
     private String targetPicsureToken;
-    private String targetPicsureObfuscationThreshold;
-    private String targetPicsureObfuscationVariance;
+    private int targetPicsureObfuscationThreshold;
+    private int targetPicsureObfuscationVariance;
     private String targetPicsureObfuscationSalt;
+
+    public static final int DEFAULT_OBFUSCATION_THRESHOLD = 10;
+    public static final int DEFAULT_OBFUSCATION_VARIANCE = 3;
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -46,12 +48,12 @@ public class ApplicationProperties implements Serializable {
         return targetPicsureToken;
     }
 
-    public Optional<String> getTargetPicsureObfuscationThreshold() {
-        return Optional.ofNullable(targetPicsureObfuscationThreshold);
+    public int getTargetPicsureObfuscationThreshold() {
+        return targetPicsureObfuscationThreshold;
     }
 
-    public Optional<String> getTargetPicsureObfuscationVariance() {
-        return Optional.ofNullable(targetPicsureObfuscationVariance);
+    public int getTargetPicsureObfuscationVariance() {
+        return targetPicsureObfuscationVariance;
     }
 
     public String getTargetPicsureObfuscationSalt() {
@@ -87,14 +89,13 @@ public class ApplicationProperties implements Serializable {
             throw new PicsureQueryException("target.picsure.token property must be set.");
         }
 
-        targetPicsureObfuscationThreshold = properties.getProperty("target.picsure.obfuscation_threshold");
-        if (targetPicsureObfuscationThreshold == null) {
-            throw new PicsureQueryException("target.picsure.obfuscation_threshold property must be set.");
-        }
+        targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
+                .map(Integer::parseInt)
+                .orElse(DEFAULT_OBFUSCATION_THRESHOLD);
 
-        targetPicsureObfuscationThreshold = properties.getProperty("target.picsure.obfuscation_threshold");
-
-        targetPicsureObfuscationVariance = properties.getProperty("target.picsure.obfuscation_variance");
+        targetPicsureObfuscationVariance = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_variance"))
+                .map(Integer::parseInt)
+                .orElse(DEFAULT_OBFUSCATION_VARIANCE);
 
         targetPicsureObfuscationSalt = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_salt"))
                 .orElseGet(() -> UUID.randomUUID().toString());

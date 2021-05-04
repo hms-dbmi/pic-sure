@@ -40,8 +40,6 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 @Singleton
 public class AggregateDataSharingResourceRS implements IResourceRS {
 
-	public static final int DEFAULT_OBFUSCATION_THRESHOLD = 10;
-	public static final int DEFAULT_OBFUSCATION_VARIANCE = 3;
 	@Inject
 	private ApplicationProperties properties;
 
@@ -54,8 +52,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	private static int threshold;
-	private static int variance;
+	private final int threshold;
+	private final int variance;
 
 	private final String randomSalt;
 
@@ -71,8 +69,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties.init("pic-sure-aggregate-resource");
 		}
 
-		threshold = properties.getTargetPicsureObfuscationThreshold().map(Integer::parseInt).orElse(DEFAULT_OBFUSCATION_THRESHOLD);
-		variance = properties.getTargetPicsureObfuscationVariance().map(Integer::parseInt).orElse(DEFAULT_OBFUSCATION_VARIANCE);
+		threshold = properties.getTargetPicsureObfuscationThreshold();
+		variance = properties.getTargetPicsureObfuscationVariance();
 		randomSalt = properties.getTargetPicsureObfuscationSalt();
 
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
@@ -89,8 +87,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties.init("pic-sure-aggregate-resource");
 		}
 
-		threshold = properties.getTargetPicsureObfuscationThreshold().map(Integer::parseInt).orElse(DEFAULT_OBFUSCATION_THRESHOLD);
-		variance = properties.getTargetPicsureObfuscationVariance().map(Integer::parseInt).orElse(DEFAULT_OBFUSCATION_VARIANCE);
+		threshold = properties.getTargetPicsureObfuscationThreshold();
+		variance = properties.getTargetPicsureObfuscationVariance();
 		randomSalt = properties.getTargetPicsureObfuscationSalt();
 
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};

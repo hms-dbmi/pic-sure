@@ -17,7 +17,6 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,14 +28,7 @@ import org.apache.commons.io.IOUtils;
 /*
  * Note: All json is in /src/main/resources, see the convenience methods at the bottom of the class.
  * 
- * 		
-		long randomNumber = ("query"+"random_string").hashCode();
-		int zero_to_6 = (int) (randomNumber % 7);
-		int adjustment = 3 - zero_to_6;
-		
-		Random rnd = new Random(randomNumber);
-		int count = (int) (33 + (3-(7 * rnd.nextDouble())));
-
+ *
  */
 public class AggregateDataSharingResourceRSAcceptanceTests {
 
@@ -59,8 +51,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	public void setup() throws IOException {
 		mockProperties = mock(ApplicationProperties.class);
 		when(mockProperties.getTargetResourceId()).thenReturn("f0317fa9-0945-4390-993a-840416e97d13");
-		when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn(Optional.of("10"));
-		when(mockProperties.getTargetPicsureObfuscationVariance()).thenReturn(Optional.of("3"));
+		when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn(10);
+		when(mockProperties.getTargetPicsureObfuscationVariance()).thenReturn(3);
 		when(mockProperties.getTargetPicsureObfuscationSalt()).thenReturn("abc123");
 		when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
 		when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
