@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
@@ -36,27 +37,28 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 @Path("/aggregate-data-sharing")
 @Produces("application/json")
 @Consumes("application/json")
+@Singleton
 public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	@Inject
 	private ApplicationProperties properties;
-	
+
 	private static final ObjectMapper objectMapper = new ObjectMapper();
-	
+
 	private Header[] headers;
 
 	private static final String BEARER_STRING = "Bearer ";
 
 	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
-	
-	private static int threshold;
-	private static int variance;
+
+	private final int threshold;
+	private final int variance;
 
 	private final String randomSalt;
 
 	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
-		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
+			"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
 	});
 
 	public AggregateDataSharingResourceRS() {
@@ -66,11 +68,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties = new ApplicationProperties();
 			properties.init("pic-sure-aggregate-resource");
 		}
-		
-		threshold = Integer.parseInt(properties.getTargetPicsureObfuscationThreshold());
-		variance = Integer.parseInt(properties.getTargetPicsureObfuscationVariance());
-		randomSalt = properties.getTargetPicsureObfuscationSalt().orElseGet(() -> UUID.randomUUID().toString());
-		
+
+		threshold = properties.getTargetPicsureObfuscationThreshold();
+		variance = properties.getTargetPicsureObfuscationVariance();
+		randomSalt = properties.getTargetPicsureObfuscationSalt();
+
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 
 	}
@@ -85,14 +87,14 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			properties.init("pic-sure-aggregate-resource");
 		}
 
-		threshold = Integer.parseInt(properties.getTargetPicsureObfuscationThreshold());
-		variance = Integer.parseInt(properties.getTargetPicsureObfuscationVariance());
-		randomSalt = properties.getTargetPicsureObfuscationSalt().orElseGet(() -> UUID.randomUUID().toString());
-		
+		threshold = properties.getTargetPicsureObfuscationThreshold();
+		variance = properties.getTargetPicsureObfuscationVariance();
+		randomSalt = properties.getTargetPicsureObfuscationSalt();
+
 		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 	}
 
-	
+
 
 	@GET
 	@Path("/status")
@@ -128,7 +130,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				throwResponseError(response, properties.getTargetPicsureUrl());
 			}
-			
+
 			//if we are proxying an info request, we need to return our own resource ID
 			ResourceInfo resourceInfo = readObjectFromResponse(response, ResourceInfo.class);
 			if (infoRequest != null && infoRequest.getResourceUUID() != null) {
@@ -162,7 +164,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(searchRequest.getQuery());
 			chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
-			
+
 			if(properties.getTargetResourceId() != null && !properties.getTargetResourceId().isEmpty()) {
 				chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 			} else {
@@ -170,7 +172,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
-			
+
 			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, payload);
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
@@ -230,7 +232,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
-			
+
 			if (! ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
 				return Response.status(Response.Status.BAD_REQUEST).build();
@@ -249,8 +251,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				throwResponseError(response, targetPicsureUrl);
 			}
-			
-			
+
+
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
@@ -262,7 +264,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 				responseString = objectMapper.writeValueAsString(crossCounts);
 			}
-			
+
 			return Response.ok(responseString).build();
 		} catch (IOException e) {
 			logger.error(e.getMessage(), e);
@@ -275,8 +277,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
-		int requestVariance = generateRequestVariance(entityString);
-		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<Map<String,String>>(){});
+		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>(){});
+		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+		entryList.sort(Map.Entry.comparingByKey());
+		final StringBuffer crossCountsString = new StringBuffer();
+		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
+		int requestVariance = generateRequestVariance(crossCountsString.toString());
 		Set<String> obfuscatedKeys = new HashSet<>();
 		if(crossCounts != null) {
 			crossCounts.keySet().forEach(key -> {

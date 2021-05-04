@@ -17,8 +17,6 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,21 +28,14 @@ import org.apache.commons.io.IOUtils;
 /*
  * Note: All json is in /src/main/resources, see the convenience methods at the bottom of the class.
  * 
- * 		
-		long randomNumber = ("query"+"random_string").hashCode();
-		int zero_to_6 = (int) (randomNumber % 7);
-		int adjustment = 3 - zero_to_6;
-		
-		Random rnd = new Random(randomNumber);
-		int count = (int) (33 + (3-(7 * rnd.nextDouble())));
-
+ *
  */
 public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	private ObjectMapper mapper = new ObjectMapper();
 
 	private Pattern obfuscatedResultPattern = Pattern.compile("(\\d+) \\u00B13");
-	
+
 	private ApplicationProperties mockProperties;
 
 	private AggregateDataSharingResourceRS objectUnderTest;
@@ -60,13 +51,13 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	public void setup() throws IOException {
 		mockProperties = mock(ApplicationProperties.class);
 		when(mockProperties.getTargetResourceId()).thenReturn("f0317fa9-0945-4390-993a-840416e97d13");
-		when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn("10");
-		when(mockProperties.getTargetPicsureObfuscationVariance()).thenReturn("3");
-		when(mockProperties.getTargetPicsureObfuscationSalt()).thenReturn(Optional.of("abc123"));
+		when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn(10);
+		when(mockProperties.getTargetPicsureObfuscationVariance()).thenReturn(3);
+		when(mockProperties.getTargetPicsureObfuscationSalt()).thenReturn("abc123");
 		when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
 		when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
 		objectUnderTest = new AggregateDataSharingResourceRS(mockProperties);
-		
+
 		// Whenever the ADSRRS submits a search for "any" we return the contents of open_access_search_result.json
 		wireMockRule.stubFor(post(urlEqualTo("/search"))
 				.withRequestBody(equalToJson("{\"query\":\"any\"}"))
@@ -78,9 +69,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	/**
 	 * This is just a test to make sure equalToJson(...).match(...).isExactMatch() handles reordered JSON
-	 * @throws IOException 
-	 * @throws JsonProcessingException 
-	 * @throws JsonMappingException 
+	 * @throws IOException
+	 * @throws JsonProcessingException
+	 * @throws JsonMappingException
 	 */
 	@Test
 	public void testTest() throws JsonMappingException, JsonProcessingException, IOException {
@@ -111,7 +102,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	public void testSingleObfuscationPropagated() throws IOException {
 		String obfuscated = getObfuscatedResponseForResult("one_obfuscated_open_access_cross_count_result");
 		Map result = mapper.readValue(obfuscated, Map.class);
-		
+
 		// The parts of the result which don't need obfuscation should be unmodified
 		String allC2Result = (String) result.remove("\\all\\c\\2\\");
 		String allCResult = (String) result.remove("\\all\\c\\");
@@ -120,28 +111,28 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String shouldBe = getTestJson("one_obfuscated_open_access_cross_count_result_without_obfuscated_elements");
 		assertTrue(
 				equalToJson(value)
-				.match(shouldBe)
-				.isExactMatch());
-		
+						.match(shouldBe)
+						.isExactMatch());
+
 		// \\all\\c\\2\\ should be "< 10"
 		assertEquals(allC2Result, "< 10");
 
 		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allCNumericResult = getObfuscatedNumericResult(allCResult);
-		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
-		
+		assertEquals(allCNumericResult, 63);
+
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
-		assertTrue(allNumericResult > 329 && allNumericResult < 337);
+		assertEquals(allNumericResult, 333);
 	}
 
 	@Test
 	public void testMultipleObfuscationPropagated() throws IOException {
 		String obfuscated = getObfuscatedResponseForResult("two_obfuscated_open_access_cross_count_result");
 		Map result = mapper.readValue(obfuscated, Map.class);
-		
+
 		// The parts of the result which don't need obfuscation should be unmodified
 		String allC2Result = (String) result.remove("\\all\\c\\2\\");
 		String allCResult = (String) result.remove("\\all\\c\\");
@@ -153,24 +144,24 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String shouldBe = getTestJson("two_obfuscated_open_access_cross_count_result_without_obfuscated_elements");
 		assertTrue(
 				equalToJson(value)
-				.match(shouldBe)
-				.isExactMatch());
-		
+						.match(shouldBe)
+						.isExactMatch());
+
 		// \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
 		assertEquals(allC2Result, "< 10");
 		assertEquals(allD2Result, "< 10");
 		assertEquals(allD3Result, "< 10");
-		
+
 		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allCNumericResult = getObfuscatedNumericResult(allCResult);
 		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
-		
+
 		// \\all\\d\\ should be some number between 52 and 58 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allDNumericResult = getObfuscatedNumericResult(allDResult);
 		assertTrue(allDNumericResult > 51 && allDNumericResult < 59);
-		
+
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
@@ -181,7 +172,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	public void testMiddleLessTenObfuscationPropagated() throws IOException {
 		String obfuscated = getObfuscatedResponseForResult("middle_less_ten_obfuscated_open_access_cross_count_result");
 		Map result = mapper.readValue(obfuscated, Map.class);
-		
+
 		// The parts of the result which don't need obfuscation should be unmodified
 		String allC2Result = (String) result.remove("\\all\\c\\2\\");
 		String allCResult = (String) result.remove("\\all\\c\\");
@@ -196,9 +187,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String shouldBe = getTestJson("middle_less_ten_obfuscated_open_access_cross_count_result_without_obfuscated_element");
 		assertTrue(
 				equalToJson(resultString)
-				.match(shouldBe)
-				.isExactMatch());
-		
+						.match(shouldBe)
+						.isExactMatch());
+
 		// \\all\\b\\1\\, \\all\\b\\2\\, \\all\\b\\, \\all\\c\\2\\, \\all\\d\\2\\, \\all\\d\\3\\ should be "< 10"
 		assertEquals(allBResult, "< 10");
 		assertEquals(allB1Result, "< 10");
@@ -206,17 +197,17 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertEquals(allC2Result, "< 10");
 		assertEquals(allD2Result, "< 10");
 		assertEquals(allD3Result, "< 10");
-		
+
 		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allCNumericResult = getObfuscatedNumericResult(allCResult);
 		assertTrue(allCNumericResult > 59 && allCNumericResult < 67);
-		
+
 		// \\all\\d\\ should be some number between 52 and 58 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
 		int allDNumericResult = getObfuscatedNumericResult(allDResult);
 		assertTrue(allDNumericResult > 51 && allDNumericResult < 59);
-		
+
 		// \\all\\ should be some number between 300 and 336 with +-3 appended
 		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
 		int allNumericResult = getObfuscatedNumericResult(allResult);
@@ -229,8 +220,39 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String obfuscated_2 = getObfuscatedResponseForResult("one_obfuscated_open_access_cross_count_result");
 		assertTrue(
 				equalToJson(obfuscated_1)
-				.match(obfuscated_2)
-				.isExactMatch());
+						.match(obfuscated_2)
+						.isExactMatch());
+	}
+
+
+	@Test
+	public void testSingleObfuscationPropagatedUnsortedResponse() throws IOException {
+		String obfuscated = getObfuscatedResponseForResult("one_obfuscated_open_access_cross_count_result_unsorted");
+		Map result = mapper.readValue(obfuscated, Map.class);
+
+		// The parts of the result which don't need obfuscation should be unmodified
+		String allC2Result = (String) result.remove("\\all\\c\\2\\");
+		String allCResult = (String) result.remove("\\all\\c\\");
+		String allResult = (String) result.remove("\\all\\");
+		String value = mapper.writeValueAsString(result);
+		String shouldBe = getTestJson("one_obfuscated_open_access_cross_count_result_without_obfuscated_elements");
+		assertTrue(
+				equalToJson(value)
+						.match(shouldBe)
+						.isExactMatch());
+
+		// \\all\\c\\2\\ should be "< 10"
+		assertEquals(allC2Result, "< 10");
+
+		// \\all\\c\\ should be some number between 60 and 66 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allCResult).matches());
+		int allCNumericResult = getObfuscatedNumericResult(allCResult);
+		assertEquals(allCNumericResult, 63);
+
+		// \\all\\ should be some number between 300 and 336 with +-3 appended
+		assertTrue(obfuscatedResultPattern.matcher(allResult).matches());
+		int allNumericResult = getObfuscatedNumericResult(allResult);
+		assertEquals(allNumericResult, 333);
 	}
 
 	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
@@ -248,7 +270,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	private String getTestJson(String json_file_name) throws IOException {
 		return IOUtils.toString(this.getClass().getClassLoader().getResourceAsStream(json_file_name + ".json"), Charsets.UTF_8);
 	}
-	
+
 	private int getObfuscatedNumericResult(String allC2Result) {
 		Matcher matcher = obfuscatedResultPattern.matcher(allC2Result);
 		matcher.find();
@@ -260,8 +282,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		String responseJson = getObfuscatedResponseForResult(originalResult);
 		assertTrue(
 				equalToJson(responseJson)
-				.match(getTestJson(obfuscatedResult))
-				.isExactMatch());
+						.match(getTestJson(obfuscatedResult))
+						.isExactMatch());
 	}
 
 	private String getObfuscatedResponseForResult(String originalResult)
@@ -272,7 +294,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 				.willReturn(aResponse()
 						.withStatus(200)
 						.withBody(getTestJson(originalResult))));
-		
+
 		Response response = objectUnderTest.querySync(getTestQuery());
 		// TODO: This is what should be sent
 //		Response response = objectUnderTest.querySync(mapper.readValue(getObfuscatedTestQueryJson(), QueryRequest.class));
