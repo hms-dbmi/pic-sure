@@ -310,7 +310,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	private String randomize(String crossCount, int requestVariance) {
-		return (Integer.parseInt(crossCount) + requestVariance)  + " \u00B1" + variance;
+		return Math.max((Integer.parseInt(crossCount) + requestVariance), threshold)  + " \u00B1" + variance;
 	}
 
 	private Stream<String> generateParents(String key) {
