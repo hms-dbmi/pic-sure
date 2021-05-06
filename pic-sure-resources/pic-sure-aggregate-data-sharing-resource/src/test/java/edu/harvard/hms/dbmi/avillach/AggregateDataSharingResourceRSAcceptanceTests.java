@@ -255,6 +255,16 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertEquals(allNumericResult, 333);
 	}
 
+	@Test
+	public void testMinimumThreshold() throws IOException {
+		String obfuscated = getObfuscatedResponseForResult("test_minimum_threshold");
+		Map result = mapper.readValue(obfuscated, Map.class);
+
+		String allDResult = (String) result.remove("\\all\\d\\");
+		int numericResult = getObfuscatedNumericResult(allDResult);
+		assertTrue(numericResult >= 10);
+	}
+
 	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
 		return mapper.readValue(getTestJson("test_cross_count_query"), QueryRequest.class);
 	}
