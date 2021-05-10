@@ -10,6 +10,7 @@ import org.apache.log4j.Logger;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
+import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -36,6 +37,7 @@ public class CSVLoader {
 	}
 
 	private static void initialLoad() throws IOException {
+		Crypto.loadDefaultKey();
 		Reader in = new FileReader("/opt/local/hpds/allConcepts.csv");
 		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024*1024));
 

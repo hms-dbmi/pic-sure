@@ -1045,7 +1045,6 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	@SuppressWarnings("rawtypes")
 	protected PhenoCube getCube(String path) {
 		try { 
 			return store.get(path);
