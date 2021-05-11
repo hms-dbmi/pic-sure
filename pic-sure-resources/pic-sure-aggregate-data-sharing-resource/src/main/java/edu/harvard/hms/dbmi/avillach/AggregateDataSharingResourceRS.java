@@ -276,6 +276,44 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 	}
 
+	@Override
+	@POST
+	@Path("/query/format")
+	public Response queryFormat(QueryRequest queryRequest) {
+		if (queryRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Object search = queryRequest.getQuery();
+		if (search == null) {
+			throw new ProtocolException((ProtocolException.MISSING_DATA));
+		}
+
+		UUID resourceUUID = queryRequest.getResourceUUID();
+		String pathName = "/query/format";
+
+		try {
+			String targetPicsureUrl = properties.getTargetPicsureUrl();
+			String queryString = json.writeValueAsString(queryRequest);
+			String composedURL = composeURL(targetPicsureUrl, pathName);
+			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, queryString);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("Not 200 status!");
+				logger.error(
+						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				throwResponseError(response, targetPicsureUrl);
+			}
+
+			return Response.ok(response.getEntity().getContent()).build();
+		} catch (IOException e) {
+			throw new ApplicationException(
+					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
+		} catch (ClassCastException | IllegalArgumentException e) {
+			logger.error(e.getMessage());
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
+	}
+
 	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
 		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>(){});
 		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
