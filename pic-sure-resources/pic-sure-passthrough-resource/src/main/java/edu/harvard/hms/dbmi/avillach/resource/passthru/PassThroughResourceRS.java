@@ -276,6 +276,44 @@ public class PassThroughResourceRS implements IResourceRS {
 		}
 	}
 
+	@Override
+	public Response queryFormat(QueryRequest queryRequest) {
+		if (queryRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Object search = queryRequest.getQuery();
+		if (search == null) {
+			throw new ProtocolException((ProtocolException.MISSING_DATA));
+		}
+
+		String pathName = "/query/format";
+
+		try {
+			QueryRequest chainRequest = new QueryRequest();
+			chainRequest.setQuery(queryRequest.getQuery());
+			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+
+			String payload = objectMapper.writeValueAsString(chainRequest);
+			HttpResponse response = httpClient.retrievePostResponse(
+					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
+						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+			}
+
+			return Response.ok(response.getEntity().getContent()).build();
+		} catch (IOException e) {
+			throw new ApplicationException(
+					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
+		} catch (ClassCastException | IllegalArgumentException e) {
+			logger.error(e.getMessage());
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
+	}
+
 	private Header[] createAuthHeader() {
 		return new Header[] {
 				new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken()) };
