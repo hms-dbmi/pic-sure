@@ -26,3 +26,6 @@ war-exec.manifest
 .extract/
 
 .DS_Store
+
+*.iml
+.idea/
