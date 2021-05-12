@@ -75,25 +75,30 @@ public class Query {
 		switch(expectedResultType) {
 		case INFO_COLUMN_LISTING:
 			//info column listing has no query body
-			break;
+			return builder.toString();
 		
 		case CROSS_COUNT:
-		case OBSERVATION_COUNT:
 			writePartFormat("Cross Count Fields", crossCountFields, builder, true);
+			break;
+		case OBSERVATION_COUNT:
+			writePartFormat("Observation Count Fields", fields, builder, true);
+			break;
 		case DATAFRAME:
 		case DATAFRAME_MERGED:
 			writePartFormat("Data Export Fields", fields, builder, true);
+			break;
 		case COUNT:
-			writePartFormat("Required Fields", requiredFields, builder, false);
-			writePartFormat("Numeric filters", numericFilters, builder);
-			writePartFormat("Category filters", categoryFilters, builder);
-			writePartFormat("Variant Info filters", variantInfoFilters, builder, false);
-			writePartFormat("Any-Record-Of filters", anyRecordOf, builder, true);
 			break;
 		default:
 			//no logic here; all enum values should be present above
 			System.out.println("Foratting not supported for type " + expectedResultType);
 		}
+
+		writePartFormat("Required Fields", requiredFields, builder, false);
+		writePartFormat("Numeric filters", numericFilters, builder);
+		writePartFormat("Category filters", categoryFilters, builder);
+		writePartFormat("Variant Info filters", variantInfoFilters, builder, false);
+		writePartFormat("Any-Record-Of filters", anyRecordOf, builder, true);
 
 		return builder.toString();
 	}
@@ -101,23 +106,21 @@ public class Query {
 	/**
 	 * For some elements of the query, we will iterate over the list of items and send them each to the string builder
 	 * @param queryPart
-	 * @param varList
+	 * @param items
 	 * @param builder
 	 */
 	@SuppressWarnings("rawtypes")
-	private static void writePartFormat(String queryPart, Collection varList, StringBuilder builder, boolean allowRollup) {
-		if(varList == null || varList.isEmpty()) {
-			return;
-		}
+	private static void writePartFormat(String queryPart, Collection items, StringBuilder builder, boolean allowRollup) {
+		final Collection collectionToWrite = Optional.ofNullable(items).orElseGet(Collections::emptyList);
 		//same beginning
 		builder.append(queryPart + ": [");  
 		//if there are many elements, we want to truncate the display
-		if(allowRollup && varList.size() > 5) {
+		if(allowRollup && collectionToWrite.size() > 5) {
 			builder.append("\n");
-			showTopLevelValues(varList, builder);
+			showTopLevelValues(collectionToWrite, builder);
 		}else {
 			String sep1 = "";
-			for(Object val : varList) {
+			for(Object val : collectionToWrite) {
 				builder.append(sep1 + val);
 				sep1 = ", ";
 			}
