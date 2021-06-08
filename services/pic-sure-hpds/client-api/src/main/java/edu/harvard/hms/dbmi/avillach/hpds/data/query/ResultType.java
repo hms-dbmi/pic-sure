@@ -28,6 +28,11 @@ public enum ResultType {
 	 */
 	OBSERVATION_COUNT, 
 	/**
+	 * Return the number of observations for included patients and
+	 * included fields, broken up across the included cross count fields.
+	 */
+	OBSERVATION_CROSS_COUNT, 
+	/**
 	 * This was developed for UDN, but is completely useless and should
 	 * be deleted.
 	 */

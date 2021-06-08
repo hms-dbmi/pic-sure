@@ -60,6 +60,28 @@ public class CountProcessor extends AbstractProcessor {
 		});
 		return observationCount[0];
 	}
+	
+	/**
+	 * Returns a separate observation count for each field in query.crossCountFields when that field is added
+	 * as a requiredFields entry for the base query.
+	 * 
+	 * @param query
+	 * @return
+	 */
+	public Map<String, Integer> runObservationCrossCounts(Query query) {
+		TreeMap<String, Integer> counts = new TreeMap<>();
+		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
+		query.crossCountFields.parallelStream().forEach((String concept)->{
+			//breaking these statements to allow += operator to cast long to int.
+			int observationCount = 0;
+			observationCount += Arrays.stream(getCube(concept).sortedByKey()).filter(keyAndValue->{
+				return baseQueryPatientSet.contains(keyAndValue.getKey());
+			}).collect(Collectors.counting());
+			
+			counts.put(concept, observationCount);
+		});
+		return counts;
+	}
 
 	/**
 	 * Returns a separate count for each field in query.crossCountFields when that field is added
