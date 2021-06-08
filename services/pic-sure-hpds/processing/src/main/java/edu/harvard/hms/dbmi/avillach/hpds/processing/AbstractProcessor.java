@@ -633,7 +633,10 @@ public abstract class AbstractProcessor {
 							variantIndexArray[x++] = variantIndexArrayIndex;
 						}
 					}
-					return variantIndexArray;
+					
+					int[] compactedVariantIndexArray = new int[x];
+					System.arraycopy(variantIndexArray, 0, compactedVariantIndexArray, 0, x);
+					return compactedVariantIndexArray;
 				}
 			});
 
