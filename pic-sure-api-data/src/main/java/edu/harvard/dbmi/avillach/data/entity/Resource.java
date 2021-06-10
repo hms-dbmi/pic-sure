@@ -1,10 +1,11 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
+import javax.json.Json;
 import javax.persistence.Column;
 import javax.persistence.Entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Entity(name = "resource")
 public class Resource extends BaseEntity{
@@ -60,5 +61,14 @@ public class Resource extends BaseEntity{
 	public Resource setToken(String token) {
 		this.token = token;
 		return this;
+	}
+	
+	@Override
+	public String toString() {
+		return Json.createObjectBuilder()
+	            .add("uuid", uuid.toString())
+	            .add("name", name)
+	            .add("description", description)
+	            .build().toString();
 	}
 }

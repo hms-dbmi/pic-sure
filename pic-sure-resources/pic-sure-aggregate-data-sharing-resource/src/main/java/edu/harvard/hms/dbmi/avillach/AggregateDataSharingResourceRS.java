@@ -50,7 +50,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private static int threshold;
 
 	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
-		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING"
+		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT"
 	});
 
 	public AggregateDataSharingResourceRS() {
