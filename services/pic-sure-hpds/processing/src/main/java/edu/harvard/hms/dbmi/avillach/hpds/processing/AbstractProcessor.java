@@ -585,9 +585,18 @@ public abstract class AbstractProcessor {
 					int[] variantIndexArray = new int[variantArray.length];
 					int x = 0;
 					for(String variantSpec : variantArray) {
-						variantIndexArray[x++] = Arrays.binarySearch(variantIndex, variantSpec);
+						//we can exclude variants that may be present in the vcf but have no 0/1 or 1/1 samples
+						//these variants will still be listed in INFO column lookups (not sample specific),
+						//so we need to manually avoid injecting negative values into this array.
+						int variantIndexArrayIndex = Arrays.binarySearch(variantIndex, variantSpec);
+						if(variantIndexArrayIndex >= 0) {
+							variantIndexArray[x++] = variantIndexArrayIndex;
+						}
 					}
-					return variantIndexArray;
+					
+					int[] compactedVariantIndexArray = new int[x];
+					System.arraycopy(variantIndexArray, 0, compactedVariantIndexArray, 0, x);
+					return compactedVariantIndexArray;
 				}
 			});
 
