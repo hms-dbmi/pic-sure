@@ -252,7 +252,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			throw new ProtocolException((ProtocolException.MISSING_DATA));
 		}
 
-		String pathName = "/search";
+		String pathName = "/search/" + properties.getTargetResourceId();
 		try {
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(searchRequest.getQuery());
