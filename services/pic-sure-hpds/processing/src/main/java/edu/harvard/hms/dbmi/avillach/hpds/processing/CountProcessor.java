@@ -72,13 +72,16 @@ public class CountProcessor extends AbstractProcessor {
 		TreeMap<String, Integer> counts = new TreeMap<>();
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
-			//breaking these statements to allow += operator to cast long to int.
-			int observationCount = 0;
-			observationCount += Arrays.stream(getCube(concept).sortedByKey()).filter(keyAndValue->{
-				return baseQueryPatientSet.contains(keyAndValue.getKey());
-			}).collect(Collectors.counting());
-			
-			counts.put(concept, observationCount);
+			try {
+				//breaking these statements to allow += operator to cast long to int.
+				int observationCount = 0;
+				observationCount += Arrays.stream(getCube(concept).sortedByKey()).filter(keyAndValue->{
+					return baseQueryPatientSet.contains(keyAndValue.getKey());
+				}).collect(Collectors.counting());
+				counts.put(concept, observationCount);
+			} catch (Exception e) {
+				counts.put(concept, -1);
+			}
 		});
 		return counts;
 	}
@@ -94,10 +97,14 @@ public class CountProcessor extends AbstractProcessor {
 		TreeMap<String, Integer> counts = new TreeMap<>();
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
-			Query safeCopy = new Query();
-			safeCopy.requiredFields = new ArrayList<String>();
-			safeCopy.requiredFields.add(concept);
-			counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+			try {
+				Query safeCopy = new Query();
+				safeCopy.requiredFields = new ArrayList<String>();
+				safeCopy.requiredFields.add(concept);
+				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+			} catch (Exception e) {
+				counts.put(concept, -1);
+			}
 		});
 		return counts;
 	}
