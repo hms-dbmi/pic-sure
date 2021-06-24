@@ -79,17 +79,23 @@ public class NewVCFLoader {
 		// Pull the INFO columns out of the headers for each walker and add all patient ids
 		walkers.parallelStream().forEach(walker -> {
 			try {
+				logger.info("Reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]");
 				walker.readHeaders(infoStoreMap);
-				allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.patientIds));
+				synchronized (allPatientIds) {
+					allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.patientIds));
+				}
 			} catch (IOException e) {
 				logger.error("Error while reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]", e);
 				System.exit(-1);
 			}
 		});
+
+		Integer[] patientIds = allPatientIds.toArray(new Integer[0]);
 		String[] allSampleIds = new String[allPatientIds.size()];
+
 		walkers.parallelStream().forEach(walker -> {
-			walker.setBitmaskOffsets(allPatientIds.toArray(new Integer[0]));
-			Integer[] patientIds = allPatientIds.toArray(new Integer[0]);
+			logger.info("Setting bitmask offsets for VCF [" + walker.vcfIndexLine.vcfPath + "]");
+			walker.setBitmaskOffsets(patientIds);
 			for (int x = 0; x < walker.vcfIndexLine.sampleIds.length; x++) {
 				allSampleIds[Arrays.binarySearch(patientIds,
 						walker.vcfIndexLine.patientIds[x])] = walker.vcfIndexLine.sampleIds[x];
