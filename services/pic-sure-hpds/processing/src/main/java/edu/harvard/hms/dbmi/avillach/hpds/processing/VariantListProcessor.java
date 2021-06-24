@@ -234,11 +234,14 @@ public class VariantListProcessor extends AbstractProcessor {
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
 
+				int patientCount = 0;
 				for(Integer patientIndex : patientIndexMap.values()) {
 					if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
+						patientCount++;
 					}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
 						patientListBuilder.append("\t1/1");
+						patientCount++;
 					}else {
 						patientListBuilder.append("\t0/0");
 					}
@@ -246,7 +249,12 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
 				BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-				int patientCount = heteroOrHomoMask.and(patientMasks).bitCount();
+				int patientCountNew = heteroOrHomoMask.and(patientMasks).bitCount();
+				log.info("patientCount = " + patientCount);
+				log.info("patientCountNew = " + patientCountNew);
+				if (patientCountNew != patientCount) {
+					throw new RuntimeException("New patient count does not match old patient count");
+				}
 
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
