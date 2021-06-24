@@ -100,9 +100,10 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  the java VM.
 	 *  
 	 *  @param Query A VCF_EXCERPT type query
+	 *  @param includePatientData whether to include patient specific data
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 */
-	public String runVcfExcerptQuery(Query query) {
+	public String runVcfExcerptQuery(Query query, boolean includePatientData) {
 		
 		if(!VCF_EXCERPT_ENABLED) {
 			log.warn("VCF_EXCERPT query attempted, but not enabled.");
@@ -157,6 +158,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		// map it to the right index in the bit mask fields.
 		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
+		BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 		int index = 2; //variant bitmasks are bookended with '11'
 
 		for(String patientId : variantStore.getPatientIds()) {
@@ -213,7 +215,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				Set<String> columnMeta = variantColumnMap.get(key);
 				if(columnMeta != null) {
 					//collect our sets to a single entry
-					builder.append("\t" +  columnMeta.stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
+					builder.append("\t" +  columnMeta.stream().map(String::toString).collect( Collectors.joining(",") ));
 				} else {
 					builder.append("\tnull");
 				}
@@ -231,30 +233,8 @@ public class VariantListProcessor extends AbstractProcessor {
 				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
 				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
-				//track the number of subjects without the variant; use a second builder to keep the column order
-				StringBuilder patientListBuilder = new StringBuilder();
-
-				int patientCount = 0;
-				for(Integer patientIndex : patientIndexMap.values()) {
-					if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
-						patientListBuilder.append("\t0/1");
-						patientCount++;
-					}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
-						patientListBuilder.append("\t1/1");
-						patientCount++;
-					}else {
-						patientListBuilder.append("\t0/0");
-					}
-				}
-
 				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
-				BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-				int patientCountNew = heteroOrHomoMask.and(patientMasks).bitCount() - 4;
-				log.info("patientCount = " + patientCount);
-				log.info("patientCountNew = " + patientCountNew);
-				if (patientCountNew != patientCount) {
-					throw new RuntimeException("New patient count does not match old patient count");
-				}
+				int patientCount = heteroOrHomoMask.and(patientMasks).bitCount() - 4;
 
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
@@ -271,8 +251,22 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				// (patients with/total) in subset   \t   (patients with/total) out of subset.
 				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (patientsWithVariantsCount - patientIndexMap.size()));
-				//then dump out the data
-				builder.append(patientListBuilder.toString());
+
+				if (includePatientData) {
+					//track the number of subjects without the variant; use a second builder to keep the column order
+					StringBuilder patientListBuilder = new StringBuilder();
+
+					for(Integer patientIndex : patientIndexMap.values()) {
+						if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
+							patientListBuilder.append("\t0/1");
+						}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
+							patientListBuilder.append("\t1/1");
+						}else {
+							patientListBuilder.append("\t0/0");
+						}
+					}
+					builder.append(patientListBuilder.toString());
+				}
 			} catch (IOException e) {
 				log.error(e);
 			}

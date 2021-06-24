@@ -55,7 +55,12 @@ public enum ResultType {
 	 * This returns quasi-VCF lines for the variants expressed in the
 	 * query.
 	 */
-	VCF_EXCERPT, 
+	VCF_EXCERPT,
+	/**
+	 * This returns quasi-VCF lines for the variants expressed in the
+	 * query without patient data.
+	 */
+	AGGREGATE_VCF_EXCERPT,
 	/**
 	 * This returns data to feed a timeline, 
 	 * TODO: add more details later.
