@@ -13,51 +13,50 @@ import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import org.apache.log4j.Logger;
+
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 
 public class VCFPerPatientInfoStoreToFBBIISConverter {
-	public static void convertAll(String inputPath, String outputPath) throws ClassNotFoundException, FileNotFoundException, IOException, InterruptedException, ExecutionException {
-		File[] inputFiles = new File(inputPath).listFiles(
-				(path)->{
-					return path.getName().endsWith("infoStore.javabin");
-				});
+	private static Logger logger = Logger.getLogger(NewVCFLoader.class);
+
+	public static void convertAll(String inputPath, String outputPath) throws ClassNotFoundException,
+			FileNotFoundException, IOException, InterruptedException, ExecutionException {
+		File[] inputFiles = new File(inputPath).listFiles((path) -> {
+			return path.getName().endsWith("infoStore.javabin");
+		});
 		Arrays.sort(inputFiles);
 
 		File outputFolder = new File(outputPath);
 
 		List<File> inputFileList = Arrays.asList(inputFiles);
-		inputFileList.stream().forEach((file)->{
+		inputFileList.stream().forEach((file) -> {
 			convert(outputFolder, file);
 		});
 	}
 
 	public static void convert(File outputFolder, File file) {
-		System.out.println("opening : " + file.getAbsolutePath());
-		try (
-				FileInputStream fisi = new FileInputStream(file);
+		logger.info("Converting InfoStore file: " + file.getAbsolutePath());
+		try (FileInputStream fisi = new FileInputStream(file);
 				GZIPInputStream gzisi = new GZIPInputStream(fisi);
-				ObjectInputStream objectInputStream = new ObjectInputStream(gzisi);
-				){
+				ObjectInputStream objectInputStream = new ObjectInputStream(gzisi);) {
 			InfoStore store = (InfoStore) objectInputStream.readObject();
 
-			if(store.allValues.size()>0) {
+			if (store.allValues.size() > 0) {
 				FileBackedByteIndexedInfoStore fbbiis = new FileBackedByteIndexedInfoStore(outputFolder, store);
 
 				writeStore(new File(outputFolder, file.getName()), fbbiis);
-				System.out.println("completed converting " + file.getAbsolutePath());				
-			}else {
-				System.out.println("Skipping empty InfoStore : " + file.getAbsolutePath());
+				logger.info("Completed converting InfoStore file: " + file.getAbsolutePath());
+			} else {
+				logger.info("Skipping empty InfoStore file: " + file.getAbsolutePath() + "");
 			}
-		}catch(FileNotFoundException e) {
-			System.out.println("file not found " + file.getAbsolutePath());
-			e.printStackTrace();
+		} catch (FileNotFoundException e) {
+			logger.error("InfoStore file not found: " + file.getAbsolutePath());
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.error("Error converting InfoStore file: " + file.getAbsolutePath());
 		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			logger.error("Error converting InfoStore file: " + file.getAbsolutePath());
 		}
 	}
 
@@ -67,9 +66,12 @@ public class VCFPerPatientInfoStoreToFBBIISConverter {
 		GZIPOutputStream gzos = new GZIPOutputStream(fos);
 		ObjectOutputStream oos = new ObjectOutputStream(gzos);
 		oos.writeObject(fbbiis);
-		oos.flush();oos.close();
-		gzos.flush(); gzos.close();
-		fos.flush();fos.close();
+		oos.flush();
+		oos.close();
+		gzos.flush();
+		gzos.close();
+		fos.flush();
+		fos.close();
 	}
 
 }
