@@ -249,7 +249,7 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
 				BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-				int patientCountNew = heteroOrHomoMask.and(patientMasks).bitCount();
+				int patientCountNew = heteroOrHomoMask.and(patientMasks).bitCount() - 4;
 				log.info("patientCount = " + patientCount);
 				log.info("patientCountNew = " + patientCountNew);
 				if (patientCountNew != patientCount) {
