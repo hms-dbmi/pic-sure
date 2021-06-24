@@ -853,7 +853,7 @@ public abstract class AbstractProcessor {
 		return unionOfInfoFilters;
 	}
 
-	private BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+	protected BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
 		StringBuilder builder = new StringBuilder("11"); //variant bitmasks are bookended with '11'
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);

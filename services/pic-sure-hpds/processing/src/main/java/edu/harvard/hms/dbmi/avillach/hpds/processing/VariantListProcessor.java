@@ -2,6 +2,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -224,33 +225,37 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				//make strings of 000100 so we can just check 'char at'
 				//so heterozygous no calls we want, homozygous no calls we don't
-				String heteroMask = masks.heterozygousMask != null? masks.heterozygousMask.toString(2) : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask.toString(2) : null;
-				String homoMask = masks.homozygousMask != null? masks.homozygousMask.toString(2) : null;
+				BigInteger heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
+				BigInteger homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
+
+				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
+				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
 				//track the number of subjects without the variant; use a second builder to keep the column order
 				StringBuilder patientListBuilder = new StringBuilder();
-				int patientCount = 0;
 
 				for(Integer patientIndex : patientIndexMap.values()) {
-					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
+					if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
 						patientListBuilder.append("\t0/1");
-						patientCount++;
-					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
+					}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
 						patientListBuilder.append("\t1/1");
-						patientCount++;
 					}else {
 						patientListBuilder.append("\t0/0");
 					}
 				}
 
+				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
+				BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+				int patientCount = heteroOrHomoMask.and(patientMasks).bitCount();
+
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 
 				Integer patientsWithVariantsCount = null;
-				if(heteroMask != null) {
-					patientsWithVariantsCount = heteroMask.length() - 4;
-				} else if (homoMask != null ) {
-					patientsWithVariantsCount = homoMask.length() - 4;
+				if(heteroMaskString != null) {
+					patientsWithVariantsCount = heteroMaskString.length() - 4;
+				} else if (homoMaskString != null ) {
+					patientsWithVariantsCount = homoMaskString.length() - 4;
 				} else {
 					patientsWithVariantsCount = -1;
 				}
@@ -273,6 +278,17 @@ public class VariantListProcessor extends AbstractProcessor {
 		}
 		log.info("Found variants " + b2.toString());
 		return builder.toString();
+	}
+
+	private BigInteger orNullableMasks(BigInteger heteroMask, BigInteger homoMask) {
+		if (heteroMask != null) {
+			if (homoMask != null) {
+				return heteroMask.or(homoMask);
+			}
+			return heteroMask;
+		} else {
+			return homoMask;
+		}
 	}
 
 	private void initializeMetadataIndex() throws IOException{
