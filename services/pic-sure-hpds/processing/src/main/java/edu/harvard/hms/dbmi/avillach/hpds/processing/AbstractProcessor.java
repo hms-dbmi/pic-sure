@@ -503,8 +503,6 @@ public abstract class AbstractProcessor {
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
 					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
-				}else {
-					log.error("No info filters included in query.");
 				}
 			}
 		}
