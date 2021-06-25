@@ -165,7 +165,9 @@ public class VariantListProcessor extends AbstractProcessor {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
 				patientIndexMap.put(patientId, index);
-				builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
+				if(includePatientData) {
+					builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
+				}
 			}
 			index++;
 
