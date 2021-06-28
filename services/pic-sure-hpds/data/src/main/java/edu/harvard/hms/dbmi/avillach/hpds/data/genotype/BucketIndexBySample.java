@@ -22,7 +22,9 @@ public class BucketIndexBySample implements Serializable {
 	public static final String INDEX_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 	private static final String STORAGE_FILE = "/opt/local/hpds/all/BucketIndexBySampleStorage.javabin";
 	private static final int CONTIG_SCALE = 1000000;
-	
+	// TODO: CONFIGURABLE
+	public static final int PATIENT_CACHE_SIZE = 5000;
+
 	//patient ID -> hash set contains bucket identifier
 	
 	//bucket is a region of 1000 base pairs
@@ -197,7 +199,7 @@ public class BucketIndexBySample implements Serializable {
 
 
 	transient LoadingCache<Integer, HashSet<Integer>> bucketSetCache = CacheBuilder.newBuilder()
-			.maximumSize(1000).build(new CacheLoader<Integer, HashSet<Integer>>() {
+			.maximumSize(PATIENT_CACHE_SIZE).build(new CacheLoader<Integer, HashSet<Integer>>() {
 				@Override
 				public HashSet<Integer> load(Integer patientId) throws Exception {
 					return  fbbis.get(patientId);
@@ -208,7 +210,7 @@ public class BucketIndexBySample implements Serializable {
 		//  THIS IS TEMPORARY
 		if(bucketSetCache==null) {
 			bucketSetCache = CacheBuilder.newBuilder()
-					.maximumSize(1000).build(new CacheLoader<Integer, HashSet<Integer>>() {
+					.maximumSize(PATIENT_CACHE_SIZE).build(new CacheLoader<Integer, HashSet<Integer>>() {
 						@Override
 						public HashSet<Integer> load(Integer patientId) throws Exception {
 							return  fbbis.get(patientId);
