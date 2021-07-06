@@ -235,6 +235,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
 				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
+				// Patient count = (hetero mask | homo mask) & patient mask
 				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
 				int patientCount = heteroOrHomoMask.and(patientMasks).bitCount() - 4;
 
