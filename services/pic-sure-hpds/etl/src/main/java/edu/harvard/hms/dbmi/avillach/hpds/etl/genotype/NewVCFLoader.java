@@ -400,7 +400,7 @@ public class NewVCFLoader {
 				}
 			}
 			
-			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
+			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 3;
 		
 			if(!formatIsGTOnly) {
 				//index is sample index in vcf
