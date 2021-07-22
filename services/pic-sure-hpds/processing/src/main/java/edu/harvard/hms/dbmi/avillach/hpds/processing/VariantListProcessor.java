@@ -63,8 +63,9 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * 
 	 * @param incomingQuery
 	 * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
+	 * @throws IOException 
 	 */
-	public String runVariantListQuery(Query query) {
+	public String runVariantListQuery(Query query) throws IOException {
 		
 		if(!VARIANT_LIST_ENABLED) {
 			log.warn("VARIANT_LIST query attempted, but not enabled.");
@@ -79,8 +80,9 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * 
 	 * @param incomingQuery
 	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
+	 * @throws IOException 
 	 */
-	public int runVariantCount(Query query) {
+	public int runVariantCount(Query query) throws IOException {
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			return getVariantList(query).size();
 		}
@@ -102,8 +104,9 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  @param Query A VCF_EXCERPT type query
 	 *  @param includePatientData whether to include patient specific data
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
+	 * @throws IOException 
 	 */
-	public String runVcfExcerptQuery(Query query, boolean includePatientData) {
+	public String runVcfExcerptQuery(Query query, boolean includePatientData) throws IOException {
 		
 		if(!VCF_EXCERPT_ENABLED) {
 			log.warn("VCF_EXCERPT query attempted, but not enabled.");
@@ -166,7 +169,16 @@ public class VariantListProcessor extends AbstractProcessor {
 			if(patientSubset.contains(idInt)){
 				patientIndexMap.put(patientId, index);
 				if(includePatientData) {
-					builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
+					if(idCube==null) {
+						builder.append("\t" + patientId);
+					} else {
+						String value = idCube.getValueForKey(idInt);
+						if(value==null) {
+							builder.append("\t" + patientId);
+						}else {
+							builder.append("\t" + idCube.getValueForKey(idInt));
+						}
+					}
 				}
 			}
 			index++;

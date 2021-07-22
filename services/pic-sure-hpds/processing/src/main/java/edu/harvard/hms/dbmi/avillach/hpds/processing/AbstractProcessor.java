@@ -766,11 +766,11 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	protected Collection<String> getVariantList(Query query){
+	protected Collection<String> getVariantList(Query query) throws IOException{
 		return processVariantList(query);
 	}
 
-	private Collection<String> processVariantList(Query query) {
+	private Collection<String> processVariantList(Query query) throws IOException {
 		if(query.variantInfoFilters != null && 
 				(!query.variantInfoFilters.isEmpty() && 
 						query.variantInfoFilters.stream().anyMatch((entry)->{
@@ -805,7 +805,8 @@ public abstract class AbstractProcessor {
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-
+			log.info("Variants in scope: " + variantsInScope.size());
+			
 			if(variantsInScope.size()<100000) {
 				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
