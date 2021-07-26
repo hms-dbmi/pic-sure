@@ -169,15 +169,16 @@ public class BucketIndexBySample implements Serializable {
 		return (bucketList.size()+4) - Collections.binarySearch(bucketList, bucketKey) - 2;
 	}
 
+	private char[] _emptyBucketMaskChar = null;
+
 	/**
 	 * Produce an empty patientBucketMask char[] by cloning a momoized empty patientBucketMask after the
 	 * first has been created.
 	 * 
 	 * @return
 	 */
-	private char[] emptyBucketMaskChar = null;
 	private char[] emptyBucketMaskChar() {
-		if(emptyBucketMaskChar == null) {
+		if(_emptyBucketMaskChar == null) {
 			char[] bucketMaskChar = new char[bucketList.size()+4];
 			bucketMaskChar[0] = '1';
 			bucketMaskChar[1]  = '1'; 
@@ -186,9 +187,9 @@ public class BucketIndexBySample implements Serializable {
 			for(int  x = 2;x<bucketMaskChar.length-2;x++) {
 				bucketMaskChar[x] = '0';
 			}
-			emptyBucketMaskChar = bucketMaskChar;
+			_emptyBucketMaskChar = bucketMaskChar;
 		}
-		return emptyBucketMaskChar.clone();
+		return _emptyBucketMaskChar.clone();
 	}
 
 }
