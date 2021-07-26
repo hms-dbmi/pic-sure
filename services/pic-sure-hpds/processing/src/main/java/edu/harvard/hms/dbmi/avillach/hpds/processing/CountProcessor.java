@@ -129,7 +129,13 @@ public class CountProcessor extends AbstractProcessor {
 	public Map<String, Object> runVariantCount(Query query) {
 		TreeMap<String, Object> response = new TreeMap<String, Object>();
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			response.put("count", getVariantList(query).size());
+			try {
+				response.put("count", getVariantList(query).size());
+			} catch (IOException e) {
+				e.printStackTrace();
+				response.put("count", "0");
+				response.put("message", "An unexpected error occurred while processing the query, please contact us to let us know using the Contact Us option in the Help menu.");
+			}
 			response.put("message", "Query ran successfully");
 		} else {
 			response.put("count", "0");

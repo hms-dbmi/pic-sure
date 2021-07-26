@@ -42,7 +42,7 @@
 			<artifactId>fastcsv</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>oracle</groupId>
+			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc6</artifactId>
 		</dependency>
 		<dependency>

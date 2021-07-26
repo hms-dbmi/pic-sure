@@ -30,7 +30,7 @@
 			<artifactId>guava</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>oracle</groupId>
+			<groupId>com.oracle.database.jdbc</groupId>
 			<artifactId>ojdbc6</artifactId>
 		</dependency>
 		<dependency>
@@ -250,6 +250,26 @@
 							</descriptorRefs>
 							<classifier>RemoveConceptFromMetadata</classifier>
 							<finalName>RemoveConceptFromMetadata</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>HideAnnotationCategoryValue</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.data.genotype.util.HideAnnotationCategoryValue</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>HideAnnotationCategoryValue</classifier>
+							<finalName>HideAnnotationCategoryValue</finalName>
 						</configuration>
 						<phase>package</phase>
 						<goals>

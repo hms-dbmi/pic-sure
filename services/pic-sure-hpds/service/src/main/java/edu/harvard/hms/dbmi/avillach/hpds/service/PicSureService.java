@@ -315,7 +315,11 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery)).build();
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, true)).build();
+				}
+
+				case AGGREGATE_VCF_EXCERPT : {
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, false)).build();
 				}
 				
 				case TIMELINE_DATA : {

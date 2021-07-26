@@ -2,6 +2,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -62,8 +63,9 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * 
 	 * @param incomingQuery
 	 * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
+	 * @throws IOException 
 	 */
-	public String runVariantListQuery(Query query) {
+	public String runVariantListQuery(Query query) throws IOException {
 		
 		if(!VARIANT_LIST_ENABLED) {
 			log.warn("VARIANT_LIST query attempted, but not enabled.");
@@ -78,8 +80,9 @@ public class VariantListProcessor extends AbstractProcessor {
 	 * 
 	 * @param incomingQuery
 	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
+	 * @throws IOException 
 	 */
-	public int runVariantCount(Query query) {
+	public int runVariantCount(Query query) throws IOException {
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			return getVariantList(query).size();
 		}
@@ -99,9 +102,11 @@ public class VariantListProcessor extends AbstractProcessor {
 	 *  the java VM.
 	 *  
 	 *  @param Query A VCF_EXCERPT type query
+	 *  @param includePatientData whether to include patient specific data
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
+	 * @throws IOException 
 	 */
-	public String runVcfExcerptQuery(Query query) {
+	public String runVcfExcerptQuery(Query query, boolean includePatientData) throws IOException {
 		
 		if(!VCF_EXCERPT_ENABLED) {
 			log.warn("VCF_EXCERPT query attempted, but not enabled.");
@@ -156,13 +161,25 @@ public class VariantListProcessor extends AbstractProcessor {
 		// map it to the right index in the bit mask fields.
 		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
+		BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 		int index = 2; //variant bitmasks are bookended with '11'
 
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
 				patientIndexMap.put(patientId, index);
-				builder.append("\t" + (idCube == null ? patientId :  idCube.getValueForKey(idInt)));
+				if(includePatientData) {
+					if(idCube==null) {
+						builder.append("\t" + patientId);
+					} else {
+						String value = idCube.getValueForKey(idInt);
+						if(value==null) {
+							builder.append("\t" + patientId);
+						}else {
+							builder.append("\t" + idCube.getValueForKey(idInt));
+						}
+					}
+				}
 			}
 			index++;
 
@@ -212,7 +229,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				Set<String> columnMeta = variantColumnMap.get(key);
 				if(columnMeta != null) {
 					//collect our sets to a single entry
-					builder.append("\t" +  columnMeta.stream().map( o ->{ return o.toString(); }).collect( Collectors.joining(",") ));
+					builder.append("\t" +  columnMeta.stream().map(String::toString).collect( Collectors.joining(",") ));
 				} else {
 					builder.append("\tnull");
 				}
@@ -224,33 +241,24 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				//make strings of 000100 so we can just check 'char at'
 				//so heterozygous no calls we want, homozygous no calls we don't
-				String heteroMask = masks.heterozygousMask != null? masks.heterozygousMask.toString(2) : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask.toString(2) : null;
-				String homoMask = masks.homozygousMask != null? masks.homozygousMask.toString(2) : null;
+				BigInteger heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
+				BigInteger homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
 
-				//track the number of subjects without the variant; use a second builder to keep the column order
-				StringBuilder patientListBuilder = new StringBuilder();
-				int patientCount = 0;
+				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
+				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
-				for(Integer patientIndex : patientIndexMap.values()) {
-					if(heteroMask != null && '1' == heteroMask.charAt(patientIndex)) {
-						patientListBuilder.append("\t0/1");
-						patientCount++;
-					}else if(homoMask != null && '1' == homoMask.charAt(patientIndex)) {
-						patientListBuilder.append("\t1/1");
-						patientCount++;
-					}else {
-						patientListBuilder.append("\t0/0");
-					}
-				}
+				// Patient count = (hetero mask | homo mask) & patient mask
+				BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
+				int patientCount = heteroOrHomoMask.and(patientMasks).bitCount() - 4;
 
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 
 				Integer patientsWithVariantsCount = null;
-				if(heteroMask != null) {
-					patientsWithVariantsCount = heteroMask.length() - 4;
-				} else if (homoMask != null ) {
-					patientsWithVariantsCount = homoMask.length() - 4;
+				if(heteroMaskString != null) {
+					patientsWithVariantsCount = heteroMaskString.length() - 4;
+				} else if (homoMaskString != null ) {
+					patientsWithVariantsCount = homoMaskString.length() - 4;
 				} else {
 					patientsWithVariantsCount = -1;
 				}
@@ -258,8 +266,22 @@ public class VariantListProcessor extends AbstractProcessor {
 
 				// (patients with/total) in subset   \t   (patients with/total) out of subset.
 				builder.append("\t"+ patientCount + "/" + patientIndexMap.size() + "\t" + (bitCount - patientCount) + "/" + (patientsWithVariantsCount - patientIndexMap.size()));
-				//then dump out the data
-				builder.append(patientListBuilder.toString());
+
+				if (includePatientData) {
+					//track the number of subjects without the variant; use a second builder to keep the column order
+					StringBuilder patientListBuilder = new StringBuilder();
+
+					for(Integer patientIndex : patientIndexMap.values()) {
+						if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
+							patientListBuilder.append("\t0/1");
+						}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
+							patientListBuilder.append("\t1/1");
+						}else {
+							patientListBuilder.append("\t0/0");
+						}
+					}
+					builder.append(patientListBuilder.toString());
+				}
 			} catch (IOException e) {
 				log.error(e);
 			}
@@ -273,6 +295,17 @@ public class VariantListProcessor extends AbstractProcessor {
 		}
 		log.info("Found variants " + b2.toString());
 		return builder.toString();
+	}
+
+	private BigInteger orNullableMasks(BigInteger heteroMask, BigInteger homoMask) {
+		if (heteroMask != null) {
+			if (homoMask != null) {
+				return heteroMask.or(homoMask);
+			}
+			return heteroMask;
+		} else {
+			return homoMask;
+		}
 	}
 
 	private void initializeMetadataIndex() throws IOException{

@@ -487,6 +487,7 @@ public abstract class AbstractProcessor {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
+				// todo: update this to count the variants in all sets
 				log.info("Found " + variantSets.size() + " varients for patient identification");
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
@@ -765,11 +766,11 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	protected Collection<String> getVariantList(Query query){
+	protected Collection<String> getVariantList(Query query) throws IOException{
 		return processVariantList(query);
 	}
 
-	private Collection<String> processVariantList(Query query) {
+	private Collection<String> processVariantList(Query query) throws IOException {
 		if(query.variantInfoFilters != null && 
 				(!query.variantInfoFilters.isEmpty() && 
 						query.variantInfoFilters.stream().anyMatch((entry)->{
@@ -804,7 +805,8 @@ public abstract class AbstractProcessor {
 			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-
+			log.info("Variants in scope: " + variantsInScope.size());
+			
 			if(variantsInScope.size()<100000) {
 				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
@@ -851,7 +853,7 @@ public abstract class AbstractProcessor {
 		return unionOfInfoFilters;
 	}
 
-	private BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+	protected BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
 		StringBuilder builder = new StringBuilder("11"); //variant bitmasks are bookended with '11'
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
