@@ -28,6 +28,11 @@ public enum ResultType {
 	 */
 	OBSERVATION_COUNT, 
 	/**
+	 * Return the number of observations for included patients and
+	 * included fields, broken up across the included cross count fields.
+	 */
+	OBSERVATION_CROSS_COUNT, 
+	/**
 	 * This was developed for UDN, but is completely useless and should
 	 * be deleted.
 	 */
@@ -55,7 +60,12 @@ public enum ResultType {
 	 * This returns quasi-VCF lines for the variants expressed in the
 	 * query.
 	 */
-	VCF_EXCERPT, 
+	VCF_EXCERPT,
+	/**
+	 * This returns quasi-VCF lines for the variants expressed in the
+	 * query without patient data.
+	 */
+	AGGREGATE_VCF_EXCERPT,
 	/**
 	 * This returns data to feed a timeline, 
 	 * TODO: add more details later.

@@ -153,31 +153,21 @@ public class PicSureService implements IResourceRS {
 				}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) 
 				: allColumns;
 
-				//				// Gene Values
-				//				Map<String, GeneSpec> geneResults = new GeneLibrary().geneNameSearch(searchJson.getQuery().toString());
-				//				List<Map<String, Object>> resultMap = geneResults.values().parallelStream().map((geneSpec)->{
-				//					Set ranges = geneSpec.ranges.asRanges();
-				//					return ImmutableMap.of("name", geneSpec.name, "chr", geneSpec.chromosome, "ranges", 
-				//							ranges.stream().map((range)->{
-				//								Range range2 = (Range) range;
-				//								return ImmutableMap.of("start", range2.lowerEndpoint(), "end", range2.upperEndpoint());
-				//							}).collect(Collectors.toList()));
-				//				}).collect(Collectors.toList());
-
 				// Info Values
 				Map<String, Map> infoResults = new TreeMap<String, Map>();
-				AbstractProcessor.infoStoreColumns.parallelStream().forEach((String infoColumn)->{
+				AbstractProcessor.infoStoreColumns.stream().forEach((String infoColumn)->{
 					FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
 					if(store!=null) {
 						String query = searchJson.getQuery().toString();
-						List<String> searchResults = store.search(query);
-						boolean storeIsNumeric = store.isContinuous;
-						if( ! searchResults.isEmpty()) {
-							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", searchResults, "continuous", storeIsNumeric));
-						}
 						String lowerCase = query.toLowerCase();
+						boolean storeIsNumeric = store.isContinuous;
 						if(store.description.toLowerCase().contains(lowerCase) || store.column_key.toLowerCase().contains(lowerCase)) {
 							infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", store.isContinuous? new ArrayList<String>() : store.allValues.keys(), "continuous", storeIsNumeric));
+						} else {
+							List<String> searchResults = store.search(query);
+							if( ! searchResults.isEmpty()) {
+								infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values", searchResults, "continuous", storeIsNumeric));
+							}
 						}
 					}
 				});
@@ -312,6 +302,10 @@ public class PicSureService implements IResourceRS {
 					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
 				}
 				
+				case OBSERVATION_CROSS_COUNT : {
+					return Response.ok(countProcessor.runObservationCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+				}
+				
 				case VARIANT_COUNT_FOR_QUERY : {
 					return Response.ok(countProcessor.runVariantCount(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 				}
@@ -321,7 +315,11 @@ public class PicSureService implements IResourceRS {
 				}
 				
 				case VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery)).build();
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, true)).build();
+				}
+
+				case AGGREGATE_VCF_EXCERPT : {
+					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, false)).build();
 				}
 				
 				case TIMELINE_DATA : {

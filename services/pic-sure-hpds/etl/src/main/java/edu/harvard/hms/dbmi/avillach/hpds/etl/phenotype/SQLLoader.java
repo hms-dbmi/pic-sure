@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
+import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
 import org.apache.commons.io.IOUtils;
@@ -47,6 +48,7 @@ public class SQLLoader {
 		props.load(new FileInputStream("/opt/local/hpds/sql.properties"));
 		template = new JdbcTemplate(new DriverManagerDataSource(prop("datasource.url"), prop("datasource.user"), prop("datasource.password")));
 		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		Crypto.loadDefaultKey();
 		initialLoad();
 		store.saveStore();
 		store.dumpStats();
