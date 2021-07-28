@@ -77,13 +77,11 @@ public class NewVCFLoader {
 		TreeSet<Integer> allPatientIds = new TreeSet<Integer>();
 
 		// Pull the INFO columns out of the headers for each walker and add all patient ids
-		walkers.parallelStream().forEach(walker -> {
+		walkers.stream().forEach(walker -> {
 			try {
 				logger.info("Reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]");
 				walker.readHeaders(infoStoreMap);
-				synchronized (allPatientIds) {
-					allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.patientIds));
-				}
+				allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.patientIds));
 			} catch (IOException e) {
 				logger.error("Error while reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]", e);
 				System.exit(-1);
@@ -431,6 +429,8 @@ public class NewVCFLoader {
 				}
 			}
 
+			// Because formatStartIndex is the index of the preceding \t and startOffsetForLine is
+			// after the next \t, this has to be 4 even though "\tGT" is only 3 characters.
 			boolean formatIsGTOnly = (startOffsetForLine[0] - formatStartIndex) == 4;
 
 			if (!formatIsGTOnly) {
@@ -459,8 +459,10 @@ public class NewVCFLoader {
 					setMasksForSample(zygosityMaskStrings, index, startOffsetForLine[0] + vcfOffsets[index]);
 				});
 			}
+			String[] infoColumns = currentLineSplit[7].split("[;&]");
+			String currentSpecNotation = currentSpecNotation();
 			infoStores.values().parallelStream().forEach(infoStore -> {
-				infoStore.processRecord(currentSpecNotation(), currentLineSplit[7].split("[;&]"));
+				infoStore.processRecord(currentSpecNotation, infoColumns);
 			});
 		}
 
