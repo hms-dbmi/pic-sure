@@ -134,6 +134,7 @@ public class NewVCFLoader {
 			if (lastContigProcessed == null) {
 				lastContigProcessed = lowestWalker.currentContig;
 			}
+
 			flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], false,
 					lowestWalker.currentLine);
 			lastContigProcessed = lowestWalker.currentContig;
@@ -165,6 +166,7 @@ public class NewVCFLoader {
 				return walker.hasNext;
 			}).collect(Collectors.toList());
 		}
+
 		flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], true, null);
 
 		shutdownChunkWriteExecutor();
@@ -177,12 +179,9 @@ public class NewVCFLoader {
 
 		convertInfoStoresToByteIndexed();
 
-		if (Level.DEBUG.equals(logger.getEffectiveLevel())) {
+		if (logger.isDebugEnabled()) {
 			// Log out the first and last 50 variants
 			int[] count = { 0 };
-			// Integer[] allPatientIdsArray = allPatientIds.toArray(new Integer[0]);
-			// Integer[] patientIds = Arrays.stream(store.getPatientIds()).map((id)->{return
-			// Integer.parseInt(id);}).collect(Collectors.toList()).toArray(new Integer[0]);
 			for (String contig : store.variantMaskStorage.keySet()) {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage
