@@ -60,6 +60,31 @@ public class CountProcessor extends AbstractProcessor {
 		});
 		return observationCount[0];
 	}
+	
+	/**
+	 * Returns a separate observation count for each field in query.crossCountFields when that field is added
+	 * as a requiredFields entry for the base query.
+	 * 
+	 * @param query
+	 * @return
+	 */
+	public Map<String, Integer> runObservationCrossCounts(Query query) {
+		TreeMap<String, Integer> counts = new TreeMap<>();
+		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
+		query.crossCountFields.parallelStream().forEach((String concept)->{
+			try {
+				//breaking these statements to allow += operator to cast long to int.
+				int observationCount = 0;
+				observationCount += Arrays.stream(getCube(concept).sortedByKey()).filter(keyAndValue->{
+					return baseQueryPatientSet.contains(keyAndValue.getKey());
+				}).collect(Collectors.counting());
+				counts.put(concept, observationCount);
+			} catch (Exception e) {
+				counts.put(concept, -1);
+			}
+		});
+		return counts;
+	}
 
 	/**
 	 * Returns a separate count for each field in query.crossCountFields when that field is added
@@ -72,10 +97,14 @@ public class CountProcessor extends AbstractProcessor {
 		TreeMap<String, Integer> counts = new TreeMap<>();
 		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
 		query.crossCountFields.parallelStream().forEach((String concept)->{
-			Query safeCopy = new Query();
-			safeCopy.requiredFields = new ArrayList<String>();
-			safeCopy.requiredFields.add(concept);
-			counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+			try {
+				Query safeCopy = new Query();
+				safeCopy.requiredFields = new ArrayList<String>();
+				safeCopy.requiredFields.add(concept);
+				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+			} catch (Exception e) {
+				counts.put(concept, -1);
+			}
 		});
 		return counts;
 	}
@@ -100,7 +129,13 @@ public class CountProcessor extends AbstractProcessor {
 	public Map<String, Object> runVariantCount(Query query) {
 		TreeMap<String, Object> response = new TreeMap<String, Object>();
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
-			response.put("count", getVariantList(query).size());
+			try {
+				response.put("count", getVariantList(query).size());
+			} catch (IOException e) {
+				e.printStackTrace();
+				response.put("count", "0");
+				response.put("message", "An unexpected error occurred while processing the query, please contact us to let us know using the Contact Us option in the Help menu.");
+			}
 			response.put("message", "Query ran successfully");
 		} else {
 			response.put("count", "0");
