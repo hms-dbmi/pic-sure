@@ -91,7 +91,7 @@ public class Query {
 			break;
 		default:
 			//no logic here; all enum values should be present above
-			System.out.println("Foratting not supported for type " + expectedResultType);
+			System.out.println("Formatting not supported for type " + expectedResultType);
 		}
 
 		writePartFormat("Required Fields", requiredFields, builder, false);

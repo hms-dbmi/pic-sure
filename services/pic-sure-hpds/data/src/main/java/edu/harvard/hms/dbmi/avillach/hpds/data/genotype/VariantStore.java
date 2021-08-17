@@ -19,7 +19,7 @@ import org.apache.log4j.Logger;
 
 import com.google.common.collect.RangeSet;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantMaskBucketHolder;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class VariantStore implements Serializable {
@@ -98,7 +98,7 @@ public class VariantStore implements Serializable {
 		return patientIds;
 	}
 
-	public VariantMasks getMasks(String variant, VariantMaskBucketHolder bucketCache) throws IOException {
+	public VariantMasks getMasks(String variant, VariantBucketHolder<VariantMasks> bucketCache) throws IOException {
 		String[] segments = variant.split(",");
 		if (segments.length < 2) {
 			log.error("Less than 2 segments found in this variant : " + variant);
@@ -108,19 +108,19 @@ public class VariantStore implements Serializable {
 		String contig = segments[0];
 
 		if (Level.DEBUG.equals(log.getEffectiveLevel())) {
-			log.debug("Getting masks for variant " + variant + "  Test " + (bucketCache.lastSetOfVariants != null
+			log.debug("Getting masks for variant " + variant + "  Test " + (bucketCache.lastValue != null
 					&& contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
 		}
 
-		if (bucketCache.lastSetOfVariants != null && contig.contentEquals(bucketCache.lastContig)
+		if (bucketCache.lastValue != null && contig.contentEquals(bucketCache.lastContig)
 				&& chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
-			bucketCache.lastSetOfVariants = variantMaskStorage.get(contig).get(chrOffset);
+			bucketCache.lastValue = variantMaskStorage.get(contig).get(chrOffset);
 			bucketCache.lastContig = contig;
 			bucketCache.lastChunkOffset = chrOffset;
 		}
-		return bucketCache.lastSetOfVariants == null ? null : bucketCache.lastSetOfVariants.get(variant);
+		return bucketCache.lastValue == null ? null : bucketCache.lastValue.get(variant);
 	}
 
 	public String[] getHeaders() {
