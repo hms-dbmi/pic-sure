@@ -141,20 +141,31 @@ public class VariantMetadataIndex implements Serializable {
 		
 		for(String contig : loadingMap.keySet()) {
 			log.info("writing contig " + contig);
-			String filePath = fileStoragePrefix + "_" + contig + ".bin";
 			
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> ContigFbbis = new FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>>(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
-			indexMap.put(contig, ContigFbbis);
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> contigFbbis = indexMap.get(contig);
+			if(contigFbbis == null) {
+				String filePath = fileStoragePrefix + "_" + contig + ".bin";
+				contigFbbis = new FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>>(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
+				indexMap.put(contig, contigFbbis);
+			}
 			
 			ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> contigMap = loadingMap.get(contig);
 			for(Integer bucketNumber : contigMap.keySet()) {
-				ContigFbbis.put(bucketNumber, contigMap.get(bucketNumber));
+				contigFbbis.put(bucketNumber, contigMap.get(bucketNumber));
 			}
 			
-			ContigFbbis.complete();
-			log.info("Saved FBBIS for " + contig);
+			log.info("Saved " + contig + " to FBBIS");
 		}
 		//now reset the map
 		loadingMap = new HashMap<String,  ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> >();
+	}
+	
+	public void complete() {
+	
+		for(String contig : indexMap.keySet()) {
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> contigFbbis = indexMap.get(contig);
+			contigFbbis.complete();
+		}
+		
 	}
 }
