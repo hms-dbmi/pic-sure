@@ -90,7 +90,7 @@ public class VariantMetadataLoader {
 			}
 		}
 		
-		metadataIndex.flush(); 
+		metadataIndex.complete(); 
 		
 		//store this in a path per contig (or a preset path 
 		String binfilePath = variantIndexPathForTests == null ?  VariantMetadataIndex.VARIANT_METADATA_BIN_FILE : variantIndexPathForTests;

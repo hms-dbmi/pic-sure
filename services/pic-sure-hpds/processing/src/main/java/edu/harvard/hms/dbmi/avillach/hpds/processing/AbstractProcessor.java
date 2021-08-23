@@ -480,8 +480,8 @@ public abstract class AbstractProcessor {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
 				ArrayList<Set<String>> variantSets = new ArrayList<>();
 				addVariantsMatchingFilters(filter, variantSets);
-				log.info("Found " + variantSets.size() + " groups of sets for patient identification");
-				log.info("found " + variantSets.stream().collect(Collectors.summingInt(set->set.size())) + "variants for identification");
+//				log.info("Found " + variantSets.size() + " groups of sets for patient identification");
+				log.info("found " + variantSets.stream().collect(Collectors.summingInt(set->set.size())) + " variants for identification");
 				if(!variantSets.isEmpty()) {
 					// INTERSECT all the variant sets.
 					Set<String> intersectionOfInfoFilters = variantSets.get(0);
@@ -550,7 +550,7 @@ public abstract class AbstractProcessor {
 			log.info("Awaiting completion of variant index");
 		}
 		
-		log.info("Found " + numVariants + " total variants.");
+		log.info("Found " + numVariants.length + " total variants.");
 
 		variantIndex = new String[numVariants[0]];
 
@@ -786,10 +786,11 @@ public abstract class AbstractProcessor {
 							Arrays.asList(variantStore.getPatientIds()).stream()
 							.map((id)->{return Integer.parseInt(id.trim());})
 							.collect(Collectors.toList())));
-			log.info("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			// If we have all patients then no variants would be filtered, so no need to do further processing
 			if(patientSubset.size()==variantStore.getPatientIds().length) {
+				log.info("query selects all patient IDs, returning....");
 				return new ArrayList<String>(unionOfInfoFilters);
 			}
 
@@ -858,7 +859,7 @@ public abstract class AbstractProcessor {
 		}
 		builder.append("11"); // masks are bookended with '11' set this so we don't count those
 
-		log.info("PATIENT MASK: " + builder.toString());
+		log.debug("PATIENT MASK: " + builder.toString());
 
 		BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 		return patientMasks;

@@ -77,7 +77,17 @@ public class VariantMetadataIndex implements Serializable {
 				bucketCache.lastContig = contig;
 				bucketCache.lastChunkOffset = chrOffset;
 			}
-			return bucketCache.lastValue != null ? bucketCache.lastValue.get(variantSpec) :  new String[0];
+			
+			if( bucketCache.lastValue != null) {
+				if(bucketCache.lastValue.get(variantSpec) == null) {
+					log.warn("No variant data found for spec " + variantSpec);
+					return new String[0];
+				}
+				return  bucketCache.lastValue.get(variantSpec);
+			}
+			log.warn("No bucket found for spec " + variantSpec + " in bucket " + chrOffset);
+			return new String[0];
+		
 		} catch (IOException e) {
 			log.warn("IOException caught looking up variantSpec : " + variantSpec, e);
 			return new String[0];
@@ -85,6 +95,9 @@ public class VariantMetadataIndex implements Serializable {
 	}
 
 	public Map<String, String[]> findByMultipleVariantSpec(Collection<String> varientSpecList) {
+		
+//		log.info("SPEC list" + Arrays.deepToString(varientSpecList.toArray()));
+		
 		VariantBucketHolder<String[]> bucketCache = new VariantBucketHolder<String[]>();
 		return varientSpecList.stream().collect(Collectors.toMap(
 				variant->{return variant;},
@@ -144,6 +157,7 @@ public class VariantMetadataIndex implements Serializable {
 			
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> contigFbbis = indexMap.get(contig);
 			if(contigFbbis == null) {
+				log.info("creating new file for " + contig);
 				String filePath = fileStoragePrefix + "_" + contig + ".bin";
 				contigFbbis = new FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>>(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
 				indexMap.put(contig, contigFbbis);
@@ -151,7 +165,15 @@ public class VariantMetadataIndex implements Serializable {
 			
 			ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> contigMap = loadingMap.get(contig);
 			for(Integer bucketNumber : contigMap.keySet()) {
-				contigFbbis.put(bucketNumber, contigMap.get(bucketNumber));
+				//make sure we don't lose any existing data
+				ConcurrentHashMap<String, String[]> bucketStorage = contigFbbis.get(bucketNumber);
+				if(bucketStorage == null) {
+					bucketStorage = contigMap.get(bucketNumber);
+				} else {
+					bucketStorage.putAll(contigMap.get(bucketNumber));
+				}
+				
+				contigFbbis.put(bucketNumber, bucketStorage);
 			}
 			
 			log.info("Saved " + contig + " to FBBIS");
@@ -160,7 +182,8 @@ public class VariantMetadataIndex implements Serializable {
 		loadingMap = new HashMap<String,  ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> >();
 	}
 	
-	public void complete() {
+	public void complete() throws IOException {
+		flush();
 	
 		for(String contig : indexMap.keySet()) {
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> contigFbbis = indexMap.get(contig);
