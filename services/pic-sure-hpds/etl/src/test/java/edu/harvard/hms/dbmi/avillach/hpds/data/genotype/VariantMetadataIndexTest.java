@@ -16,6 +16,7 @@ import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -26,6 +27,7 @@ public class VariantMetadataIndexTest {
 	//From file 3 14	21616876	rs549724318	G	A
 	private VariantMetadataIndex vmi;
 	public static String binFile = "target/VariantMetadata.javabin";
+	VariantBucketHolder<String[]> bucketCache = new VariantBucketHolder<String[]>();
 
 	@Before
 	public void initialize() throws IOException, ClassNotFoundException {
@@ -35,7 +37,6 @@ public class VariantMetadataIndexTest {
 			}catch(Exception e) {
 				e.printStackTrace();
 			}
-			vmi.initializeRead();			
 		} 
 	}
 	
@@ -46,21 +47,21 @@ public class VariantMetadataIndexTest {
 	
 	@Test
 	public void test_2a_variantFromFile_1_WasLoaded() {
-		String[] data = vmi.findBySingleVariantSpec("14,19038291,C,A"); 
+		String[] data = vmi.findBySingleVariantSpec("14,19038291,C,A", bucketCache); 
 		String[] expecteds = {"AC=14;AF=2.79553e-03;NS=2504;AN=5008;EAS_AF=0.00000e+00;EUR_AF=1.09000e-02;AFR_AF=0.00000e+00;AMR_AF=4.30000e-03;SAS_AF=0.00000e+00;DP=32694;AA=.|||;VT=SNP"};
 		assertArrayEquals("The expected values were not found.", expecteds, data);
 	}
 
 	@Test
 	public void test_2b_variantFromFile_2_WasLoaded() {
-		String[] data = vmi.findBySingleVariantSpec("14,21089541,A,G"); 
+		String[] data = vmi.findBySingleVariantSpec("14,21089541,A,G", bucketCache); 
 		String[] expecteds = {"AC=20;AF=3.99361e-03;NS=2504;AN=5008;EAS_AF=0.00000e+00;EUR_AF=0.00000e+00;AFR_AF=1.44000e-02;AMR_AF=1.40000e-03;SAS_AF=0.00000e+00;DP=18507;AA=A|||;VT=SNP"};
 		assertArrayEquals("The expected values were not found.", expecteds, data);
 	}
 
 	@Test
 	public void test_2c_variantFromFile_3_WasNotLoaded() {
-		String[] data = vmi.findBySingleVariantSpec("14,21616876,G,A"); 
+		String[] data = vmi.findBySingleVariantSpec("14,21616876,G,A", bucketCache); 
 		String[] expecteds = {};
 		assertArrayEquals("The expected values were not found.", expecteds, data);
 	}
