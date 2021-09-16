@@ -597,10 +597,15 @@ public class NewVCFLoader {
 		}
 	}
 
-	private static final int FILE_COLUMN = 0, CHROMOSOME_COLUMN = 1, ANNOTATED_FLAG_COLUMN = 2, GZIP_FLAG_COLUMN = 3,
-			SAMPLE_IDS_COLUMN = 4, PATIENT_IDS_COLUMN = 5,
-			// These columns are to support a future feature, ignore them for now.
-			SAMPLE_RELATIONSHIPS_COLUMN = 6, RELATED_SAMPLE_IDS_COLUMN = 7;
+	private static final int FILE_COLUMN = 0;
+	private static final int CHROMOSOME_COLUMN = 1;
+	private static final int ANNOTATED_FLAG_COLUMN = 2;
+	private static final int GZIP_FLAG_COLUMN = 3;
+	private static final int SAMPLE_IDS_COLUMN = 4;
+	private static final int PATIENT_IDS_COLUMN = 5;
+	// These columns are to support a future feature, ignore them for now.
+	private static final int SAMPLE_RELATIONSHIPS_COLUMN = 6;
+	private static final int RELATED_SAMPLE_IDS_COLUMN = 7;
 
 	private static class VCFIndexLine implements Comparable<VCFIndexLine> {
 		String vcfPath;
