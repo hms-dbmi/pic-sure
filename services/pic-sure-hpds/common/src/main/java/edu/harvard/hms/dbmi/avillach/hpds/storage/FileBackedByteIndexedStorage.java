@@ -73,10 +73,11 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		
 		Long[] recordIndex = new Long[2];
 		synchronized(storage) {
+			storage.seek(storage.length());
 			recordIndex[0] = storage.getFilePointer();
 			storage.write(out.toByteArray());	
 			recordIndex[1] = storage.getFilePointer() - recordIndex[0];
-			maxStorageSize = recordIndex[1];
+//			maxStorageSize = storage.getFilePointer();
 		}
 		return recordIndex;
 	}
