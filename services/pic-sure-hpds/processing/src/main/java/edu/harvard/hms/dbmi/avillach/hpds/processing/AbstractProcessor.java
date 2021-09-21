@@ -799,39 +799,42 @@ public abstract class AbstractProcessor {
 				return new ArrayList<String>(unionOfInfoFilters);
 			}
 
-			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+//			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
-			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
+//			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 			log.info("Variants in scope: " + variantsInScope.size());
 			
-			if(variantsInScope.size()<100000) {
-				variantsInScope.parallelStream().forEach((String variantKey)->{
-					VariantMasks masks;
-					try {
-						masks = variantStore.getMasks(variantKey, new VariantBucketHolder<VariantMasks>());
-						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-							variantsWithPatients.add(variantKey);
-						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-							variantsWithPatients.add(variantKey);
-						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-							//so heterozygous no calls we want, homozygous no calls we don't
-							variantsWithPatients.add(variantKey);
-						} else {
-							log.debug("no patients found for variant " + variantKey);
-							log.debug("Variant hetero Mask " + masks.heterozygousMask);
-							log.debug("variant homo Mask   " + masks.homozygousMask);
-							
-						}
-					} catch (IOException e) {
-						log.error(e);
-					}
-				});
-			}else {
-				return unionOfInfoFilters;
-			}
-			return variantsWithPatients;
+			
+			//I think that this next section is filtering the variant list AGAIN, which we probably don't need
+			
+//			if(variantsInScope.size()<100000) {
+//				variantsInScope.parallelStream().forEach((String variantKey)->{
+//					VariantMasks masks;
+//					try {
+//						masks = variantStore.getMasks(variantKey, new VariantBucketHolder<VariantMasks>());
+//						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+//							variantsWithPatients.add(variantKey);
+//						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+//							variantsWithPatients.add(variantKey);
+//						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+//							//so heterozygous no calls we want, homozygous no calls we don't
+//							variantsWithPatients.add(variantKey);
+////						} else {
+////							log.debug("no patients found for variant " + variantKey);
+////							log.debug("Variant hetero Mask " + masks.heterozygousMask);
+////							log.debug("variant homo Mask   " + masks.homozygousMask);
+//							
+//						}
+//					} catch (IOException e) {
+//						log.error(e);
+//					}
+//				});
+//			}else {
+//				return unionOfInfoFilters;
+//			}
+			return variantsInScope;
 		}
 		return new ArrayList<>();
 	}
