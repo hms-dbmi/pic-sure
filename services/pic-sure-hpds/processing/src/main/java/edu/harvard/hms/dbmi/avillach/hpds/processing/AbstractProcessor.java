@@ -474,7 +474,7 @@ public abstract class AbstractProcessor {
 	}
 
 	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
-		log.debug("filterdIDSets START size: " + filteredIdSets.size());
+//		log.debug("filterdIDSets START size: " + filteredIdSets.size());
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -714,7 +714,7 @@ public abstract class AbstractProcessor {
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
-					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+//					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.parallelStream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
@@ -723,12 +723,12 @@ public abstract class AbstractProcessor {
 							masks = variantStore.getMasks(variantSpec, new VariantBucketHolder<VariantMasks>());
 							if(masks != null) {
 								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
-								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
-									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
-								}
+//								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
+//									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+//											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+//								}
 
 								heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 								homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
@@ -736,7 +736,7 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
-									log.debug("bitcount for matching patients after " + variantSpec + ": " + matchingPatients[0].bitCount());
+									log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
 							} else {
 								log.debug("No masks found for variant spec " + variantSpec);
