@@ -108,7 +108,7 @@ public class VariantStore implements Serializable {
 		String contig = segments[0];
 
 		if (Level.DEBUG.equals(log.getEffectiveLevel())) {
-			log.debug("Getting masks for variant " + variant + "  Test " + (bucketCache.lastValue != null
+			log.debug("Getting masks for variant " + variant + "  Same bucket test: " + (bucketCache.lastValue != null
 					&& contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
 		}
 

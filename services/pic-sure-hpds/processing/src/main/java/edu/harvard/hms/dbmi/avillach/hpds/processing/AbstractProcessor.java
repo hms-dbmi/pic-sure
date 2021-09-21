@@ -735,6 +735,8 @@ public abstract class AbstractProcessor {
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
 								}
+							} else {
+								log.debug("No masks found for variant spec " + variantSpec);
 							}
 						} catch (IOException e) {
 							log.error(e);
@@ -813,6 +815,11 @@ public abstract class AbstractProcessor {
 						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
 							//so heterozygous no calls we want, homozygous no calls we don't
 							variantsWithPatients.add(variantKey);
+						} else {
+							log.debug("no patients found for variant " + variantKey);
+							log.debug("Variant hetero Mask " + masks.heterozygousMask);
+							log.debug("variant homo Mask   " + masks.homozygousMask);
+							
 						}
 					} catch (IOException e) {
 						log.error(e);

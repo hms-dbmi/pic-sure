@@ -176,6 +176,7 @@ public class VariantListProcessor extends AbstractProcessor {
 		BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 		int index = 2; //variant bitmasks are bookended with '11'
 
+		
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
