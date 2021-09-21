@@ -736,7 +736,8 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
-									log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
+									if(andMasks.bitCount() > 4)
+										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
 							} else {
 								log.debug("No masks found for variant spec " + variantSpec);
@@ -799,41 +800,41 @@ public abstract class AbstractProcessor {
 				return new ArrayList<String>(unionOfInfoFilters);
 			}
 
-//			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
+			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
-//			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
-
-			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-			log.info("Variants in scope: " + variantsInScope.size());
+//			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+			Collection<String> variantsInScope = unionOfInfoFilters;
+			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
 			
 			
 			//I think that this next section is filtering the variant list AGAIN, which we probably don't need
 			
-//			if(variantsInScope.size()<100000) {
-//				variantsInScope.parallelStream().forEach((String variantKey)->{
-//					VariantMasks masks;
-//					try {
-//						masks = variantStore.getMasks(variantKey, new VariantBucketHolder<VariantMasks>());
-//						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-//							variantsWithPatients.add(variantKey);
-//						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-//							variantsWithPatients.add(variantKey);
-//						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-//							//so heterozygous no calls we want, homozygous no calls we don't
-//							variantsWithPatients.add(variantKey);
-////						} else {
-////							log.debug("no patients found for variant " + variantKey);
-////							log.debug("Variant hetero Mask " + masks.heterozygousMask);
-////							log.debug("variant homo Mask   " + masks.homozygousMask);
-//							
-//						}
-//					} catch (IOException e) {
-//						log.error(e);
-//					}
-//				});
-//			}else {
-//				return unionOfInfoFilters;
-//			}
+			if(variantsInScope.size()<100000) {
+				variantsInScope.parallelStream().forEach((String variantKey)->{
+					VariantMasks masks;
+					try {
+						masks = variantStore.getMasks(variantKey, new VariantBucketHolder<VariantMasks>());
+						if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+							variantsWithPatients.add(variantKey);
+						} else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+							variantsWithPatients.add(variantKey);
+						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+							//so heterozygous no calls we want, homozygous no calls we don't
+							variantsWithPatients.add(variantKey);
+//						} else {
+//							log.debug("no patients found for variant " + variantKey);
+//							log.debug("Variant hetero Mask " + masks.heterozygousMask);
+//							log.debug("variant homo Mask   " + masks.homozygousMask);
+							
+						}
+					} catch (IOException e) {
+						log.error(e);
+					}
+				});
+			}else {
+				return unionOfInfoFilters;
+			}
 			return variantsInScope;
 		}
 		return new ArrayList<>();
