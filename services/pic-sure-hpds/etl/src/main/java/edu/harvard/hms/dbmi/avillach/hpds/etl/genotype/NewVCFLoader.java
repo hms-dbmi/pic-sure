@@ -70,6 +70,7 @@ public class NewVCFLoader {
 			walker.setBitmaskOffsets(allPatientIds.toArray(new Integer[0]));
 			Integer[] patientIds = allPatientIds.toArray(new Integer[0]);
 			for(int x = 0; x < walker.vcfIndexLine.sampleIds.length; x++) {
+				//this binary search is already done in the walker.setBitmaskOffsets.  We should probably just use the stored value.
 				allSampleIds[Arrays.binarySearch(patientIds, walker.vcfIndexLine.patientIds[x])] = walker.vcfIndexLine.sampleIds[x];
 			}
 		});
@@ -498,6 +499,7 @@ public class NewVCFLoader {
 			for(int x = 0; x<vcfIndexLine.patientIds.length; x++) {
 				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
 			}
+			
 		}
 
 		public void nextLine() throws IOException {

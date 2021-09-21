@@ -123,9 +123,13 @@ public class VariantListProcessor extends AbstractProcessor {
 		log.info("Running VCF Extract query");
 
 		Collection<String> variantList = getVariantList(query);
+		
+		log.debug("variantList Size " + variantList.size());
 
 		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
 
+		log.debug("metadata size " + metadata.size());
+		
 		// Sort the variantSpecs so that the user doesn't lose their mind
 		TreeMap<String, String[]> metadataSorted = new TreeMap<>((o1, o2) -> {
 			return new VariantSpec(o1).compareTo(new VariantSpec(o2));
@@ -135,6 +139,8 @@ public class VariantListProcessor extends AbstractProcessor {
 
 		if(metadata == null || metadata.isEmpty()) {
 			return "No Variants Found\n"; //UI uses newlines to show result count
+		} else {
+			log.debug("Found " + metadata.size() + " varaints");
 		}
 
 		PhenoCube<String> idCube = null;
@@ -190,6 +196,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			index++;
 
 			if(patientIndexMap.size() >= patientSubset.size()) {
+				log.info("Found all patient Indices at index " + index);
 				break;
 			}
 		}
@@ -295,11 +302,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			builder.append("\n");
 		});
 
-		StringBuilder b2 = new StringBuilder();
-		for( String key : variantMaskBucketHolder.lastValue.keySet()) {
-			b2.append(key + "\t");
-		}
-		log.info("Found variants " + b2.toString());
+
 		return builder.toString();
 	}
 

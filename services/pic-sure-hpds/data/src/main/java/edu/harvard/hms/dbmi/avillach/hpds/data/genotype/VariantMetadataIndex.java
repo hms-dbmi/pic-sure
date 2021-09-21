@@ -96,7 +96,7 @@ public class VariantMetadataIndex implements Serializable {
 
 	public Map<String, String[]> findByMultipleVariantSpec(Collection<String> varientSpecList) {
 		
-//		log.info("SPEC list" + Arrays.deepToString(varientSpecList.toArray()));
+		log.info("SPEC list "  + varientSpecList.size() + " :: " + Arrays.deepToString(varientSpecList.toArray()));
 		
 		VariantBucketHolder<String[]> bucketCache = new VariantBucketHolder<String[]>();
 		return varientSpecList.stream().collect(Collectors.toMap(
