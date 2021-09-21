@@ -194,8 +194,6 @@ public class VariantListProcessor extends AbstractProcessor {
 						}
 					}
 				}
-			} else {
-				log.debug("Patient " + patientId + " identified in query not in variant store");
 			}
 			index++;
 

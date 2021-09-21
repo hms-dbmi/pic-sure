@@ -474,7 +474,7 @@ public abstract class AbstractProcessor {
 	}
 
 	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
-
+		log.debug("filterdIDSets START size: " + filteredIdSets.size());
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -491,11 +491,12 @@ public abstract class AbstractProcessor {
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
 					if(log.isDebugEnabled()) {
 						IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-						log.debug("Number of matching variants for all sets : " + stats);
+						log.debug("Number of matching variants for all sets : " + stats.getSum());
 						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
 					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
+					log.debug("filterdIDSets AFTER size: " + filteredIdSets.size());
 				}
 			}
 		}
@@ -719,7 +720,7 @@ public abstract class AbstractProcessor {
 						BigInteger heteroMask = variantStore.emptyBitmask();
 						BigInteger homoMask = variantStore.emptyBitmask();
 						try {
-							masks = variantStore.getMasks(variantSpec, bucketCache);
+							masks = variantStore.getMasks(variantSpec, new VariantBucketHolder<VariantMasks>());
 							if(masks != null) {
 								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
 								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
@@ -735,6 +736,7 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
+									log.debug("bitcount for matching patients after " + variantSpec + ": " + matchingPatients[0].bitCount());
 								}
 							} else {
 								log.debug("No masks found for variant spec " + variantSpec);
