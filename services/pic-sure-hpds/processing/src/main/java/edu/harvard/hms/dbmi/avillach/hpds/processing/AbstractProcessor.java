@@ -695,7 +695,7 @@ public abstract class AbstractProcessor {
 				patientsInScope = patientIds;
 			}
 
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+			
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
 			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
@@ -713,6 +713,7 @@ public abstract class AbstractProcessor {
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
+					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.parallelStream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
