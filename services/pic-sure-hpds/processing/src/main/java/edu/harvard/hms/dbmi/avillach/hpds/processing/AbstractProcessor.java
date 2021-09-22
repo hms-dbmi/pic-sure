@@ -801,7 +801,6 @@ public abstract class AbstractProcessor {
 			}
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
-			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 
 //			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 			Collection<String> variantsInScope = unionOfInfoFilters;
@@ -811,6 +810,7 @@ public abstract class AbstractProcessor {
 			//I think that this next section is filtering the variant list AGAIN, which we probably don't need
 			
 			if(variantsInScope.size()<100000) {
+				ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
 					try {
@@ -832,10 +832,10 @@ public abstract class AbstractProcessor {
 						log.error(e);
 					}
 				});
+				return variantsWithPatients;
 			}else {
 				return unionOfInfoFilters;
 			}
-			return variantsInScope;
 		}
 		return new ArrayList<>();
 	}
