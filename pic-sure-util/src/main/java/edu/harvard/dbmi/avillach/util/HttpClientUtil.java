@@ -220,7 +220,7 @@ public class HttpClientUtil {
 		try {
 			return response.getEntity().getContent();
 		} catch (IOException ex) {
-			logger.error("simplePost() cannot get content by POST from url: {}", uri);
+			logger.error("simplePost() cannot get content by POST from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}
@@ -266,7 +266,7 @@ public class HttpClientUtil {
 		try {
 			return client.execute(get, buildHttpClientContext());
 		} catch (IOException ex) {
-			logger.error("simpleGet() cannot get response by GET from url: {}", uri);
+			logger.error("HttpResponse simpleGet() cannot get response by GET from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}
@@ -280,14 +280,14 @@ public class HttpClientUtil {
 		try {
 			response = client.execute(get, buildHttpClientContext());
 		} catch (IOException ex) {
-			logger.error("simpleGet() cannot get response by GET from url: {}", uri);
+			logger.error("InputStream simpleGet() cannot get response by GET from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 
 		try {
 			return response.getEntity().getContent();
 		} catch (IOException ex) {
-			logger.error("simpleGet() cannot get content by GET from url: {}", uri);
+			logger.error("InputStream simpleGet() cannot get content by GET from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}
