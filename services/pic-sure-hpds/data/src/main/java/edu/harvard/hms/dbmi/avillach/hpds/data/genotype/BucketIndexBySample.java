@@ -109,7 +109,25 @@ public class BucketIndexBySample implements Serializable {
 			log.info("completed contig " + contig);
 		});
 		
-		// populate patientBucketMasks with bucketMasks for each patient
+		//the process to populate the bucket masks takes a very long time.  
+		//Lets spin up another thread that occasionally logs progress
+		int[] processedPatients = new int[1];
+		processedPatients[0] = 0;
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				while(!patientBucketMasks.isComplete()) {
+					try {
+						Thread.sleep(3 * 1000 * 60); //log a message every 3 minutes
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}  
+					log.info("processed " + processedPatients[0] + " patient bucket masks");
+				}
+			}
+		}).start();
+		
+		// populate patientBucketMasks with bucketMasks for each patient 
 		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
 		patientIds.parallelStream().forEach((patientId)->{
 			try {
@@ -121,6 +139,7 @@ public class BucketIndexBySample implements Serializable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			processedPatients[0] += 1;
 		});
 		patientBucketMasks.complete();
 		log.info("Done creating patient bucket masks");
