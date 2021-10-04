@@ -259,6 +259,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				BigInteger heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
 				BigInteger homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
 
+				
 				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
 				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
@@ -269,6 +270,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 
+				//count how many patients have genomic data available
 				Integer patientsWithVariantsCount = null;
 				if(heteroMaskString != null) {
 					patientsWithVariantsCount = heteroMaskString.length() - 4;
