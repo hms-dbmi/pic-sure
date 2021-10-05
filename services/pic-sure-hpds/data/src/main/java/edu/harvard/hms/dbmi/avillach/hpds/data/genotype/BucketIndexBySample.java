@@ -86,9 +86,14 @@ public class BucketIndexBySample implements Serializable {
 									if(masks.heterozygousMask!=null) {
 										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousMask);
 									}
+									//add hetreo no call bits to mask
+									if(masks.heterozygousNoCallMask!=null) {
+										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousNoCallMask);
+									}
 									if(masks.homozygousMask!=null) {
 										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.homozygousMask);
 									}
+									
 								});
 							} catch (IOException e) {
 								e.printStackTrace();
