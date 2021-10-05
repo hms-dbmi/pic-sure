@@ -114,6 +114,9 @@ public class BucketIndexBySample implements Serializable {
 			log.info("completed contig " + contig);
 		});
 		
+		// populate patientBucketMasks with bucketMasks for each patient 
+		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
+		
 		//the process to populate the bucket masks takes a very long time.  
 		//Lets spin up another thread that occasionally logs progress
 		int[] processedPatients = new int[1];
@@ -132,8 +135,6 @@ public class BucketIndexBySample implements Serializable {
 			}
 		}).start();
 		
-		// populate patientBucketMasks with bucketMasks for each patient 
-		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
 		patientIds.parallelStream().forEach((patientId)->{
 			try {
 				BigInteger patientMask = new BigInteger(new String(patientBucketCharMasks[patientIds.indexOf(patientId)]),2);
