@@ -803,8 +803,8 @@ public abstract class AbstractProcessor {
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
 			//TODO testing this might filter out valid buckets
-			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-//			Collection<String> variantsInScope = unionOfInfoFilters;
+//			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+			Collection<String> variantsInScope = unionOfInfoFilters;
 			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
 			
 			
