@@ -101,6 +101,7 @@ public class BucketIndexBySample implements Serializable {
 							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
 							// in this bucket, or '0' if they dont
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
+								//TODO - why are these not the same offset??
 								if(patientMaskForBucket[0].testBit(x)) {
 									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
@@ -184,7 +185,7 @@ public class BucketIndexBySample implements Serializable {
 		BigInteger _bucketMask = patientBucketMask;
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
-			return _bucketMask.testBit(findOffsetOfBucket(bucketKey));
+			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
 		}).collect(Collectors.toSet());
 	}
 
@@ -195,6 +196,7 @@ public class BucketIndexBySample implements Serializable {
 	 * @return offset of bit in patientBucketMask corresponding to the bucketKey
 	 */
 	private int findOffsetOfBucket(String bucketKey) {
+		//TODO: i think this is inverting the index (NC)
 		return (bucketList.size()+4) - Collections.binarySearch(bucketList, bucketKey) - 2;
 	}
 
