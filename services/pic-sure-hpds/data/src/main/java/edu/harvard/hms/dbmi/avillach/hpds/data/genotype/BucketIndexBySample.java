@@ -103,9 +103,9 @@ public class BucketIndexBySample implements Serializable {
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
 								//TODO - why are these not the same offset??
 								if(patientMaskForBucket[0].testBit(x)) {
-									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
+									patientBucketCharMasks[x][indexOfBucket] = '1';									
 								}else {
-									patientBucketCharMasks[x-2][indexOfBucket] = '0';
+									patientBucketCharMasks[x][indexOfBucket] = '0';
 								}
 							}
 						});
