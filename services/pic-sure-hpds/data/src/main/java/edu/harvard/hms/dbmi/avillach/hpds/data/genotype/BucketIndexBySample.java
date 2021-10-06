@@ -101,11 +101,11 @@ public class BucketIndexBySample implements Serializable {
 							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
 							// in this bucket, or '0' if they dont
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
-								//TODO - why are these not the same offset??
+								//the patientMaskForBucket array is not a bitmask, so is not bookended with '11'.
 								if(patientMaskForBucket[0].testBit(x)) {
-									patientBucketCharMasks[x][indexOfBucket] = '1';									
+									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
-									patientBucketCharMasks[x][indexOfBucket] = '0';
+									patientBucketCharMasks[x-2][indexOfBucket] = '0';
 								}
 							}
 						});
