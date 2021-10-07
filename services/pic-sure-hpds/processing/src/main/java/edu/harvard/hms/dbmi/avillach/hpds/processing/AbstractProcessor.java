@@ -802,14 +802,13 @@ public abstract class AbstractProcessor {
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
-			//TODO testing this might filter out valid buckets
+			//TODO NC - this seems to be filtering out valid variants; we may need to revisit this for larger variant sets
 //			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
 			Collection<String> variantsInScope = unionOfInfoFilters;
 			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
 			
 			
-			//I think that this next section is filtering the variant list AGAIN, which we probably don't need
-			
+			//NC - this is the original variant filtering, which checks the patient mask from each variant against the patient mask from the query
 			if(variantsInScope.size()<100000) {
 				ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 				variantsInScope.parallelStream().forEach((String variantKey)->{
