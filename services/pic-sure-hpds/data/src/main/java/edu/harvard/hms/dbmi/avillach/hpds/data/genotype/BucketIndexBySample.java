@@ -118,20 +118,21 @@ public class BucketIndexBySample implements Serializable {
 		// populate patientBucketMasks with bucketMasks for each patient 
 		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
 		
-		//the process to populate the bucket masks takes a very long time.  
+		//the process to write out the bucket masks takes a very long time.  
 		//Lets spin up another thread that occasionally logs progress
 		int[] processedPatients = new int[1];
 		processedPatients[0] = 0;
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
+				log.info("writing patient bucket masks to backing store (this may take some time).");
 				while(!patientBucketMasks.isComplete()) {
 					try {
-						Thread.sleep(3 * 1000 * 60); //log a message every 3 minutes
+						Thread.sleep(5 * 1000 * 60); //log a message every 5 minutes
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}  
-					log.info("processed " + processedPatients[0] + " patient bucket masks");
+					log.info("wrote " + processedPatients[0] + " patient bucket masks");
 				}
 			}
 		}).start();
@@ -187,17 +188,6 @@ public class BucketIndexBySample implements Serializable {
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
 			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
 		}).collect(Collectors.toSet());
-	}
-
-	/**
-	 * Convenience method to map a bucketKey to the offset of it's corresponding bit in a patientBucketMask
-	 * 
-	 * @param bucketKey
-	 * @return offset of bit in patientBucketMask corresponding to the bucketKey
-	 */
-	private int findOffsetOfBucket(String bucketKey) {
-		//TODO: i think this is inverting the index (NC)
-		return (bucketList.size()+4) - Collections.binarySearch(bucketList, bucketKey) - 2;
 	}
 
 	private char[] _emptyBucketMaskChar = null;
