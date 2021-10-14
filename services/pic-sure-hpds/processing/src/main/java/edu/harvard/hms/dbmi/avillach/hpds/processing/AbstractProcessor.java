@@ -714,13 +714,13 @@ public abstract class AbstractProcessor {
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
-//					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.stream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
 						BigInteger homoMask = variantStore.emptyBitmask();
 						try {
-							masks = variantStore.getMasks(variantSpec, new VariantBucketHolder<VariantMasks>());
+							masks = variantStore.getMasks(variantSpec, bucketCache);
 							if(masks != null) {
 								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
 //								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
