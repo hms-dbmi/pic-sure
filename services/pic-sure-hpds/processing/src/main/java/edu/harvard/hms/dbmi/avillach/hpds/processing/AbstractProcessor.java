@@ -704,8 +704,10 @@ public abstract class AbstractProcessor {
 						return new VariantSpec(variantSpec).metadata.offset/1000;
 					})).values());
 
+			log.info("found " + variantsInScope.size() + " ...buckets?");
 			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, Runtime.getRuntime().availableProcessors());
-
+			log.info("and partitioned those into " + variantPartitions.size() + " parts");
+			
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
@@ -713,6 +715,7 @@ public abstract class AbstractProcessor {
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
+				log.info("processing " + variantBuckets.size() + " bucket from partition " + x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
 					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.stream().forEach((variantSpec)->{
@@ -736,11 +739,11 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
-									if(andMasks.bitCount() > 4)
-										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
+//									if(andMasks.bitCount() > 4)
+//										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
-							} else {
-								log.debug("No masks found for variant spec " + variantSpec);
+//							} else {
+//								log.debug("No masks found for variant spec " + variantSpec);
 							}
 						} catch (IOException e) {
 							log.error(e);
