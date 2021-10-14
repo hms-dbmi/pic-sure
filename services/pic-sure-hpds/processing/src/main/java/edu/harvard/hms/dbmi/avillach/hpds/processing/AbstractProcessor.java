@@ -551,7 +551,7 @@ public abstract class AbstractProcessor {
 			log.info("Awaiting completion of variant index");
 		}
 		
-		log.info("Found " + numVariants.length + " total variants.");
+		log.info("Found " + numVariants[0] + " total variants.");
 
 		variantIndex = new String[numVariants[0]];
 
@@ -715,7 +715,7 @@ public abstract class AbstractProcessor {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
 //					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-					variantBucket.parallelStream().forEach((variantSpec)->{
+					variantBucket.stream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
 						BigInteger homoMask = variantStore.emptyBitmask();
