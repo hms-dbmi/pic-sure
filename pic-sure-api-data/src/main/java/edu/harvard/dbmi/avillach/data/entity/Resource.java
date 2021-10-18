@@ -19,6 +19,8 @@ public class Resource extends BaseEntity{
 	@Column(length = 8192)
 	private String token;
 	
+	private Boolean hidden;
+	
 	public String getName() {
 		return name;
 	}
@@ -63,12 +65,21 @@ public class Resource extends BaseEntity{
 		return this;
 	}
 	
+	//visible (not hidden) by default 
+	public Boolean getHidden() {
+		return hidden == null ? Boolean.FALSE : hidden;
+	}
+	public void setHidden(Boolean hidden) {
+		this.hidden = hidden;
+	}
+	
 	@Override
 	public String toString() {
 		return Json.createObjectBuilder()
 	            .add("uuid", uuid.toString())
 	            .add("name", name)
 	            .add("description", description)
+	            .add("hidden", Boolean.toString(hidden))
 	            .build().toString();
 	}
 }
