@@ -705,7 +705,11 @@ public abstract class AbstractProcessor {
 					})).values());
 
 			log.info("found " + variantsInScope.size() + " ...buckets?");
-			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, (variantsInScope.size() / Runtime.getRuntime().availableProcessors()));
+			
+			//don't error on small result sets (make sure we have at least one element in each partition)
+			int partitionSize = variantsInScope.size() / Runtime.getRuntime().availableProcessors(); 
+			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, partitionSize > 0 ? partitionSize : 1);
+			
 			log.info("and partitioned those into " + variantPartitions.size() + " parts");
 			
 			int patientsInScopeSize = patientsInScope.size();
