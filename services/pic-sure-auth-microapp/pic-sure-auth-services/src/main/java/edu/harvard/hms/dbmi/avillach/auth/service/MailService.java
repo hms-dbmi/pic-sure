@@ -93,7 +93,7 @@ public class MailService {
 			message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
 			Transport.send(message);
 		} catch (FileNotFoundException e) {
-			logger.error("Template not found for " + template + ". Check configuration.", e);
+			logger.error("Template not found for " + template + ". Check configuration.");
 		} catch (MessagingException me) {
 			logger.error("Failed to send email: '" + subject + "'", me);
 		} catch (Exception e) {
