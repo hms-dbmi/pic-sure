@@ -66,6 +66,9 @@ public class UserService extends BaseEntityService<User> {
 
     @Inject
     AccessRuleRepository accessruleRepo;
+    
+    @Inject
+    AuthUtils authUtil;
 
     public UserService() {
         super(User.class);
@@ -263,10 +266,11 @@ public class UserService extends BaseEntityService<User> {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
 
-        User.UserForDisaply userForDisplay = new User.UserForDisaply()
+        User.UserForDisplay userForDisplay = new User.UserForDisplay()
                 .setEmail(user.getEmail())
                 .setPrivileges(user.getPrivilegeNameSet())
-                .setUuid(user.getUuid().toString());
+                .setUuid(user.getUuid().toString())
+                .setAcceptedTOS(authUtil.acceptedTOSBySub(user.getSubject()));
 
         // currently, the queryScopes are simple combination of queryScope string together as a set.
         // We are expecting the queryScope string as plain string. If it is a JSON, we could change the

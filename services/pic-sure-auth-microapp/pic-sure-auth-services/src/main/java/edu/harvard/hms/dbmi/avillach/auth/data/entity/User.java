@@ -275,21 +275,22 @@ public class User extends BaseEntity implements Serializable, Principal {
 	 * <p>Inner class defining limited user attributes returned from the User endpoint.</p>
 	 */
 	@JsonInclude(JsonInclude.Include.NON_EMPTY)
-	public static class UserForDisaply {
+	public static class UserForDisplay {
 		String uuid;
 		String email;
 		Set<String> privileges;
 		String token;
 		Set<String> queryScopes;
+		private boolean acceptedTOS;
 
-		public UserForDisaply() {
+		public UserForDisplay() {
 		}
 
 		public String getEmail() {
 			return email;
 		}
 
-		public UserForDisaply setEmail(String email) {
+		public UserForDisplay setEmail(String email) {
 			this.email = email;
 			return this;
 		}
@@ -298,7 +299,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return privileges;
 		}
 
-		public UserForDisaply setPrivileges(Set<String> privileges) {
+		public UserForDisplay setPrivileges(Set<String> privileges) {
 			this.privileges = privileges;
 			return this;
 		}
@@ -307,7 +308,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return uuid;
 		}
 
-		public UserForDisaply setUuid(String uuid) {
+		public UserForDisplay setUuid(String uuid) {
 			this.uuid = uuid;
 			return this;
 		}
@@ -316,7 +317,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return token;
 		}
 
-		public UserForDisaply setToken(String token) {
+		public UserForDisplay setToken(String token) {
 			this.token = token;
 			return this;
 		}
@@ -327,6 +328,15 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 		public void setQueryScopes(Set<String> queryScopes) {
 			this.queryScopes = queryScopes;
+		}
+
+		public boolean getAcceptedTOS() {
+			return acceptedTOS;
+		}
+
+		public UserForDisplay setAcceptedTOS(boolean acceptedTOS) {
+			this.acceptedTOS = acceptedTOS;
+			return this;
 		}
 	}
 
