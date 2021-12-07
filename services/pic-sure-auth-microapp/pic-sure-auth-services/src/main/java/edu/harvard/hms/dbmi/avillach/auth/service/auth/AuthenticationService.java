@@ -1,6 +1,19 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 
+import java.util.*;
+
+import javax.inject.Inject;
+import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+
+import org.apache.http.Header;
+import org.apache.http.message.BasicHeader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
+
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
@@ -14,20 +27,6 @@ import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
-import org.apache.http.Header;
-import org.apache.http.message.BasicHeader;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Inject;
-import javax.ws.rs.NotAuthorizedException;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-
-
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.util.*;
 
 /**
  * This class provides authentication functionality. This implements an authenticationService interface
@@ -37,7 +36,8 @@ import java.util.*;
  * The main purpose of this class is returns a token that includes information of the roles of users.
  */
 public class AuthenticationService {
-    private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
+
+	private Logger logger = LoggerFactory.getLogger(AuthenticationService.class);
 
     @Inject
     OauthUserMatchingService matchingService;
@@ -59,6 +59,8 @@ public class AuthenticationService {
 
     @Inject
     AuthUtils authUtil;
+    
+    private static final int AUTH_RETRY_LIMIT = 3;
 
     public Response getToken(Map<String, String> authRequest){
         String accessToken = authRequest.get("access_token");
@@ -115,21 +117,23 @@ public class AuthenticationService {
         List<Header> headers = new ArrayList<>();
         headers.add(new BasicHeader("Content-Type", MediaType.APPLICATION_JSON));
         headers.add(new BasicHeader("Authorization", "Bearer " + accessToken));
-        return HttpClientUtil.simpleGet(auth0UserInfoURI,
-                JAXRSConfiguration.client,
-                JAXRSConfiguration.objectMapper,
-                headers.toArray(new Header[headers.size()]));
-    }
-
-    private Map<String, Object> generateClaims(JsonNode userInfo, String... fields){
-        Map<String, Object> claims = new HashMap<>();
-
-        for (String field : fields) {
-            JsonNode node = userInfo.get(field);
-            if (node != null)
-                claims.put(field, node.asText());
+        JsonNode auth0Response = null;
+         
+        for(int i = 1; i <= AUTH_RETRY_LIMIT && auth0Response == null; i++) {
+	         try {
+	        	auth0Response = HttpClientUtil.simpleGet(auth0UserInfoURI,
+	                JAXRSConfiguration.client,
+	                JAXRSConfiguration.objectMapper,
+	                headers.toArray(new Header[headers.size()]));
+	         } catch (ApplicationException e) {
+	        	 if(i < AUTH_RETRY_LIMIT ) {
+	        		 logger.warn("Failed to authenticate.  Retrying");
+	        	 } else {
+	        		 logger.error("Failed to authenticate.  Giving up!");
+	        		 throw e;
+	        	 }
+	         }
         }
-
-        return claims;
+        return auth0Response;
     }
 }
