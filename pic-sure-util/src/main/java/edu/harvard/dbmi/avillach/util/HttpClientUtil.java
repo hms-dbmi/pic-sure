@@ -8,13 +8,13 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import javax.net.ssl.SSLContext;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
@@ -25,9 +25,12 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicHeader;
+import org.apache.http.ssl.SSLContexts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +61,7 @@ public class HttpClientUtil {
 		try {
 			logger.debug("HttpClientUtil retrieveGetResponse()");
 
-			HttpClient client = HttpClientBuilder.create().useSystemProperties().build();
+			HttpClient client = getConfiguredHttpClient();
 			return simpleGet(client, uri, headers);
 		} catch (ApplicationException e) {
 			throw new ResourceInterfaceException(uri, e);
@@ -106,7 +109,7 @@ public class HttpClientUtil {
 				headerList = new ArrayList<>(Arrays.asList(headers));
 			headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
 
-			HttpClient client = HttpClientBuilder.create().useSystemProperties().build();
+			HttpClient client = getConfiguredHttpClient();
 			return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
 		} catch (ApplicationException | UnsupportedEncodingException e) {
 			throw new ResourceInterfaceException(uri, e);
@@ -190,7 +193,7 @@ public class HttpClientUtil {
 	public static HttpResponse simplePost(String uri, HttpClient client, StringEntity requestBody, Header... headers)
 			throws ApplicationException {
 		if (client == null) {
-			client = HttpClientBuilder.create().useSystemProperties().build();
+			client = getConfiguredHttpClient();
 		}
 
 		HttpPost post = new HttpPost(uri);
@@ -257,7 +260,7 @@ public class HttpClientUtil {
 	 */
 	public static HttpResponse simpleGet(HttpClient client, String uri, Header... headers) throws ApplicationException {
 		if (client == null) {
-			client = HttpClientBuilder.create().useSystemProperties().build();
+			client = getConfiguredHttpClient();
 		}
 
 		HttpGet get = new HttpGet(uri);
@@ -308,5 +311,37 @@ public class HttpClientUtil {
 			logger.error("simpleGet() cannot parse content from by GET from url: {}", uri, ex);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
+	}
+	
+	private static HttpClient getConfiguredHttpClient() {
+		try {
+			SSLConnectionSocketFactory.getSocketFactory();
+			SSLContext sslContext = SSLContext.getInstance("TLS");
+		    sslContext.init(null, null, null);
+		    String[] defaultCiphers = sslContext.getServerSocketFactory().getDefaultCipherSuites();
+			
+			List<String> limited = new LinkedList<String>();
+			for(String suite : defaultCiphers)
+			{
+				//filter out Diffie-Hellman ciphers
+			    if( ! (suite.contains("_DHE_") || suite.contains("_DH_")))
+			    {
+			        limited.add(suite);
+			    }
+			}
+			
+			return HttpClients.custom()
+				    .setSSLSocketFactory(new SSLConnectionSocketFactory(
+			            SSLContexts.createSystemDefault(),
+			            new String[]{"TLSv1.2"},
+			            limited.toArray(new String[limited.size()]),
+			            SSLConnectionSocketFactory.getDefaultHostnameVerifier()))
+				    .build();
+		} catch( NoSuchAlgorithmException | KeyManagementException e) {
+			logger.warn("Unable to establish SSL context.  using default client", e);
+		}
+		
+		//default
+		return HttpClientBuilder.create().useSystemProperties().build();
 	}
 }
