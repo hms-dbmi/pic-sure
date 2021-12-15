@@ -21,6 +21,8 @@ public class Resource extends BaseEntity{
 	
 	private Boolean hidden;
 	
+	private String metadata;
+	
 	public String getName() {
 		return name;
 	}
@@ -73,6 +75,13 @@ public class Resource extends BaseEntity{
 		this.hidden = hidden;
 	}
 	
+	public String getMetadata() {
+		return metadata;
+	}
+	public void setMetadata(String metadata) {
+		this.metadata = metadata;
+	}
+	
 	@Override
 	public String toString() {
 		return Json.createObjectBuilder()
@@ -80,6 +89,7 @@ public class Resource extends BaseEntity{
 	            .add("name", name)
 	            .add("description", description)
 	            .add("hidden", Boolean.toString(hidden))
+	            .add("metadata", metadata)
 	            .build().toString();
 	}
 }
