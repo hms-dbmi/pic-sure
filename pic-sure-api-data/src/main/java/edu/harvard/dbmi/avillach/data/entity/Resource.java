@@ -1,11 +1,16 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+import java.io.StringReader;
+
 import javax.json.Json;
+import javax.json.JsonObject;
+import javax.json.JsonReader;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 @Entity(name = "resource")
 public class Resource extends BaseEntity{
@@ -84,12 +89,18 @@ public class Resource extends BaseEntity{
 	
 	@Override
 	public String toString() {
+		JsonObject metadataObj = null;
+		if(metadata != null) {
+			JsonReader jsonReader = Json.createReader(new StringReader(metadata));
+			metadataObj = jsonReader.readObject();
+			jsonReader.close();
+		}
 		return Json.createObjectBuilder()
 	            .add("uuid", uuid.toString())
 	            .add("name", name)
 	            .add("description", description)
 	            .add("hidden", Boolean.toString(hidden))
-	            .add("metadata", metadata)
+	            .add("metadata", metadataObj)
 	            .build().toString();
 	}
 }
