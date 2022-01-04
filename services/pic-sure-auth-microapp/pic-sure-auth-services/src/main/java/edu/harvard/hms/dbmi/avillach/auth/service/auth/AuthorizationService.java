@@ -417,9 +417,13 @@ public class AuthorizationService {
         try {
             requestBodyValue = JsonPath.parse(parsedRequestBody).read(rule);
         } catch (PathNotFoundException ex){
-        	//if path doesn't exist; that's enough to match 'is empty' rule
+        	//if path doesn't exist; that's enough to match 'is empty' rule.  
+        	if(accessRuleType == AccessRule.TypeNaming.IS_EMPTY) {
+        		logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing IS_EMPTY rule");
+        		return true;
+        	}
             logger.debug("extractAndCheckRule() -> JsonPath.parse().read() throws exception with parsedRequestBody - {} : {} - {}", parsedRequestBody, ex.getClass().getSimpleName(), ex.getMessage());
-            return accessRuleType == AccessRule.TypeNaming.IS_EMPTY;
+            return false;
         }
 
         // AccessRule type IS_EMPTY is very special, needs to be checked in front of any others
