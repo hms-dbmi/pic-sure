@@ -6,7 +6,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
@@ -18,7 +19,7 @@ public class BucketIndexBySample implements Serializable {
 	List<Integer> patientIds;
 	ArrayList<String> contigSet;
 
-	transient Logger log = Logger.getLogger(BucketIndexBySample.class);
+	transient Logger log = LoggerFactory.getLogger(BucketIndexBySample.class);
 	
 	/**
 	 * Threadsafe Map of patientNum to a BigInteger which acts as a bitmask of the buckets in which each patient

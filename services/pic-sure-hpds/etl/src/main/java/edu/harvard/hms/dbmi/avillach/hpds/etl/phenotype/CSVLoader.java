@@ -6,7 +6,8 @@ import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
@@ -18,7 +19,7 @@ public class CSVLoader {
 
 	private static LoadingStore store = new LoadingStore();
 
-	private static Logger log = Logger.getLogger(CSVLoader.class); 
+	private static Logger log = LoggerFactory.getLogger(CSVLoader.class); 
 
 	private static final int PATIENT_NUM = 0;
 

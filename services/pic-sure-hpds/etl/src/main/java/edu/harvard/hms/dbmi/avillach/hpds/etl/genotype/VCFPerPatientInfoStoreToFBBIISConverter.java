@@ -1,25 +1,20 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 
 public class VCFPerPatientInfoStoreToFBBIISConverter {
-	private static Logger logger = Logger.getLogger(NewVCFLoader.class);
+	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
 
 	public static void convertAll(String inputPath, String outputPath) throws ClassNotFoundException,
 			FileNotFoundException, IOException, InterruptedException, ExecutionException {

@@ -1,38 +1,18 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
@@ -42,7 +22,7 @@ import htsjdk.samtools.util.BlockCompressedInputStream;
 
 public class NewVCFLoader {
 
-	private static Logger logger = Logger.getLogger(NewVCFLoader.class);
+	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
 	private static File storageDir = null;
 
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
@@ -204,7 +184,7 @@ public class NewVCFLoader {
 										logger.debug(variantSpec + " : homozygous : " + homoIdList);
 								}
 							} catch (IOException e) {
-								logger.error(e);
+								logger.error("an error occurred", e);
 							}
 						}
 						if (count[0] > 50)
@@ -230,7 +210,7 @@ public class NewVCFLoader {
 										logger.debug(variantSpec + " : homozygous : " + homoIdList);
 								}
 							} catch (IOException e) {
-								logger.error(e);
+								logger.error("an error occurred", e);
 							}
 						});
 						if (count[0] > 50)
@@ -297,7 +277,7 @@ public class NewVCFLoader {
 					variantMaskStorage_f.get(lastContigProcessed_f).put(lastChunkProcessed_f,
 							convertLoadingMapToMaskMap(zygosityMaskStrings_f));
 				} catch (IOException e) {
-					logger.error(e);
+					logger.error("an error occurred", e);
 				}
 			});
 			if (lastChunkProcessed % 100 == 0) {

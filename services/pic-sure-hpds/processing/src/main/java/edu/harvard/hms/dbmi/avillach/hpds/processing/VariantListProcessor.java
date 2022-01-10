@@ -8,7 +8,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
@@ -17,9 +18,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
@@ -27,7 +25,7 @@ public class VariantListProcessor extends AbstractProcessor {
 
 	private VariantMetadataIndex metadataIndex = null;
 
-	private static Logger log = Logger.getLogger(VariantListProcessor.class);
+	private static Logger log = LoggerFactory.getLogger(VariantListProcessor.class);
 	
 	private static final Boolean VCF_EXCERPT_ENABLED;
 	private static final Boolean AGGREGATE_VCF_EXCERPT_ENABLED;
@@ -289,7 +287,7 @@ public class VariantListProcessor extends AbstractProcessor {
 					builder.append(patientListBuilder.toString());
 				}
 			} catch (IOException e) {
-				log.error(e);
+				log.error("error getting masks", e);
 			}
 
 			builder.append("\n");
