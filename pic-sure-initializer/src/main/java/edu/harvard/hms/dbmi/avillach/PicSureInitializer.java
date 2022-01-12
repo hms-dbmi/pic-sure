@@ -19,13 +19,14 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PicSureInitializer 
 {
 	private static String url, users, resources, token;
 	private static Options options;
-	private static Logger logger = Logger.getLogger(PicSureInitializer.class);
+	private static Logger logger = LoggerFactory.getLogger(PicSureInitializer.class);
 	
 	public static void main( String[] args ) throws UnsupportedEncodingException, ClientProtocolException, IOException, ParseException
 	{
@@ -59,9 +60,7 @@ public class PicSureInitializer
 		post.addHeader("Content-type","application/json");
 		HttpResponse response = client.execute(post);
 		if(response.getStatusLine().getStatusCode() != 200) {
-			logger.error("Response status code not 200");
-			logger.error(response.getStatusLine().getStatusCode());
-			logger.error(response.getStatusLine().getReasonPhrase());
+			logger.error("Response status code not 200: " + response.getStatusLine().getStatusCode() + "  " + response.getStatusLine().getReasonPhrase());
 		}else {
 			logger.info("Success");
 		}
