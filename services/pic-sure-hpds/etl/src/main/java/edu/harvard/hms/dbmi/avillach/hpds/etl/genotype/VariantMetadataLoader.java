@@ -3,14 +3,16 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
 import java.io.*;
 import java.nio.charset.Charset;
-import java.util.*;
+import java.util.Iterator;
+import java.util.TreeSet;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
@@ -22,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
  */
 public class VariantMetadataLoader {
 	
-	private static Logger log = Logger.getLogger(VariantMetadataLoader.class);
+	private static Logger log = LoggerFactory.getLogger(VariantMetadataLoader.class);
 	
 	private static VariantMetadataIndex metadataIndex;
 	

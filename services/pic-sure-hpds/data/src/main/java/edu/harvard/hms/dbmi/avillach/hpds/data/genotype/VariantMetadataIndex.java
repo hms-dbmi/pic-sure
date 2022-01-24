@@ -7,7 +7,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
@@ -23,7 +24,7 @@ public class VariantMetadataIndex implements Serializable {
 	public static String VARIANT_METADATA_BIN_FILE = "/opt/local/hpds/all/VariantMetadata.javabin";
 	
 	private static final long serialVersionUID = 5917054606643971537L;
-	private static Logger log = Logger.getLogger(VariantMetadataIndex.class); 
+	private static Logger log = LoggerFactory.getLogger(VariantMetadataIndex.class); 
 
 	// (String) contig  --> (Integer) Bucket -->  (String) variant spec --> INFO column data[].
 	private Map<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> > indexMap = new HashMap<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> >();

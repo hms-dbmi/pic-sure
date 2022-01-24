@@ -10,7 +10,8 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import org.apache.http.entity.ContentType;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 
@@ -54,7 +55,7 @@ public class PicSureService implements IResourceRS {
 
 	private final ObjectMapper mapper = new ObjectMapper();
 
-	private Logger log = Logger.getLogger(PicSureService.class);
+	private Logger log = LoggerFactory.getLogger(PicSureService.class);
 
 	private TimelineProcessor timelineProcessor;
 	

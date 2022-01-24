@@ -1,22 +1,18 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
 import java.io.*;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
-import org.apache.log4j.Logger;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
+import com.google.common.cache.LoadingCache;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -29,7 +25,7 @@ public class RemapIds {
 	
 	private static LoadingStore store = new LoadingStore();
 
-	private static Logger log = Logger.getLogger(RemapIds.class); 
+	private static Logger log = LoggerFactory.getLogger(RemapIds.class); 
 
 	protected static LoadingCache<String, PhenoCube<?>> sourceStore;
 

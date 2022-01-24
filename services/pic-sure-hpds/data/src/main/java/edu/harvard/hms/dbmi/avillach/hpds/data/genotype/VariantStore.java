@@ -4,18 +4,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.google.common.collect.RangeSet;
 
@@ -23,7 +18,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHol
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class VariantStore implements Serializable {
-	private static Logger log = Logger.getLogger(VariantStore.class);
+	private static Logger log = LoggerFactory.getLogger(VariantStore.class);
 	public static final int BUCKET_SIZE = 1000;
 	private static final long serialVersionUID = -6970128712587609414L;
 	private BigInteger emptyBitmask;
@@ -107,7 +102,7 @@ public class VariantStore implements Serializable {
 		int chrOffset = Integer.parseInt(segments[1]) / BUCKET_SIZE;
 		String contig = segments[0];
 
-		if (Level.DEBUG.equals(log.getEffectiveLevel())) {
+		if (log.isDebugEnabled()) {
 			log.debug("Getting masks for variant " + variant + "  Test " + (bucketCache.lastValue != null
 					&& contig.contentEquals(bucketCache.lastContig) && chrOffset == bucketCache.lastChunkOffset));
 		}

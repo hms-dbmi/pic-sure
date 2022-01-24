@@ -3,12 +3,10 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.TreeSet;
+import java.util.*;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
@@ -47,7 +45,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.ResultSetTooLargeException;
  */
 public class ResultStore {
 
-	private static Logger log = Logger.getLogger(ResultStore.class);
+	private static Logger log = LoggerFactory.getLogger(ResultStore.class);
 
 	private List<ColumnMeta> columns;
 	int rowWidth;

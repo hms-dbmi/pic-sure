@@ -9,10 +9,10 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.log4j.Level;
 //import org.apache.commons.math3.stat.inference.ChiSquareTest;
 //import org.apache.commons.math3.stat.inference.TTest;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.*;
 import com.google.common.collect.Lists;
@@ -132,7 +132,7 @@ public abstract class AbstractProcessor {
 							Thread.sleep(10000);
 						}
 					} catch (IOException | ClassNotFoundException | NumberFormatException e) {
-						log.error(e);
+						log.error("an error occurred", e);
 					}
 					log.info("Found " + variantIndex.length + " total variants.");
 				}
@@ -154,7 +154,7 @@ public abstract class AbstractProcessor {
 					bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
 					objectInputStream.close();
 				} catch (IOException | ClassNotFoundException e) {
-					log.error(e);
+					log.error("an error occurred", e);
 				} 
 			}
 		}
@@ -172,7 +172,7 @@ public abstract class AbstractProcessor {
 
 	private static final String HOMOZYGOUS_REFERENCE = "0/0";
 
-	private static Logger log = Logger.getLogger(AbstractProcessor.class);
+	private static Logger log = LoggerFactory.getLogger(AbstractProcessor.class);
 
 	protected static String ID_CUBE_NAME;
 
@@ -526,7 +526,7 @@ public abstract class AbstractProcessor {
 						numVariantsInContig += bucketStorage.size();
 						bucketMap.put(bucket, bucketStorage.keySet().toArray(new String[0]));
 					} catch (IOException e) {
-						log.error(e);
+						log.error("an error occurred", e);
 					}
 				};
 				log.info("Completed bucketMap for contig " + entry.getKey());
@@ -611,7 +611,7 @@ public abstract class AbstractProcessor {
 					try {
 						variants = Sets.union(variants, arrayToSet(infoCache.get(columnAndKey(column, value))));
 					} catch (ExecutionException e) {
-						log.error(e);
+						log.error("an error occurred", e);
 					}
 				}
 				variantSets.add(variants);
@@ -652,14 +652,14 @@ public abstract class AbstractProcessor {
 						categoryVariantSets[0] = Sets.union(categoryVariantSets[0], variantsForColumnAndValue);
 					}
 				} catch (ExecutionException e) {
-					log.error(e);
+					log.error("an error occurred", e);
 				}
 			});
 		} else {
 			try {
 				categoryVariantSets[0] = arrayToSet(infoCache.get(columnAndKey(column, infoKeys.get(0))));
 			} catch (ExecutionException e) {
-				log.error(e);
+				log.error("an error occurred", e);
 			}
 		}
 		variantSets.add(categoryVariantSets[0]);
@@ -721,7 +721,7 @@ public abstract class AbstractProcessor {
 							masks = variantStore.getMasks(variantSpec, bucketCache);
 							if(masks != null) {
 								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
-								if(Level.DEBUG.equals(log.getEffectiveLevel())) {
+								if(log.isDebugEnabled()) {
 									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
 											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
 											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
@@ -737,7 +737,7 @@ public abstract class AbstractProcessor {
 								}
 							}
 						} catch (IOException e) {
-							log.error(e);
+							log.error("an error occurred", e);
 						}
 					});
 				});
@@ -815,7 +815,7 @@ public abstract class AbstractProcessor {
 							variantsWithPatients.add(variantKey);
 						}
 					} catch (IOException e) {
-						log.error(e);
+						log.error("an error occurred", e);
 					}
 				});
 			}else {
@@ -975,7 +975,7 @@ public abstract class AbstractProcessor {
 							}
 						}
 					} catch (ExecutionException e) {
-						log.error(e);
+						log.error("an error occurred", e);
 					}
 
 				}

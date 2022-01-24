@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
@@ -21,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 public class QueryProcessor extends AbstractProcessor {
  
 	private static final byte[] EMPTY_STRING_BYTES = "".getBytes();
-	private Logger log = Logger.getLogger(QueryProcessor.class);
+	private Logger log = LoggerFactory.getLogger(QueryProcessor.class);
 
 	public QueryProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();

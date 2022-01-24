@@ -2,25 +2,20 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
 public class CountProcessor extends AbstractProcessor { 
 
-	Logger log = Logger.getLogger(CountProcessor.class);
+	Logger log = LoggerFactory.getLogger(CountProcessor.class);
 
 	public CountProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();

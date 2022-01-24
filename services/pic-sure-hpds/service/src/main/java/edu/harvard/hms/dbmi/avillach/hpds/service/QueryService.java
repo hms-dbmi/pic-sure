@@ -21,8 +21,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -41,7 +41,7 @@ public class QueryService {
 	private final int LARGE_TASK_THREADS;
 	private final int SMALL_TASK_THREADS;
 
-	Logger log = LogManager.getLogger(this.getClass());
+	Logger log = LoggerFactory.getLogger(this.getClass());
 	
 	QueryProcessor processor;
 
