@@ -157,6 +157,26 @@
 						</goals>
 					</execution>
 					<execution>
+						<id>buildSequentialLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.SequentialLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>SequentialLoader</classifier>
+							<finalName>SequentialLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
 						<id>buildMultialleleCounter</id>
 						<configuration>
 							<archive>
