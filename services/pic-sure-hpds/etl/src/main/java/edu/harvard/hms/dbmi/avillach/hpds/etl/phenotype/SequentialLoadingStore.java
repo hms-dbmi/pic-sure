@@ -119,6 +119,7 @@ public class SequentialLoadingStore {
 							try(RandomAccessFile allObservationsStore = new RandomAccessFile(OBSERVATIONS_FILENAME, "r");){
 								ColumnMeta columnMeta = metadataMap.get(key);
 								if(columnMeta != null) {
+									log.info("Loading concept : [" + key + "]");
 									allObservationsStore.seek(columnMeta.getAllObservationsOffset());
 									int length = (int) (columnMeta.getAllObservationsLength() - columnMeta.getAllObservationsOffset());
 									byte[] buffer = new byte[length];
@@ -129,7 +130,7 @@ public class SequentialLoadingStore {
 									inStream.close();
 									return ret;																		
 								}else {
-									System.out.println("creating new concept : [" + key + "]");
+									log.info("creating new concept : [" + key + "]");
 									return null;
 								}
 							}

@@ -137,7 +137,6 @@ public class SequentialLoader {
 			}
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
-				System.out.println(conceptPath);
 				try {
 					currentConcept[0] = store.store.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
