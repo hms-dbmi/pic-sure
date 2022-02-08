@@ -25,7 +25,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class SequentialLoader {
 
-	private static LoadingStore store = new LoadingStore();
+	private static SequentialLoadingStore store = new SequentialLoadingStore();
 
 	private static Logger log = LoggerFactory.getLogger(SequentialLoader.class); 
 
@@ -42,7 +42,7 @@ public class SequentialLoader {
 	public static void main(String[] args) throws IOException {
 		
 		Crypto.loadDefaultKey();
-		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile(SequentialLoadingStore.OBSERVATIONS_FILENAME, "rw");
 		
 		List<String> inputFiles = new ArrayList<String>();
 		//read in input files
