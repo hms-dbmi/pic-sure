@@ -74,7 +74,7 @@ public class SequentialLoadingStore {
 							} catch (IOException e) {
 								e.printStackTrace();
 							}
-							allObservationsTemp.write(Crypto.encryptData(byteStream.toByteArray()));
+							allObservationsTemp.write(byteStream.toByteArray());
 							columnMeta.setAllObservationsLength(allObservationsTemp.getFilePointer());
 							metadataMap.put(columnMeta.getName(), columnMeta);
 						} catch (IOException e1) {
@@ -89,19 +89,7 @@ public class SequentialLoadingStore {
 							ColumnMeta columnMeta = metadataMap.get(key);
 							if(columnMeta != null) {
 								log.info("Loading concept : [" + key + "]");
-								allObservationsTemp.seek(columnMeta.getAllObservationsOffset());
-								int length = (int) (columnMeta.getAllObservationsLength() - columnMeta.getAllObservationsOffset());
-								byte[] buffer = new byte[length];
-								allObservationsTemp.read(buffer);
-								allObservationsTemp.seek(allObservationsTemp.length());
-								ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)));
-								
-								PhenoCube cube = new PhenoCube(key, columnMeta.isCategorical() ? String.class : Double.class);
-								cube.setLoadingMap((List<KeyAndValue>)inStream.readObject());
-								cube.setColumnWidth(columnMeta.getWidthInBytes());
-								inStream.close();
-								
-								return cube;																		
+								return getCubeFromTemp(columnMeta);
 							}else {
 								log.info("creating new concept : [" + key + "]");
 								return null;
@@ -121,20 +109,8 @@ public class SequentialLoadingStore {
 		//we dumped it all in a temp file;  now sort all the data and compress it into the real Store
 		for(String concept : metadataMap.keySet()) {
 			ColumnMeta columnMeta = metadataMap.get(concept);
-			
 			log.debug("Writing concept : [" + concept + "]");
-			allObservationsTemp.seek(columnMeta.getAllObservationsOffset());
-			int length = (int) (columnMeta.getAllObservationsLength() - columnMeta.getAllObservationsOffset());
-			byte[] buffer = new byte[length];
-			allObservationsTemp.read(buffer);
-			allObservationsTemp.seek(allObservationsTemp.length());
-			ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)));
-			
-			PhenoCube cube = new PhenoCube(concept, columnMeta.isCategorical() ? String.class : Double.class);
-			cube.setLoadingMap((List<KeyAndValue>)inStream.readObject());
-			cube.setColumnWidth(columnMeta.getWidthInBytes());
-			inStream.close();
-			
+			PhenoCube cube = getCubeFromTemp(columnMeta);
 			complete(cube);
 			write(columnMeta, cube);
 		}
@@ -150,6 +126,12 @@ public class SequentialLoadingStore {
 	
 	}
 	
+	/**
+	 * calculate the min/max, categories, observation count, etc for this cube and write it to disk
+	 * @param columnMeta
+	 * @param cube
+	 * @throws IOException
+	 */
 	private void write(ColumnMeta columnMeta, PhenoCube cube) throws IOException {
 		columnMeta.setAllObservationsOffset(allObservationsStore.getFilePointer());
 		columnMeta.setObservationCount(cube.sortedByKey().length);
@@ -179,6 +161,21 @@ public class SequentialLoadingStore {
 		}
 		allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 		columnMeta.setAllObservationsLength(allObservationsStore.getFilePointer());
+	}
+	
+	private PhenoCube getCubeFromTemp(ColumnMeta columnMeta) throws IOException, ClassNotFoundException {
+		allObservationsTemp.seek(columnMeta.getAllObservationsOffset());
+		int length = (int) (columnMeta.getAllObservationsLength() - columnMeta.getAllObservationsOffset());
+		byte[] buffer = new byte[length];
+		allObservationsTemp.read(buffer);
+		allObservationsTemp.seek(allObservationsTemp.length());
+		ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)));
+		
+		PhenoCube cube = new PhenoCube(columnMeta.getName() , columnMeta.isCategorical() ? String.class : Double.class);
+		cube.setLoadingMap((List<KeyAndValue>)inStream.readObject());
+		cube.setColumnWidth(columnMeta.getWidthInBytes());
+		inStream.close();
+		return cube;
 	}
 
 	private <V extends Comparable<V>> void complete(PhenoCube<V> cube) {
