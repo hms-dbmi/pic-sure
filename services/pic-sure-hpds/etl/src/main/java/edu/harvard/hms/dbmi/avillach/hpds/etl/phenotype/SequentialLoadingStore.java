@@ -123,7 +123,12 @@ public class SequentialLoadingStore {
 		metaOut.flush();
 		metaOut.close();
 		System.out.println("Closing Store");
-	
+		
+		System.out.println("Cleaning up temporary file");
+		
+		allObservationsTemp.close();
+		File tempFile = new File(OBS_TEMP_FILENAME);
+		tempFile.delete();
 	}
 	
 	/**
@@ -169,7 +174,7 @@ public class SequentialLoadingStore {
 		byte[] buffer = new byte[length];
 		allObservationsTemp.read(buffer);
 		allObservationsTemp.seek(allObservationsTemp.length());
-		ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)));
+		ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(buffer));
 		
 		PhenoCube cube = new PhenoCube(columnMeta.getName() , columnMeta.isCategorical() ? String.class : Double.class);
 		cube.setLoadingMap((List<KeyAndValue>)inStream.readObject());
