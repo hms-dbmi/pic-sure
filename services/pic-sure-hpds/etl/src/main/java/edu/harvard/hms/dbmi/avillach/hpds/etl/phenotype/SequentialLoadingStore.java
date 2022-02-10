@@ -63,25 +63,10 @@ public class SequentialLoadingStore {
 //					}
 						try {
 							ColumnMeta columnMeta = new ColumnMeta().setName(cubeRemoval.getKey()).setWidthInBytes(cubeRemoval.getValue().getColumnWidth()).setCategorical(cubeRemoval.getValue().isStringType());
-	
 							columnMeta.setAllObservationsOffset(allObservationsTemp.getFilePointer());
-							columnMeta.setPatientCount(Arrays.stream(cubeRemoval.getValue().sortedByKey()).map((kv)->{return kv.getKey();}).collect(Collectors.toSet()).size());
-							if(columnMeta.isCategorical()) {
-								columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>(cubeRemoval.getValue().keyBasedArray())));
-							} else {
-								List<Double> map = (List<Double>) cubeRemoval.getValue().keyBasedArray().stream().map((value)->{return (Double) value;}).collect(Collectors.toList());
-								double min = Double.MAX_VALUE;
-								double max = Double.MIN_VALUE;
-								for(double f : map) {
-									min = Double.min(min, f);
-									max = Double.max(max, f);
-								}
-								columnMeta.setMin(min);
-								columnMeta.setMax(max);
-							}
 							ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 							try {
-	
+								//write out the basic key/value map for loading;  this will be compacted and finalized after all concepts are read in.
 								ObjectOutputStream out = new ObjectOutputStream(byteStream);
 								out.writeObject(cubeRemoval.getValue().getLoadingMap());
 								out.flush();
