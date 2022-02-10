@@ -65,7 +65,6 @@ public class SequentialLoadingStore {
 							ColumnMeta columnMeta = new ColumnMeta().setName(cubeRemoval.getKey()).setWidthInBytes(cubeRemoval.getValue().getColumnWidth()).setCategorical(cubeRemoval.getValue().isStringType());
 	
 							columnMeta.setAllObservationsOffset(allObservationsTemp.getFilePointer());
-							columnMeta.setObservationCount(cubeRemoval.getValue().sortedByKey().length);
 							columnMeta.setPatientCount(Arrays.stream(cubeRemoval.getValue().sortedByKey()).map((kv)->{return kv.getKey();}).collect(Collectors.toSet()).size());
 							if(columnMeta.isCategorical()) {
 								columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>(cubeRemoval.getValue().keyBasedArray())));
