@@ -212,6 +212,10 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	public List<KeyAndValue<V>> getLoadingMap() {
 		return loadingMap;
 	}
+	
+	public void setLoadingMap(List<KeyAndValue<V>> newMap) {
+		this.loadingMap= newMap ;
+	}
 
 	public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
 		List<KeyAndValue<V>> values = new ArrayList<>();

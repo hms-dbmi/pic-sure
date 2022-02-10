@@ -42,7 +42,6 @@ public class SequentialLoader {
 	public static void main(String[] args) throws IOException {
 		
 		Crypto.loadDefaultKey();
-		store.allObservationsStore = new RandomAccessFile(SequentialLoadingStore.OBSERVATIONS_FILENAME, "rw");
 		
 		List<String> inputFiles = new ArrayList<String>();
 		//read in input files
@@ -55,15 +54,19 @@ public class SequentialLoader {
 		if(inputFiles.size() == 0) {
 			inputFiles.add("/opt/local/hpds/allConcepts.csv");
 		}
-			
 		
 		//load each into observation store
-		
 		for(String filename : inputFiles) {
 			loadFile(filename);
 		}
 		
-		store.saveStore();
+		//then complete, which will compact, sort, and write out the data in the final place
+		try {
+			store.saveStore();
+		} catch (ClassNotFoundException e) {
+			System.out.println("Class error: " + e.getLocalizedMessage());
+			e.printStackTrace();
+		}
 	}
 
 	private static List<? extends String> readFileList() {
