@@ -68,7 +68,7 @@ public class SequentialLoader {
 		for(String filename : inputFiles) {
 			if(filename.toLowerCase().endsWith("sql")) {
 				loadSqlFile(filename);
-			} else {
+			} else if(filename.toLowerCase().endsWith("csv")){
 				loadCsvFile(filename);
 			}
 		}
