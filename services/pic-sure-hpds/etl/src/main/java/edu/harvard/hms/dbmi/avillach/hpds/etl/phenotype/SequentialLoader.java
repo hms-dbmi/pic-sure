@@ -111,7 +111,7 @@ public class SequentialLoader {
 
         Files.list(new File(dirName).toPath())
                 .forEach(path -> {
-                    inputFiles.add(path.getFileName().toString());
+                    inputFiles.add(dirName + path.getFileName().toString());
                 });
 		
 		return inputFiles;
