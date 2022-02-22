@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
@@ -83,27 +84,35 @@ public class SequentialLoader {
 	}
 
 
-	private static List<? extends String> readFileList() {
+	private static List<? extends String> readFileList() throws IOException {
 		
-		BufferedReader br;
-		try {
-			br = new BufferedReader(new FileReader("/opt/local/hpds/phenotypeInputs.txt"));
-		} catch (FileNotFoundException e) {
-			return new ArrayList<String>();
-		}
+//		BufferedReader br;
+//		try {
+//			br = new BufferedReader(new FileReader("/opt/local/hpds/phenotypeInputs.txt"));
+//		} catch (FileNotFoundException e) {
+//			return new ArrayList<String>();
+//		}
 		
 		List<String> inputFiles = new ArrayList<String>();
 		
-		try {
-		    String line = br.readLine();
-		    while (line != null) {
-		    	inputFiles.add(line);
-		        line = br.readLine();
-		    }
-		    br.close();
-		}catch (IOException e) {
-			e.printStackTrace();
-		}
+//		try {
+//		    String line = br.readLine();
+//		    while (line != null) {
+//		    	inputFiles.add(line);
+//		        line = br.readLine();
+//		    }
+//		    br.close();
+//		}catch (IOException e) {
+//			e.printStackTrace();
+//		}
+		
+
+        String dirName = "/opt/local/hpds_input/";
+
+        Files.list(new File(dirName).toPath())
+                .forEach(path -> {
+                    inputFiles.add(path.getFileName().toString());
+                });
 		
 		return inputFiles;
 	}
@@ -192,10 +201,11 @@ public class SequentialLoader {
 			boolean isAlpha = (numericValue == null || numericValue.isEmpty());
 			if(currentConcept[0] == null || !currentConcept[0].name.equals(conceptPath)) {
 				try {
-					currentConcept[0] = store.store.get(conceptPath);
+					currentConcept[0] = store.loadingCache.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
+					log.info("New concept " + record.getConceptPath());
 					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Double.class);
-					store.store.put(conceptPath, currentConcept[0]);
+					store.loadingCache.put(conceptPath, currentConcept[0]);
 				}
 			}
 			String value = isAlpha ? record.getTextValue() : numericValue;

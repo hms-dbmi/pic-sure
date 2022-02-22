@@ -77,7 +77,7 @@ public class PhenoRecord {
 	//CSV constructor
 	public PhenoRecord (CSVRecord record) {
 		conceptPath = record.get(CONCEPT_PATH_COL);
-		if(record.size()>4 && record.get(DATETIME_COL) != null && ! record.get(DATETIME_COL).isEmpty()) {
+		if(record.size()>DATETIME_COL && record.get(DATETIME_COL) != null && ! record.get(DATETIME_COL).isEmpty()) {
 			dateTime =  new Date(Long.parseLong(record.get(DATETIME_COL)));
 		}
 		numericValue = record.get(NUMERIC_VALUE_COL);

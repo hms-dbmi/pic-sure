@@ -43,15 +43,12 @@ public class SequentialLoadingStore {
 	public SequentialLoadingStore() {
 		try {
 			allObservationsTemp = new RandomAccessFile(OBS_TEMP_FILENAME, "rw");
-			
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		
 	}
 	
-	public LoadingCache<String, PhenoCube> store = CacheBuilder.newBuilder()
+	public LoadingCache<String, PhenoCube> loadingCache = CacheBuilder.newBuilder()
 			.maximumSize(16)
 			.removalListener(new RemovalListener<String, PhenoCube>() {
 
@@ -59,21 +56,13 @@ public class SequentialLoadingStore {
 				public void onRemoval(RemovalNotification<String, PhenoCube> cubeRemoval) {
 					log.info("removing " + cubeRemoval.getKey());
 					if(cubeRemoval.getValue().getLoadingMap()!=null) {
-//						complete(cubeRemoval.getValue());
-//					}
-						try {
+						try(ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+							ObjectOutputStream out = new ObjectOutputStream(byteStream);) {
 							ColumnMeta columnMeta = new ColumnMeta().setName(cubeRemoval.getKey()).setWidthInBytes(cubeRemoval.getValue().getColumnWidth()).setCategorical(cubeRemoval.getValue().isStringType());
 							columnMeta.setAllObservationsOffset(allObservationsTemp.getFilePointer());
-							ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-							try {
-								//write out the basic key/value map for loading;  this will be compacted and finalized after all concepts are read in.
-								ObjectOutputStream out = new ObjectOutputStream(byteStream);
-								out.writeObject(cubeRemoval.getValue().getLoadingMap());
-								out.flush();
-								out.close();
-							} catch (IOException e) {
-								e.printStackTrace();
-							}
+							//write out the basic key/value map for loading;  this will be compacted and finalized after all concepts are read in.
+							out.writeObject(cubeRemoval.getValue().getLoadingMap()); out.flush();
+							
 							allObservationsTemp.write(byteStream.toByteArray());
 							columnMeta.setAllObservationsLength(allObservationsTemp.getFilePointer());
 							metadataMap.put(columnMeta.getName(), columnMeta);
@@ -91,7 +80,6 @@ public class SequentialLoadingStore {
 								log.info("Loading concept : [" + key + "]");
 								return getCubeFromTemp(columnMeta);
 							}else {
-								log.info("creating new concept : [" + key + "]");
 								return null;
 							}
 						}
@@ -101,9 +89,8 @@ public class SequentialLoadingStore {
 	
 	public void saveStore() throws FileNotFoundException, IOException, ClassNotFoundException {
 		log.info("flushing temp storage");
-		store.invalidateAll();
-		store.cleanUp();
-		
+		loadingCache.invalidateAll();
+		loadingCache.cleanUp();
 		
 		allObservationsStore = new RandomAccessFile(OBSERVATIONS_FILENAME, "rw");
 		//we dumped it all in a temp file;  now sort all the data and compress it into the real Store
@@ -111,7 +98,7 @@ public class SequentialLoadingStore {
 			ColumnMeta columnMeta = metadataMap.get(concept);
 			log.debug("Writing concept : [" + concept + "]");
 			PhenoCube cube = getCubeFromTemp(columnMeta);
-			complete(cube);
+			complete(columnMeta, cube);
 			write(columnMeta, cube);
 		}
 		allObservationsStore.close();
@@ -122,7 +109,6 @@ public class SequentialLoadingStore {
 		metaOut.writeObject(allIds);
 		metaOut.flush();
 		metaOut.close();
-		log.info("Closing Store");
 		
 		log.info("Cleaning up temporary file");
 		
@@ -139,32 +125,15 @@ public class SequentialLoadingStore {
 	 */
 	private void write(ColumnMeta columnMeta, PhenoCube cube) throws IOException {
 		columnMeta.setAllObservationsOffset(allObservationsStore.getFilePointer());
-		columnMeta.setObservationCount(cube.sortedByKey().length);
-		columnMeta.setPatientCount(Arrays.stream(cube.sortedByKey()).map((kv)->{return kv.getKey();}).collect(Collectors.toSet()).size());
-		if(columnMeta.isCategorical()) {
-			columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>(cube.keyBasedArray())));
-		} else {
-			List<Double> map = (List<Double>) cube.keyBasedArray().stream().map((value)->{return (Double) value;}).collect(Collectors.toList());
-			double min = Double.MAX_VALUE;
-			double max = Double.MIN_VALUE;
-			for(double f : map) {
-				min = Double.min(min, f);
-				max = Double.max(max, f);
-			}
-			columnMeta.setMin(min);
-			columnMeta.setMax(max);
-		}
-		ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-		try {
-
-			ObjectOutputStream out = new ObjectOutputStream(byteStream);
-			out.writeObject(cube);
-			out.flush();
-			out.close();
+		
+		try(ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+			ObjectOutputStream out = new ObjectOutputStream(byteStream);) {
+			
+			out.writeObject(cube); out.flush();
+			allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 		columnMeta.setAllObservationsLength(allObservationsStore.getFilePointer());
 	}
 	
@@ -183,7 +152,7 @@ public class SequentialLoadingStore {
 		return cube;
 	}
 
-	private <V extends Comparable<V>> void complete(PhenoCube<V> cube) {
+	private <V extends Comparable<V>> void complete(ColumnMeta columnMeta, PhenoCube<V> cube) {
 		ArrayList<KeyAndValue<V>> entryList = new ArrayList<KeyAndValue<V>>(
 				cube.getLoadingMap().stream().map((entry)->{
 					return new KeyAndValue<V>(entry.getKey(), entry.getValue(), entry.getTimestamp());
@@ -207,6 +176,22 @@ public class SequentialLoadingStore {
 				categorySetMap.put(entry.getKey(), new TreeSet<Integer>(entry.getValue()));
 			});
 			cube.setCategoryMap(categorySetMap);
+		}
+		
+		columnMeta.setObservationCount(cube.sortedByKey().length);
+		columnMeta.setPatientCount(Arrays.stream(cube.sortedByKey()).map((kv)->{return kv.getKey();}).collect(Collectors.toSet()).size());
+		if(columnMeta.isCategorical()) {
+			columnMeta.setCategoryValues(new ArrayList<String>(new TreeSet<String>((List)cube.keyBasedArray())));
+		} else {
+			List<Double> map = (List<Double>) cube.keyBasedArray().stream().map((value)->{return (Double) value;}).collect(Collectors.toList());
+			double min = Double.MAX_VALUE;
+			double max = Double.MIN_VALUE;
+			for(double f : map) {
+				min = Double.min(min, f);
+				max = Double.max(max, f);
+			}
+			columnMeta.setMin(min);
+			columnMeta.setMax(max);
 		}
 		
 	}
