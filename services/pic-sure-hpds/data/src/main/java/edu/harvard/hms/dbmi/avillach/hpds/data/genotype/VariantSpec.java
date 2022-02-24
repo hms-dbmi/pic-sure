@@ -59,6 +59,9 @@ public class VariantSpec implements Serializable, Comparable<VariantSpec> {
 			ret = this.metadata.offset.compareTo(o.metadata.offset);
 		}
 		if(ret == 0) {
+			ret = this.metadata.ref.compareTo(o.metadata.ref);
+		}
+		if(ret == 0) {
 			ret = this.metadata.alt.compareTo(o.metadata.alt);
 		}
 		return ret;
