@@ -66,6 +66,8 @@ public class SequentialLoader {
 			 }
 		}
 		
+		log.info("Input files: " + Arrays.deepToString(inputFiles.toArray()));
+		
 		//load each into observation store
 		for(String filename : inputFiles) {
 			try {
