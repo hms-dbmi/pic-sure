@@ -68,10 +68,14 @@ public class SequentialLoader {
 		
 		//load each into observation store
 		for(String filename : inputFiles) {
-			if(filename.toLowerCase().endsWith("sql")) {
-				loadSqlFile(filename);
-			} else if(filename.toLowerCase().endsWith("csv")){
-				loadCsvFile(filename);
+			try {
+				if(filename.toLowerCase().endsWith("sql")) {
+					loadSqlFile(filename);
+				} else if(filename.toLowerCase().endsWith("csv")){
+					loadCsvFile(filename);
+				}
+			}catch (Exception e) {
+				log.warn("Exception loading " + filename + " ", e);
 			}
 		}
 		
@@ -85,14 +89,12 @@ public class SequentialLoader {
 		}
 	}
 
-
 	private static List<? extends String> readFileList() throws IOException {
 		List<String> inputFiles = new ArrayList<String>();
         Files.list(new File(INPUT_DIR).toPath())
                 .forEach(path -> {
                     inputFiles.add(INPUT_DIR + path.getFileName().toString());
                 });
-		
 		return inputFiles;
 	}
 
@@ -118,11 +120,9 @@ public class SequentialLoader {
 	
 	private static void loadSqlFile(String filename) throws FileNotFoundException, IOException {
 		loadTemplate();
-		
 		String loadQuery = IOUtils.toString(new FileInputStream(filename), Charset.forName("UTF-8"));
 		
-		//currentConcept is used to persist data across function calls and identify when we hit a new concept
-		final PhenoCube[] currentConcept = new PhenoCube[1];
+		final PhenoCube[] currentConcept = new PhenoCube[1]; //used to identify new concepts
 		template.query(loadQuery, new RowCallbackHandler() {
 
 			@Override
