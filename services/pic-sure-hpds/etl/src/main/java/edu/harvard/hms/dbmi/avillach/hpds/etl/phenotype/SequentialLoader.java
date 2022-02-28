@@ -33,6 +33,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class SequentialLoader {
 
+	private static final String INPUT_DIR =  "/opt/local/hpds_input/";
+
 	private static SequentialLoadingStore store = new SequentialLoadingStore();
 
 	private static Logger log = LoggerFactory.getLogger(SequentialLoader.class); 
@@ -52,7 +54,7 @@ public class SequentialLoader {
 		}
 		
 		if(inputFiles.size() == 0) {
-			// check for "/opt/local/hpds/loadQuery.sql" first
+			// check for prior default file locations
 			 File file = new File("/opt/local/hpds/loadQuery.sql");
 			 if(file.isFile()) {
 				 inputFiles.add("/opt/local/hpds/loadQuery.sql");
@@ -85,33 +87,10 @@ public class SequentialLoader {
 
 
 	private static List<? extends String> readFileList() throws IOException {
-		
-//		BufferedReader br;
-//		try {
-//			br = new BufferedReader(new FileReader("/opt/local/hpds/phenotypeInputs.txt"));
-//		} catch (FileNotFoundException e) {
-//			return new ArrayList<String>();
-//		}
-		
 		List<String> inputFiles = new ArrayList<String>();
-		
-//		try {
-//		    String line = br.readLine();
-//		    while (line != null) {
-//		    	inputFiles.add(line);
-//		        line = br.readLine();
-//		    }
-//		    br.close();
-//		}catch (IOException e) {
-//			e.printStackTrace();
-//		}
-		
-
-        String dirName = "/opt/local/hpds_input/";
-
-        Files.list(new File(dirName).toPath())
+        Files.list(new File(INPUT_DIR).toPath())
                 .forEach(path -> {
-                    inputFiles.add(dirName + path.getFileName().toString());
+                    inputFiles.add(INPUT_DIR + path.getFileName().toString());
                 });
 		
 		return inputFiles;
@@ -144,7 +123,6 @@ public class SequentialLoader {
 		
 		//currentConcept is used to persist data across function calls and identify when we hit a new concept
 		final PhenoCube[] currentConcept = new PhenoCube[1];
-		
 		template.query(loadQuery, new RowCallbackHandler() {
 
 			@Override
@@ -153,19 +131,16 @@ public class SequentialLoader {
 				if(row%100000==0) {
 					System.out.println(row);
 				}
-				
 				processRecord(currentConcept, new PhenoRecord(result));
 			}
 		});
-
 	}
 
 	
 	private static void loadTemplate() throws FileNotFoundException, IOException {
 		if (template == null) {
 			Properties props = new Properties();
-
-			props.load(new FileInputStream("/opt/local/hpds/sql.properties"));
+			props.load(new FileInputStream(INPUT_DIR + "sql.properties"));
 			template = new JdbcTemplate(new DriverManagerDataSource(props.getProperty("datasource.url"), props.getProperty("datasource.user"),
 					props.getProperty("datasource.password")));
 		}
