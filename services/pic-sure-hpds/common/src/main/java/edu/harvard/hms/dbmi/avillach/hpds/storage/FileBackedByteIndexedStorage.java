@@ -63,6 +63,10 @@ public class FileBackedByteIndexedStorage <K, V extends Serializable> implements
 		this.completed = true;
 	}
 
+	public boolean isComplete() {
+		return this.completed;
+	}
+	
 	private Long[] store(V value) throws IOException {
 		
 		ByteArrayOutputStream out = new ByteArrayOutputStream();

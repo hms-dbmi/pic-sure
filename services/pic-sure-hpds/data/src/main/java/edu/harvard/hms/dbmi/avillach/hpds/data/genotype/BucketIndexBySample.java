@@ -87,9 +87,14 @@ public class BucketIndexBySample implements Serializable {
 									if(masks.heterozygousMask!=null) {
 										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousMask);
 									}
+									//add hetreo no call bits to mask
+									if(masks.heterozygousNoCallMask!=null) {
+										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousNoCallMask);
+									}
 									if(masks.homozygousMask!=null) {
 										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.homozygousMask);
 									}
+									
 								});
 							} catch (IOException e) {
 								e.printStackTrace();
@@ -97,6 +102,7 @@ public class BucketIndexBySample implements Serializable {
 							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
 							// in this bucket, or '0' if they dont
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
+								//the patientMaskForBucket array is not a bitmask, so is not bookended with '11'.
 								if(patientMaskForBucket[0].testBit(x)) {
 									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
@@ -110,8 +116,28 @@ public class BucketIndexBySample implements Serializable {
 			log.info("completed contig " + contig);
 		});
 		
-		// populate patientBucketMasks with bucketMasks for each patient
+		// populate patientBucketMasks with bucketMasks for each patient 
 		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
+		
+		//the process to write out the bucket masks takes a very long time.  
+		//Lets spin up another thread that occasionally logs progress
+		int[] processedPatients = new int[1];
+		processedPatients[0] = 0;
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				log.info("writing patient bucket masks to backing store (this may take some time).");
+				while(!patientBucketMasks.isComplete()) {
+					try {
+						Thread.sleep(5 * 1000 * 60); //log a message every 5 minutes
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}  
+					log.info("wrote " + processedPatients[0] + " patient bucket masks");
+				}
+			}
+		}).start();
+		
 		patientIds.parallelStream().forEach((patientId)->{
 			try {
 				BigInteger patientMask = new BigInteger(new String(patientBucketCharMasks[patientIds.indexOf(patientId)]),2);
@@ -122,6 +148,7 @@ public class BucketIndexBySample implements Serializable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			processedPatients[0] += 1;
 		});
 		patientBucketMasks.complete();
 		log.info("Done creating patient bucket masks");
@@ -138,7 +165,11 @@ public class BucketIndexBySample implements Serializable {
 	 * @throws IOException 
 	 */
 	public Collection<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet) throws IOException{
-		BigInteger patientBucketMask = patientBucketMasks.get(patientSet.get(0));
+		
+		
+		//a bitmask of which buckets contain any relevant variant. 
+		BigInteger patientBucketMask = patientSet.size() == 0 ? 
+				new BigInteger(new String(emptyBucketMaskChar()),2) : patientBucketMasks.get(patientSet.get(0));
 	
 		BigInteger _defaultMask = patientBucketMask;
 		List<BigInteger> patientBucketmasksForSet = patientSet.parallelStream().map((patientNum)->{
@@ -156,18 +187,8 @@ public class BucketIndexBySample implements Serializable {
 		BigInteger _bucketMask = patientBucketMask;
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
-			return _bucketMask.testBit(findOffsetOfBucket(bucketKey));
+			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
 		}).collect(Collectors.toSet());
-	}
-
-	/**
-	 * Convenience method to map a bucketKey to the offset of it's corresponding bit in a patientBucketMask
-	 * 
-	 * @param bucketKey
-	 * @return offset of bit in patientBucketMask corresponding to the bucketKey
-	 */
-	private int findOffsetOfBucket(String bucketKey) {
-		return (bucketList.size()+4) - Collections.binarySearch(bucketList, bucketKey) - 2;
 	}
 
 	private char[] _emptyBucketMaskChar = null;

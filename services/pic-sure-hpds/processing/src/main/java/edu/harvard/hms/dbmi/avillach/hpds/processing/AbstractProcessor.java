@@ -9,8 +9,6 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-//import org.apache.commons.math3.stat.inference.ChiSquareTest;
-//import org.apache.commons.math3.stat.inference.TTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -474,7 +472,7 @@ public abstract class AbstractProcessor {
 	}
 
 	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
-
+//		log.debug("filterdIDSets START size: " + filteredIdSets.size());
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -491,11 +489,12 @@ public abstract class AbstractProcessor {
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
 					if(log.isDebugEnabled()) {
 						IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-						log.debug("Number of matching variants for all sets : " + stats);
+						log.debug("Number of matching variants for all sets : " + stats.getSum());
 						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
 					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
+					log.debug("filterdIDSets AFTER size: " + filteredIdSets.size());
 				}
 			}
 		}
@@ -550,7 +549,7 @@ public abstract class AbstractProcessor {
 			log.info("Awaiting completion of variant index");
 		}
 		
-		log.info("Found " + numVariants.length + " total variants.");
+		log.info("Found " + numVariants[0] + " total variants.");
 
 		variantIndex = new String[numVariants[0]];
 
@@ -695,7 +694,7 @@ public abstract class AbstractProcessor {
 				patientsInScope = patientIds;
 			}
 
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+			
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
 			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
@@ -703,8 +702,14 @@ public abstract class AbstractProcessor {
 						return new VariantSpec(variantSpec).metadata.offset/1000;
 					})).values());
 
-			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, Runtime.getRuntime().availableProcessors());
-
+			log.info("found " + variantsInScope.size() + " ...buckets?");
+			
+			//don't error on small result sets (make sure we have at least one element in each partition)
+			int partitionSize = variantsInScope.size() / Runtime.getRuntime().availableProcessors(); 
+			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, partitionSize > 0 ? partitionSize : 1);
+			
+			log.info("and partitioned those into " + variantPartitions.size() + " parts");
+			
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
@@ -712,8 +717,10 @@ public abstract class AbstractProcessor {
 					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
+				log.info("processing " + variantBuckets.size() + " bucket from partition " + x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
-					variantBucket.parallelStream().forEach((variantSpec)->{
+					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+					variantBucket.stream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
 						BigInteger homoMask = variantStore.emptyBitmask();
@@ -734,7 +741,11 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
+//									if(andMasks.bitCount() > 4)
+//										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
+//							} else {
+//								log.debug("No masks found for variant spec " + variantSpec);
 							}
 						} catch (IOException e) {
 							log.error("an error occurred", e);
@@ -796,12 +807,15 @@ public abstract class AbstractProcessor {
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
-			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
-
-			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-			log.info("Variants in scope: " + variantsInScope.size());
+			//TODO NC - this seems to be filtering out valid variants; we may need to revisit this for larger variant sets
+//			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+			Collection<String> variantsInScope = unionOfInfoFilters;
+			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
 			
+			
+			//NC - this is the original variant filtering, which checks the patient mask from each variant against the patient mask from the query
 			if(variantsInScope.size()<100000) {
+				ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
 					try {
@@ -813,15 +827,20 @@ public abstract class AbstractProcessor {
 						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
 							//so heterozygous no calls we want, homozygous no calls we don't
 							variantsWithPatients.add(variantKey);
+//						} else {
+//							log.debug("no patients found for variant " + variantKey);
+//							log.debug("Variant hetero Mask " + masks.heterozygousMask);
+//							log.debug("variant homo Mask   " + masks.homozygousMask);
+							
 						}
 					} catch (IOException e) {
 						log.error("an error occurred", e);
 					}
 				});
+				return variantsWithPatients;
 			}else {
 				return unionOfInfoFilters;
 			}
-			return variantsWithPatients;
 		}
 		return new ArrayList<>();
 	}

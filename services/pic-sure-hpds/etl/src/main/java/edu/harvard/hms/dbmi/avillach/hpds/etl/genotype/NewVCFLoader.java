@@ -504,6 +504,7 @@ public class NewVCFLoader {
 			for (int x = 0; x < vcfIndexLine.patientIds.length; x++) {
 				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
 			}
+			
 		}
 
 		public void nextLine() throws IOException {
