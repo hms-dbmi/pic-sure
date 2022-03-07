@@ -808,8 +808,8 @@ public abstract class AbstractProcessor {
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
 			//TODO NC - this seems to be filtering out valid variants; we may need to revisit this for larger variant sets
-//			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-			Collection<String> variantsInScope = unionOfInfoFilters;
+			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
+//			Collection<String> variantsInScope = unionOfInfoFilters;
 			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
 			
 			
