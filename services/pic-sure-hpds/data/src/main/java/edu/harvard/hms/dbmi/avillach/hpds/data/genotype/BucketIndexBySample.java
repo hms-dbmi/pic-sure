@@ -166,7 +166,6 @@ public class BucketIndexBySample implements Serializable {
 	 */
 	public Collection<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet) throws IOException{
 		
-		
 		//a bitmask of which buckets contain any relevant variant. 
 		BigInteger patientBucketMask = patientSet.size() == 0 ? 
 				new BigInteger(new String(emptyBucketMaskChar()),2) : patientBucketMasks.get(patientSet.get(0));

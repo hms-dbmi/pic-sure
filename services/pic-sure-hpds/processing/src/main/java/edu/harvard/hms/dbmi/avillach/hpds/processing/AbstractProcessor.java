@@ -744,8 +744,6 @@ public abstract class AbstractProcessor {
 //									if(andMasks.bitCount() > 4)
 //										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
-//							} else {
-//								log.debug("No masks found for variant spec " + variantSpec);
 							}
 						} catch (IOException e) {
 							log.error("an error occurred", e);
@@ -807,11 +805,7 @@ public abstract class AbstractProcessor {
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
-			//TODO NC - this seems to be filtering out valid variants; we may need to revisit this for larger variant sets
 			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-//			Collection<String> variantsInScope = unionOfInfoFilters;
-			log.info("Variants in scope (no bucket filtering): " + variantsInScope.size());
-			
 			
 			//NC - this is the original variant filtering, which checks the patient mask from each variant against the patient mask from the query
 			if(variantsInScope.size()<100000) {
@@ -827,11 +821,6 @@ public abstract class AbstractProcessor {
 						} else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
 							//so heterozygous no calls we want, homozygous no calls we don't
 							variantsWithPatients.add(variantKey);
-//						} else {
-//							log.debug("no patients found for variant " + variantKey);
-//							log.debug("Variant hetero Mask " + masks.heterozygousMask);
-//							log.debug("variant homo Mask   " + masks.homozygousMask);
-							
 						}
 					} catch (IOException e) {
 						log.error("an error occurred", e);
