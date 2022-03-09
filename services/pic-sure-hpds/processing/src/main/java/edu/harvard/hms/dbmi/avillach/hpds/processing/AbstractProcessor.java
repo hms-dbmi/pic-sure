@@ -36,6 +36,7 @@ public abstract class AbstractProcessor {
 	private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000;
 	private static final String VARIANT_INDEX_FBBIS_STORAGE_FILE = "/opt/local/hpds/all/variantIndex_fbbis_storage.javabin";
 	private static final String VARIANT_INDEX_FBBIS_FILE = "/opt/local/hpds/all/variantIndex_fbbis.javabin";
+	private static final String BUCKET_INDEX_BY_SAMPLE_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -135,11 +136,11 @@ public abstract class AbstractProcessor {
 					log.info("Found " + variantIndex.length + " total variants.");
 				}
 			}
-			if(variantStore.getPatientIds().length > 0 && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
-				log.info("creating new " + BucketIndexBySample.INDEX_FILE);
+			if(variantStore.getPatientIds().length > 0 && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
+				log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
 				bucketIndex = new BucketIndexBySample(variantStore);
 				try (
-						FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
+						FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
 						GZIPOutputStream gzos = new GZIPOutputStream(fos);
 						ObjectOutputStream oos = new ObjectOutputStream(gzos);			
 						){
@@ -147,8 +148,8 @@ public abstract class AbstractProcessor {
 					oos.flush();oos.close();
 				}
 			}else {
-				try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
-					log.info("loading " + BucketIndexBySample.INDEX_FILE);
+				try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
+					log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
 					bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
 					objectInputStream.close();
 				} catch (IOException | ClassNotFoundException e) {
@@ -702,7 +703,7 @@ public abstract class AbstractProcessor {
 						return new VariantSpec(variantSpec).metadata.offset/1000;
 					})).values());
 
-			log.info("found " + variantsInScope.size() + " ...buckets?");
+			log.info("found " + variantsInScope.size() + " variants");
 			
 			//don't error on small result sets (make sure we have at least one element in each partition)
 			int partitionSize = variantsInScope.size() / Runtime.getRuntime().availableProcessors(); 

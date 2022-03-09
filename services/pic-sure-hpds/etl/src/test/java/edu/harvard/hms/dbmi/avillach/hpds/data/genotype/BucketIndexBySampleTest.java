@@ -24,6 +24,7 @@ public class BucketIndexBySampleTest {
 
 	private static final String VCF_INDEX_FILE = "./src/test/resources/test_vcfIndex.tsv";
 	private static final String STORAGE_DIR = "./target";
+	private static final String MERGED_DIR = "./target/merged";
 	
 	private static VariantStore variantStore;
 	private static BucketIndexBySample bucketIndexBySample;
@@ -53,7 +54,7 @@ public class BucketIndexBySampleTest {
 	@BeforeClass
 	public static void initializeBinfile() throws Exception {
 		//load variant data
-		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR});	
+		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR, MERGED_DIR});	
 				
 		//read in variantStore object created by VCFLoader
 		ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(STORAGE_DIR + "/variantStore.javabin")));
@@ -62,7 +63,10 @@ public class BucketIndexBySampleTest {
 		variantStore.open();	
 		
 		//now use that object to initialize the BucketIndexBySample object
-		bucketIndexBySample = new BucketIndexBySample(variantStore);
+		bucketIndexBySample = new BucketIndexBySample(variantStore, STORAGE_DIR);
+		
+		
+		bucketIndexBySample.printPatientMasks();
 	}
 	
 	@Test

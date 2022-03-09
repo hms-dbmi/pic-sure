@@ -13,8 +13,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public class BucketIndexBySample implements Serializable {
 	private static final long serialVersionUID = -1230735595028630687L;
-	public static final String INDEX_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
-	private static final String STORAGE_FILE = "/opt/local/hpds/all/BucketIndexBySampleStorage.javabin";
+	private static final String STORAGE_FILE_NAME = "BucketIndexBySampleStorage.javabin";
 
 	List<Integer> patientIds;
 	ArrayList<String> contigSet;
@@ -34,9 +33,15 @@ public class BucketIndexBySample implements Serializable {
 	 * finding the offset of a given bucket.
 	 */
 	private ArrayList<String> bucketList = new ArrayList<String>();
-	
+
 	public BucketIndexBySample(VariantStore variantStore) throws FileNotFoundException {
+		this(variantStore, "/opt/local/hpds/all/");
+	}
+	
+	public BucketIndexBySample(VariantStore variantStore, String storageDir) throws FileNotFoundException {
 		log.info("Creating new Bucket Index by Sample");
+		final String storageFileStr = storageDir + STORAGE_FILE_NAME;
+		
 		contigSet = new ArrayList<String>(variantStore.variantMaskStorage.keySet());
 		
 		//Create a bucketList, containing keys for all buckets in the variantStore
@@ -117,7 +122,7 @@ public class BucketIndexBySample implements Serializable {
 		});
 		
 		// populate patientBucketMasks with bucketMasks for each patient 
-		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(STORAGE_FILE));
+		patientBucketMasks = new FileBackedByteIndexedStorage<Integer, BigInteger>(Integer.class, BigInteger.class, new File(storageFileStr));
 		
 		//the process to write out the bucket masks takes a very long time.  
 		//Lets spin up another thread that occasionally logs progress
@@ -188,8 +193,8 @@ public class BucketIndexBySample implements Serializable {
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
 //			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
 			
-			log.debug("key " + bucketKey + " index " +  Collections.binarySearch(bucketList, bucketKey) );
-			log.debug(_bucketMask.toString(2));
+			log.info("key " + bucketKey + " index " +  Collections.binarySearch(bucketList, bucketKey) );
+			log.info(_bucketMask.toString(2));
 			
 			//invert the index (test bit is apparently opposite endian) and include offset for bookends
 			return _bucketMask.testBit(bucketList.size() - Collections.binarySearch(bucketList, bucketKey) + 2);
@@ -217,6 +222,17 @@ public class BucketIndexBySample implements Serializable {
 			_emptyBucketMaskChar = bucketMaskChar;
 		}
 		return _emptyBucketMaskChar.clone();
+	}
+	
+	public void printPatientMasks() {
+		for(Integer patientID : patientBucketMasks.keys()) {
+			try {
+				log.info(patientID + ": " + patientBucketMasks.get(patientID).toString(2));
+			} catch (IOException e) {
+			log.error("FBBIS Error: ", e);
+			}
+		
+	}
 	}
 
 }

@@ -24,7 +24,11 @@ public class NewVCFLoader {
 
 	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
 	private static File storageDir = null;
-
+	private static String storageDirStr = "/opt/local/hpds/all";
+	
+	private static String mergedDirStr = "/opt/local/hpds/merged";
+	
+	
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
 	private static int CHUNK_SIZE = 1000;
 
@@ -34,13 +38,15 @@ public class NewVCFLoader {
 	public static void main(String[] args) throws FileNotFoundException, IOException {
 		
 		File indexFile;
-		if(args != null && args.length >= 2) {
+		if(args != null && args.length >= 3) {
 			logger.info("Reading parameters from input - this is a test");
 			indexFile = new File(args[0]);
+			storageDirStr = args[1];
 			storageDir = new File(args[1]);
+			mergedDirStr = args[2];
 		} else {
 			indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
-			storageDir = new File("/opt/local/hpds/all");
+			storageDir = new File(storageDirStr);
 		}
 		loadVCFs(indexFile);
 	}
@@ -332,7 +338,7 @@ public class NewVCFLoader {
 	public static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
 		logger.debug("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
-			VCFPerPatientInfoStoreSplitter.splitAll();
+			VCFPerPatientInfoStoreSplitter.splitAll(storageDir,  new File(mergedDirStr));
 		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
 			logger.error("Error splitting infostore's by column", e);
 		}
@@ -342,7 +348,7 @@ public class NewVCFLoader {
 	public static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
 		logger.debug("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
-			VCFPerPatientInfoStoreToFBBIISConverter.convertAll("/opt/local/hpds/merged", "/opt/local/hpds/all");
+			VCFPerPatientInfoStoreToFBBIISConverter.convertAll(mergedDirStr, storageDirStr);
 		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
 			logger.error("Error converting infostore to byteindexed", e);
 		}
