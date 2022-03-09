@@ -6,6 +6,7 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.csv.CSVFormat;
@@ -18,7 +19,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
-import htsjdk.samtools.util.BlockCompressedInputStream;
 
 public class NewVCFLoader {
 
@@ -28,9 +28,20 @@ public class NewVCFLoader {
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
 	private static int CHUNK_SIZE = 1000;
 
+	/**
+	 * @param args - if testing, this should be an array ['vcfIndexFile path', 'output storage dir'].  by default this will be [/opt/local/hpds/vcfIndex.tsv, args]. 
+	 */
 	public static void main(String[] args) throws FileNotFoundException, IOException {
-		File indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
-		storageDir = new File("/opt/local/hpds/all");
+		
+		File indexFile;
+		if(args != null && args.length >= 2) {
+			logger.info("Reading parameters from input - this is a test");
+			indexFile = new File(args[0]);
+			storageDir = new File(args[1]);
+		} else {
+			indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
+			storageDir = new File("/opt/local/hpds/all");
+		}
 		loadVCFs(indexFile);
 	}
 
@@ -387,11 +398,11 @@ public class NewVCFLoader {
 			}
 			try {
 				InputStream in = this.vcfIndexLine.isGzipped
-						? new BlockCompressedInputStream(new FileInputStream(this.vcfIndexLine.vcfPath))
+						? new GZIPInputStream(new FileInputStream(this.vcfIndexLine.vcfPath))
 						: new FileInputStream(this.vcfIndexLine.vcfPath);
 				InputStreamReader reader = new InputStreamReader(in);
 				vcfReader = new BufferedReader(reader, 1024 * 1024 * 32);
-			} catch (FileNotFoundException e) {
+			} catch (IOException e) {
 				throw new RuntimeException("File not found, please fix the VCF index file : " + vcfIndexLine, e);
 			}
 		}

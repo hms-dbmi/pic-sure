@@ -186,7 +186,13 @@ public class BucketIndexBySample implements Serializable {
 		BigInteger _bucketMask = patientBucketMask;
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
-			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
+//			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
+			
+			log.debug("key " + bucketKey + " index " +  Collections.binarySearch(bucketList, bucketKey) );
+			log.debug(_bucketMask.toString(2));
+			
+			//invert the index (test bit is apparently opposite endian) and include offset for bookends
+			return _bucketMask.testBit(bucketList.size() - Collections.binarySearch(bucketList, bucketKey) + 2);
 		}).collect(Collectors.toSet());
 	}
 
