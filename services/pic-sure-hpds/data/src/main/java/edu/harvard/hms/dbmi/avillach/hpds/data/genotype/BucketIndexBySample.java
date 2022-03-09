@@ -227,7 +227,7 @@ public class BucketIndexBySample implements Serializable {
 	public void printPatientMasks() {
 		for(Integer patientID : patientBucketMasks.keys()) {
 			try {
-				log.info(patientID + ": " + patientBucketMasks.get(patientID).toString(2));
+				log.info("BucketMasks for " + patientID + ": " + patientBucketMasks.get(patientID).toString(2));
 			} catch (IOException e) {
 			log.error("FBBIS Error: ", e);
 			}
