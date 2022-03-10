@@ -83,7 +83,8 @@ public class BucketIndexBySample implements Serializable {
 				contigStore.keys().stream().forEach(
 						(Integer bucket)->{
 							String bucketKey = contig  +  ":" + bucket;
-							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey);
+							//bucket index also has bookend bits
+							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey) + 2;
 							
 							// Create a bitmask with 1 values for each patient who has any variant in this bucket
 							BigInteger[] patientMaskForBucket = {variantStore.emptyBitmask()};
@@ -145,7 +146,18 @@ public class BucketIndexBySample implements Serializable {
 		
 		patientIds.parallelStream().forEach((patientId)->{
 			try {
+//				System.out.println(patientId + "\t" + patientBucketCharMasks[patientIds.indexOf(patientId)].length);
+				
 				BigInteger patientMask = new BigInteger(new String(patientBucketCharMasks[patientIds.indexOf(patientId)]),2);
+				
+				int charMaskLength =  patientBucketCharMasks[patientIds.indexOf(patientId)].length;
+				int bigIntLength = patientMask.toString(2).length();
+				if(charMaskLength != bigIntLength) {
+					System.out.println("BucketMask length for " + patientId + "\t" + charMaskLength + "\t" + bigIntLength );
+					System.out.println(patientBucketCharMasks[patientIds.indexOf(patientId)]);
+					System.out.println(patientMask.toString(2));
+				}
+				
 				patientBucketMasks.put(patientId,
 					patientMask);
 			}catch(NumberFormatException e) {
@@ -174,6 +186,12 @@ public class BucketIndexBySample implements Serializable {
 		//a bitmask of which buckets contain any relevant variant. 
 		BigInteger patientBucketMask = patientSet.size() == 0 ? 
 				new BigInteger(new String(emptyBucketMaskChar()),2) : patientBucketMasks.get(patientSet.get(0));
+		
+		for(Integer patient : patientBucketMasks.keys()) {
+			if(patient < 1000 && !patientBucketMasks.get(patient).testBit(153)) {
+				log.info(patient + ":\t" + patientBucketMasks.get(patient).toString(2));
+			}
+		}
 	
 		BigInteger _defaultMask = patientBucketMask;
 		List<BigInteger> patientBucketmasksForSet = patientSet.parallelStream().map((patientNum)->{
@@ -191,13 +209,21 @@ public class BucketIndexBySample implements Serializable {
 		BigInteger _bucketMask = patientBucketMask;
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
-//			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey));
+
 			
 			log.info("key " + bucketKey + " index " +  Collections.binarySearch(bucketList, bucketKey) );
+			log.info("key " + bucketKey + " inverted index " +  (bucketList.size() - Collections.binarySearch(bucketList, bucketKey)) );
 			log.info(_bucketMask.toString(2));
 			
-			//invert the index (test bit is apparently opposite endian) and include offset for bookends
-			return _bucketMask.testBit(bucketList.size() - Collections.binarySearch(bucketList, bucketKey) + 2);
+			
+			System.out.println(_bucketMask.testBit(0) + "  " + _bucketMask.testBit(1) + "  " + _bucketMask.testBit(2) + "  " + _bucketMask.testBit(3) );
+			System.out.println(_bucketMask.testBit(155) + "  " + _bucketMask.testBit(154) + "  " + _bucketMask.testBit(153) + "  " + _bucketMask.testBit(152) );
+			
+			
+			//testBit is least-significant-first order;  include +2 offset for bookends
+			return _bucketMask.testBit(((bucketList.size() - Collections.binarySearch(bucketList, bucketKey)) - 1) + 2);
+			
+//			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey) + 2);
 		}).collect(Collectors.toSet());
 	}
 
@@ -227,7 +253,7 @@ public class BucketIndexBySample implements Serializable {
 	public void printPatientMasks() {
 		for(Integer patientID : patientBucketMasks.keys()) {
 			try {
-				log.info("BucketMasks for " + patientID + ": " + patientBucketMasks.get(patientID).toString(2));
+				log.info("BucketMask length for " + patientID + ":\t" + patientBucketMasks.get(patientID).toString(2).length());
 			} catch (IOException e) {
 			log.error("FBBIS Error: ", e);
 			}
