@@ -495,7 +495,6 @@ public abstract class AbstractProcessor {
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
 					addPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
-					log.debug("filterdIDSets AFTER size: " + filteredIdSets.size());
 				}
 			}
 		}
@@ -714,11 +713,10 @@ public abstract class AbstractProcessor {
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
-					x<variantPartitions.size() 
-					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
+					x < variantPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
 					x++) {
 				List<List<String>> variantBuckets = variantPartitions.get(x);
-				log.info("processing " + variantBuckets.size() + " bucket from partition " + x);
+				log.info("processing " + variantBuckets.size() + " buckets from partition " + x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
 					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.stream().forEach((variantSpec)->{
@@ -728,13 +726,12 @@ public abstract class AbstractProcessor {
 						try {
 							masks = variantStore.getMasks(variantSpec, bucketCache);
 							if(masks != null) {
-								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
-								if(log.isDebugEnabled()) {
-									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
-								}
+//								if(log.isDebugEnabled()) {
+//									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+//											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+//								}
 
 								heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 								homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
@@ -742,8 +739,6 @@ public abstract class AbstractProcessor {
 								BigInteger andMasks = orMasks.and(patientsInScopeMask);
 								synchronized(matchingPatients) {
 									matchingPatients[0] = matchingPatients[0].or(andMasks);
-//									if(andMasks.bitCount() > 4)
-//										log.debug("bitcount for matching patients " + variantSpec + ": " + (andMasks.bitCount() - 4));
 								}
 							}
 						} catch (IOException e) {
@@ -796,7 +791,7 @@ public abstract class AbstractProcessor {
 							Arrays.asList(variantStore.getPatientIds()).stream()
 							.map((id)->{return Integer.parseInt(id.trim());})
 							.collect(Collectors.toList())));
-			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+//			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			// If we have all patients then no variants would be filtered, so no need to do further processing
 			if(patientSubset.size()==variantStore.getPatientIds().length) {
