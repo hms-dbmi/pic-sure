@@ -22,7 +22,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
  */
 public class BucketIndexBySampleTest {
 
-	private static final String VCF_INDEX_FILE = "./src/test/resources/test_vcfIndex.tsv";
+	private static final String VCF_INDEX_FILE = "./src/test/resources/bucketIndexBySampleTest_vcfIndex.tsv";
 	private static final String STORAGE_DIR = "./target";
 	private static final String MERGED_DIR = "./target/merged";
 	
@@ -37,10 +37,16 @@ public class BucketIndexBySampleTest {
 	private static final String spec4 = "4,9856624,C,CA";		
 	private static final String spec5 = "4,9856624,CAAAAA,CA";	// most patients have this variant
 	
-	//patient 610 and 618 should have 0 variants of these specs
-	//614 has 1 and 5
-	//663 has 4 and 5
+	//patient 1 and 4 should have 0 variants of these specs
+	// 5 has 1 and 5
+	// 6 has 4 and 5
 	
+	//## Patient 1 - NO variants
+//	## Patient 2 - ALL variants
+//	## Patient 3 - All CHR 14 variants, NO CHR 4 variants
+//	## Patient 4 - ALL CHR 4 variants, no CHR 14 variants
+//	## others mixed
+
 
 	
 	//610 and 625 should have none of these 
@@ -95,9 +101,9 @@ public class BucketIndexBySampleTest {
 		Set<String>  variantSet = new HashSet<String>();
 		List<Integer> patientSet = new ArrayList<Integer>();
 		
-		patientSet.add(610);
-		patientSet.add(618);
-		patientSet.add(663);
+		patientSet.add(1);
+		patientSet.add(2);
+		patientSet.add(3);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		
@@ -113,9 +119,8 @@ public class BucketIndexBySampleTest {
 		
 		variantSet.add(spec5);
 		
-		patientSet.add(610);
-		patientSet.add(618);
-//		patientSet.add(663);
+		patientSet.add(1);
+		patientSet.add(4);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		
@@ -132,8 +137,8 @@ public class BucketIndexBySampleTest {
 		variantSet.add(spec7);
 		variantSet.add(spec8);
 		
-		patientSet.add(610);
-		patientSet.add(625);
+		patientSet.add(1);
+		patientSet.add(3);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		
@@ -154,9 +159,9 @@ public class BucketIndexBySampleTest {
 		variantSet.add(spec4);
 		variantSet.add(spec5);
 		
-		patientSet.add(610);
-		patientSet.add(614);
-		patientSet.add(663);
+		patientSet.add(2);
+		patientSet.add(4);
+		patientSet.add(5);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		
@@ -182,10 +187,10 @@ public class BucketIndexBySampleTest {
 		variantSet.add(spec7);
 		variantSet.add(spec8);
 		
-		patientSet.add(610);
-		patientSet.add(614);
-		patientSet.add(588);
-		patientSet.add(413);
+		patientSet.add(2);
+		patientSet.add(3);
+		patientSet.add(5);
+		patientSet.add(6);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		
@@ -205,7 +210,8 @@ public class BucketIndexBySampleTest {
 		variantSet.add(spec1);
 		variantSet.add(spec6);
 		
-		patientSet.add(618);
+		patientSet.add(1);
+		patientSet.add(3);
 		
 		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
 		

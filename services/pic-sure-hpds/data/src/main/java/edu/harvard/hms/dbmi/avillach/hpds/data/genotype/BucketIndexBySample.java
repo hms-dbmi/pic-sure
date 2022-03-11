@@ -105,11 +105,12 @@ public class BucketIndexBySample implements Serializable {
 							} catch (IOException e) {
 								e.printStackTrace();
 							}
+							
+							System.out.println("bucket " + indexOfBucket + ": " + bucketKey + " mask " + patientMaskForBucket[0].toString(2));
 							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
 							// in this bucket, or '0' if they dont
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
-								//the patientMaskForBucket array is not a bitmask, so is not bookended with '11'.
-								if(patientMaskForBucket[0].testBit(x)) {
+								if(patientMaskForBucket[0].testBit(patientMaskForBucket[0].bitLength()- (x + 1))) {
 									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
 									patientBucketCharMasks[x-2][indexOfBucket] = '0';
@@ -146,20 +147,8 @@ public class BucketIndexBySample implements Serializable {
 		
 		patientIds.parallelStream().forEach((patientId)->{
 			try {
-//				System.out.println(patientId + "\t" + patientBucketCharMasks[patientIds.indexOf(patientId)].length);
-				
 				BigInteger patientMask = new BigInteger(new String(patientBucketCharMasks[patientIds.indexOf(patientId)]),2);
-				
-				int charMaskLength =  patientBucketCharMasks[patientIds.indexOf(patientId)].length;
-				int bigIntLength = patientMask.toString(2).length();
-				if(charMaskLength != bigIntLength) {
-					System.out.println("BucketMask length for " + patientId + "\t" + charMaskLength + "\t" + bigIntLength );
-					System.out.println(patientBucketCharMasks[patientIds.indexOf(patientId)]);
-					System.out.println(patientMask.toString(2));
-				}
-				
-				patientBucketMasks.put(patientId,
-					patientMask);
+				patientBucketMasks.put(patientId, patientMask);
 			}catch(NumberFormatException e) {
 				log.error("NFE caught for " + patientId, e);
 			} catch (IOException e) {
