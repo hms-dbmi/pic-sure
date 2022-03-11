@@ -697,26 +697,25 @@ public abstract class AbstractProcessor {
 			
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
+			ArrayList<List<String>> variantBucketsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
 					.collect(Collectors.groupingByConcurrent((variantSpec)->{
 						return new VariantSpec(variantSpec).metadata.offset/1000;
 					})).values());
 
-			log.info("found " + variantsInScope.size() + " variants");
+			log.info("found " + variantBucketsInScope.size() + " buckets");
 			
 			//don't error on small result sets (make sure we have at least one element in each partition)
-			int partitionSize = variantsInScope.size() / Runtime.getRuntime().availableProcessors(); 
-			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, partitionSize > 0 ? partitionSize : 1);
+			int partitionSize = variantBucketsInScope.size() / Runtime.getRuntime().availableProcessors(); 
+			List<List<List<String>>> variantBucketPartitions = Lists.partition(variantBucketsInScope, partitionSize > 0 ? partitionSize : 1);
 			
-			log.info("and partitioned those into " + variantPartitions.size() + " parts");
+			log.info("and partitioned those into " + variantBucketPartitions.size() + " groups");
 			
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
-					x < variantPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
+					x < variantBucketPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
 					x++) {
-				List<List<String>> variantBuckets = variantPartitions.get(x);
-				log.info("processing " + variantBuckets.size() + " buckets from partition " + x);
+				List<List<String>> variantBuckets = variantBucketPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
 					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
 					variantBucket.stream().forEach((variantSpec)->{
@@ -749,7 +748,7 @@ public abstract class AbstractProcessor {
 			}
 			Set<Integer> ids = new TreeSet<Integer>();
 			String bitmaskString = matchingPatients[0].toString(2);
-			log.debug("or'd masks : " + bitmaskString);
+//			log.debug("or'd masks : " + bitmaskString);
 			for(int x = 2;x < bitmaskString.length()-2;x++) {
 				if('1'==bitmaskString.charAt(x)) {
 					String patientId = variantStore.getPatientIds()[x-2].trim();
@@ -863,7 +862,7 @@ public abstract class AbstractProcessor {
 		}
 		builder.append("11"); // masks are bookended with '11' set this so we don't count those
 
-		log.debug("PATIENT MASK: " + builder.toString());
+//		log.debug("PATIENT MASK: " + builder.toString());
 
 		BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 		return patientMasks;
