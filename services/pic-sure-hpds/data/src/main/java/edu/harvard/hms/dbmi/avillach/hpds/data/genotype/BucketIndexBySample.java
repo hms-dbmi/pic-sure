@@ -106,11 +106,12 @@ public class BucketIndexBySample implements Serializable {
 								e.printStackTrace();
 							}
 							
-							System.out.println("bucket " + indexOfBucket + ": " + bucketKey + " mask " + patientMaskForBucket[0].toString(2));
 							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
 							// in this bucket, or '0' if they dont
+							int maxIndex = patientMaskForBucket[0].bitLength() - 1;
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
-								if(patientMaskForBucket[0].testBit(patientMaskForBucket[0].bitLength()- (x + 1))) {
+								//testBit is uses inverted indexes
+								if(patientMaskForBucket[0].testBit(maxIndex - x)) {
 									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
 									patientBucketCharMasks[x-2][indexOfBucket] = '0';
@@ -176,12 +177,6 @@ public class BucketIndexBySample implements Serializable {
 		BigInteger patientBucketMask = patientSet.size() == 0 ? 
 				new BigInteger(new String(emptyBucketMaskChar()),2) : patientBucketMasks.get(patientSet.get(0));
 		
-		for(Integer patient : patientBucketMasks.keys()) {
-			if(patient < 1000 && !patientBucketMasks.get(patient).testBit(153)) {
-				log.info(patient + ":\t" + patientBucketMasks.get(patient).toString(2));
-			}
-		}
-	
 		BigInteger _defaultMask = patientBucketMask;
 		List<BigInteger> patientBucketmasksForSet = patientSet.parallelStream().map((patientNum)->{
 			try {
@@ -196,23 +191,12 @@ public class BucketIndexBySample implements Serializable {
 		}
 		
 		BigInteger _bucketMask = patientBucketMask;
+		int maxIndex = bucketList.size() - 1; //use to invert testBit index
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
-
-			
-			log.info("key " + bucketKey + " index " +  Collections.binarySearch(bucketList, bucketKey) );
-			log.info("key " + bucketKey + " inverted index " +  (bucketList.size() - Collections.binarySearch(bucketList, bucketKey)) );
-			log.info(_bucketMask.toString(2));
-			
-			
-			System.out.println(_bucketMask.testBit(0) + "  " + _bucketMask.testBit(1) + "  " + _bucketMask.testBit(2) + "  " + _bucketMask.testBit(3) );
-			System.out.println(_bucketMask.testBit(155) + "  " + _bucketMask.testBit(154) + "  " + _bucketMask.testBit(153) + "  " + _bucketMask.testBit(152) );
-			
 			
 			//testBit is least-significant-first order;  include +2 offset for bookends
-			return _bucketMask.testBit(((bucketList.size() - Collections.binarySearch(bucketList, bucketKey)) - 1) + 2);
-			
-//			return _bucketMask.testBit(Collections.binarySearch(bucketList, bucketKey) + 2);
+			return _bucketMask.testBit(maxIndex - Collections.binarySearch(bucketList, bucketKey)  + 2);
 		}).collect(Collectors.toSet());
 	}
 

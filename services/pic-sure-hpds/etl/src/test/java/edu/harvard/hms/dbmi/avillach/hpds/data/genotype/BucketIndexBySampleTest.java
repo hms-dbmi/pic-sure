@@ -23,8 +23,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
 public class BucketIndexBySampleTest {
 
 	private static final String VCF_INDEX_FILE = "./src/test/resources/bucketIndexBySampleTest_vcfIndex.tsv";
-	private static final String STORAGE_DIR = "./target";
-	private static final String MERGED_DIR = "./target/merged";
+	private static final String STORAGE_DIR = "./target/";
+	private static final String MERGED_DIR = "./target/merged/";
 	
 	private static VariantStore variantStore;
 	private static BucketIndexBySample bucketIndexBySample;
@@ -37,31 +37,19 @@ public class BucketIndexBySampleTest {
 	private static final String spec4 = "4,9856624,C,CA";		
 	private static final String spec5 = "4,9856624,CAAAAA,CA";	// most patients have this variant
 	
-	//patient 1 and 4 should have 0 variants of these specs
-	// 5 has 1 and 5
-	// 6 has 4 and 5
-	
 	//## Patient 1 - NO variants
 //	## Patient 2 - ALL variants
-//	## Patient 3 - All CHR 14 variants, NO CHR 4 variants
-//	## Patient 4 - ALL CHR 4 variants, no CHR 14 variants
+//	## Patient 3 - NO CHR 14 variants, ALL CHR 4 variants																		
+//	## Patient 4 - ALL CHR 14 variants, NO CHR 4 variants
 //	## others mixed
-
+	//patient 5 has spec 1 and 5
+	//patient 6 has spec 4 and 5
 
 	
-	//610 and 625 should have none of these 
-	//618 and 614 should have spec6 only
-	//588 should have spec 6 and 7
-	//413 should have 6 and 8 
 	private static final String spec6 = "14,19000060,C,G";
 	private static final String spec7 = "14,19000152,C,T";
 	private static final String spec8 = "14,19000161,G,T";
 	
-	
-//	//From file 2 14	21089541	rs543976440	A	G
-//	private static final String spec7 = "14,21089541,rs543976440,A,G";
-//	//From file 3 14	21616876	rs549724318	G	A
-//	private static final String spec8 = "14,21616876,rs549724318,G,A";
 	
 	@BeforeClass
 	public static void initializeBinfile() throws Exception {
@@ -69,15 +57,13 @@ public class BucketIndexBySampleTest {
 		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR, MERGED_DIR});	
 				
 		//read in variantStore object created by VCFLoader
-		ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(STORAGE_DIR + "/variantStore.javabin")));
+		ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(STORAGE_DIR + "variantStore.javabin")));
 		variantStore = (VariantStore) ois.readObject();
 		ois.close();
 		variantStore.open();	
 		
 		//now use that object to initialize the BucketIndexBySample object
 		bucketIndexBySample = new BucketIndexBySample(variantStore, STORAGE_DIR);
-		
-		
 //		bucketIndexBySample.printPatientMasks();
 	}
 	
