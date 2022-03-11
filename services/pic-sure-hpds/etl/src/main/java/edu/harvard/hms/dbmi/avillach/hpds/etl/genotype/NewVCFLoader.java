@@ -6,7 +6,6 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.csv.CSVFormat;
@@ -19,6 +18,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
+import htsjdk.samtools.util.BlockCompressedInputStream;
 
 public class NewVCFLoader {
 
@@ -403,7 +403,7 @@ public class NewVCFLoader {
 			}
 			try {
 				InputStream in = this.vcfIndexLine.isGzipped
-						? new GZIPInputStream(new FileInputStream(this.vcfIndexLine.vcfPath))
+						? new BlockCompressedInputStream(new FileInputStream(this.vcfIndexLine.vcfPath))
 						: new FileInputStream(this.vcfIndexLine.vcfPath);
 				InputStreamReader reader = new InputStreamReader(in);
 				vcfReader = new BufferedReader(reader, 1024 * 1024 * 32);

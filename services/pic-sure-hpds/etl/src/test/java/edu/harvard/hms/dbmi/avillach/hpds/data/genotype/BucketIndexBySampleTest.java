@@ -23,6 +23,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
 /**
  * These tests are in the ETL project so that we can read in data from disk each time instead of storing binfiles
  * that may become outdated.
+ * 
+ * the BucketIndexBySample.filterVariantSetForPatientSet method removes variants base on the patent BUCKET MASK;  just because a patient
+ * does not have a particular variant doesn't mean it will be filtered out e.g., when a patient has a different variant in the same bucket.
+ * 
+ * Filtering the specific variants is typically done by the calling function after filtering out the unneeded buckets.
+ * 
  * @author nchu
  *
  */
