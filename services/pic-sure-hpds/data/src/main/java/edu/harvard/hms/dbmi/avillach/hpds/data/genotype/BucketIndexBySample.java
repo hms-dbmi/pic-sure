@@ -83,8 +83,6 @@ public class BucketIndexBySample implements Serializable {
 				contigStore.keys().stream().forEach(
 						(Integer bucket)->{
 							String bucketKey = contig  +  ":" + bucket;
-							//bucket index also has bookend bits
-							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey) + 2;
 							
 							// Create a bitmask with 1 values for each patient who has any variant in this bucket
 							BigInteger[] patientMaskForBucket = {variantStore.emptyBitmask()};
@@ -100,18 +98,16 @@ public class BucketIndexBySample implements Serializable {
 									if(masks.homozygousMask!=null) {
 										patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.homozygousMask);
 									}
-									
 								});
 							} catch (IOException e) {
 								e.printStackTrace();
 							}
 							
-							// For each patient set the patientBucketCharMask entry to '1' if they have a variant
-							// in this bucket, or '0' if they dont
+							// For each patient set the patientBucketCharMask entry to 0 or 1 if they have a variant in the bucket.
 							int maxIndex = patientMaskForBucket[0].bitLength() - 1;
+							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey) + 2; //patientBucketCharMasks has bookend bits
 							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
-								//testBit is uses inverted indexes
-								if(patientMaskForBucket[0].testBit(maxIndex - x)) {
+								if(patientMaskForBucket[0].testBit(maxIndex - x)) {  //testBit uses inverted indexes
 									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
 								}else {
 									patientBucketCharMasks[x-2][indexOfBucket] = '0';
@@ -195,7 +191,7 @@ public class BucketIndexBySample implements Serializable {
 		return variantSet.parallelStream().filter((variantSpec)->{
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
 			
-			//testBit is least-significant-first order;  include +2 offset for bookends
+			//testBit uses inverted indexes include +2 offset for bookends
 			return _bucketMask.testBit(maxIndex - Collections.binarySearch(bucketList, bucketKey)  + 2);
 		}).collect(Collectors.toSet());
 	}
@@ -223,15 +219,16 @@ public class BucketIndexBySample implements Serializable {
 		return _emptyBucketMaskChar.clone();
 	}
 	
+	/**
+	 * Use while debugging
+	 */
 	public void printPatientMasks() {
 		for(Integer patientID : patientBucketMasks.keys()) {
 			try {
 				log.info("BucketMask length for " + patientID + ":\t" + patientBucketMasks.get(patientID).toString(2).length());
 			} catch (IOException e) {
-			log.error("FBBIS Error: ", e);
+				log.error("FBBIS Error: ", e);
 			}
-		
+		}
 	}
-	}
-
 }

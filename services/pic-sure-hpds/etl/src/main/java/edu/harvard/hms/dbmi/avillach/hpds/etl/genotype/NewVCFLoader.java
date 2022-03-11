@@ -25,15 +25,14 @@ public class NewVCFLoader {
 	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
 	private static File storageDir = null;
 	private static String storageDirStr = "/opt/local/hpds/all";
-	
 	private static String mergedDirStr = "/opt/local/hpds/merged";
-	
 	
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
 	private static int CHUNK_SIZE = 1000;
 
 	/**
-	 * @param args - if testing, this should be an array ['vcfIndexFile path', 'output storage dir'].  by default this will be [/opt/local/hpds/vcfIndex.tsv, args]. 
+	 * @param args - if testing, this should be an array ['vcfIndexFile path', 'output storage dir', 'merged dir'].  
+	 * by default this will be [/opt/local/hpds/vcfIndex.tsv,  "/opt/local/hpds/all", "/opt/local/hpds/merged" ]. 
 	 */
 	public static void main(String[] args) throws FileNotFoundException, IOException {
 		
