@@ -24,13 +24,29 @@ public class NewVCFLoader {
 
 	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
 	private static File storageDir = null;
-
+	private static String storageDirStr = "/opt/local/hpds/all";
+	private static String mergedDirStr = "/opt/local/hpds/merged";
+	
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
 	private static int CHUNK_SIZE = 1000;
 
+	/**
+	 * @param args - if testing, this should be an array ['vcfIndexFile path', 'output storage dir', 'merged dir'].  
+	 * by default this will be [/opt/local/hpds/vcfIndex.tsv,  "/opt/local/hpds/all", "/opt/local/hpds/merged" ]. 
+	 */
 	public static void main(String[] args) throws FileNotFoundException, IOException {
-		File indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
-		storageDir = new File("/opt/local/hpds/all");
+		
+		File indexFile;
+		if(args != null && args.length >= 3) {
+			logger.info("Reading parameters from input - this is a test");
+			indexFile = new File(args[0]);
+			storageDirStr = args[1];
+			storageDir = new File(args[1]);
+			mergedDirStr = args[2];
+		} else {
+			indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
+			storageDir = new File(storageDirStr);
+		}
 		loadVCFs(indexFile);
 	}
 
@@ -321,7 +337,7 @@ public class NewVCFLoader {
 	public static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
 		logger.debug("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
-			VCFPerPatientInfoStoreSplitter.splitAll();
+			VCFPerPatientInfoStoreSplitter.splitAll(storageDir,  new File(mergedDirStr));
 		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
 			logger.error("Error splitting infostore's by column", e);
 		}
@@ -331,7 +347,7 @@ public class NewVCFLoader {
 	public static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
 		logger.debug("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
-			VCFPerPatientInfoStoreToFBBIISConverter.convertAll("/opt/local/hpds/merged", "/opt/local/hpds/all");
+			VCFPerPatientInfoStoreToFBBIISConverter.convertAll(mergedDirStr, storageDirStr);
 		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
 			logger.error("Error converting infostore to byteindexed", e);
 		}
@@ -391,7 +407,7 @@ public class NewVCFLoader {
 						: new FileInputStream(this.vcfIndexLine.vcfPath);
 				InputStreamReader reader = new InputStreamReader(in);
 				vcfReader = new BufferedReader(reader, 1024 * 1024 * 32);
-			} catch (FileNotFoundException e) {
+			} catch (IOException e) {
 				throw new RuntimeException("File not found, please fix the VCF index file : " + vcfIndexLine, e);
 			}
 		}
@@ -504,6 +520,7 @@ public class NewVCFLoader {
 			for (int x = 0; x < vcfIndexLine.patientIds.length; x++) {
 				bitmaskOffsets[x] = Arrays.binarySearch(allPatientIdsSorted, vcfIndexLine.patientIds[x]);
 			}
+			
 		}
 
 		public void nextLine() throws IOException {

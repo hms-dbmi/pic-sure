@@ -13,13 +13,13 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoStore;
 
 public class VCFPerPatientInfoStoreSplitter {
 	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
-	private static File mergedFolder = new File("/opt/local/hpds/merged");
+//	private static File mergedFolder = new File("/opt/local/hpds/merged");
 
-	public static void splitAll() throws ClassNotFoundException, FileNotFoundException, IOException,
+	public static void splitAll(File javabinDir, File mergedFolder) throws ClassNotFoundException, FileNotFoundException, IOException,
 			InterruptedException, ExecutionException {
 		ConcurrentHashMap<String, File> mergedFiles = new ConcurrentHashMap<String, File>();
 
-		File[] inputFiles = new File("/opt/local/hpds/all/").listFiles((file) -> {
+		File[] inputFiles = javabinDir.listFiles((file) -> {
 			return file.getName().endsWith("_infoStores.javabin");
 		});
 

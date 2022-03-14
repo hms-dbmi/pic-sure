@@ -11,7 +11,6 @@ import java.util.TreeMap;
 import java.util.zip.GZIPInputStream;
 
 import org.junit.*;
-import org.junit.runners.MethodSorters;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;

@@ -121,9 +121,13 @@ public class VariantListProcessor extends AbstractProcessor {
 		log.info("Running VCF Extract query");
 
 		Collection<String> variantList = getVariantList(query);
+		
+		log.debug("variantList Size " + variantList.size());
 
 		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
 
+		log.debug("metadata size " + metadata.size());
+		
 		// Sort the variantSpecs so that the user doesn't lose their mind
 		TreeMap<String, String[]> metadataSorted = new TreeMap<>((o1, o2) -> {
 			return new VariantSpec(o1).compareTo(new VariantSpec(o2));
@@ -133,6 +137,8 @@ public class VariantListProcessor extends AbstractProcessor {
 
 		if(metadata == null || metadata.isEmpty()) {
 			return "No Variants Found\n"; //UI uses newlines to show result count
+		} else {
+			log.debug("Found " + metadata.size() + " varaints");
 		}
 
 		PhenoCube<String> idCube = null;
@@ -164,10 +170,12 @@ public class VariantListProcessor extends AbstractProcessor {
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
 		TreeSet<Integer> patientSubset = getPatientSubsetForQuery(query);
+		log.debug("identified " + patientSubset.size() + " patients from query");
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
 		BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 		int index = 2; //variant bitmasks are bookended with '11'
 
+		
 		for(String patientId : variantStore.getPatientIds()) {
 			Integer idInt = Integer.parseInt(patientId);
 			if(patientSubset.contains(idInt)){
@@ -188,6 +196,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			index++;
 
 			if(patientIndexMap.size() >= patientSubset.size()) {
+				log.info("Found all " + patientIndexMap.size() + " patient Indices at index " + index);
 				break;
 			}
 		}
@@ -248,6 +257,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				BigInteger heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
 				BigInteger homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
 
+				
 				String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
 				String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
 
@@ -258,6 +268,7 @@ public class VariantListProcessor extends AbstractProcessor {
 				int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 				bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 
+				//count how many patients have genomic data available
 				Integer patientsWithVariantsCount = null;
 				if(heteroMaskString != null) {
 					patientsWithVariantsCount = heteroMaskString.length() - 4;
@@ -293,11 +304,7 @@ public class VariantListProcessor extends AbstractProcessor {
 			builder.append("\n");
 		});
 
-		StringBuilder b2 = new StringBuilder();
-		for( String key : variantMaskBucketHolder.lastValue.keySet()) {
-			b2.append(key + "\t");
-		}
-		log.info("Found variants " + b2.toString());
+
 		return builder.toString();
 	}
 

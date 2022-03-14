@@ -9,8 +9,6 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-//import org.apache.commons.math3.stat.inference.ChiSquareTest;
-//import org.apache.commons.math3.stat.inference.TTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +36,7 @@ public abstract class AbstractProcessor {
 	private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000;
 	private static final String VARIANT_INDEX_FBBIS_STORAGE_FILE = "/opt/local/hpds/all/variantIndex_fbbis_storage.javabin";
 	private static final String VARIANT_INDEX_FBBIS_FILE = "/opt/local/hpds/all/variantIndex_fbbis.javabin";
+	private static final String BUCKET_INDEX_BY_SAMPLE_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
@@ -137,11 +136,11 @@ public abstract class AbstractProcessor {
 					log.info("Found " + variantIndex.length + " total variants.");
 				}
 			}
-			if(variantStore.getPatientIds().length > 0 && !new File(BucketIndexBySample.INDEX_FILE).exists()) {
-				log.info("creating new " + BucketIndexBySample.INDEX_FILE);
+			if(variantStore.getPatientIds().length > 0 && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
+				log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
 				bucketIndex = new BucketIndexBySample(variantStore);
 				try (
-						FileOutputStream fos = new FileOutputStream(BucketIndexBySample.INDEX_FILE);
+						FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
 						GZIPOutputStream gzos = new GZIPOutputStream(fos);
 						ObjectOutputStream oos = new ObjectOutputStream(gzos);			
 						){
@@ -149,8 +148,8 @@ public abstract class AbstractProcessor {
 					oos.flush();oos.close();
 				}
 			}else {
-				try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BucketIndexBySample.INDEX_FILE)));){
-					log.info("loading " + BucketIndexBySample.INDEX_FILE);
+				try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
+					log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
 					bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
 					objectInputStream.close();
 				} catch (IOException | ClassNotFoundException e) {
@@ -474,7 +473,7 @@ public abstract class AbstractProcessor {
 	}
 
 	protected void addIdSetsForVariantInfoFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
-
+//		log.debug("filterdIDSets START size: " + filteredIdSets.size());
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
 			for(VariantInfoFilter filter : query.variantInfoFilters){
@@ -491,7 +490,7 @@ public abstract class AbstractProcessor {
 					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
 					if(log.isDebugEnabled()) {
 						IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-						log.debug("Number of matching variants for all sets : " + stats);
+						log.debug("Number of matching variants for all sets : " + stats.getSum());
 						log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());						
 					}
 					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
@@ -550,7 +549,7 @@ public abstract class AbstractProcessor {
 			log.info("Awaiting completion of variant index");
 		}
 		
-		log.info("Found " + numVariants.length + " total variants.");
+		log.info("Found " + numVariants[0] + " total variants.");
 
 		variantIndex = new String[numVariants[0]];
 
@@ -695,38 +694,43 @@ public abstract class AbstractProcessor {
 				patientsInScope = patientIds;
 			}
 
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+			
 			BigInteger[] matchingPatients = new BigInteger[] {variantStore.emptyBitmask()};
 
-			ArrayList<List<String>> variantsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
+			ArrayList<List<String>> variantBucketsInScope = new ArrayList<List<String>>(intersectionOfInfoFilters.parallelStream()
 					.collect(Collectors.groupingByConcurrent((variantSpec)->{
 						return new VariantSpec(variantSpec).metadata.offset/1000;
 					})).values());
 
-			List<List<List<String>>> variantPartitions = Lists.partition(variantsInScope, Runtime.getRuntime().availableProcessors());
-
+			log.info("found " + variantBucketsInScope.size() + " buckets");
+			
+			//don't error on small result sets (make sure we have at least one element in each partition)
+			int partitionSize = variantBucketsInScope.size() / Runtime.getRuntime().availableProcessors(); 
+			List<List<List<String>>> variantBucketPartitions = Lists.partition(variantBucketsInScope, partitionSize > 0 ? partitionSize : 1);
+			
+			log.info("and partitioned those into " + variantBucketPartitions.size() + " groups");
+			
 			int patientsInScopeSize = patientsInScope.size();
 			BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
 			for(int x = 0;
-					x<variantPartitions.size() 
-					&& matchingPatients[0].bitCount() < patientsInScopeSize+4;
+					x < variantBucketPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
 					x++) {
-				List<List<String>> variantBuckets = variantPartitions.get(x);
+				List<List<String>> variantBuckets = variantBucketPartitions.get(x);
 				variantBuckets.parallelStream().forEach((variantBucket)->{
-					variantBucket.parallelStream().forEach((variantSpec)->{
+					VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+					variantBucket.stream().forEach((variantSpec)->{
 						VariantMasks masks;
 						BigInteger heteroMask = variantStore.emptyBitmask();
 						BigInteger homoMask = variantStore.emptyBitmask();
 						try {
 							masks = variantStore.getMasks(variantSpec, bucketCache);
 							if(masks != null) {
-								// Iffing here to avoid all this string parsing and counting when logging not set to DEBUG
-								if(log.isDebugEnabled()) {
-									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
-											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
-											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
-								}
+//								if(log.isDebugEnabled()) {
+//									log.debug("checking variant " + variantSpec + " for patients: " + ( masks.heterozygousMask == null ? "null" :(masks.heterozygousMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousMask == null ? "null" : (masks.homozygousMask.bitCount() - 4)) + "    "
+//											+ ( masks.heterozygousNoCallMask == null ? "null" :(masks.heterozygousNoCallMask.bitCount() - 4)) 
+//											+ "/" + (masks.homozygousNoCallMask == null ? "null" : (masks.homozygousNoCallMask.bitCount() - 4)));
+//								}
 
 								heteroMask = masks.heterozygousMask == null ? variantStore.emptyBitmask() : masks.heterozygousMask;
 								homoMask = masks.homozygousMask == null ? variantStore.emptyBitmask() : masks.homozygousMask;
@@ -744,7 +748,7 @@ public abstract class AbstractProcessor {
 			}
 			Set<Integer> ids = new TreeSet<Integer>();
 			String bitmaskString = matchingPatients[0].toString(2);
-			log.debug("or'd masks : " + bitmaskString);
+//			log.debug("or'd masks : " + bitmaskString);
 			for(int x = 2;x < bitmaskString.length()-2;x++) {
 				if('1'==bitmaskString.charAt(x)) {
 					String patientId = variantStore.getPatientIds()[x-2].trim();
@@ -786,7 +790,7 @@ public abstract class AbstractProcessor {
 							Arrays.asList(variantStore.getPatientIds()).stream()
 							.map((id)->{return Integer.parseInt(id.trim());})
 							.collect(Collectors.toList())));
-			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
+//			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
 			// If we have all patients then no variants would be filtered, so no need to do further processing
 			if(patientSubset.size()==variantStore.getPatientIds().length) {
@@ -796,12 +800,11 @@ public abstract class AbstractProcessor {
 
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
-			ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
-
 			Collection<String> variantsInScope = bucketIndex.filterVariantSetForPatientSet(unionOfInfoFilters, new ArrayList<>(patientSubset));
-			log.info("Variants in scope: " + variantsInScope.size());
 			
+			//NC - this is the original variant filtering, which checks the patient mask from each variant against the patient mask from the query
 			if(variantsInScope.size()<100000) {
+				ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
 				variantsInScope.parallelStream().forEach((String variantKey)->{
 					VariantMasks masks;
 					try {
@@ -818,10 +821,10 @@ public abstract class AbstractProcessor {
 						log.error("an error occurred", e);
 					}
 				});
+				return variantsWithPatients;
 			}else {
 				return unionOfInfoFilters;
 			}
-			return variantsWithPatients;
 		}
 		return new ArrayList<>();
 	}
@@ -859,7 +862,7 @@ public abstract class AbstractProcessor {
 		}
 		builder.append("11"); // masks are bookended with '11' set this so we don't count those
 
-		log.debug("PATIENT MASK: " + builder.toString());
+//		log.debug("PATIENT MASK: " + builder.toString());
 
 		BigInteger patientMasks = new BigInteger(builder.toString(), 2);
 		return patientMasks;
