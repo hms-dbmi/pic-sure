@@ -20,7 +20,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 
-
+/**
+ * This class handles DATAFRAME export queries for HPDS.
+ * @author nchu
+ *
+ */
 public class QueryProcessor extends AbstractProcessor {
  
 	private static final byte[] EMPTY_STRING_BYTES = "".getBytes();

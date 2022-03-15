@@ -110,10 +110,11 @@ public class QueryService {
 		AbstractProcessor p;
 		switch(query.expectedResultType) {
 		case DATAFRAME :
-			p = processor;
-			break;
 		case DATAFRAME_MERGED :
 			p = processor;
+			break;
+		case DATAFRAME_TIMESERIES :
+			p = new TimeseriesProcessor();
 			break;
 		case COUNT :
 			p = new CountProcessor();
