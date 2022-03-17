@@ -35,7 +35,7 @@ public class SequentialLoader {
 
 	private static final String INPUT_DIR =  "/opt/local/hpds_input/";
 
-	private static final long LOG_INTERVAL = 100000;
+	private static final long LOG_INTERVAL = 1000000;
 
 	private static SequentialLoadingStore store = new SequentialLoadingStore();
 
@@ -74,6 +74,7 @@ public class SequentialLoader {
 		
 		//load each into observation store
 		for(String filename : inputFiles) {
+			log.info("Loading file " + filename);
 			try {
 				if(filename.toLowerCase().endsWith("sql")) {
 					loadSqlFile(filename);

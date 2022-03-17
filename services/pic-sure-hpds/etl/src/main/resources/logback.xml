@@ -8,11 +8,7 @@
         </layout>
     </appender>
 
-    <logger name="org.apache.cxf" level="info" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-    </logger>
-
-    <root level="info">
+    <root level="${logback.log.level}">
         <appender-ref ref="CONSOLE"/>
     </root>
 
