@@ -35,11 +35,15 @@ public class SequentialLoader {
 
 	private static final String INPUT_DIR =  "/opt/local/hpds_input/";
 
+	private static final long LOG_INTERVAL = 100000;
+
 	private static SequentialLoadingStore store = new SequentialLoadingStore();
 
 	private static Logger log = LoggerFactory.getLogger(SequentialLoader.class); 
 
 	private static JdbcTemplate template = null;
+	
+	private static long processedRecords = 0;
 
 	public static void main(String[] args) throws IOException {
 		
@@ -83,6 +87,7 @@ public class SequentialLoader {
 		
 		//then complete, which will compact, sort, and write out the data in the final place
 		try {
+			log.info("found a total of " + processedRecords + " entries");
 			store.saveStore();
 			store.dumpStats();
 		} catch (ClassNotFoundException e) {
@@ -129,10 +134,6 @@ public class SequentialLoader {
 
 			@Override
 			public void processRow(ResultSet result) throws SQLException {
-				int row = result.getRow();
-				if(row%100000==0) {
-					System.out.println(row);
-				}
 				processRecord(currentConcept, new PhenoRecord(result));
 			}
 		});
@@ -194,6 +195,9 @@ public class SequentialLoader {
 				
 				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), record.getDateTime());
 				store.allIds.add(patientId);
+			}
+			if(processedRecords++  % LOG_INTERVAL == 0) {
+				log.info("Loaded " + processedRecords + " records");
 			}
 		} catch (ExecutionException e) {
 			e.printStackTrace();
