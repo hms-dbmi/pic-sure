@@ -189,9 +189,6 @@ public class ResultStoreStream extends InputStream {
 							}
 							records.add(String.join(";", valuesToMerge));
 						}
-						//						for(int x = 1;x<record.size();x++) {
-						//							records.add(record.get(x));
-						//						}
 						try {
 							writer.printRecord(records);
 						} catch (IOException e) {
