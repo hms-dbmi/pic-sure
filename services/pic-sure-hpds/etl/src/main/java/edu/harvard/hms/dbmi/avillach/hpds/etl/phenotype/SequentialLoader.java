@@ -115,7 +115,7 @@ public class SequentialLoader {
 		final PhenoCube[] currentConcept = new PhenoCube[1];
 		for (CSVRecord record : records) {
 			if(record.size()<4) {
-				log.info("Record number " + record.getRecordNumber() 
+				log.warn("Record number " + record.getRecordNumber() 
 				+ " had less records than we expected so we are skipping it.");
 				continue;
 			} 
@@ -181,7 +181,7 @@ public class SequentialLoader {
 				try {
 					currentConcept[0] = store.loadingCache.get(conceptPath);
 				} catch(InvalidCacheLoadException e) {
-					log.info("New concept " + record.getConceptPath());
+					log.debug("New concept " + record.getConceptPath());
 					currentConcept[0] = new PhenoCube(conceptPath, isAlpha ? String.class : Double.class);
 					store.loadingCache.put(conceptPath, currentConcept[0]);
 				}
@@ -196,7 +196,7 @@ public class SequentialLoader {
 				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), record.getDateTime());
 				store.allIds.add(patientId);
 			}
-			if(processedRecords++  % LOG_INTERVAL == 0) {
+			if(++processedRecords  % LOG_INTERVAL == 0) {
 				log.info("Loaded " + processedRecords + " records");
 			}
 		} catch (ExecutionException e) {
