@@ -33,6 +33,14 @@ public class QueryProcessor extends AbstractProcessor {
 	public QueryProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
 	}
+	
+	@Override
+	public String[] getHeaderRow(Query query) {
+		String[] header = new String[query.fields.size()+1];
+		header[0] = "Patient ID";
+		System.arraycopy(query.fields.toArray(), 0, header, 1, query.fields.size());
+		return header;
+	}
 
 	public void runQuery(Query query, AsyncResult result) throws NotEnoughMemoryException {
 		TreeSet<Integer> idList = getPatientSubsetForQuery(query);

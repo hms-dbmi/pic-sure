@@ -74,6 +74,9 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	
 	@JsonIgnore
 	public ResultStoreStream stream;
+	
+	@JsonIgnore
+	private String[] headerRow;
 
 	/*
 	 * The result needs access to the jobQueue so it can requeue 
@@ -88,10 +91,11 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	@JsonIgnore
 	public AbstractProcessor processor;
 
-	public AsyncResult(Query query) {
+	public AsyncResult(Query query, String[] headerRow) {
 		this.query = query;
+		this.headerRow = headerRow;
 		try {
-			stream = new ResultStoreStream(createHeaderRow(), query.expectedResultType==ResultType.DATAFRAME_MERGED);
+			stream = new ResultStoreStream(headerRow, query.expectedResultType==ResultType.DATAFRAME_MERGED);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -117,9 +121,9 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 				}
 				return;
 			}
-			this.numColumns = this.createHeaderRow().length;
+			this.numColumns = this.headerRow.length;
 			this.numRows = stream.getNumRows();
-			log.info("Ran Query in " + (System.currentTimeMillis()-startTime) + "ms for " + stream.getNumRows() + " rows and " + this.createHeaderRow().length + " columns");
+			log.info("Ran Query in " + (System.currentTimeMillis()-startTime) + "ms for " + stream.getNumRows() + " rows and " + this.headerRow.length + " columns");
 			this.status = AsyncResult.Status.SUCCESS;
 		} catch (Exception e) {
 			log.error("Query failed in " + (System.currentTimeMillis()-startTime) + "ms");
@@ -127,26 +131,6 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 			this.status = AsyncResult.Status.ERROR;
 		} finally {
 			this.completedTime = System.currentTimeMillis();
-		}
-	}
-
-	private String[] createHeaderRow() {
-		String[] header;
-		switch(query.expectedResultType) {
-		case DATAFRAME :
-			header = new String[query.fields.size()+1];
-			header[0] = "Patient ID";
-			System.arraycopy(query.fields.toArray(), 0, header, 1, query.fields.size());
-			return header;
-		case DATAFRAME_MERGED :
-			header = new String[query.fields.size()+1];
-			header[0] = "Patient ID";
-			System.arraycopy(query.fields.toArray(), 0, header, 1, query.fields.size());
-			return header;
-		case COUNT :
-			return new String[] {"Patient ID", "Count"};
-		default : 
-			throw new RuntimeException("UNSUPPORTED RESULT TYPE");
 		}
 	}
 

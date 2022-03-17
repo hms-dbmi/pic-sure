@@ -30,10 +30,18 @@ public class TimeseriesProcessor extends AbstractProcessor {
 
 	private Logger log = LoggerFactory.getLogger(QueryProcessor.class);
 
-	private static final String[] headers = { "PATIENT_NUM", "CONCEPT_PATH", "NVAL_NUM", "TVAL_CHAR", "TIMESTAMP" };
+//	private static final String[] headers = { "PATIENT_NUM", "CONCEPT_PATH", "NVAL_NUM", "TVAL_CHAR", "TIMESTAMP" };
 
 	public TimeseriesProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
+	}
+	
+	/**
+	 * FOr this type of export, the header is always the same
+	 */
+	@Override
+	public String[] getHeaderRow(Query query) {
+		return  new String[] { "PATIENT_NUM", "CONCEPT_PATH", "NVAL_NUM", "TVAL_CHAR", "TIMESTAMP" };
 	}
 
 	@Override
@@ -65,10 +73,8 @@ public class TimeseriesProcessor extends AbstractProcessor {
 		File tempFile = File.createTempFile("result-" + System.nanoTime(), ".sstmp");
 		CsvWriter writer = new CsvWriter();
 
-		ArrayList<String[]> headerEntries = new ArrayList<String[]>();
-		headerEntries.add(headers);
 		try (FileWriter out = new FileWriter(tempFile);) {
-			writer.write(out, headerEntries);
+//			writer.write(out, headerEntries);
 
 			//fields, requiredFields, and AnyRecordOf entries should all be added in the same way
 			List<String> pathList = new LinkedList<String>();
@@ -76,15 +82,15 @@ public class TimeseriesProcessor extends AbstractProcessor {
 			pathList.addAll(query.fields);
 			pathList.addAll(query.requiredFields);
 			
-			addDataForConcepts(pathList, exportedConceptPaths, idList, writer, out);
-			addDataForConcepts(query.categoryFilters.keySet(), exportedConceptPaths, idList, writer, out);
-			addDataForConcepts(query.numericFilters.keySet(), exportedConceptPaths, idList, writer, out);
-			
+			addDataForConcepts(pathList, exportedConceptPaths, idList, result);
+			addDataForConcepts(query.categoryFilters.keySet(), exportedConceptPaths, idList, result);
+			addDataForConcepts(query.numericFilters.keySet(), exportedConceptPaths, idList, result);
 		}
+		
+		
 	}
 
-	private void addDataForConcepts(Collection<String> pathList, Set<String> exportedConceptPaths, TreeSet<Integer> idList,
-			CsvWriter writer, FileWriter outputFile) throws IOException {
+	private void addDataForConcepts(Collection<String> pathList, Set<String> exportedConceptPaths, TreeSet<Integer> idList, AsyncResult result) throws IOException {
 		for (String conceptPath : pathList) {
 			//skip concepts we may already have encountered
 			if(exportedConceptPaths.contains(conceptPath)) {
@@ -115,9 +121,8 @@ public class TimeseriesProcessor extends AbstractProcessor {
 					dataEntries.add(entryData);
 				}
 			}
-			writer.write(outputFile, dataEntries);
+			result.stream.appendResults(dataEntries);
 			exportedConceptPaths.add(conceptPath);
 		}
 	}
-
 }

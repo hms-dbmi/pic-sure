@@ -40,8 +40,6 @@ public class QueryService {
 
 	Logger log = LoggerFactory.getLogger(this.getClass());
 	
-	QueryProcessor processor;
-
 	private BlockingQueue<Runnable> largeTaskExecutionQueue;
 
 	ExecutorService largeTaskExecutor;
@@ -57,7 +55,6 @@ public class QueryService {
 		SMALL_TASK_THREADS = getIntProp("SMALL_TASK_THREADS");
 		LARGE_TASK_THREADS = getIntProp("LARGE_TASK_THREADS");
 
-		processor = new QueryProcessor();
 
 		/* These have to be of type Runnable(nothing more specific) in order 
 		 * to be compatible with ThreadPoolExecutor constructor prototype 
@@ -100,15 +97,12 @@ public class QueryService {
 	}
 
 	private AsyncResult initializeResult(Query query) throws ClassNotFoundException, FileNotFoundException, IOException {
-		AsyncResult result = new AsyncResult(query);
-		result.status = AsyncResult.Status.PENDING;
-		result.queuedTime = System.currentTimeMillis();
-		result.id = UUID.randomUUID().toString();
+		
 		AbstractProcessor p;
 		switch(query.expectedResultType) {
 		case DATAFRAME :
 		case DATAFRAME_MERGED :
-			p = processor;
+			p = new QueryProcessor();
 			break;
 		case DATAFRAME_TIMESERIES :
 			p = new TimeseriesProcessor();
@@ -119,12 +113,18 @@ public class QueryService {
 		default : 
 			throw new RuntimeException("UNSUPPORTED RESULT TYPE");
 		}
+		
+		AsyncResult result = new AsyncResult(query, p.getHeaderRow(query));
+		result.status = AsyncResult.Status.PENDING;
+		result.queuedTime = System.currentTimeMillis();
+		result.id = UUID.randomUUID().toString();
 		result.processor = p;
 		query.id = result.id;
 		results.put(result.id, result);
 		return result;
 	}
-
+	
+	
 	private void mergeFilterFieldsIntoSelectedFields(Query query) {
 		LinkedHashSet<String> fields = new LinkedHashSet<>();
 		if(query.fields != null)fields.addAll(query.fields);
@@ -133,7 +133,7 @@ public class QueryService {
 			Set<String> toBeRemoved = new TreeSet<String>();
 			for(String categoryFilter : categoryFilters) {
 				System.out.println("In : " + categoryFilter);
-				if(processor.pathIsVariantSpec(categoryFilter)) {
+				if(AbstractProcessor.pathIsVariantSpec(categoryFilter)) {
 					toBeRemoved.add(categoryFilter);
 				}
 			}
@@ -154,7 +154,7 @@ public class QueryService {
 		List<String> missingFields = new ArrayList<String>();
 		List<String> badNumericFilters = new ArrayList<String>();
 		List<String> badCategoryFilters = new ArrayList<String>();
-		Set<String> dictionaryFields = processor.getDictionary().keySet();
+		Set<String> dictionaryFields = AbstractProcessor.getDictionary().keySet();
 
 		allFields.addAll(query.fields);
 
@@ -164,7 +164,7 @@ public class QueryService {
 		if(query.numericFilters != null) {
 			allFields.addAll(query.numericFilters.keySet());
 			for(String field : includingOnlyDictionaryFields(query.numericFilters.keySet(), dictionaryFields)) {
-				if(processor.getDictionary().get(field).isCategorical()) {
+				if(AbstractProcessor.getDictionary().get(field).isCategorical()) {
 					badNumericFilters.add(field);
 				}
 			}
@@ -172,10 +172,10 @@ public class QueryService {
 
 		if(query.categoryFilters != null) {
 			Set<String> catFieldNames = new TreeSet<String>(query.categoryFilters.keySet());
-			catFieldNames.removeIf((field)->{return processor.pathIsVariantSpec(field);});
+			catFieldNames.removeIf((field)->{return AbstractProcessor.pathIsVariantSpec(field);});
 			allFields.addAll(catFieldNames);
 			for(String field : includingOnlyDictionaryFields(catFieldNames, dictionaryFields)) {
-				if( ! processor.getDictionary().get(field).isCategorical()) {
+				if( ! AbstractProcessor.getDictionary().get(field).isCategorical()) {
 					badCategoryFilters.add(field);
 				}
 			}
@@ -232,7 +232,7 @@ public class QueryService {
 	}
 
 	public TreeMap<String, ColumnMeta> getDataDictionary() {
-		return processor.getDictionary();
+		return AbstractProcessor.getDictionary();
 	}
 
 	private int getIntProp(String key) {

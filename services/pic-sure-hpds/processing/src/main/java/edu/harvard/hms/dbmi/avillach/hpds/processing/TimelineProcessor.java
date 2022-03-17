@@ -88,5 +88,4 @@ public class TimelineProcessor extends AbstractProcessor {
 
 		return timelineEvents;
 	}
-
 }
