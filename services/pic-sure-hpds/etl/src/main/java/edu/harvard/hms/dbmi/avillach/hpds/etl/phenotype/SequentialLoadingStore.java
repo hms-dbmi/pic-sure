@@ -54,7 +54,6 @@ public class SequentialLoadingStore {
 
 				@Override
 				public void onRemoval(RemovalNotification<String, PhenoCube> cubeRemoval) {
-					log.info("removing " + cubeRemoval.getKey());
 					if(cubeRemoval.getValue().getLoadingMap()!=null) {
 						try(ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 							ObjectOutputStream out = new ObjectOutputStream(byteStream);) {
@@ -77,7 +76,7 @@ public class SequentialLoadingStore {
 						public PhenoCube load(String key) throws Exception {
 							ColumnMeta columnMeta = metadataMap.get(key);
 							if(columnMeta != null) {
-								log.info("Loading concept : [" + key + "]");
+								log.debug("Loading concept : [" + key + "]");
 								return getCubeFromTemp(columnMeta);
 							}else {
 								return null;
