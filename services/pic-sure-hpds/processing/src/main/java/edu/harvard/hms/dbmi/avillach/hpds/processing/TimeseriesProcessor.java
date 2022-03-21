@@ -7,6 +7,7 @@ import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
@@ -52,6 +53,8 @@ public class TimeseriesProcessor extends AbstractProcessor {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+		} else {
+			throw new NotAuthorizedException("Data Export is not authorized for this system");
 		}
 		return;
 	}
