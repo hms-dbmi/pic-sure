@@ -30,6 +30,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 
 public abstract class AbstractProcessor {
+	
+	private static Logger log = LoggerFactory.getLogger(AbstractProcessor.class);
 
 	private static boolean dataFilesLoaded = false;
 	private static BucketIndexBySample bucketIndex;
@@ -38,12 +40,60 @@ public abstract class AbstractProcessor {
 	private static final String VARIANT_INDEX_FBBIS_FILE = "/opt/local/hpds/all/variantIndex_fbbis.javabin";
 	private static final String BUCKET_INDEX_BY_SAMPLE_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
 
+	private static final String HOMOZYGOUS_VARIANT = "1/1";
+	private static final String HETEROZYGOUS_VARIANT = "0/1";
+	private static final String HOMOZYGOUS_REFERENCE = "0/0";
+
+	protected static String ID_CUBE_NAME;
+	protected static int ID_BATCH_SIZE;
+	protected static int CACHE_SIZE;
+	
+	static {
+		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
+		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
+		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
+	}
+
+
+	public static List<String> infoStoreColumns;
+
+	protected static HashMap<String, FileBackedByteIndexedInfoStore> infoStores;
+
+	protected static LoadingCache<String, PhenoCube<?>> store;
+
+	//variantStore will never be null; it is initialized to an empty object.
+	protected static VariantStore variantStore;
+
+	protected static TreeMap<String, ColumnMeta> metaStore;
+
+	protected static TreeSet<Integer> allIds;
+	
+	static {
+		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
+			TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
+			TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
+			for(Entry<String,ColumnMeta> entry : _metastore.entrySet()) {
+				metastoreScrubbed.put(entry.getKey().replaceAll("\\ufffd",""), entry.getValue());
+			}
+			metaStore = metastoreScrubbed;
+			allIds = (TreeSet<Integer>) objectInputStream.readObject();
+			objectInputStream.close();
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+			log.warn("************************************************");
+			log.warn("************************************************");
+			log.warn("Could not load metastore");
+			log.warn("If you meant to include phenotype data of any kind, please check that the file /opt/local/hpds/columnMeta.javabin exists and is readable by the service.");
+			log.warn("************************************************");
+			log.warn("************************************************");
+			metaStore = new TreeMap<String, ColumnMeta>();
+			allIds = new TreeSet<Integer>();
+		} 
+	}
+	
 	public AbstractProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		store = initializeCache(); 
 		synchronized(store) {
-			Object[] metadata = loadMetadata();
-			metaStore = (TreeMap<String, ColumnMeta>) metadata[0];
-			allIds = (TreeSet<Integer>) metadata[1];
 			loadAllDataFiles();
 			infoStoreColumns = new ArrayList<String>(infoStores.keySet());
 		}
@@ -163,61 +213,6 @@ public abstract class AbstractProcessor {
 		if(!isOnlyForTests) {
 			throw new IllegalArgumentException("This constructor should never be used outside tests");
 		}
-	}
-
-	private static final String HOMOZYGOUS_VARIANT = "1/1";
-
-	private static final String HETEROZYGOUS_VARIANT = "0/1";
-
-	private static final String HOMOZYGOUS_REFERENCE = "0/0";
-
-	private static Logger log = LoggerFactory.getLogger(AbstractProcessor.class);
-
-	protected static String ID_CUBE_NAME;
-
-	static {
-		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
-		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
-		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
-	}
-
-	protected static int ID_BATCH_SIZE;
-
-	protected static int CACHE_SIZE;
-
-	public static List<String> infoStoreColumns;
-
-	protected static HashMap<String, FileBackedByteIndexedInfoStore> infoStores;
-
-	protected static LoadingCache<String, PhenoCube<?>> store;
-
-	//variantStore will never be null; it is initialized to an empty object.
-	protected static VariantStore variantStore;
-
-	protected static TreeMap<String, ColumnMeta> metaStore;
-
-	protected TreeSet<Integer> allIds;
-
-	protected Object[] loadMetadata() {
-		try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
-			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
-			TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
-			for(Entry<String,ColumnMeta> entry : metastore.entrySet()) {
-				metastoreScrubbed.put(entry.getKey().replaceAll("\\ufffd",""), entry.getValue());
-			}
-			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
-			objectInputStream.close();
-			return new Object[] {metastoreScrubbed, allIds};
-		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
-			log.warn("************************************************");
-			log.warn("************************************************");
-			log.warn("Could not load metastore");
-			log.warn("If you meant to include phenotype data of any kind, please check that the file /opt/local/hpds/columnMeta.javabin exists and is readable by the service.");
-			log.warn("************************************************");
-			log.warn("************************************************");
-			return new Object[] {new TreeMap<String, ColumnMeta>(), new TreeSet<Integer>()};
-		} 
 	}
 
 	/**
@@ -868,7 +863,7 @@ public abstract class AbstractProcessor {
 		return patientMasks;
 	}
 
-	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
+	public static FileBackedByteIndexedInfoStore getInfoStore(String column) {
 		return infoStores.get(column);
 	}
 	//
@@ -876,7 +871,7 @@ public abstract class AbstractProcessor {
 	//		return new GeneLibrary().geneNameSearch(key).size()==1;
 	//	}
 
-	public boolean pathIsVariantSpec(String key) {
+	public static boolean pathIsVariantSpec(String key) {
 		return key.matches("rs[0-9]+.*") || key.matches(".*,[0-9\\\\.]+,[CATGcatg]*,[CATGcatg]*");
 	}
 
@@ -1024,7 +1019,7 @@ public abstract class AbstractProcessor {
 		}
 	}
 
-	public TreeMap<String, ColumnMeta> getDictionary() {
+	public static TreeMap<String, ColumnMeta> getDictionary() {
 		return metaStore;
 	}
 
@@ -1037,4 +1032,12 @@ public abstract class AbstractProcessor {
 	 */
 	public abstract void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException;
 
+	/**
+	 * This should return a String array of the columns that will be exported in a DATAFRAME or COUNT type query.  default is NULL.
+	 * @param query 
+	 * @return
+	 */
+	public String[] getHeaderRow(Query query) {
+		return null;
+	}
 }

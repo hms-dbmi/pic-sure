@@ -27,6 +27,14 @@ public class CountProcessor extends AbstractProcessor {
 			throw new IllegalArgumentException("This constructor should never be used outside tests");
 		}
 	}
+	
+	/**
+	 * Count processor always returns same headers
+	 */
+	@Override
+	public String[] getHeaderRow(Query query) {
+		return new String[] {"Patient ID", "Count"};
+	}
 
 	/**
 	 * Retrieves a list of patient ids that are valid for the query result and returns the size of that list.

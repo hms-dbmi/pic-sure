@@ -157,7 +157,7 @@ public class PicSureService implements IResourceRS {
 				// Info Values
 				Map<String, Map> infoResults = new TreeMap<String, Map>();
 				AbstractProcessor.infoStoreColumns.stream().forEach((String infoColumn)->{
-					FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
+					FileBackedByteIndexedInfoStore store = AbstractProcessor.getInfoStore(infoColumn);
 					if(store!=null) {
 						String query = searchJson.getQuery().toString();
 						String lowerCase = query.toLowerCase();
@@ -276,7 +276,7 @@ public class PicSureService implements IResourceRS {
 				case INFO_COLUMN_LISTING : {
 					ArrayList<Map> infoStores = new ArrayList<>();
 					AbstractProcessor.infoStoreColumns.stream().forEach((infoColumn)->{
-						FileBackedByteIndexedInfoStore store = queryService.processor.getInfoStore(infoColumn);
+						FileBackedByteIndexedInfoStore store = AbstractProcessor.getInfoStore(infoColumn);
 						if(store!=null) {
 							infoStores.add(ImmutableMap.of("key", store.column_key, "description", store.description, "isContinuous", store.isContinuous, "min", store.min, "max", store.max));
 						}

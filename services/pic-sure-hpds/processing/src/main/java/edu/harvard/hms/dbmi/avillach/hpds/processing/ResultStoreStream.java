@@ -46,6 +46,7 @@ public class ResultStoreStream extends InputStream {
 			writeHeader(this.originalHeader);
 		}
 		this.mergeColumns = mergeColumns;
+		numRows = 0;
 	}
 
 	private String[] createMergedColumns(String[] header) {
@@ -97,6 +98,19 @@ public class ResultStoreStream extends InputStream {
 		} catch (IOException e) {
 			throw new RuntimeException("IOException while appending temp file : " + tempFile.getAbsolutePath(), e);
 		} 
+	}
+	
+	/**
+	 * A more compact method to append data to the temp file without making assumptions about the composition.
+	 * @param entries
+	 */
+	public void appendResults(List<String[]> entries) {
+		try (FileWriter out = new FileWriter(tempFile, true);){
+			writer.write(out, entries);
+			numRows += entries.size();
+		} catch (IOException e) {
+			throw new RuntimeException("IOException while appending temp file : " + tempFile.getAbsolutePath(), e);
+		}
 	}
 
 	private List<String[]> writeResultsToTempFile(ResultStore results, FileWriter out, int batchSize,
@@ -175,9 +189,6 @@ public class ResultStoreStream extends InputStream {
 							}
 							records.add(String.join(";", valuesToMerge));
 						}
-						//						for(int x = 1;x<record.size();x++) {
-						//							records.add(record.get(x));
-						//						}
 						try {
 							writer.printRecord(records);
 						} catch (IOException e) {
