@@ -1,12 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import java.io.*;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.siegmar.fastcsv.writer.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
@@ -29,8 +29,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 public class TimeseriesProcessor extends AbstractProcessor {
 
 	private Logger log = LoggerFactory.getLogger(QueryProcessor.class);
-
-//	private static final String[] headers = { "PATIENT_NUM", "CONCEPT_PATH", "NVAL_NUM", "TVAL_CHAR", "TIMESTAMP" };
 
 	public TimeseriesProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
 		super();
@@ -69,25 +67,15 @@ public class TimeseriesProcessor extends AbstractProcessor {
 	private void exportTimeData(Query query, AsyncResult result, TreeSet<Integer> idList) throws IOException {
 
 		Set<String> exportedConceptPaths = new HashSet<String>();
-
-		File tempFile = File.createTempFile("result-" + System.nanoTime(), ".sstmp");
-		CsvWriter writer = new CsvWriter();
-
-		try (FileWriter out = new FileWriter(tempFile);) {
-//			writer.write(out, headerEntries);
-
-			//fields, requiredFields, and AnyRecordOf entries should all be added in the same way
-			List<String> pathList = new LinkedList<String>();
-			pathList.addAll(query.anyRecordOf);
-			pathList.addAll(query.fields);
-			pathList.addAll(query.requiredFields);
-			
-			addDataForConcepts(pathList, exportedConceptPaths, idList, result);
-			addDataForConcepts(query.categoryFilters.keySet(), exportedConceptPaths, idList, result);
-			addDataForConcepts(query.numericFilters.keySet(), exportedConceptPaths, idList, result);
-		}
+		//get a list of all fields mentioned in the query;  export all data associated with any included field
+		List<String> pathList = new LinkedList<String>();
+		pathList.addAll(query.anyRecordOf);
+		pathList.addAll(query.fields);
+		pathList.addAll(query.requiredFields);
+		pathList.addAll(query.categoryFilters.keySet());
+		pathList.addAll(query.numericFilters.keySet());
 		
-		
+		addDataForConcepts(pathList, exportedConceptPaths, idList, result);
 	}
 
 	private void addDataForConcepts(Collection<String> pathList, Set<String> exportedConceptPaths, TreeSet<Integer> idList, AsyncResult result) throws IOException {
@@ -104,21 +92,24 @@ public class TimeseriesProcessor extends AbstractProcessor {
 			}
 			log.debug("Exporting " + conceptPath);
 			List<?> valuesForKeys = cube.getValuesForKeys(idList);
-			if (cube.isStringType()) {
-				for (Object kvObj : valuesForKeys) {
+			for (Object kvObj : valuesForKeys) {
+				if (cube.isStringType()) {
 					KeyAndValue<String> keyAndValue = (KeyAndValue) kvObj;
 					// "PATIENT_NUM","CONCEPT_PATH","NVAL_NUM","TVAL_CHAR","TIMESTAMP"
 					String[] entryData = { keyAndValue.getKey().toString(), conceptPath, "", keyAndValue.getValue(),
 							keyAndValue.getTimestamp().toString() };
 					dataEntries.add(entryData);
-				}
-			} else { // numeric
-				for (Object kvObj : valuesForKeys) {
+				} else { // numeric
 					KeyAndValue<Double> keyAndValue = (KeyAndValue) kvObj;
 					// "PATIENT_NUM","CONCEPT_PATH","NVAL_NUM","TVAL_CHAR","TIMESTAMP"
 					String[] entryData = { keyAndValue.getKey().toString(), conceptPath,
 							keyAndValue.getValue().toString(), "", keyAndValue.getTimestamp().toString() };
 					dataEntries.add(entryData);
+				}
+				//batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
+				if(dataEntries.size() >= ID_BATCH_SIZE) {
+					result.stream.appendResults(dataEntries);
+					dataEntries = new ArrayList<String[]>();
 				}
 			}
 			result.stream.appendResults(dataEntries);

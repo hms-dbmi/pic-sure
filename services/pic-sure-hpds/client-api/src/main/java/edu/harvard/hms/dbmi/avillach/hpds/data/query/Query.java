@@ -87,6 +87,12 @@ public class Query {
 		case DATAFRAME_MERGED:
 			writePartFormat("Data Export Fields", fields, builder, true);
 			break;
+		case DATAFRAME_TIMESERIES:
+			writePartFormat("Data Export Fields", fields, builder, true);
+			writePartFormat("Data Export Fields", requiredFields, builder, true);
+			writePartFormat("Data Export Fields", anyRecordOf, builder, true);
+			writePartFormat("Data Export Fields", numericFilters.keySet(), builder, true);
+			writePartFormat("Data Export Fields", categoryFilters.keySet(), builder, true);
 		case COUNT:
 		case VARIANT_COUNT_FOR_QUERY:
 		case AGGREGATE_VCF_EXCERPT:
