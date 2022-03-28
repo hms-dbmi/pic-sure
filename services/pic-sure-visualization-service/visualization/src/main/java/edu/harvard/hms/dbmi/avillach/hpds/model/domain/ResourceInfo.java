@@ -29,6 +29,9 @@ public class ResourceInfo {
 		return this;
 	}
 	public List<QueryFormat> getQueryFormats() {
+		if (queryFormats == null) {
+			queryFormats = new java.util.ArrayList<QueryFormat>();
+		}
 		return queryFormats;
 	}
 	public ResourceInfo setQueryFormats(List<QueryFormat> queryFormats) {

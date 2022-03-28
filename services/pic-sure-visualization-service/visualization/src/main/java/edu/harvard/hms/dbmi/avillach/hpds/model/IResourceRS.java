@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.model;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
 
 import javax.ws.rs.*;
-import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Response;
 
 
@@ -47,16 +46,4 @@ public interface IResourceRS {
     default Response queryFormat(QueryRequest resultRequest) {
         throw new NotSupportedException("Query formatting is not implemented in this resource.");
     }
-
-//    @POST
-//    @Path("visualizations")
-//    default Response visualizations() {
-//        throw new NotSupportedException();
-//    }
-//
-//    @POST
-//    @Path("/visualize")
-//    default Response visualize() {
-//        throw new NotSupportedException();
-//    }
 }

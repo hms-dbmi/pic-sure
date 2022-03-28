@@ -7,9 +7,9 @@ import java.util.List;
 
 @Data
 public class VisualizationResponse {
-    private List<String> images;
+    private List<VisualizationImage> images;
 
-    public List<String> getImages() {
+    public List<VisualizationImage> getImages() {
         if (images == null) {
             images = new java.util.ArrayList<>();
         }

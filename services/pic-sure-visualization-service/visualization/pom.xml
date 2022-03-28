@@ -6,10 +6,10 @@
 
     <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
     <artifactId>visualization</artifactId>
-    <version>0.0.1</version>
+    <version>1.0.0</version>
     <packaging>war</packaging>
     <name>Pic-sure Visualization Resource</name>
-    <description>A Pic-sure resource that returns one or more images of visualizations for the given data.</description>
+    <description>A Pic-Sure resource that returns one or more images of visualizations for the given query.</description>
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
@@ -66,34 +66,9 @@
             <version>4.13.2</version>
         </dependency>
         <dependency>
-            <groupId>jakarta.xml.soap</groupId>
-            <artifactId>jakarta.xml.soap-api</artifactId>
-            <version>2.0.1</version>
-        </dependency>
-        <dependency>
-            <groupId>org.jsoup</groupId>
-            <artifactId>jsoup</artifactId>
-            <version>1.14.3</version>
-        </dependency>
-        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>1.18.22</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>31.0.1-jre</version>
-        </dependency>
-        <dependency>
-            <groupId>tech.tablesaw</groupId>
-            <artifactId>tablesaw-core</artifactId>
-            <version>0.42.0</version>
-        </dependency>
-        <dependency>
-            <groupId>tech.tablesaw</groupId>
-            <artifactId>tablesaw-jsplot</artifactId>
-            <version>0.42.0</version>
         </dependency>
         <dependency>
             <groupId>org.knowm.xchart</groupId>
@@ -107,9 +82,9 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.9.0</version>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.36</version>
         </dependency>
     </dependencies>
     <build>
@@ -137,9 +112,6 @@
                 <version>1.8.2</version>
                 <configuration>
                     <container>
-                        <systemProperties>
-                            <environment>test</environment>
-                        </systemProperties>
                         <containerId>tomcat9x</containerId>
                         <zipUrlInstaller>
                             <url>https://repo.maven.apache.org/maven2/org/apache/tomcat/tomcat/9.0.41/tomcat-9.0.41.zip</url>
@@ -158,7 +130,7 @@
                             <groupId>org.codehaus.cargo</groupId>
                             <artifactId>simple-war</artifactId>
                             <type>war</type>
-                            <location>target/${project.artifactId}-${project.version}.war</location>
+                            <location>target/${project.artifactId}.war</location>
                             <properties>
                                 <context>visualization</context>
                             </properties>
@@ -191,6 +163,7 @@
                 </executions>
             </plugin>
         </plugins>
+        <finalName>visualization</finalName>
     </build>
 
 </project>

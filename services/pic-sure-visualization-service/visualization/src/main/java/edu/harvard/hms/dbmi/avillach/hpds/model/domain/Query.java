@@ -141,7 +141,7 @@ public class Query {
 
                 Integer count = countMap.get(firstLevel);
                 if(count == null) {
-                    count = new Integer(1);
+                    count = Integer.valueOf(1);
                 } else {
                     count = count + 1;
                 }

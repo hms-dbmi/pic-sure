@@ -6,7 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -18,21 +22,33 @@ import java.util.*;
 @Service
 public class DataService implements IDataService {
 
-    @Value("${picSure.url}")
-    String picSureUrl;
+    private Logger logger = LoggerFactory.getLogger(DataService.class);
 
-    @Value("${search.url}")
-    String searchUrl;
+    final
+    Environment env;
+
+    private String picSureUrl;
+    private String searchUrl;
 
     private static final String CONSENTS_KEY = "\\_consents\\";
     private static final String AUTH_HEADER_NAME = "Authorization";
 
+    private RestTemplate restTemplate;
+
+    DataService(Environment env) {
+        this.env = env;
+        this.picSureUrl = env.getProperty("picSure.url");
+        this.searchUrl = env.getProperty("search.url");
+        if (restTemplate == null) {
+            restTemplate = new RestTemplate();
+        }
+    }
+
     @Override
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
-        System.out.println("queryRequest: " + queryRequest);
+        logger.debug("Starting Categorical Data");
         List<CategoricalData> categoricalDataList = new ArrayList<>();
         Map<String, Double> axisMap = new HashMap<>();
-        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
@@ -46,6 +62,7 @@ public class DataService implements IDataService {
             } catch (JsonProcessingException e) {
                 e.printStackTrace();
             }
+            logger.info("Calling /picsure/search/ for required field:  \n" + actualObj.toString());
             SearchResults searchResults = restTemplate.exchange(searchUrl, HttpMethod.POST, new HttpEntity<>(actualObj, headers), SearchResults.class).getBody();
             for (Map.Entry<String, SearchResult> phenotype:searchResults.getResults().getPhenotypes().entrySet()) {
                 queryRequest.getQuery().categoryFilters.put(phenotype.getKey(), phenotype.getValue().getCategoryValues());
@@ -61,19 +78,19 @@ public class DataService implements IDataService {
                 newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
                 newRequest.getQuery().categoryFilters.put(filter.getKey(), new String[]{value});
                 newRequest.getQuery().expectedResultType = ResultType.COUNT;
+                logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
                 Double result = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), Double.class).getBody();
                 axisMap.put(value, result);
             }
             categoricalDataList.add(new CategoricalData(filter.getKey(), axisMap));
         }
-
-
+        logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
     }
 
     public List<ContinuousData> getContinuousData(QueryRequest queryRequest) {
+        logger.debug("Starting Continuous Data");
         List<ContinuousData> continuousDataList = new ArrayList<>();
-        RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
@@ -83,6 +100,7 @@ public class DataService implements IDataService {
             newRequest.getQuery().categoryFilters.clear();
             newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
             newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
+            logger.info("Calling /picsure/query/sync for numericFilters field with query:  \n" + newRequest.getQuery().toString());
             String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
             String[] result = rawResult != null ? rawResult.split("\n") : null;
             // Ignore the first line
@@ -100,6 +118,7 @@ public class DataService implements IDataService {
             }
             continuousDataList.add(new ContinuousData(filter.getKey(), countMap));
         }
+        logger.debug("Finished Continuous Data with " + continuousDataList.size() + " results");
         return continuousDataList;
     }
 }
