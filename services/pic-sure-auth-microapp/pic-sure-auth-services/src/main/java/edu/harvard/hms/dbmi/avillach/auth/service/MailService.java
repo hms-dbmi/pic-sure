@@ -80,25 +80,33 @@ public class MailService {
 	 * @throws MessagingException
 	 */
 	private void sendEmail(String template, String to, String subject, Object scope) {
-		logger.debug("sendEmail(String, String, String, Object) - start");
-		try {
-			if (StringUtils.isEmpty(template) || StringUtils.isEmpty(to) || StringUtils.isEmpty(subject) || scope == null) {
-				logger.error("One of the required parameters is null. Can't send email.");
-				return;
-			}
-			Mustache emailTemplate = compileTemplate(template);
-			Message message = new MimeMessage(JAXRSConfiguration.mailSession);
-			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
-			message.setSubject(subject);
-			message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
-			Transport.send(message);
-		} catch (FileNotFoundException e) {
-			logger.error("Template not found for " + template + ". Check configuration.");
-		} catch (MessagingException me) {
-			logger.error("Failed to send email: '" + subject + "'", me);
-		} catch (Exception e) {
-			logger.error("Error occurred while trying to send email '" + subject + "'", e);
-		}
-		logger.debug("sendEmail() finished");
+		logger.debug("Starting email sending thread");
+		
+		//email can take some time before it connects or fails;  spin into a new thread.
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				logger.debug("sendEmail(String, String, String, Object) - start");
+				try {
+					if (StringUtils.isEmpty(template) || StringUtils.isEmpty(to) || StringUtils.isEmpty(subject) || scope == null) {
+						logger.error("One of the required parameters is null. Can't send email.");
+						return;
+					}
+					Mustache emailTemplate = compileTemplate(template);
+					Message message = new MimeMessage(JAXRSConfiguration.mailSession);
+					message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
+					message.setSubject(subject);
+					message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
+					Transport.send(message);
+				} catch (FileNotFoundException e) {
+					logger.error("Template not found for " + template + ". Check configuration.");
+				} catch (MessagingException me) {
+					logger.error("Failed to send email: '" + subject + "'", me);
+				} catch (Exception e) {
+					logger.error("Error occurred while trying to send email '" + subject + "'", e);
+				}
+				logger.debug("sendEmail() finished");
+			}}).run();
+		
 	}
 }
