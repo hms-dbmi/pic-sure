@@ -106,7 +106,7 @@ public class MailService {
 					logger.error("Error occurred while trying to send email '" + subject + "'", e);
 				}
 				logger.debug("sendEmail() finished");
-			}}).run();
+			}}).start();
 		
 	}
 }
