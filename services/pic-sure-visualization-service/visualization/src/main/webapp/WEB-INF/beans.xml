@@ -5,10 +5,8 @@
     xmlns:context="http://www.springframework.org/schema/context"
     xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://cxf.apache.org/jaxrs http://cxf.apache.org/schemas/jaxrs.xsd">
     <import resource="classpath:META-INF/cxf/cxf.xml"/>
+    <context:annotation-config/>
     <context:property-placeholder/>
-    <context:annotation-config/>
-    <bean class="org.springframework.beans.factory.config.PreferencesPlaceholderConfigurer"/>
-    <context:annotation-config/>
     <context:component-scan base-package="edu.harvard.hms.dbmi.avillach"/>
     <jaxrs:server id="services" address="/">
         <jaxrs:serviceBeans>

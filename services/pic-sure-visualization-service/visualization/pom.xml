@@ -131,9 +131,6 @@
                             <artifactId>simple-war</artifactId>
                             <type>war</type>
                             <location>target/${project.artifactId}.war</location>
-                            <properties>
-                                <context>visualization</context>
-                            </properties>
                         </deployable>
                     </deployables>
                 </configuration>

@@ -11,4 +11,4 @@ mvn clean install -DskipTests
 docker build --tag visualization .
 docker stop StatViz || true
 docker rm StatViz || true
-docker run --name=StatViz -p 8080:8080 -v /usr/local/docker-config/application.properties:/usr/local/docker-config/application.properties visualization
+docker run --name=StatViz -p 8080:8080 -v "${PWD}/src/main/resources/application-$1.properties":/usr/local/docker-config/application.properties visualization

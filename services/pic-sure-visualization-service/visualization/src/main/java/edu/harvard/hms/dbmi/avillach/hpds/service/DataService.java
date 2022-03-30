@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
+import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,10 +25,9 @@ public class DataService implements IDataService {
 
     private Logger logger = LoggerFactory.getLogger(DataService.class);
 
-    final
-    Environment env;
-
+    @Value("${picSure.url}")
     private String picSureUrl;
+    @Value("${search.url}")
     private String searchUrl;
 
     private static final String CONSENTS_KEY = "\\_consents\\";
@@ -35,10 +35,7 @@ public class DataService implements IDataService {
 
     private RestTemplate restTemplate;
 
-    DataService(Environment env) {
-        this.env = env;
-        this.picSureUrl = env.getProperty("picSure.url");
-        this.searchUrl = env.getProperty("search.url");
+    public DataService() {
         if (restTemplate == null) {
             restTemplate = new RestTemplate();
         }
