@@ -37,7 +37,7 @@ public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 	
-	@Inject
+//	@Inject
     private Session mailSession;
 	
 	Mustache accessTemplate = compileTemplate("accessEmail.mustache");
@@ -54,6 +54,7 @@ public class MailService {
 		
 		logger.info("Found properties in constructor " + Arrays.deepToString( properties.keySet().toArray()));
 		
+		//if this works, maybe we can just set system properties?
 		properties.put("mail.smtp.starttls.enable","true");
 		properties.put("mail.smtp.auth", "true");
 		properties.put("mail.smtp.connectiontimeout", 1000);
@@ -137,6 +138,8 @@ public class MailService {
 		message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
 		
 //		Transport.send(message);
+		
+		//OK, we probably don't need to do this; Transport looks for the message.session
 		
 		//since wer'e using custom Session (for timeouts) we need to handle the Transport too
 		Transport transport = mailSession.getTransport();
