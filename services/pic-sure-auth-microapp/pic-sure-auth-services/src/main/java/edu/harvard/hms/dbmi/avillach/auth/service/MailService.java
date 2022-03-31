@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Properties;
 
 import javax.annotation.Resource;
+import javax.inject.Inject;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Session;
@@ -36,7 +37,7 @@ public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 	
-    @Resource(mappedName="java:jboss/mail/gmail")
+	@Inject
     private Session mailSession;
 	
 	Mustache accessTemplate = compileTemplate("accessEmail.mustache");
@@ -45,6 +46,10 @@ public class MailService {
 	public MailService(){
 		
 		// try to define some timing parameters - wildfly doesn't read these from standalone
+		
+		if(mailSession == null) {
+			mailSession = Session.getDefaultInstance(System.getProperties());
+		}
 		Properties properties = mailSession.getProperties();
 		
 		logger.info("Found properties in constructor " + Arrays.deepToString( properties.keySet().toArray()));
