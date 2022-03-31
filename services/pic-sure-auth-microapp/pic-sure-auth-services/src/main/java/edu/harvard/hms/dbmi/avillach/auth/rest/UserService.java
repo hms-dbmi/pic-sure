@@ -5,11 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponseOKwithMsgAndContent;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
 import edu.harvard.hms.dbmi.avillach.auth.data.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.data.repository.*;
 import edu.harvard.hms.dbmi.avillach.auth.service.BaseEntityService;
+import edu.harvard.hms.dbmi.avillach.auth.service.MailService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthUtils;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -25,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
+import javax.mail.MessagingException;
 import javax.transaction.Transactional;
 import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
@@ -69,6 +72,8 @@ public class UserService extends BaseEntityService<User> {
     
     @Inject
     AuthUtils authUtil;
+    
+    private MailService mailService = new MailService();
 
     public UserService() {
         super(User.class);
@@ -131,7 +136,9 @@ public class UserService extends BaseEntityService<User> {
         }
 
 	    if (allowAdd){
-            return addEntity(users, userRepo);
+	    	Response updateResponse = updateEntity(users, userRepo);
+            sendUserUpdateEmailsFromResponse(updateResponse);
+            return updateResponse;
         } else {
             logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant "
                     + AuthNaming.AuthRoleNaming.SUPER_ADMIN + " role when adding a user.");
@@ -167,7 +174,9 @@ public class UserService extends BaseEntityService<User> {
         }
 
         if (allowUpdate){
-            return updateEntity(users, userRepo);
+            Response updateResponse = updateEntity(users, userRepo);
+            sendUserUpdateEmailsFromResponse(updateResponse);
+            return updateResponse;
         }
         else {
             logger.error("updateUser() user - " + currentUser.getUuid() + " - with roles ["+ currentUser.getRoleString() + "] - is not allowed to grant or remove "
@@ -176,7 +185,24 @@ public class UserService extends BaseEntityService<User> {
         }
     }
 
-    /**
+    private void sendUserUpdateEmailsFromResponse(Response updateResponse) {
+    	 Object entity = updateResponse.getEntity();
+         if(entity != null && entity instanceof PICSUREResponseOKwithMsgAndContent) {
+         	PICSUREResponseOKwithMsgAndContent okResponse = (PICSUREResponseOKwithMsgAndContent)entity;
+         	List<User> addedUsers = (List<User>) okResponse.getContent();
+         	String message = okResponse.getMessage();
+         	for(User user : addedUsers) {
+         		try {
+					mailService.sendUsersAccessEmail(user);
+				} catch (MessagingException e) {
+					logger.error("Failed to send email! ", e);
+					okResponse.setMessage(message + "  WARN - could not send email to user " + user.getEmail() + " see logs for more info");
+				}
+         	}
+         }
+	}
+
+	/**
      * This check is to prevent non-super-admin user to create/remove a super admin role
      * against a user(include themselves). Only super admin user could perform such actions.
      *
