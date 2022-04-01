@@ -186,6 +186,8 @@ public class UserService extends BaseEntityService<User> {
     }
 
     private void sendUserUpdateEmailsFromResponse(Response updateResponse) {
+    	logger.debug("Sending email");
+    	try {
     	 Object entity = updateResponse.getEntity();
          if(entity != null && entity instanceof PICSUREResponseOKwithMsgAndContent) {
          	PICSUREResponseOKwithMsgAndContent okResponse = (PICSUREResponseOKwithMsgAndContent)entity;
@@ -200,6 +202,9 @@ public class UserService extends BaseEntityService<User> {
 				}
          	}
          }
+    	} catch (Exception e) {
+    		logger.error("Failed to send email - unhandled exception: ", e);
+    	}
 	}
 
 	/**
