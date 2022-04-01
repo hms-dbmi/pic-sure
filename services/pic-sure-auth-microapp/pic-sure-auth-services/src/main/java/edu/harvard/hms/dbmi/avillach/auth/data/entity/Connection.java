@@ -58,7 +58,10 @@ public class Connection extends BaseEntity implements Serializable {
     }
     
     public String toString() {
-    		return uuid.toString() + " ___ " + id + " ___ " + subPrefix + " ___ " + label + " ___ " + requiredFields;
+    	if(uuid == null) {
+    		return "No UUID assgned___ " + id + " ___ " + subPrefix + " ___ " + label + " ___ " + requiredFields;
+    	}
+    	return uuid.toString() + " ___ " + id + " ___ " + subPrefix + " ___ " + label + " ___ " + requiredFields;
     }
 }
 

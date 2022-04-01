@@ -342,7 +342,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	public String toString() {
 		if(uuid == null) {
-			return "No ID assigned___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
+			return "No UUID assigned___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
 		}
 		return uuid.toString() + " ___ " + subject + " ___ " + email + " ___ " + generalMetadata + " ___ " + auth0metadata + " ___ {" + ((connection==null)?null:connection.toString()) + "}";
 	}
