@@ -111,20 +111,22 @@ public class UserService extends BaseEntityService<User> {
             logger.error("Security context didn't have a user stored.");
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
-
+        
+        logger.debug("Checking inbound users: " + Arrays.deepToString(users.toArray()));
+        
         checkAssociation(users);
 
         boolean allowAdd = true;
         for(User user : users) {
+        	logger.debug("Adding User " + user);
             if (!allowUpdateSuperAdminRole(currentUser, user, null)){
                 allowAdd = false;
                 break;
             }
 
             if(user.getEmail() == null) {
-	        		HashMap<String, String> metadata;
 				try {
-					metadata = new HashMap<String, String>(new ObjectMapper().readValue(user.getGeneralMetadata(), Map.class));
+					HashMap<String, String> metadata = new HashMap<String, String>(new ObjectMapper().readValue(user.getGeneralMetadata(), Map.class));
 					List<String> emailKeys = metadata.keySet().stream().filter((key)->{return key.toLowerCase().contains("email");}).collect(Collectors.toList());
 		        		if(emailKeys.size()>0) {
 		        			user.setEmail(metadata.get(emailKeys.get(0)));
@@ -205,6 +207,7 @@ public class UserService extends BaseEntityService<User> {
     	} catch (Exception e) {
     		logger.error("Failed to send email - unhandled exception: ", e);
     	}
+    	logger.debug("finished email sending method");
 	}
 
 	/**
