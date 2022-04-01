@@ -112,8 +112,6 @@ public class UserService extends BaseEntityService<User> {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
         }
         
-        logger.debug("Checking inbound users: " + Arrays.deepToString(users.toArray()));
-        
         checkAssociation(users);
 
         boolean allowAdd = true;
@@ -138,7 +136,7 @@ public class UserService extends BaseEntityService<User> {
         }
 
 	    if (allowAdd){
-	    	Response updateResponse = updateEntity(users, userRepo);
+	    	Response updateResponse = addEntity(users, userRepo);
             sendUserUpdateEmailsFromResponse(updateResponse);
             return updateResponse;
         } else {
