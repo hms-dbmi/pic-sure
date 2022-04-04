@@ -3,16 +3,10 @@ package edu.harvard.hms.dbmi.avillach.auth.service;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.StringWriter;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
 
-import javax.annotation.Resource;
-import javax.inject.Inject;
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.Session;
-import javax.mail.Transport;
+import javax.mail.*;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
@@ -37,27 +31,24 @@ public class MailService {
 	private static Logger logger = LoggerFactory.getLogger(MailService.class);
 	private static MustacheFactory mf = new DefaultMustacheFactory();
 	
-//	@Inject
     private Session mailSession;
 	
-	Mustache accessTemplate = compileTemplate("accessEmail.mustache");
-	Mustache deniedTemplate = compileTemplate("deniedAccessEmail.mustache");
+	private static Mustache accessTemplate = compileTemplate("accessEmail.mustache");
+	private static Mustache deniedTemplate = compileTemplate("deniedAccessEmail.mustache");
+	
+	
+	public static final int SMTP_TIMEOUT_MS = 1000;
 	
 	public MailService(){
-		
-		// try to define some timing parameters - wildfly doesn't read these from standalone
+		//try to read this from the app container configuration
 		mailSession = JAXRSConfiguration.mailSession;
 		if(mailSession == null) {
 			mailSession = Session.getDefaultInstance(System.getProperties());
 		}
+		
+		// define timeout - wildfly doesn't read this from standalone (not in xml schema)
 		Properties properties = mailSession.getProperties();
-		
-		logger.info("Found properties in constructor " + Arrays.deepToString( properties.keySet().toArray()));
-		
-		//if this works, maybe we can just set system properties?
-		properties.put("mail.smtp.starttls.enable","true");
-		properties.put("mail.smtp.auth", "true");
-		properties.put("mail.smtp.connectiontimeout", 1000);
+		properties.put("mail.smtp.connectiontimeout", SMTP_TIMEOUT_MS);
 	}
 	
 	/**
@@ -65,7 +56,7 @@ public class MailService {
 	 *
 	 * @throws FileNotFoundException Exception thrown if templateFile is missing due to not being configured
 	 */
-	private Mustache compileTemplate(String templateFile)  {
+	private static Mustache compileTemplate(String templateFile)  {
 		try {
 			FileReader reader = new FileReader(JAXRSConfiguration.templatePath + templateFile);
 			return mf.compile(reader, templateFile);
@@ -136,18 +127,6 @@ public class MailService {
 		message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
 		message.setSubject(subject);
 		message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
-		
-		//OK, we probably don't need to do this; Transport looks for the message.session
-//		//since wer'e using custom Session (for timeouts) we need to handle the Transport too
-//		Transport transport = mailSession.getTransport();
-//		 try {
-//			Properties properties = mailSession.getProperties();
-//			logger.info("Found properties in sendEmail " + Arrays.deepToString( properties.keySet().toArray()));
-//		    transport.connect(properties.getProperty("username"), properties.getProperty("password"));
-//			transport.sendMessage(message, message.getAllRecipients() );
-//	    } finally {
-//			transport.close();
-//	    }
 		
 		Transport.send(message);
 		logger.debug("sendEmail() finished");
