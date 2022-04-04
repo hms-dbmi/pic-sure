@@ -46,7 +46,7 @@ public class MailService {
 	public MailService(){
 		
 		// try to define some timing parameters - wildfly doesn't read these from standalone
-		
+		mailSession = JAXRSConfiguration.mailSession;
 		if(mailSession == null) {
 			mailSession = Session.getDefaultInstance(System.getProperties());
 		}
@@ -137,20 +137,19 @@ public class MailService {
 		message.setSubject(subject);
 		message.setContent(emailTemplate.execute(new StringWriter(), scope).toString(),"text/html");
 		
-//		Transport.send(message);
-		
 		//OK, we probably don't need to do this; Transport looks for the message.session
+//		//since wer'e using custom Session (for timeouts) we need to handle the Transport too
+//		Transport transport = mailSession.getTransport();
+//		 try {
+//			Properties properties = mailSession.getProperties();
+//			logger.info("Found properties in sendEmail " + Arrays.deepToString( properties.keySet().toArray()));
+//		    transport.connect(properties.getProperty("username"), properties.getProperty("password"));
+//			transport.sendMessage(message, message.getAllRecipients() );
+//	    } finally {
+//			transport.close();
+//	    }
 		
-		//since wer'e using custom Session (for timeouts) we need to handle the Transport too
-		Transport transport = mailSession.getTransport();
-		 try {
-			Properties properties = mailSession.getProperties();
-			logger.info("Found properties in sendEmail " + Arrays.deepToString( properties.keySet().toArray()));
-		    transport.connect(properties.getProperty("username"), properties.getProperty("password"));
-			transport.sendMessage(message, message.getAllRecipients() );
-	    } finally {
-			transport.close();
-	    }
+		Transport.send(message);
 		logger.debug("sendEmail() finished");
 		
 	}
