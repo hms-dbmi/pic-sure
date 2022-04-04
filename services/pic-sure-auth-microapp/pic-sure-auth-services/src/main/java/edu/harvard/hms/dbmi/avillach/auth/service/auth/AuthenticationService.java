@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.auth;
 import java.util.*;
 
 import javax.inject.Inject;
+import javax.mail.MessagingException;
 import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -95,7 +96,11 @@ public class AuthenticationService {
             user = matchingService.matchTokenToUser(userInfo);
             if (user == null){
                 if (JAXRSConfiguration.deniedEmailEnabled.startsWith("true")) {
-                    mailService.sendDeniedAccessEmail(userInfo);
+                    try {
+						mailService.sendDeniedAccessEmail(userInfo);
+					} catch (MessagingException e) {
+						logger.warn("Failed to send user access denied email: ", e);
+					}
                 }
                 throw new NotAuthorizedException("No user matching user_id " + userId + " present in database");
             }
