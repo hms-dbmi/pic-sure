@@ -31,6 +31,8 @@ public class DataService implements IDataService {
     private String searchUrl;
 
     private static final String CONSENTS_KEY = "\\_consents\\";
+    private static final String HARMONIZED_CONSENTS_KEY = "\\_harmonized_consents\\";
+    private static final String TOPMED_CONSENTS_KEY = "\\_topmed_consents\\";
     private static final String AUTH_HEADER_NAME = "Authorization";
 
     private RestTemplate restTemplate;
@@ -50,6 +52,8 @@ public class DataService implements IDataService {
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
         String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
+        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENTS_KEY);
+        String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
         for (String filter: queryRequest.getQuery().requiredFields) {
             String body = "{\"query\": \"" + filter.replace("\\", "\\\\") + "\"}";
             ObjectMapper mapper = new ObjectMapper();
@@ -73,6 +77,12 @@ public class DataService implements IDataService {
                 QueryRequest newRequest = new QueryRequest(queryRequest);
                 newRequest.getQuery().categoryFilters.clear();
                 newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
+                if (_harmonized_consents != null && _harmonized_consents.length > 0) {
+                    newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENTS_KEY, _harmonized_consents);
+                }
+                if (_topmed_consents != null && _topmed_consents.length > 0) {
+                    newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
+                }
                 newRequest.getQuery().categoryFilters.put(filter.getKey(), new String[]{value});
                 newRequest.getQuery().expectedResultType = ResultType.COUNT;
                 logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
@@ -94,8 +104,16 @@ public class DataService implements IDataService {
         for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
             QueryRequest newRequest = new QueryRequest(queryRequest);
             String[] _consents = newRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
+            String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENTS_KEY);
+            String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
             newRequest.getQuery().categoryFilters.clear();
             newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
+            if (_harmonized_consents != null && _harmonized_consents.length > 0) {
+                newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENTS_KEY, _harmonized_consents);
+            }
+            if (_topmed_consents != null && _topmed_consents.length > 0) {
+                newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
+            }
             newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
             logger.info("Calling /picsure/query/sync for numericFilters field with query:  \n" + newRequest.getQuery().toString());
             String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
