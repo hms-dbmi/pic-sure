@@ -197,7 +197,8 @@ public class UserService extends BaseEntityService<User> {
          		try {
 					mailService.sendUsersAccessEmail(user);
 				} catch (MessagingException e) {
-					logger.error("Failed to send email! ", e);
+					logger.error("Failed to send email! " + e.getLocalizedMessage());
+					logger.debug("Exception Trace: ", e);
 					okResponse.setMessage(message + "  WARN - could not send email to user " + user.getEmail() + " see logs for more info");
 				}
          	}
