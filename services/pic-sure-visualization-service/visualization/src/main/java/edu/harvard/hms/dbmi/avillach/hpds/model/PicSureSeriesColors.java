@@ -12,12 +12,12 @@ public class PicSureSeriesColors extends GGPlot2SeriesColors {
         if (seriesColors == null || seriesColors.length == 0) {
             this.seriesColors = new Color[] {
                     new Color(0xFF0000),
-                    new Color(0x00FF00),
+                    new Color(0x00FFFF),
                     new Color(0x0000FF),
                     new Color(0xFFFF00),
                     new Color(0xFF00FF),
-                    new Color(0x00FFFF),
-                    new Color(0x000000),
+                    new Color(0x00FF00),
+                    new Color(0xFFA500),
                     new Color(0xFFFFFF)
             };
         } else {

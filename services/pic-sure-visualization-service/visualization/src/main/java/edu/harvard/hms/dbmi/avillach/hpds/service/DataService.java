@@ -29,6 +29,8 @@ public class DataService implements IDataService {
     private String picSureUrl;
     @Value("${search.url}")
     private String searchUrl;
+    @Value("${picSure.uuid}")
+    private UUID picSureUuid;
 
     private static final String CONSENTS_KEY = "\\_consents\\";
     private static final String HARMONIZED_CONSENTS_KEY = "\\_harmonized_consents\\";
@@ -85,6 +87,7 @@ public class DataService implements IDataService {
                 }
                 newRequest.getQuery().categoryFilters.put(filter.getKey(), new String[]{value});
                 newRequest.getQuery().expectedResultType = ResultType.COUNT;
+                newRequest.setResourceUUID(picSureUuid);
                 logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
                 Double result = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), Double.class).getBody();
                 axisMap.put(value, result);
@@ -103,7 +106,7 @@ public class DataService implements IDataService {
         headers.add(AUTH_HEADER_NAME, token);
         for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
             QueryRequest newRequest = new QueryRequest(queryRequest);
-            String[] _consents = newRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
+            String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
             String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENTS_KEY);
             String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
             newRequest.getQuery().categoryFilters.clear();
@@ -115,6 +118,7 @@ public class DataService implements IDataService {
                 newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
             }
             newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
+            newRequest.setResourceUUID(picSureUuid);
             logger.info("Calling /picsure/query/sync for numericFilters field with query:  \n" + newRequest.getQuery().toString());
             String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
             String[] result = rawResult != null ? rawResult.split("\n") : null;
