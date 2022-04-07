@@ -26,6 +26,7 @@ public class ChartService implements IChartService {
         PieChart chart = new PieChartBuilder()
                 .width(chartData.getChartWidth()).height(chartData.getChartWidth()).title(chartData.getTitle()).theme(Styler.ChartTheme.GGPlot2).build();
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
+        chart.getStyler().setLegendPosition(Styler.LegendPosition.OutsideS);
         chartData.getCategoricalMap().forEach((k, v) -> chart.addSeries(k, v));
         return chart;
     }
@@ -37,6 +38,7 @@ public class ChartService implements IChartService {
                 .title(chartData.getTitle())
                 .theme(Styler.ChartTheme.GGPlot2).build();
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
+        chart.getStyler().setLegendVisible(false);
         double[] keys = new double[chartData.getContinuousMap().entrySet().size()];
         double[] values = new double[chartData.getContinuousMap().entrySet().size()];
         List<Map.Entry<Double, Integer>> list = new ArrayList<>(chartData.getContinuousMap().entrySet());

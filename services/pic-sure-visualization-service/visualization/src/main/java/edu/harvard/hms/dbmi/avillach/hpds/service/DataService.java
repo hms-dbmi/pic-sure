@@ -119,6 +119,7 @@ public class DataService implements IDataService {
             }
             newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
             newRequest.setResourceUUID(picSureUuid);
+            newRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
             logger.info("Calling /picsure/query/sync for numericFilters field with query:  \n" + newRequest.getQuery().toString());
             String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
             String[] result = rawResult != null ? rawResult.split("\n") : null;
