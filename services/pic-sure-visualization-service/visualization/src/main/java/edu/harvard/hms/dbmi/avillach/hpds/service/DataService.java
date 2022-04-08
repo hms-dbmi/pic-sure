@@ -49,7 +49,6 @@ public class DataService implements IDataService {
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
         logger.debug("Starting Categorical Data");
         List<CategoricalData> categoricalDataList = new ArrayList<>();
-        Map<String, Double> axisMap = new HashMap<>();
         HttpHeaders headers = new HttpHeaders();
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
@@ -75,7 +74,8 @@ public class DataService implements IDataService {
             if (filter.getKey().equals(CONSENTS_KEY)) {
                 continue;
             }
-            for (String value: filter.getValue()) {
+            Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
+            Arrays.stream(filter.getValue()).parallel().forEach(value -> {
                 QueryRequest newRequest = new QueryRequest(queryRequest);
                 newRequest.getQuery().categoryFilters.clear();
                 newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
@@ -91,8 +91,9 @@ public class DataService implements IDataService {
                 logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
                 Double result = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), Double.class).getBody();
                 axisMap.put(value, result);
-            }
-            categoricalDataList.add(new CategoricalData(filter.getKey(), axisMap));
+            });
+            categoricalDataList.add(new CategoricalData(filter.getKey(), new HashMap<>(axisMap)));
+            axisMap.clear();
         }
         logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
