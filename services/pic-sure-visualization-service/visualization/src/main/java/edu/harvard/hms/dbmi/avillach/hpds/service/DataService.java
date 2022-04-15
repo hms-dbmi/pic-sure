@@ -71,7 +71,7 @@ public class DataService implements IDataService {
             }
         }
         for (Map.Entry<String, String[]> filter: queryRequest.getQuery().categoryFilters.entrySet()) {
-            if (filter.getKey().equals(CONSENTS_KEY)) {
+            if (filter.getKey().equals(CONSENTS_KEY) || filter.getKey().equals(_harmonized_consents) || filter.getKey().equals(_topmed_consents)) {
                 continue;
             }
             Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
@@ -125,8 +125,8 @@ public class DataService implements IDataService {
             String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
             String[] result = rawResult != null ? rawResult.split("\n") : null;
             // Ignore the first line
-            Map<Double, Integer> countMap = new HashMap<>();
-            if (result != null) {
+            Map<Double, Integer> countMap = new TreeMap<>();
+            if (result != null && result.length > 0) {
                 for (int i = 1; i < result.length; i++) {
                     String[] split = result[i].split(",");
                     Double key = Double.parseDouble(split[split.length - 1]);
