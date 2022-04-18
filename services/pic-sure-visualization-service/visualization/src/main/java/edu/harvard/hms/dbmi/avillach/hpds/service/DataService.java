@@ -6,12 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
-import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -33,8 +30,9 @@ public class DataService implements IDataService {
     private UUID picSureUuid;
 
     private static final String CONSENTS_KEY = "\\_consents\\";
-    private static final String HARMONIZED_CONSENTS_KEY = "\\_harmonized_consents\\";
+    private static final String HARMONIZED_CONSENT_KEY = "\\_harmonized_consent\\";
     private static final String TOPMED_CONSENTS_KEY = "\\_topmed_consents\\";
+    private static final String PARENT_CONSENTS_KEY = "\\_parent_consents\\";
     private static final String AUTH_HEADER_NAME = "Authorization";
 
     private RestTemplate restTemplate;
@@ -53,8 +51,9 @@ public class DataService implements IDataService {
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
         String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
-        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENTS_KEY);
+        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
         String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
+        String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
         for (String filter: queryRequest.getQuery().requiredFields) {
             String body = "{\"query\": \"" + filter.replace("\\", "\\\\") + "\"}";
             ObjectMapper mapper = new ObjectMapper();
@@ -71,7 +70,10 @@ public class DataService implements IDataService {
             }
         }
         for (Map.Entry<String, String[]> filter: queryRequest.getQuery().categoryFilters.entrySet()) {
-            if (filter.getKey().equals(CONSENTS_KEY) || filter.getKey().equals(_harmonized_consents) || filter.getKey().equals(_topmed_consents)) {
+            if (filter.getKey().equals(CONSENTS_KEY) ||
+                    filter.getKey().equals(HARMONIZED_CONSENT_KEY) ||
+                    filter.getKey().equals(TOPMED_CONSENTS_KEY) ||
+                    filter.getKey().equals(PARENT_CONSENTS_KEY)) {
                 continue;
             }
             Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
@@ -80,10 +82,13 @@ public class DataService implements IDataService {
                 newRequest.getQuery().categoryFilters.clear();
                 newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
                 if (_harmonized_consents != null && _harmonized_consents.length > 0) {
-                    newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENTS_KEY, _harmonized_consents);
+                    newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENT_KEY, _harmonized_consents);
                 }
                 if (_topmed_consents != null && _topmed_consents.length > 0) {
                     newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
+                }
+                if (_parent_consents != null && _parent_consents.length > 0) {
+                    newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _parent_consents);
                 }
                 newRequest.getQuery().categoryFilters.put(filter.getKey(), new String[]{value});
                 newRequest.getQuery().expectedResultType = ResultType.COUNT;
@@ -108,15 +113,19 @@ public class DataService implements IDataService {
         for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
             QueryRequest newRequest = new QueryRequest(queryRequest);
             String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
-            String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENTS_KEY);
+            String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
             String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
+            String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
             newRequest.getQuery().categoryFilters.clear();
             newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
             if (_harmonized_consents != null && _harmonized_consents.length > 0) {
-                newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENTS_KEY, _harmonized_consents);
+                newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENT_KEY, _harmonized_consents);
             }
             if (_topmed_consents != null && _topmed_consents.length > 0) {
                 newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
+            }
+            if (_parent_consents != null && _parent_consents.length > 0) {
+                newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _parent_consents);
             }
             newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
             newRequest.setResourceUUID(picSureUuid);
