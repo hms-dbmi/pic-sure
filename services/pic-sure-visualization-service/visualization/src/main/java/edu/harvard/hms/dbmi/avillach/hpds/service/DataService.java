@@ -110,12 +110,12 @@ public class DataService implements IDataService {
         HttpHeaders headers = new HttpHeaders();
         String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
         headers.add(AUTH_HEADER_NAME, token);
+        String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
+        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
+        String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
+        String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
         for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
             QueryRequest newRequest = new QueryRequest(queryRequest);
-            String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
-            String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
-            String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
-            String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
             newRequest.getQuery().categoryFilters.clear();
             newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
             if (_harmonized_consents != null && _harmonized_consents.length > 0) {
