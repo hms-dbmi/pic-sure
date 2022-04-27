@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.*;
+import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
@@ -373,20 +374,25 @@ public abstract class AbstractProcessor {
 
 	private void addIdSetsForCategoryFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.categoryFilters != null && !query.categoryFilters.isEmpty()) {
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
-				Set<Integer> ids = new TreeSet<Integer>();
-				if(pathIsVariantSpec(key)) {
-					addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids, bucketCache);
-				} else {
-					String[] categoryFilter = query.categoryFilters.get(key);
-					for(String category : categoryFilter) {
-						ids.addAll(getCube(key).getKeysForValue(category));
+			try {
+				VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+				Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
+					Set<Integer> ids = new TreeSet<Integer>();
+					if(pathIsVariantSpec(key)) {
+						addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids, bucketCache);
+					} else {
+						String[] categoryFilter = query.categoryFilters.get(key);
+						for(String category : categoryFilter) {
+								ids.addAll(getCube(key).getKeysForValue(category));
+						}
 					}
-				}
-				return ids;
-			}).collect(Collectors.toSet());
-			filteredIdSets.addAll(idsThatMatchFilters);
+					return ids;
+				}).collect(Collectors.toSet());
+				filteredIdSets.addAll(idsThatMatchFilters);
+			} catch (InvalidCacheLoadException e) {
+				log.warn("Invalid query supplied: " + e.getLocalizedMessage());
+			}
+
 		}
 	}
 
