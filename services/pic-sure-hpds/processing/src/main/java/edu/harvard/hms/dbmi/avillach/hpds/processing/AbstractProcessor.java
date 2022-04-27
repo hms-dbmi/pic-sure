@@ -391,7 +391,8 @@ public abstract class AbstractProcessor {
 				filteredIdSets.addAll(idsThatMatchFilters);
 			} catch (InvalidCacheLoadException e) {
 				log.warn("Invalid query supplied: " + e.getLocalizedMessage());
-				filteredIdSets.clear();  // if an invalid path is supplied, no patients should match.
+//				filteredIdSets.clear();  
+				filteredIdSets.add(new HashSet<Integer>()); // if an invalid path is supplied, no patients should match.
 			}
 
 		}
