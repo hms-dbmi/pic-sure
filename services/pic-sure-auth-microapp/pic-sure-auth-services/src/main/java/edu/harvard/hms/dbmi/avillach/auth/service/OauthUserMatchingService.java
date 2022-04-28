@@ -80,7 +80,7 @@ public class OauthUserMatchingService {
 
 			if (mappings == null || mappings.isEmpty()) {
 				//We don't have any mappings for this connection yet
-				logger.info("Unable to find mappings for connectionId " + connection);
+				logger.warn("Unable to find user metadata mappings for connectionId " + connection);
 				return null;
 			}
 
