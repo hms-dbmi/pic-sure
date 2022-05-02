@@ -16,6 +16,21 @@ public class PicSureTheme extends GGPlot2Theme {
         return (new PicSureSeriesColors(null)).getSeriesColors();
     }
 
+    @Override
+    public Color getChartBackgroundColor() {
+        return new Color(255, 255, 255);
+    }
+
+    @Override
+    public Color getPlotBackgroundColor() {
+        return new Color(255, 255, 255);
+    }
+
+    @Override
+    public Color getPlotBorderColor() {
+        return new Color(0, 0, 0);
+    }
+
     public enum ChartTheme {
         PICSURE,
         BDC,

@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.hpds.model;
 
 import lombok.Data;
 
+import java.util.Locale;
+
 @Data
 public class VisualizationImage {
     private String image;
@@ -16,8 +18,8 @@ public class VisualizationImage {
     }
 
     public String getDescription() {
-        if (description == null) {
-            description = "A " + chartType + " of " + title + ".";
+        if (description == null && this.title != null) {
+            description = this.chartType + " showing the " + this.title.toLowerCase() + " for the selected cohort.";
         }
         return description;
     }

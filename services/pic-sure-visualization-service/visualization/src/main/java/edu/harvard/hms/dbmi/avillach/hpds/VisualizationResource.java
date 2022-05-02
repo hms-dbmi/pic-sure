@@ -73,13 +73,13 @@ public class VisualizationResource implements IResourceRS {
             String image = visualizationService.createBase64PNG(
                     chartService.createPieChart(data)
             );
-            response.getImages().add(new VisualizationImage(image, "pie chart", data.getTitle()));
+            response.getImages().add(new VisualizationImage(image, data.getTitle(), "Pie chart"));
         }
         for(ContinuousData data: continuousData) {
             String image = visualizationService.createBase64PNG(
                     chartService.createHistogram(data)
             );
-            response.getImages().add(new VisualizationImage(image, "histogram", data.getTitle()));
+            response.getImages().add(new VisualizationImage(image, data.getTitle(), "Histogram"));
         }
         return Response.ok(response).build();
     }

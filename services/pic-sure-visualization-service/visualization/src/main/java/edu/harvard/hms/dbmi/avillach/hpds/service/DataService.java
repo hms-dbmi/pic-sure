@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
+import org.knowm.xchart.Histogram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,11 +46,9 @@ public class DataService implements IDataService {
 
     @Override
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
-        logger.debug("Starting Categorical Data");
         List<CategoricalData> categoricalDataList = new ArrayList<>();
         HttpHeaders headers = new HttpHeaders();
-        String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
-        headers.add(AUTH_HEADER_NAME, token);
+        headers.add(AUTH_HEADER_NAME, queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME));
         String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
         String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
         String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
@@ -95,9 +94,20 @@ public class DataService implements IDataService {
                 newRequest.setResourceUUID(picSureUuid);
                 logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
                 Double result = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), Double.class).getBody();
-                axisMap.put(value, result);
+                String tempValue = value;
+                if (value.length() > 70) {
+                    String holder = value.substring(0, 70);
+                    int target = holder.lastIndexOf(" ");
+                    tempValue = value.substring(0, target) + "\n" + value.substring(target+1, value.length()-1);
+                }
+                axisMap.put(tempValue, result);
             });
-            categoricalDataList.add(new CategoricalData(filter.getKey(), new HashMap<>(axisMap)));
+            String[] titleParts = filter.getKey().split("\\\\");
+            String title = filter.getKey();
+            if (title.length() > 4) {
+                title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
+            }
+            categoricalDataList.add(new CategoricalData(title, new HashMap<>(axisMap)));
             axisMap.clear();
         }
         logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
@@ -105,40 +115,28 @@ public class DataService implements IDataService {
     }
 
     public List<ContinuousData> getContinuousData(QueryRequest queryRequest) {
-        logger.debug("Starting Continuous Data");
         List<ContinuousData> continuousDataList = new ArrayList<>();
+        TreeMap<Double, Integer> countMap = new TreeMap<>();
         HttpHeaders headers = new HttpHeaders();
-        String token = queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME);
-        headers.add(AUTH_HEADER_NAME, token);
-        String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
-        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
-        String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
-        String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
+
+        headers.add(AUTH_HEADER_NAME,
+                queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
+        );
+        queryRequest.setResourceUUID(picSureUuid);
+        queryRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
+
+        String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), String.class).getBody();
+
+        String[] result = rawResult != null ? rawResult.split("\n") : null;
+
         for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
-            QueryRequest newRequest = new QueryRequest(queryRequest);
-            newRequest.getQuery().categoryFilters.clear();
-            newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
-            if (_harmonized_consents != null && _harmonized_consents.length > 0) {
-                newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENT_KEY, _harmonized_consents);
-            }
-            if (_topmed_consents != null && _topmed_consents.length > 0) {
-                newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
-            }
-            if (_parent_consents != null && _parent_consents.length > 0) {
-                newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _parent_consents);
-            }
-            newRequest.getQuery().numericFilters.replace(filter.getKey(), filter.getValue());
-            newRequest.setResourceUUID(picSureUuid);
-            newRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
-            logger.info("Calling /picsure/query/sync for numericFilters field with query:  \n" + newRequest.getQuery().toString());
-            String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), String.class).getBody();
-            String[] result = rawResult != null ? rawResult.split("\n") : null;
-            // Ignore the first line
-            Map<Double, Integer> countMap = new TreeMap<>();
             if (result != null && result.length > 0) {
+                String[] headerLine = result[0].split(",");
                 for (int i = 1; i < result.length; i++) {
                     String[] split = result[i].split(",");
-                    Double key = Double.parseDouble(split[split.length - 1]);
+                    Double key = Double.parseDouble(split[
+                                Arrays.asList(headerLine).indexOf(filter.getKey())
+                            ]);
                     if (countMap.containsKey(key)) {
                         countMap.put(key, countMap.get(key) + 1);
                     } else {
@@ -146,9 +144,20 @@ public class DataService implements IDataService {
                     }
                 }
             }
-            continuousDataList.add(new ContinuousData(filter.getKey(), countMap));
+
+            String[] titleParts = filter.getKey().split("\\\\");
+            String xAxisLabel = filter.getKey();
+            String title = filter.getKey();
+
+            if (title.length() > 4) {
+                title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
+                xAxisLabel = titleParts[4];
+            }
+
+            continuousDataList.add(new ContinuousData(title, new TreeMap<>(countMap), xAxisLabel, "Frequency"));
+            countMap.clear();
         }
-        logger.debug("Finished Continuous Data with " + continuousDataList.size() + " results");
+
         return continuousDataList;
     }
 }
