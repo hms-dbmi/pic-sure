@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
@@ -80,7 +81,7 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		
+		queryEntity.setUuid(UUIDv5.UUIDFromString(queryEntity.getQuery()));
 		
 		String queryJson = null;
 		if( dataQueryRequest.getQuery() != null) {
@@ -237,6 +238,7 @@ public class PicsureQueryService {
 		}
 		
 		queryEntity.setQuery(queryJson);
+		queryEntity.setUuid(UUIDv5.UUIDFromString(queryEntity.getQuery()));
 		
 		queryRepo.persist(queryEntity);
 		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
