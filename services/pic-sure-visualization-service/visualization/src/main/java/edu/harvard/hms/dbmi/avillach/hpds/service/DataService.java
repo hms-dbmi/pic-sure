@@ -47,61 +47,63 @@ public class DataService implements IDataService {
     @Override
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
+        ObjectMapper mapper = new ObjectMapper();
         HttpHeaders headers = new HttpHeaders();
-        headers.add(AUTH_HEADER_NAME, queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME));
-        String[] _consents = queryRequest.getQuery().categoryFilters.get(CONSENTS_KEY);
-        String[] _harmonized_consents = queryRequest.getQuery().categoryFilters.get(HARMONIZED_CONSENT_KEY);
-        String[] _topmed_consents = queryRequest.getQuery().categoryFilters.get(TOPMED_CONSENTS_KEY);
-        String[] _parent_consents = queryRequest.getQuery().categoryFilters.get(PARENT_CONSENTS_KEY);
-        for (String filter: queryRequest.getQuery().requiredFields) {
+        headers.add(AUTH_HEADER_NAME,
+                queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
+        );
+        queryRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
+
+        for (String filter : queryRequest.getQuery().requiredFields) {
             String body = "{\"query\": \"" + filter.replace("\\", "\\\\") + "\"}";
-            ObjectMapper mapper = new ObjectMapper();
             JsonNode actualObj = null;
+
             try {
                 actualObj = mapper.readTree(body);
             } catch (JsonProcessingException e) {
                 e.printStackTrace();
             }
-            logger.info("Calling /picsure/search/ for required field:  \n" + actualObj.toString());
+
             SearchResults searchResults = restTemplate.exchange(searchUrl, HttpMethod.POST, new HttpEntity<>(actualObj, headers), SearchResults.class).getBody();
-            for (Map.Entry<String, SearchResult> phenotype:searchResults.getResults().getPhenotypes().entrySet()) {
+            for (Map.Entry<String, SearchResult> phenotype : searchResults.getResults().getPhenotypes().entrySet()) {
                 queryRequest.getQuery().categoryFilters.put(phenotype.getKey(), phenotype.getValue().getCategoryValues());
             }
         }
-        for (Map.Entry<String, String[]> filter: queryRequest.getQuery().categoryFilters.entrySet()) {
+        Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
+        for (Map.Entry<String, String[]> filter : queryRequest.getQuery().categoryFilters.entrySet()) {
+
             if (filter.getKey().equals(CONSENTS_KEY) ||
                     filter.getKey().equals(HARMONIZED_CONSENT_KEY) ||
                     filter.getKey().equals(TOPMED_CONSENTS_KEY) ||
                     filter.getKey().equals(PARENT_CONSENTS_KEY)) {
                 continue;
             }
-            Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
-            Arrays.stream(filter.getValue()).parallel().forEach(value -> {
-                QueryRequest newRequest = new QueryRequest(queryRequest);
-                newRequest.getQuery().categoryFilters.clear();
-                newRequest.getQuery().categoryFilters.put(CONSENTS_KEY, _consents);
-                if (_harmonized_consents != null && _harmonized_consents.length > 0) {
-                    newRequest.getQuery().categoryFilters.put(HARMONIZED_CONSENT_KEY, _harmonized_consents);
+
+            queryRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
+            queryRequest.setResourceUUID(picSureUuid);
+
+            String rawResult = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), String.class).getBody();
+            String[] result = rawResult != null ? rawResult.split("\n") : null;
+
+            if (result != null && result.length > 0) {
+                String[] headerLine = result[0].split(",");
+                for (int i = 1; i < result.length; i++) {
+                    String[] split = result[i].split(",");
+                    String key = (split[
+                            Arrays.asList(headerLine).indexOf(filter.getKey())
+                            ]);
+                    if (axisMap.containsKey(key)) {
+                        axisMap.put(key, axisMap.get(key) + 1);
+                    } else {
+                        axisMap.put(key, 1.0);
+                    }
                 }
-                if (_topmed_consents != null && _topmed_consents.length > 0) {
-                    newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _topmed_consents);
-                }
-                if (_parent_consents != null && _parent_consents.length > 0) {
-                    newRequest.getQuery().categoryFilters.put(TOPMED_CONSENTS_KEY, _parent_consents);
-                }
-                newRequest.getQuery().categoryFilters.put(filter.getKey(), new String[]{value});
-                newRequest.getQuery().expectedResultType = ResultType.COUNT;
-                newRequest.setResourceUUID(picSureUuid);
-                logger.info("Calling /picsure/query/sync for categoryFilters field with query:  \n" + newRequest.getQuery().toString());
-                Double result = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(newRequest, headers), Double.class).getBody();
-                String tempValue = value;
-                if (value.length() > 70) {
-                    String holder = value.substring(0, 70);
-                    int target = holder.lastIndexOf(" ");
-                    tempValue = value.substring(0, target) + "\n" + value.substring(target+1, value.length()-1);
-                }
-                axisMap.put(tempValue, result);
-            });
+            }
+//            if (filter.getKey().length() > 70) {
+//                String holder = filter.getKey().substring(0, 70);
+//                int target = holder.lastIndexOf(" ");
+//                tempValue = filter.getKey().substring(0, target) + "\n" + filter.getKey().substring(target+1, filter.getKey().length()-1);
+//            }
             String[] titleParts = filter.getKey().split("\\\\");
             String title = filter.getKey();
             if (title.length() > 4) {
@@ -109,8 +111,8 @@ public class DataService implements IDataService {
             }
             categoricalDataList.add(new CategoricalData(title, new HashMap<>(axisMap)));
             axisMap.clear();
+            logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         }
-        logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
     }
 
