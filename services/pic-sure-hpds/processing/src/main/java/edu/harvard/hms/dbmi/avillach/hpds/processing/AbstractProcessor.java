@@ -282,14 +282,17 @@ public abstract class AbstractProcessor {
 	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
-		addIdSetsForAnyRecordOf(query, filteredIdSets);
+		try {
+			addIdSetsForAnyRecordOf(query, filteredIdSets);
+			addIdSetsForRequiredFields(query, filteredIdSets);
+			addIdSetsForNumericFilters(query, filteredIdSets);
+			addIdSetsForCategoryFilters(query, filteredIdSets);
+		} catch (InvalidCacheLoadException e) {
+			log.warn("Invalid query supplied: " + e.getLocalizedMessage());
+			filteredIdSets.add(new HashSet<Integer>()); // if an invalid path is supplied, no patients should match.
+		}
 
-		addIdSetsForRequiredFields(query, filteredIdSets);
-
-		addIdSetsForNumericFilters(query, filteredIdSets);
-
-		addIdSetsForCategoryFilters(query, filteredIdSets);
-
+		//AND logic to make sure all patients match each filter
 		if(filteredIdSets.size()>1) {
 			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
 		}
@@ -374,27 +377,20 @@ public abstract class AbstractProcessor {
 
 	private void addIdSetsForCategoryFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
 		if(query.categoryFilters != null && !query.categoryFilters.isEmpty()) {
-			try {
-				VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-				Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
-					Set<Integer> ids = new TreeSet<Integer>();
-					if(pathIsVariantSpec(key)) {
-						addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids, bucketCache);
-					} else {
-						String[] categoryFilter = query.categoryFilters.get(key);
-						for(String category : categoryFilter) {
-								ids.addAll(getCube(key).getKeysForValue(category));
-						}
+			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
+			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.categoryFilters.keySet().parallelStream().map((String key)->{
+				Set<Integer> ids = new TreeSet<Integer>();
+				if(pathIsVariantSpec(key)) {
+					addIdSetsForVariantSpecCategoryFilters(query.categoryFilters.get(key), key, ids, bucketCache);
+				} else {
+					String[] categoryFilter = query.categoryFilters.get(key);
+					for(String category : categoryFilter) {
+							ids.addAll(getCube(key).getKeysForValue(category));
 					}
-					return ids;
-				}).collect(Collectors.toSet());
-				filteredIdSets.addAll(idsThatMatchFilters);
-			} catch (InvalidCacheLoadException e) {
-				log.warn("Invalid query supplied: " + e.getLocalizedMessage());
-//				filteredIdSets.clear();  
-				filteredIdSets.add(new HashSet<Integer>()); // if an invalid path is supplied, no patients should match.
-			}
-
+				}
+				return ids;
+			}).collect(Collectors.toSet());
+			filteredIdSets.addAll(idsThatMatchFilters);
 		}
 	}
 
