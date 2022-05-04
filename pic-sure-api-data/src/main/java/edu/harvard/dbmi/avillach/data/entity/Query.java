@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.sql.Date;
+import java.util.UUID;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -19,6 +20,11 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 
 @Entity(name = "query")
 public class Query extends BaseEntity {
+	
+	/**
+	 * Override the base repo UUID field, so we don't use the auto-generated IDs
+	 */
+	protected UUID uuid;
 
 	//TODO may not need these two things
 	private Date startTime;
@@ -29,6 +35,15 @@ public class Query extends BaseEntity {
 	private PicSureStatus status;
 
 	private String resourceResultId;
+	
+
+	public UUID getUuid() {
+		return uuid;
+	}
+
+	public void setUuid(UUID uuid) {
+		this.uuid = uuid;
+	}
 
 	//Original query request
 	@Lob
