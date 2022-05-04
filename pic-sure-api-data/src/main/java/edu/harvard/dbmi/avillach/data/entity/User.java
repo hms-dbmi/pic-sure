@@ -1,5 +1,11 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+
+/*
+ * This class gets created as part of the pic-sure DB schema, but no objects of this type are ever persisted.
+ * Its use is to mirror the User object from the auth DB to maintain schema separation. - nc 
+ * 
+ */
 public class User extends BaseEntity {
 
 	private String userId;
