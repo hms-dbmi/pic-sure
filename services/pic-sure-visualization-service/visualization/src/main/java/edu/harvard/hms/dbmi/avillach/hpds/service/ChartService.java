@@ -4,6 +4,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme;
 import org.knowm.xchart.*;
+import org.knowm.xchart.internal.chartpart.Chart;
+import org.knowm.xchart.style.AxesChartStyler;
 import org.knowm.xchart.style.PieStyler;
 import org.knowm.xchart.style.Styler;
 import org.springframework.stereotype.Service;
@@ -29,45 +31,65 @@ public class ChartService implements IChartService {
                 .width(chartData.getChartWidth())
                 .height(chartData.getChartWidth())
                 .build();
+        this.setUpPicSureStyler(chart);
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
         chart.getStyler().setLegendPosition(Styler.LegendPosition.OutsideS);
-        chart.getStyler().setChartBackgroundColor(theme.getChartBackgroundColor());
-        chart.getStyler().setPlotBackgroundColor(theme.getPlotBackgroundColor());
-        chart.getStyler().setPlotBorderColor(new Color(0, 0, 0, 0));
-        chart.getStyler().setLegendBorderColor(new Color(0, 0, 0, 0));
         chart.getStyler().setLabelsFont(new Font("Nunito Sans", Font.BOLD, 12));
         chartData.getCategoricalMap().forEach((k, v) -> chart.addSeries(k, v));
         return chart;
     }
 
-    public CategoryChart createHistogram(ContinuousData chartData) {
+    public CategoryChart createCategoryBar(CategoricalData chartData) {
+        String title = (chartData.getTitle().length() >= 96) ?
+                chartData.getTitle().substring(0, 95) + "..." :
+                chartData.getTitle();
         CategoryChart chart = new CategoryChartBuilder()
                 .width(chartData.getChartWidth())
                 .height(chartData.getChartWidth())
                 .title(chartData.getTitle())
                 .build();
+        this.setUpPicSureStyler(chart);
+        chart.getStyler().setSeriesColors(new Color[]{new Color(26, 86, 140)});
+        chart.getStyler().setAxisTickLabelsFont(new Font("Nunito Sans", Font.PLAIN, 10));
+        chart.setXAxisTitle(chartData.getXAxisName());
+        chart.setYAxisTitle(chartData.getYAxisName());
+        chart.getStyler().setLegendVisible(false);
+        chart.getStyler().setLabelsVisible(true);
+        chart.getStyler().setLabelsPosition(.5);
+        chart.getStyler().setXAxisLabelRotation(45);
+        chart.getStyler().setXAxisMaxLabelCount(8);
+
+        chart.addSeries(title, new ArrayList<>(chartData.getCategoricalMap().keySet()), new ArrayList<>(chartData.getCategoricalMap().values()));
+        return chart;
+    }
+
+    public CategoryChart createHistogram(ContinuousData chartData) {
+        String title = (chartData.getTitle().length() >= 96) ?
+                chartData.getTitle().substring(0, 95) + "..." :
+                chartData.getTitle();
+        CategoryChart chart = new CategoryChartBuilder()
+                .width(chartData.getChartWidth())
+                .height(chartData.getChartWidth())
+                .title(chartData.getTitle())
+                .build();
+        this.setUpPicSureStyler(chart);
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
-        chart.getStyler().setChartBackgroundColor(theme.getChartBackgroundColor());
-        chart.getStyler().setPlotBackgroundColor(theme.getPlotBackgroundColor());
-        chart.getStyler().setPlotBorderColor(new Color(0, 0, 0, 0));
-        chart.getStyler().setLegendBorderColor(new Color(0, 0, 0, 0));
         chart.getStyler().setPlotGridLinesVisible(false);
         chart.getStyler().setAvailableSpaceFill(.9);
         chart.getStyler().setAxisTitleFont(new Font("Nunito Sans", Font.BOLD, 16));
         chart.getStyler().setLegendVisible(false);
-        chart.getStyler().setDecimalPattern("#,###.##");
         chart.setXAxisTitle(chartData.getXAxisName());
-        chart.setXAxisTitle(chartData.getYAxisName());
+        chart.setYAxisTitle(chartData.getYAxisName());
 
-        double[] keys = new double[chartData.getContinuousMap().entrySet().size()];
-        double[] values = new double[chartData.getContinuousMap().entrySet().size()];
-        List<Map.Entry<Double, Integer>> list = new ArrayList<>(chartData.getContinuousMap().entrySet());
-        for (int i = 0; i < chartData.getContinuousMap().size(); i++) {
-            Map.Entry<Double, Integer> entry = list.get(i);
-            keys[i] = entry.getKey();
-            values[i] = entry.getValue();
-        }
-        chart.addSeries(chartData.getTitle(), keys, values);
+        chart.addSeries(title, new ArrayList<>(chartData.getContinuousMap().keySet()), new ArrayList<>(chartData.getContinuousMap().values()));
         return chart;
+    }
+
+    private void setUpPicSureStyler(Chart chart) {
+        chart.getStyler().setChartBackgroundColor(theme.getChartBackgroundColor());
+        chart.getStyler().setPlotBackgroundColor(theme.getPlotBackgroundColor());
+        chart.getStyler().setPlotBorderColor(new Color(0, 0, 0, 0));
+        chart.getStyler().setLegendBorderColor(new Color(0, 0, 0, 0));
+        chart.getStyler().setDecimalPattern("#,###.##");
     }
 }

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
-import org.knowm.xchart.Histogram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +34,7 @@ public class DataService implements IDataService {
     private static final String TOPMED_CONSENTS_KEY = "\\_topmed_consents\\";
     private static final String PARENT_CONSENTS_KEY = "\\_parent_consents\\";
     private static final String AUTH_HEADER_NAME = "Authorization";
+    private static final int MAX_X_LABEL_LINE_LENGTH = 45;
 
     private RestTemplate restTemplate;
 
@@ -92,6 +92,9 @@ public class DataService implements IDataService {
                     String key = (split[
                             Arrays.asList(headerLine).indexOf(filter.getKey())
                             ]);
+                    if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
+                        key = key.substring(0, MAX_X_LABEL_LINE_LENGTH)+"...";
+                    }
                     if (axisMap.containsKey(key)) {
                         axisMap.put(key, axisMap.get(key) + 1);
                     } else {
@@ -99,17 +102,12 @@ public class DataService implements IDataService {
                     }
                 }
             }
-//            if (filter.getKey().length() > 70) {
-//                String holder = filter.getKey().substring(0, 70);
-//                int target = holder.lastIndexOf(" ");
-//                tempValue = filter.getKey().substring(0, target) + "\n" + filter.getKey().substring(target+1, filter.getKey().length()-1);
-//            }
             String[] titleParts = filter.getKey().split("\\\\");
             String title = filter.getKey();
             if (title.length() > 4) {
                 title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
             }
-            categoricalDataList.add(new CategoricalData(title, new HashMap<>(axisMap)));
+            categoricalDataList.add(new CategoricalData(title, new HashMap<>(axisMap), titleParts[4] != null ? titleParts[4] : title , "Number of Participants"));
             axisMap.clear();
             logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         }

@@ -14,4 +14,12 @@ public class CategoricalData extends VisualizationData{
         this.setTitle(title);
         this.categoricalMap = categoricalMap;
     }
+
+    public CategoricalData(String title, Map<String, Double> categoricalMap, String xAxisLabel, String yAxisLabel) {
+        super();
+        this.setTitle(title);
+        this.categoricalMap = categoricalMap;
+        this.setXAxisName(xAxisLabel);
+        this.setYAxisName(yAxisLabel);
+    }
 }
