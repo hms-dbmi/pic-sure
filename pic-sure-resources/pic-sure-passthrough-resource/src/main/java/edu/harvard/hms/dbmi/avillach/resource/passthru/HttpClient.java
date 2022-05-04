@@ -39,6 +39,7 @@ public class HttpClient {
 		for(int i = 1; i <= RETRY_LIMIT && response == null; i++) {
 	         try {
 	        	 response = edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse(uri, headers, body);
+	        	 break;
 	         } catch (ApplicationException e) {
 	        	 if(i < RETRY_LIMIT ) {
 	        		 logger.warn("Failed to contact remote server.  Retrying");
