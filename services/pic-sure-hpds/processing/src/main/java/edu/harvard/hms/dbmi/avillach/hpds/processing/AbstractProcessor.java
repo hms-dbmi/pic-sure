@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.*;
+import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
@@ -281,14 +282,17 @@ public abstract class AbstractProcessor {
 	protected ArrayList<Set<Integer>> idSetsForEachFilter(Query query) {
 		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
 
-		addIdSetsForAnyRecordOf(query, filteredIdSets);
+		try {
+			addIdSetsForAnyRecordOf(query, filteredIdSets);
+			addIdSetsForRequiredFields(query, filteredIdSets);
+			addIdSetsForNumericFilters(query, filteredIdSets);
+			addIdSetsForCategoryFilters(query, filteredIdSets);
+		} catch (InvalidCacheLoadException e) {
+			log.warn("Invalid query supplied: " + e.getLocalizedMessage());
+			filteredIdSets.add(new HashSet<Integer>()); // if an invalid path is supplied, no patients should match.
+		}
 
-		addIdSetsForRequiredFields(query, filteredIdSets);
-
-		addIdSetsForNumericFilters(query, filteredIdSets);
-
-		addIdSetsForCategoryFilters(query, filteredIdSets);
-
+		//AND logic to make sure all patients match each filter
 		if(filteredIdSets.size()>1) {
 			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
 		}
@@ -381,7 +385,7 @@ public abstract class AbstractProcessor {
 				} else {
 					String[] categoryFilter = query.categoryFilters.get(key);
 					for(String category : categoryFilter) {
-						ids.addAll(getCube(key).getKeysForValue(category));
+							ids.addAll(getCube(key).getKeysForValue(category));
 					}
 				}
 				return ids;
