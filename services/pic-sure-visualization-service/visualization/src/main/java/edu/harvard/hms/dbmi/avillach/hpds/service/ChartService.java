@@ -50,13 +50,14 @@ public class ChartService implements IChartService {
                 .build();
         this.setUpPicSureStyler(chart);
         chart.getStyler().setSeriesColors(new Color[]{new Color(26, 86, 140)});
-        chart.getStyler().setAxisTickLabelsFont(new Font("Nunito Sans", Font.PLAIN, 10));
+        chart.getStyler().setAxisTickLabelsFont(new Font("Nunito Sans", Font.PLAIN, 11));
         chart.setXAxisTitle(chartData.getXAxisName());
         chart.setYAxisTitle(chartData.getYAxisName());
         chart.getStyler().setLegendVisible(false);
         chart.getStyler().setLabelsVisible(true);
         chart.getStyler().setLabelsPosition(.5);
-        chart.getStyler().setXAxisLabelRotation(45);
+        chart.getStyler().setXAxisLabelRotation(90);
+        chart.getStyler().setXAxisLabelAlignmentVertical(AxesChartStyler.TextAlignment.Right);
         chart.getStyler().setXAxisMaxLabelCount(8);
 
         chart.addSeries(title, new ArrayList<>(chartData.getCategoricalMap().keySet()), new ArrayList<>(chartData.getCategoricalMap().values()));

@@ -77,7 +77,7 @@ public class VisualizationResource implements IResourceRS {
             String image2 = visualizationService.createBase64PNG(
                     chartService.createCategoryBar(data)
             );
-            response.getImages().add(new VisualizationImage(image2, "Test: " + data.getTitle(), "Bar chart"));
+            response.getImages().add(new VisualizationImage(image2, data.getTitle(), "Bar chart"));
         }
         for(ContinuousData data: continuousData) {
             String image = visualizationService.createBase64PNG(

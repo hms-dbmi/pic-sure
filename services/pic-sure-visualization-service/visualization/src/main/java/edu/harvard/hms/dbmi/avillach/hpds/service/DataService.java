@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class DataService implements IDataService {
@@ -35,6 +38,8 @@ public class DataService implements IDataService {
     private static final String PARENT_CONSENTS_KEY = "\\_parent_consents\\";
     private static final String AUTH_HEADER_NAME = "Authorization";
     private static final int MAX_X_LABEL_LINE_LENGTH = 45;
+    boolean LIMITED = true;
+    int LIMIT_SIZE = 7;
 
     private RestTemplate restTemplate;
 
@@ -69,7 +74,7 @@ public class DataService implements IDataService {
                 queryRequest.getQuery().categoryFilters.put(phenotype.getKey(), phenotype.getValue().getCategoryValues());
             }
         }
-        Map<String, Double> axisMap = Collections.synchronizedMap(new HashMap<>());
+        Map<String, Double> axisMap = Collections.synchronizedMap(new LinkedHashMap<>());
         for (Map.Entry<String, String[]> filter : queryRequest.getQuery().categoryFilters.entrySet()) {
 
             if (filter.getKey().equals(CONSENTS_KEY) ||
@@ -92,9 +97,11 @@ public class DataService implements IDataService {
                     String key = (split[
                             Arrays.asList(headerLine).indexOf(filter.getKey())
                             ]);
+
                     if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
-                        key = key.substring(0, MAX_X_LABEL_LINE_LENGTH)+"...";
+                        key = key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...";
                     }
+
                     if (axisMap.containsKey(key)) {
                         axisMap.put(key, axisMap.get(key) + 1);
                     } else {
@@ -102,12 +109,21 @@ public class DataService implements IDataService {
                     }
                 }
             }
+            if (LIMITED == true && axisMap.size() > LIMIT_SIZE) {
+                Map<String, Double> finalAxisMap = axisMap;
+                Supplier<Stream<Map.Entry<String, Double>>> stream = () -> finalAxisMap.entrySet().stream().sorted(Collections.reverseOrder(Map.Entry.comparingByValue()));
+                Double otherSum = stream.get().skip(LIMIT_SIZE).mapToDouble(Map.Entry::getValue).sum();
+                axisMap = stream.get().limit(LIMIT_SIZE).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, LinkedHashMap::new));
+                axisMap.put("Other", otherSum);
+            }
             String[] titleParts = filter.getKey().split("\\\\");
             String title = filter.getKey();
             if (title.length() > 4) {
                 title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
+            } else if (title.length() > 3) {
+                title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
             }
-            categoricalDataList.add(new CategoricalData(title, new HashMap<>(axisMap), titleParts[4] != null ? titleParts[4] : title , "Number of Participants"));
+            categoricalDataList.add(new CategoricalData(title, new LinkedHashMap<>(axisMap), titleParts[4] != null ? titleParts[4] : title , "Number of Participants"));
             axisMap.clear();
             logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         }
@@ -152,6 +168,9 @@ public class DataService implements IDataService {
             if (title.length() > 4) {
                 title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
                 xAxisLabel = titleParts[4];
+            } else if (title.length() > 3) {
+                title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
+                xAxisLabel = titleParts[3];
             }
 
             continuousDataList.add(new ContinuousData(title, new TreeMap<>(countMap), xAxisLabel, "Frequency"));

@@ -8,7 +8,7 @@ import java.awt.Color;
 
 public class VisualizationData {
     private static final int CHART_WIDTH = 600;
-    private static final int CHART_HEIGHT = 400;
+    private static final int CHART_HEIGHT = 1000;
     private String title;
     private boolean continuous;
     private Color[] colors;
