@@ -70,10 +70,6 @@ public class VisualizationResource implements IResourceRS {
         List<ContinuousData> continuousData = dataService.getContinuousData(queryJson);
         VisualizationResponse response = new VisualizationResponse();
         for(CategoricalData data: categoricalData) {
-            String image = visualizationService.createBase64PNG(
-                    chartService.createPieChart(data)
-            );
-            response.getImages().add(new VisualizationImage(image, data.getTitle(), "Pie chart"));
             String image2 = visualizationService.createBase64PNG(
                     chartService.createCategoryBar(data)
             );
