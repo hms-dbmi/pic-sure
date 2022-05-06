@@ -54,8 +54,7 @@ public class ChartService implements IChartService {
         chart.setXAxisTitle(chartData.getXAxisName());
         chart.setYAxisTitle(chartData.getYAxisName());
         chart.getStyler().setLegendVisible(false);
-        chart.getStyler().setLabelsVisible(true);
-        chart.getStyler().setLabelsPosition(.5);
+        chart.getStyler().setLabelsVisible(false);
         chart.getStyler().setXAxisLabelRotation(90);
         chart.getStyler().setXAxisLabelAlignmentVertical(AxesChartStyler.TextAlignment.Right);
         chart.getStyler().setXAxisMaxLabelCount(8);
