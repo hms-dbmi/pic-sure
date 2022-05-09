@@ -9,6 +9,7 @@ import java.util.UUID;
 public class UUIDv5 {
 	private static final Charset UTF8 = Charset.forName("UTF-8");
 	
+	///random UUID for namespace;  do NOT change this!
 	public static final UUID NAMESPACE_AVL = UUID.fromString("a4f66130-cb71-4d7f-a58c-9f1831ebfb8e");
 	
 	/**

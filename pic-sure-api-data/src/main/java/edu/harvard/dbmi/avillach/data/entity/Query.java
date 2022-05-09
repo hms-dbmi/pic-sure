@@ -21,11 +21,6 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 @Entity(name = "query")
 public class Query extends BaseEntity {
 	
-	/**
-	 * Override the base repo UUID field, so we don't use the auto-generated IDs
-	 */
-	protected UUID uuid;
-
 	//TODO may not need these two things
 	private Date startTime;
 	
@@ -35,15 +30,6 @@ public class Query extends BaseEntity {
 	private PicSureStatus status;
 
 	private String resourceResultId;
-	
-
-	public UUID getUuid() {
-		return uuid;
-	}
-
-	public void setUuid(UUID uuid) {
-		this.uuid = uuid;
-	}
 
 	//Original query request
 	@Lob
@@ -56,6 +42,17 @@ public class Query extends BaseEntity {
 
 	@Column(length = 8192)
 	private byte[] metadata;
+	
+	@Column(columnDefinition = "BINARY(16)")
+	protected UUID picsureId;
+	
+	public UUID getPicsureId() {
+		return picsureId;
+	}
+
+	public void setPicsureId(UUID picsureId) {
+		this.picsureId = picsureId;
+	}
 
 	public Resource getResource() {
 		return resource;

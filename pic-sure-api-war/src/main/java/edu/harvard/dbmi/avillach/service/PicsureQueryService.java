@@ -81,7 +81,7 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		queryEntity.setUuid(UUIDv5.UUIDFromString(queryEntity.getQuery()));
+		queryEntity.setPicsureId(UUIDv5.UUIDFromString(queryEntity.getQuery()));
 		
 		String queryJson = null;
 		if( dataQueryRequest.getQuery() != null) {
@@ -238,7 +238,7 @@ public class PicsureQueryService {
 		}
 		
 		queryEntity.setQuery(queryJson);
-		queryEntity.setUuid(UUIDv5.UUIDFromString(queryEntity.getQuery()));
+		queryEntity.setPicsureId(UUIDv5.UUIDFromString(queryEntity.getQuery()));
 		
 		queryRepo.persist(queryEntity);
 		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
