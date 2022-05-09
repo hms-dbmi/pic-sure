@@ -56,8 +56,8 @@ public class VisualizationResource implements IResourceRS {
         info.getQueryFormats().add(queryFormat);
         queryFormat.setSpecification(Map.of(
                 "numericFilters", "A map where each entry maps a field name to an object with min and/or max properties. Patients without a value between the min and max will not be included in the result set. Used to make Histograms.",
-                "requiredFields", "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie Charts",
-                "categoryFilters", "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie Charts."
+                "requiredFields", "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie and Bar Charts.",
+                "categoryFilters", "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie and Bar Charts."
         ));
         return info;
     }
