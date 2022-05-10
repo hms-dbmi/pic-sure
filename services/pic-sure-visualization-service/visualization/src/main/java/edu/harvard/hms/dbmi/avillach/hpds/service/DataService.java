@@ -161,11 +161,11 @@ public class DataService implements IDataService {
         Map<String, Double> axisMap = new LinkedHashMap<>();
 
         if (resultLines != null && resultLines.length > 0) {
-            String[] headerLine = resultLines[0].split(",");
+            List<String> headerLine = Arrays.asList(resultLines[0].split(","));
             for (int i = 1; i < resultLines.length; i++) {
-                String[] split = resultLines[i].split(",");
-                String key = (split[
-                        Arrays.asList(headerLine).indexOf(filterKey)
+                String[] splitLines = resultLines[i].split(",");
+                String key = (splitLines[
+                        headerLine.indexOf(filterKey)
                         ]);
 
                 if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
@@ -186,11 +186,11 @@ public class DataService implements IDataService {
     private TreeMap<Double, Integer> buildCountMap(String[] resultLines, String filterKey) {
         TreeMap<Double, Integer> countMap = new TreeMap<>();
         if (resultLines != null && resultLines.length > 0) {
-            String[] headerLine = resultLines[0].split(",");
+            List<String> headerLine = Arrays.asList(resultLines[0].split(","));
             for (int i = 1; i < resultLines.length; i++) {
-                String[] split = resultLines[i].split(",");
-                Double key = Double.parseDouble(split[
-                        Arrays.asList(headerLine).indexOf(filterKey)
+                String[] splitLines = resultLines[i].split(",");
+                Double key = Double.parseDouble(splitLines[
+                        headerLine.indexOf(filterKey)
                         ]);
                 if (countMap.containsKey(key)) {
                     countMap.put(key, countMap.get(key) + 1);
@@ -215,9 +215,9 @@ public class DataService implements IDataService {
         String[] titleParts = filterKey.split("\\\\");
         String title = filterKey;
 
-        if (title.length() > 4) {
+        if (titleParts.length > 4) {
             title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
-        } else if (title.length() > 3) {
+        } else if (titleParts.length > 3) {
             title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
         }
         return title;
