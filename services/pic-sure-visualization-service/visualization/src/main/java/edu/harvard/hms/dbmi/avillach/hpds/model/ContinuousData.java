@@ -7,15 +7,15 @@ import java.util.Map;
 
 @Data
 public class ContinuousData extends VisualizationData {
-    Map<Double, Integer> continuousMap;
+    Map<String, Integer> continuousMap;
 
-    public ContinuousData(String title, Map<Double, Integer> continuousMap) {
+    public ContinuousData(String title, Map<String, Integer> continuousMap) {
         super();
         this.setTitle(title);
         this.continuousMap = continuousMap;
     }
 
-    public ContinuousData(String title, Map<Double, Integer> continuousMap, String xAxisLabel, String yAxisLabel) {
+    public ContinuousData(String title, Map<String, Integer> continuousMap, String xAxisLabel, String yAxisLabel) {
         super();
         this.setTitle(title);
         this.setXAxisName(xAxisLabel);

@@ -80,6 +80,8 @@ public class ChartService implements IChartService {
         chart.getStyler().setLegendVisible(false);
         chart.setXAxisTitle(chartData.getXAxisName());
         chart.setYAxisTitle(chartData.getYAxisName());
+        chart.getStyler().setXAxisLabelRotation(90);
+        chart.getStyler().setXAxisLabelAlignmentVertical(AxesChartStyler.TextAlignment.Right);
 
         chart.addSeries(title, new ArrayList<>(chartData.getContinuousMap().keySet()), new ArrayList<>(chartData.getContinuousMap().values()));
         return chart;

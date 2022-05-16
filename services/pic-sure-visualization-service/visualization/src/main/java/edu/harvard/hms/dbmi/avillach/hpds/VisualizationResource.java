@@ -65,7 +65,7 @@ public class VisualizationResource implements IResourceRS {
     @POST
     @Path("/query/sync")
     public Response getVisualizations(QueryRequest queryJson) {
-        logger.info("Received query:  \n" + queryJson);
+        logger.debug("Received query:  \n" + queryJson);
         List<CategoricalData> categoricalData = dataService.getCategoricalData(queryJson);
         List<ContinuousData> continuousData = dataService.getContinuousData(queryJson);
         VisualizationResponse response = new VisualizationResponse();

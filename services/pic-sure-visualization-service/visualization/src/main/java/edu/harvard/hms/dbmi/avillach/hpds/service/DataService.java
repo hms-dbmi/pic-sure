@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.domain.*;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -119,13 +120,25 @@ public class DataService implements IDataService {
 
             continuousDataList.add(new ContinuousData(
                     title,
-                    new TreeMap<>(countMap),
+                    new LinkedHashMap<>(
+                            bucketData(countMap)
+                    ),
                     createXAxisLabel(title),
                     "Frequency"));
             countMap.clear();
         }
+
         logger.debug("Finished Categorical Data with " + continuousDataList.size() + " results");
         return continuousDataList;
+    }
+
+    private static double calcBinWidth(Map<Double, Integer> countMap) {
+        double[] keys = countMap.keySet().stream().mapToDouble(Double::doubleValue).toArray();
+        DescriptiveStatistics da = new DescriptiveStatistics(keys);
+        double iqr = da.getPercentile(75) - da.getPercentile(25);
+        double negativeThird = -0.3333333333333333;
+        double countToNegThird = Math.pow(countMap.size(), negativeThird);
+        return 2 * iqr * countToNegThird;
     }
 
     private void processRequiredFilters(QueryRequest queryRequest, String filter, HttpHeaders headers) {
@@ -221,6 +234,39 @@ public class DataService implements IDataService {
             title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
         }
         return title;
+    }
+
+    private static Map<String, Integer> bucketData(Map<Double, Integer> data) {
+//        int maxSize = binWidth; //(int) Math.ceil((double)data.keySet().size() / (double)numberOfBuckets);
+        double binWidth = calcBinWidth(data);
+        double min = data.keySet().stream().min(Double::compareTo).get();
+        double max = data.keySet().stream().max(Double::compareTo).get();
+        int maxSize = (int) Math.ceil((max-min)/binWidth);
+        Map<String, Integer> results = new LinkedHashMap<>();
+        List<String> currentBucketLabels = new ArrayList<>();
+        int currentSize = 0;
+        int currentBucketCount = 0;
+        for (Map.Entry<Double, Integer> entry : data.entrySet()) {
+            if (currentSize < maxSize) {
+                currentBucketCount += entry.getValue();
+                currentBucketLabels.add(String.format("%.2f", entry.getKey()));
+                currentSize++;
+            } else {
+                String key = currentBucketLabels.get(0) + " - " + currentBucketLabels.get(currentBucketLabels.size() - 1);
+                results.put(key, currentBucketCount);
+                currentBucketCount = 0;
+                currentSize = 0;
+                currentBucketLabels.clear();
+                currentBucketCount += entry.getValue();
+                currentBucketLabels.add(String.format("%.2f", entry.getKey()));
+                currentSize++;
+            }
+        }
+        if (currentSize > 0) {
+            String key = currentBucketLabels.get(0) + "+";
+            results.put(key, currentBucketCount);
+        }
+        return results;
     }
 
     private String createXAxisLabel(String title) {
