@@ -249,7 +249,7 @@ public class DataService implements IDataService {
         for (Map.Entry<Double, Integer> entry : data.entrySet()) {
             if (currentSize < maxSize) {
                 currentBucketCount += entry.getValue();
-                currentBucketLabels.add(String.format("%.2f", entry.getKey()));
+                currentBucketLabels.add(String.format("%.1f", entry.getKey()));
                 currentSize++;
             } else {
                 String key = currentBucketLabels.get(0) + " - " + currentBucketLabels.get(currentBucketLabels.size() - 1);
@@ -258,7 +258,7 @@ public class DataService implements IDataService {
                 currentSize = 0;
                 currentBucketLabels.clear();
                 currentBucketCount += entry.getValue();
-                currentBucketLabels.add(String.format("%.2f", entry.getKey()));
+                currentBucketLabels.add(String.format("%.1f", entry.getKey()));
                 currentSize++;
             }
         }
