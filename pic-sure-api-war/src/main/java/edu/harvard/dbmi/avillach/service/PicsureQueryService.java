@@ -3,24 +3,25 @@ package edu.harvard.dbmi.avillach.service;
 import java.sql.Date;
 import java.util.*;
 
-import edu.harvard.dbmi.avillach.data.entity.Query;
-import edu.harvard.dbmi.avillach.data.entity.Resource;
-import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
-import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.security.JWTFilter;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import javax.inject.Inject;
+import javax.transaction.Transactional;
+import javax.ws.rs.core.Response;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import javax.inject.Inject;
-import javax.transaction.Transactional;
-import javax.ws.rs.core.Response;
+import edu.harvard.dbmi.avillach.data.entity.Query;
+import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 /**
  * Service handling business logic for queries to resources
@@ -81,12 +82,11 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		queryEntity.setPicsureId(UUIDv5.UUIDFromString(queryEntity.getQuery()));
-		
+
+		ObjectMapper mapper = new ObjectMapper();
 		String queryJson = null;
 		if( dataQueryRequest.getQuery() != null) {
 			try {
-				ObjectMapper mapper = new ObjectMapper();
 				queryJson = mapper.writeValueAsString( dataQueryRequest);
 			} catch (JsonProcessingException e) {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
@@ -96,7 +96,11 @@ public class PicsureQueryService {
 		queryEntity.setQuery(queryJson);
 		
 		if (results.getResultMetadata() != null) {
-			queryEntity.setMetadata((byte[])results.getResultMetadata().get(QUERY_METADATA_FIELD));
+			try {
+				queryEntity.setMetadata(mapper.writeValueAsString(results.getResultMetadata()).getBytes());
+			} catch (JsonProcessingException e) {
+				logger.warn("Unable to parse metadata ", e);
+			}
 		}
 		queryRepo.persist(queryEntity);
 
@@ -238,12 +242,11 @@ public class PicsureQueryService {
 		}
 		
 		queryEntity.setQuery(queryJson);
-		queryEntity.setPicsureId(UUIDv5.UUIDFromString(queryEntity.getQuery()));
-		
 		queryRepo.persist(queryEntity);
-		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return Response.ok(resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity()).header("resultId", queryEntity.getResourceResultId()).build();
+		
+		resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity();
+		return Response.ok().header("resultId", queryEntity.getResourceResultId()).build();
 	}
 
     /**
@@ -264,16 +267,14 @@ public class PicsureQueryService {
         response.setResourceResultId(query.getResourceResultId());
         
         Map<String, Object> metadata = new HashMap<String, Object>();
-        
         try {
 			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
+			metadata.put(QUERY_METADATA_FIELD, String.valueOf(query.getMetadata()));
 		} catch (JsonProcessingException e) {
 			logger.warn("Unable to use object mapper", e);
 		}
         
-        metadata.put(QUERY_METADATA_FIELD, query.getMetadata());
         response.setResultMetadata(metadata);
-        
         
         return response;
     }

@@ -43,17 +43,6 @@ public class Query extends BaseEntity {
 	@Column(length = 8192)
 	private byte[] metadata;
 	
-	@Column(columnDefinition = "BINARY(16)")
-	protected UUID picsureId;
-	
-	public UUID getPicsureId() {
-		return picsureId;
-	}
-
-	public void setPicsureId(UUID picsureId) {
-		this.picsureId = picsureId;
-	}
-
 	public Resource getResource() {
 		return resource;
 	}
