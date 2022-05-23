@@ -9,8 +9,6 @@
 	<context:annotation-config />
 	<bean
 		class="org.springframework.beans.factory.config.PreferencesPlaceholderConfigurer" />
-	<bean id="queryRS"
-		class="edu.harvard.hms.dbmi.avillach.hpds.service.QueryRS" />
 	<bean id="queryService"
 		class="edu.harvard.hms.dbmi.avillach.hpds.service.QueryService" />
 	<bean id="picSureService"
@@ -20,7 +18,6 @@
 	<jaxrs:server id="services" address="/">
 		<jaxrs:serviceBeans>
 			<ref bean="picSureService" />
-			<ref bean="queryRS" />
 		</jaxrs:serviceBeans>
 		<jaxrs:outInterceptors>
 			<bean class="org.apache.cxf.transport.common.gzip.GZIPOutInterceptor" />

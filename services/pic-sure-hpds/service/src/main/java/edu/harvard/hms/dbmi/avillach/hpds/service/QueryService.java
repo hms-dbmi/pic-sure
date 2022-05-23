@@ -26,9 +26,9 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 
+import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult.Status;
 
@@ -66,7 +66,7 @@ public class QueryService {
 		smallTaskExecutor = createExecutor(smallTaskExecutionQueue, SMALL_TASK_THREADS);
 	}
 
-	public AsyncResult runQuery(Query query) throws ValidationException, ClassNotFoundException, FileNotFoundException, IOException {
+	public AsyncResult runQuery(Query query) throws ClassNotFoundException, FileNotFoundException, IOException {
 		// Merging fields from filters into selected fields for user validation of results
 		mergeFilterFieldsIntoSelectedFields(query);
 
@@ -92,7 +92,7 @@ public class QueryService {
 
 	ExecutorService countExecutor = Executors.newSingleThreadExecutor();
 
-	public int runCount(Query query) throws ValidationException, InterruptedException, ExecutionException, ClassNotFoundException, FileNotFoundException, IOException {
+	public int runCount(Query query) throws InterruptedException, ExecutionException, ClassNotFoundException, FileNotFoundException, IOException {
 		return new CountProcessor().runCounts(query);
 	}
 
@@ -117,7 +117,7 @@ public class QueryService {
 		AsyncResult result = new AsyncResult(query, p.getHeaderRow(query));
 		result.status = AsyncResult.Status.PENDING;
 		result.queuedTime = System.currentTimeMillis();
-		result.id = UUID.randomUUID().toString();
+		result.id = UUIDv5.UUIDFromString(query.toString()).toString();
 		result.processor = p;
 		query.id = result.id;
 		results.put(result.id, result);
@@ -149,7 +149,7 @@ public class QueryService {
 		query.fields = new ArrayList<String>(fields);
 	}
 
-	private Map<String, List<String>> ensureAllFieldsExist(Query query) throws ValidationException {
+	private Map<String, List<String>> ensureAllFieldsExist(Query query) {
 		TreeSet<String> allFields = new TreeSet<>();
 		List<String> missingFields = new ArrayList<String>();
 		List<String> badNumericFilters = new ArrayList<String>();
