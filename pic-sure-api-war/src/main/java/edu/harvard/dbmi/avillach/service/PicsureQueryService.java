@@ -28,7 +28,7 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
  */
 public class PicsureQueryService {
 
-	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
+	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
 	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
@@ -245,8 +245,19 @@ public class PicsureQueryService {
 		queryRepo.persist(queryEntity);
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		
-		resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity();
-		return Response.ok().header("resultId", queryEntity.getResourceResultId()).build();
+		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest);
+		
+		 if(syncResponse.getHeaders() != null && 
+				 syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD) != null) {
+			 queryEntity.setResourceResultId((String) syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD).get(0));
+				queryRepo.persist(queryEntity);
+         } else {
+        	 //if no response ID, use the queryID (maintain behavior)
+        	 queryEntity.setResourceResultId(queryEntity.getUuid().toString());
+        	 queryRepo.persist(queryEntity);
+         }
+		
+		return syncResponse;
 	}
 
     /**
@@ -269,7 +280,7 @@ public class PicsureQueryService {
         Map<String, Object> metadata = new HashMap<String, Object>();
         try {
 			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
-			metadata.put(QUERY_METADATA_FIELD, String.valueOf(query.getMetadata()));
+			metadata.put(QUERY_RESULT_METADATA_FIELD, String.valueOf(query.getMetadata()));
 		} catch (JsonProcessingException e) {
 			logger.warn("Unable to use object mapper", e);
 		}

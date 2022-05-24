@@ -37,7 +37,8 @@ public class ResourceWebClient {
     private final static ObjectMapper json = new ObjectMapper();
     public static final String BEARER_STRING = "Bearer ";
     public static final String BEARER_TOKEN_KEY = "BEARER_TOKEN";
-
+    public static final String QUERY_METADATA_FIELD = "queryMetadata";
+    
     public ResourceWebClient() { }
 
     public ResourceInfo info(String rsURL, QueryRequest queryRequest){
@@ -231,6 +232,10 @@ public class ResourceWebClient {
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);
+            }
+            
+            if(resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
+            	return Response.ok(resourcesResponse.getEntity().getContent()).header(QUERY_METADATA_FIELD, resourcesResponse.getHeaders(QUERY_METADATA_FIELD)).build();
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
