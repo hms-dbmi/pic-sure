@@ -1,7 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
@@ -41,6 +39,7 @@ public class DataService implements IDataService {
     private static final int MAX_X_LABEL_LINE_LENGTH = 45;
     boolean LIMITED = true;
     int LIMIT_SIZE = 7;
+    private static final double NEGATIVE_THIRD = -0.3333333333333333;
 
     private RestTemplate restTemplate;
     private ObjectMapper mapper;
@@ -53,40 +52,29 @@ public class DataService implements IDataService {
             mapper = new ObjectMapper();
         }
     }
+    }
 
     @Override
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
-        HttpHeaders headers = prepareQueryRequest(queryRequest);
+        Map<String, Map<String, Double>> crossCountsMap = new LinkedHashMap<>();
+        HttpHeaders headers = prepareQueryRequest(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
+        try {
+            crossCountsMap = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
-        queryRequest.getQuery().requiredFields.parallelStream().forEach(filter -> {
-            processRequiredFilters(queryRequest, filter, headers);
-        });
-
-        for (Map.Entry<String, String[]> filter : queryRequest.getQuery().categoryFilters.entrySet()) {
-
-            if (filter.getKey().equals(CONSENTS_KEY) ||
-                    filter.getKey().equals(HARMONIZED_CONSENT_KEY) ||
-                    filter.getKey().equals(TOPMED_CONSENTS_KEY) ||
-                    filter.getKey().equals(PARENT_CONSENTS_KEY)){
+        for (Map.Entry<String, Map<String, Double>> entry : crossCountsMap.entrySet()) {
+            if (entry.getKey().equals(CONSENTS_KEY) ||
+                    entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
+                    entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
+                    entry.getKey().equals(PARENT_CONSENTS_KEY)){
                 continue;
             }
-            String[] resultLines;
-            try {
-                resultLines = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), String.class).getBody().split("\n");
-            } catch (Exception e) {
-                e.printStackTrace();
-                resultLines = new String[0];
-            }
-
-            Map<String, Double> axisMap = buildAxisMap(resultLines, filter.getKey());
-
-            if (LIMITED == true && axisMap.size() > LIMIT_SIZE) {
-                axisMap = createOtherBar(axisMap);
-            }
-
-            String title = getChartTitle(filter.getKey());
+            Map<String, Double> axisMap = LIMITED ? createOtherBar(entry.getValue()) : entry.getValue();
+            String title = getChartTitle(entry.getKey());
 
             categoricalDataList.add(new CategoricalData(
                     title,
@@ -94,40 +82,34 @@ public class DataService implements IDataService {
                     createXAxisLabel(title),
                     "Number of Participants"
             ));
-            logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         }
+        logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
     }
 
     public List<ContinuousData> getContinuousData(QueryRequest queryRequest) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
-        HttpHeaders headers = prepareQueryRequest(queryRequest);
-
-        String[] resultLines;
+        HttpHeaders headers = prepareQueryRequest(queryRequest, ResultType.CONTINUOUS_CROSS_COUNT);
+        Map<String, Map<Double, Integer>> crossCountsMap = new LinkedHashMap<>();
         try {
-            resultLines = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), String.class).getBody().split("\n");
+            crossCountsMap = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
         } catch (Exception e) {
             e.printStackTrace();
-            resultLines = new String[0];
         }
 
-        for (Map.Entry<String, Filter.DoubleFilter> filter: queryRequest.getQuery().numericFilters.entrySet()) {
-
-            TreeMap<Double, Integer> countMap = buildCountMap(resultLines, filter.getKey());
-
-            String title = getChartTitle(filter.getKey());
+        for (Map.Entry<String, Map<Double, Integer>> entry : crossCountsMap.entrySet()) {
+            String title = getChartTitle(entry.getKey());
 
             continuousDataList.add(new ContinuousData(
                     title,
                     new LinkedHashMap<>(
-                            bucketData(countMap)
+                        bucketData(entry.getValue())
                     ),
                     createXAxisLabel(title),
-                    "Frequency"));
-            countMap.clear();
+                    "Number of Participants"
+            ));
         }
-
         logger.debug("Finished Categorical Data with " + continuousDataList.size() + " results");
         return continuousDataList;
     }
@@ -136,83 +118,18 @@ public class DataService implements IDataService {
         double[] keys = countMap.keySet().stream().mapToDouble(Double::doubleValue).toArray();
         DescriptiveStatistics da = new DescriptiveStatistics(keys);
         double iqr = da.getPercentile(75) - da.getPercentile(25);
-        double negativeThird = -0.3333333333333333;
-        double countToNegThird = Math.pow(countMap.size(), negativeThird);
+        double countToNegThird = Math.pow(countMap.size(), NEGATIVE_THIRD);
         return 2 * iqr * countToNegThird;
     }
 
-    private void processRequiredFilters(QueryRequest queryRequest, String filter, HttpHeaders headers) {
-        String body = "{\"query\": \"" + filter.replace("\\", "\\\\") + "\"}";
-        JsonNode actualObj = null;
-
-        try {
-            actualObj = mapper.readTree(body);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-        try {
-            SearchResults searchResults = restTemplate.exchange(searchUrl, HttpMethod.POST, new HttpEntity<>(actualObj, headers), SearchResults.class).getBody();
-            for (Map.Entry<String, SearchResult> phenotype : searchResults.getResults().getPhenotypes().entrySet()) {
-                queryRequest.getQuery().categoryFilters.put(phenotype.getKey(), phenotype.getValue().getCategoryValues());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest) {
+    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType requestType) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(AUTH_HEADER_NAME,
                 queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
         );
-        queryRequest.getQuery().expectedResultType = ResultType.DATAFRAME;
+        queryRequest.getQuery().expectedResultType = requestType;
         queryRequest.setResourceUUID(picSureUuid);
         return headers;
-    }
-
-    private Map<String, Double> buildAxisMap(String[] resultLines, String filterKey) {
-        Map<String, Double> axisMap = new LinkedHashMap<>();
-
-        if (resultLines != null && resultLines.length > 0) {
-            List<String> headerLine = Arrays.asList(resultLines[0].split(","));
-            for (int i = 1; i < resultLines.length; i++) {
-                String[] splitLines = resultLines[i].split(",");
-                String key = (splitLines[
-                        headerLine.indexOf(filterKey)
-                        ]);
-
-                if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
-                    key = key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...";
-                }
-
-                if (axisMap.containsKey(key)) {
-                    axisMap.put(key, axisMap.get(key) + 1);
-                } else {
-                    axisMap.put(key, 1.0);
-                }
-            }
-        }
-
-        return axisMap;
-    }
-
-    private TreeMap<Double, Integer> buildCountMap(String[] resultLines, String filterKey) {
-        TreeMap<Double, Integer> countMap = new TreeMap<>();
-        if (resultLines != null && resultLines.length > 0) {
-            List<String> headerLine = Arrays.asList(resultLines[0].split(","));
-            for (int i = 1; i < resultLines.length; i++) {
-                String[] splitLines = resultLines[i].split(",");
-                Double key = Double.parseDouble(splitLines[
-                        headerLine.indexOf(filterKey)
-                        ]);
-                if (countMap.containsKey(key)) {
-                    countMap.put(key, countMap.get(key) + 1);
-                } else {
-                    countMap.put(key, 1);
-                }
-            }
-        }
-        return countMap;
     }
 
     private Map<String, Double> createOtherBar(Map<String, Double> axisMap) {
@@ -237,7 +154,6 @@ public class DataService implements IDataService {
     }
 
     private static Map<String, Integer> bucketData(Map<Double, Integer> data) {
-//        int maxSize = binWidth; //(int) Math.ceil((double)data.keySet().size() / (double)numberOfBuckets);
         double binWidth = calcBinWidth(data);
         double min = data.keySet().stream().min(Double::compareTo).get();
         double max = data.keySet().stream().max(Double::compareTo).get();
