@@ -227,17 +227,13 @@ public class DataService implements IDataService {
     private String getChartTitle(String filterKey) {
         String[] titleParts = filterKey.split("\\\\");
         String title = filterKey;
-
-        if (titleParts.length > 4) {
-            title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
-        } else if (titleParts.length > 3) {
-            title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
+        if (titleParts.length >= 2) {
+            title = "Variable distribution of " + titleParts[titleParts.length - 2] + ": " + titleParts[titleParts.length - 1];
         }
         return title;
     }
 
     private static Map<String, Integer> bucketData(Map<Double, Integer> data) {
-//        int maxSize = binWidth; //(int) Math.ceil((double)data.keySet().size() / (double)numberOfBuckets);
         double binWidth = calcBinWidth(data);
         double min = data.keySet().stream().min(Double::compareTo).get();
         double max = data.keySet().stream().max(Double::compareTo).get();
@@ -270,6 +266,11 @@ public class DataService implements IDataService {
     }
 
     private String createXAxisLabel(String title) {
-        return title.substring(title.lastIndexOf(" "));
+        try {
+            return title.substring(title.lastIndexOf(" "));
+        } catch (IndexOutOfBoundsException e) {
+            e.printStackTrace();
+            return title;
+        }
     }
 }
