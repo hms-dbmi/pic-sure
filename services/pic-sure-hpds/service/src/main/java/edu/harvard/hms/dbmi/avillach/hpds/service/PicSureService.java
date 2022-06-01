@@ -9,6 +9,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.ResponseBuilder;
+import javax.ws.rs.core.Response.Status;
 
 import org.apache.http.entity.ContentType;
 import org.slf4j.Logger;
@@ -279,7 +280,7 @@ public class PicSureService implements IResourceRS {
 				log.info("Query Converted");
 				switch(incomingQuery.expectedResultType) {
 				
-				case INFO_COLUMN_LISTING : {
+				case INFO_COLUMN_LISTING:
 					ArrayList<Map> infoStores = new ArrayList<>();
 					AbstractProcessor.infoStoreColumns.stream().forEach((infoColumn)->{
 						FileBackedByteIndexedInfoStore store = AbstractProcessor.getInfoStore(infoColumn);
@@ -288,10 +289,9 @@ public class PicSureService implements IResourceRS {
 						}
 					});
 					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
-				}
 				
-				case DATAFRAME : 
-				case DATAFRAME_MERGED : {
+				case DATAFRAME: 
+				case DATAFRAME_MERGED:
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
 						status = queryStatus(status.getResourceResultId(), null);
@@ -302,47 +302,39 @@ public class PicSureService implements IResourceRS {
 					if(result.status==AsyncResult.Status.SUCCESS) {
 						result.stream.open();
 						return queryOkResponse(result.stream, incomingQuery).build();			
-					}else {
-						return Response.status(400).entity("Status : " + result.status.name()).build();
 					}
-				}
-				
-				case CROSS_COUNT : {
-					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case OBSERVATION_COUNT : {
-					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
-				}
-				
-				case OBSERVATION_CROSS_COUNT : {
-					return Response.ok(countProcessor.runObservationCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case VARIANT_COUNT_FOR_QUERY : {
-					return Response.ok(countProcessor.runVariantCount(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case VARIANT_LIST_FOR_QUERY : {
-					return Response.ok(variantListProcessor.runVariantListQuery(incomingQuery)).build();
-				}
-				
-				case VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, true)).build();
-				}
+					return Response.status(400).entity("Status : " + result.status.name()).build();
+					
+				case CROSS_COUNT:
+					return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 
-				case AGGREGATE_VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, false)).build();
-				}
-				
-				case TIMELINE_DATA : {
-					return Response.ok(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery))).build();
-				}
-				
-				default : {
-					// The only thing left is counts, this is also the lowest security concern query type so we default to it
-					return Response.ok(countProcessor.runCounts(incomingQuery)).build();
-				}
+				case OBSERVATION_COUNT:
+					return queryOkResponse(countProcessor.runObservationCount(incomingQuery), incomingQuery).build();
+
+				case OBSERVATION_CROSS_COUNT:
+					return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+
+				case VARIANT_COUNT_FOR_QUERY:
+					return queryOkResponse(countProcessor.runVariantCount(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+
+				case VARIANT_LIST_FOR_QUERY:
+					return queryOkResponse(variantListProcessor.runVariantListQuery(incomingQuery), incomingQuery).build();
+
+				case VCF_EXCERPT:
+					return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, true), incomingQuery).build();
+
+				case AGGREGATE_VCF_EXCERPT:
+					return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery).build();
+
+				case TIMELINE_DATA:
+					return queryOkResponse(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery)), incomingQuery).build();
+
+				case COUNT:
+					return queryOkResponse(countProcessor.runCounts(incomingQuery), incomingQuery).build();
+
+				default:
+					//no valid type
+					return Response.status(Status.BAD_REQUEST).build();
 				}
 				
 			} catch (IOException e) {
