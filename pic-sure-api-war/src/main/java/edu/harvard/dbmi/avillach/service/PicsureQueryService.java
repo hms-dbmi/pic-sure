@@ -250,8 +250,8 @@ public class PicsureQueryService {
 		
 		 if(syncResponse.getHeaders() != null && 
 				 syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD) != null) {
-			 Header queryMetadataHeader = (Header)syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD).get(0);
-			 queryEntity.setResourceResultId(queryMetadataHeader.getValue() );
+			 String queryMetadataHeader = (String)syncResponse.getHeaders().getFirst(ResourceWebClient.QUERY_METADATA_FIELD);
+			 queryEntity.setResourceResultId(queryMetadataHeader );
 			 queryRepo.persist(queryEntity);
          } else {
         	 //if no response ID, use the queryID (maintain behavior)
