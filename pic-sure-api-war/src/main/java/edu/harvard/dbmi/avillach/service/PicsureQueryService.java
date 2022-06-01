@@ -250,7 +250,10 @@ public class PicsureQueryService {
 		
 		 if(syncResponse.getHeaders() != null && 
 				 syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD) != null) {
-			 String queryMetadataHeader = (String)syncResponse.getHeaders().getFirst(ResourceWebClient.QUERY_METADATA_FIELD);
+			 
+			 logger.info("Header : " + syncResponse.getHeaders().getFirst(ResourceWebClient.QUERY_METADATA_FIELD));
+			 
+			 String queryMetadataHeader = syncResponse.getHeaders().getFirst(ResourceWebClient.QUERY_METADATA_FIELD).toString();
 			 queryEntity.setResourceResultId(queryMetadataHeader );
 			 queryRepo.persist(queryEntity);
          } else {
