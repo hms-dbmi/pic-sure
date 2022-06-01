@@ -7,6 +7,7 @@ import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.core.Response;
 
+import org.apache.http.Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -249,8 +250,9 @@ public class PicsureQueryService {
 		
 		 if(syncResponse.getHeaders() != null && 
 				 syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD) != null) {
-			 queryEntity.setResourceResultId((String) syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD).get(0));
-				queryRepo.persist(queryEntity);
+			 Header queryMetadataHeader = (Header)syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD).get(0);
+			 queryEntity.setResourceResultId(queryMetadataHeader.getValue() );
+			 queryRepo.persist(queryEntity);
          } else {
         	 //if no response ID, use the queryID (maintain behavior)
         	 queryEntity.setResourceResultId(queryEntity.getUuid().toString());
