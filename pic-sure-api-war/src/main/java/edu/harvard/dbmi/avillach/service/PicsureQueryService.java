@@ -255,9 +255,9 @@ public class PicsureQueryService {
 			try {
 				if (metadataHeader instanceof List) {
 					queryMetadata = ((List)metadataHeader).get(0).toString();
-					logger.info("found List metadata " + queryMetadata);
+					logger.debug("found List metadata " + queryMetadata);
 				} else {
-					logger.info("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
+					logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
 				}
 			} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
 				logger.warn("failed to parse Header : ", e);
