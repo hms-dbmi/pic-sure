@@ -253,9 +253,9 @@ public class PicsureQueryService {
 
 		if (syncResponse.getHeaders() != null && metadataHeader != null) {
 			try {
-				if (metadataHeader instanceof String) {
-					queryMetadata = (String) metadataHeader;
-					logger.info("found String metadata " + queryMetadata);
+				if (metadataHeader instanceof List) {
+					queryMetadata = ((List)metadataHeader).get(0).toString();
+					logger.info("found List metadata " + queryMetadata);
 				} else if (metadataHeader instanceof Header[]) {
 					queryMetadata = ((Header[]) metadataHeader)[0].getValue();
 					logger.info("found Header[] metadata " + queryMetadata);
