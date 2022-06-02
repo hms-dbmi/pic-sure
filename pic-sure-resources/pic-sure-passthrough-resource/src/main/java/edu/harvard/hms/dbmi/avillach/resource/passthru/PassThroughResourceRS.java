@@ -227,7 +227,13 @@ public class PassThroughResourceRS implements IResourceRS {
 			
 			if(response.containsHeader(QUERY_METADATA_FIELD)) {
             	Header metadataHeader = ((Header[])response.getHeaders(QUERY_METADATA_FIELD))[0];
+            	logger.info("Found Header[] : " + metadataHeader.getValue());
             	return Response.ok(response.getEntity().getContent()).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+            } else {
+            	logger.info("no metadata Header found");
+            	for(Header header: response.getAllHeaders()) {
+            		logger.debug("Found HEADER: " + header.getName() + header.getValue());
+            	}
             }
 
 			return Response.ok(response.getEntity().getContent()).build();
