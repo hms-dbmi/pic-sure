@@ -214,38 +214,39 @@ public class ResourceWebClient {
         }
     }
 
-    public Response querySync(String rsURL, QueryRequest queryRequest){
-        logger.debug("Calling ResourceWebClient querySync()");
-        try {
-            if (queryRequest == null){
-                throw new ProtocolException("Missing query data");
-            }
-            if (queryRequest.getResourceCredentials() == null){
-                throw new NotAuthorizedException("Missing credentials");
-            }
-            if (rsURL == null){
-                throw new ApplicationException("Missing resource URL");
-            }
+	public Response querySync(String rsURL, QueryRequest queryRequest) {
+		logger.debug("Calling ResourceWebClient querySync()");
+		try {
+			if (queryRequest == null) {
+				throw new ProtocolException("Missing query data");
+			}
+			if (queryRequest.getResourceCredentials() == null) {
+				throw new NotAuthorizedException("Missing credentials");
+			}
+			if (rsURL == null) {
+				throw new ApplicationException("Missing resource URL");
+			}
 
-            String pathName = "/query/sync";
-            String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
-            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
-                throwError(resourcesResponse, rsURL);
-            }
-            
-            if(resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
-            	Header metadataHeader = ((Header[])resourcesResponse.getHeaders(QUERY_METADATA_FIELD))[0];
-            	return Response.ok(resourcesResponse.getEntity().getContent()).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
-            }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
-        } catch (JsonProcessingException e){
-            logger.error("Unable to encode resource credentials");
-            throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e){
-            throw new ResourceInterfaceException("Error getting results", e);
-        }
-    }
+			String pathName = "/query/sync";
+			String body = json.writeValueAsString(queryRequest);
+			HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+			if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+				throwError(resourcesResponse, rsURL);
+			}
+
+			if (resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
+				Header metadataHeader = ((Header[]) resourcesResponse.getHeaders(QUERY_METADATA_FIELD))[0];
+				return Response.ok(resourcesResponse.getEntity().getContent())
+						.header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+			}
+			return Response.ok(resourcesResponse.getEntity().getContent()).build();
+		} catch (JsonProcessingException e) {
+			logger.error("Unable to encode resource credentials");
+			throw new NotAuthorizedException("Unable to encode resource credentials", e);
+		} catch (IOException e) {
+			throw new ResourceInterfaceException("Error getting results", e);
+		}
+	}
 
     private void throwError(HttpResponse response, String baseURL){
         logger.error("ResourceRS did not return a 200");
