@@ -235,7 +235,8 @@ public class ResourceWebClient {
             }
             
             if(resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
-            	return Response.ok(resourcesResponse.getEntity().getContent()).header(QUERY_METADATA_FIELD, resourcesResponse.getHeaders(QUERY_METADATA_FIELD)).build();
+            	Header metadataHeader = ((Header[])resourcesResponse.getHeaders(QUERY_METADATA_FIELD))[0];
+            	return Response.ok(resourcesResponse.getEntity().getContent()).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
