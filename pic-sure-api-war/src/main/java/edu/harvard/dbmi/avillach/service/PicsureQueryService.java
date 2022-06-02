@@ -23,6 +23,7 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import jdk.internal.reflect.Reflection;
 
 /**
  * Service handling business logic for queries to resources
@@ -259,6 +260,8 @@ public class PicsureQueryService {
 				} else if (metadataHeader instanceof Header[]) {
 					queryMetadata = ((Header[]) metadataHeader)[0].getValue();
 					logger.info("found Header[] metadata " + queryMetadata);
+				} else {
+					logger.info("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
 				}
 			} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
 				logger.warn("failed to parse Header : ", e);
