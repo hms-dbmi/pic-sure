@@ -23,7 +23,6 @@ import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import jdk.internal.reflect.Reflection;
 
 /**
  * Service handling business logic for queries to resources
