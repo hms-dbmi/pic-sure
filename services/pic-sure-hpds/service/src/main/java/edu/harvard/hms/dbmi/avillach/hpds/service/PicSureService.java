@@ -298,6 +298,14 @@ public class PicSureService implements IResourceRS {
 				case CROSS_COUNT : {
 					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 				}
+
+				case CATEGORICAL_CROSS_COUNT: {
+					return Response.ok(countProcessor.runCategoryCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+				}
+
+				case CONTINUOUS_CROSS_COUNT: {
+					return Response.ok(countProcessor.runContinuousCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+				}
 				
 				case OBSERVATION_COUNT : {
 					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();

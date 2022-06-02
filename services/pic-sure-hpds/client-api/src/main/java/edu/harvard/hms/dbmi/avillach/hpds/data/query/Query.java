@@ -80,6 +80,12 @@ public class Query {
 		case CROSS_COUNT:
 			writePartFormat("Cross Count Fields", crossCountFields, builder, true);
 			break;
+		case CATEGORICAL_CROSS_COUNT:
+			writePartFormat("Categorical Cross Count Fields", categoryFilters.entrySet(), builder, true);
+			break;
+		case CONTINUOUS_CROSS_COUNT:
+			writePartFormat("Continuous Cross Count Fields", numericFilters.entrySet(), builder, true);
+			break;
 		case OBSERVATION_COUNT:
 			writePartFormat("Observation Count Fields", fields, builder, true);
 			break;
