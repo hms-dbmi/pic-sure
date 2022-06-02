@@ -245,28 +245,29 @@ public class PicsureQueryService {
 		queryEntity.setQuery(queryJson);
 		queryRepo.persist(queryEntity);
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		
+
 		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest);
 		
-		 String queryMetadata = queryEntity.getUuid().toString();  //if no response ID, use the queryID (maintain behavior)
-				 
-				 
-		 if(syncResponse.getHeaders() != null && 
-				 syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD) != null) {
-			 try {
-				 Header metadataHeader = ((Header[])syncResponse.getHeaders().getFirst(ResourceWebClient.QUERY_METADATA_FIELD))[0];
-				 
-				 queryMetadata = metadataHeader.getValue();
-				 logger.info("found metadata " + queryMetadata);
-			 } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-				 logger.warn("failed to parse Header : ", e);
-			 }
-			 
-         }
-		 
-		 queryEntity.setResourceResultId(queryMetadata );
-		 queryRepo.persist(queryEntity);
-		
+		Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
+		String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
+
+		if (syncResponse.getHeaders() != null && metadataHeader != null) {
+			try {
+				if (metadataHeader instanceof String) {
+					queryMetadata = (String) metadataHeader;
+					logger.info("found String metadata " + queryMetadata);
+				} else if (metadataHeader instanceof Header[]) {
+					queryMetadata = ((Header[]) metadataHeader)[0].getValue();
+					logger.info("found Header[] metadata " + queryMetadata);
+				}
+			} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
+				logger.warn("failed to parse Header : ", e);
+			}
+		}
+
+		queryEntity.setResourceResultId(queryMetadata);
+		queryRepo.persist(queryEntity);
+
 		return syncResponse;
 	}
 
