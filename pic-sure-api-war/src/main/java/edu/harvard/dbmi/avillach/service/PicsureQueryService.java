@@ -256,9 +256,6 @@ public class PicsureQueryService {
 				if (metadataHeader instanceof List) {
 					queryMetadata = ((List)metadataHeader).get(0).toString();
 					logger.info("found List metadata " + queryMetadata);
-				} else if (metadataHeader instanceof Header[]) {
-					queryMetadata = ((Header[]) metadataHeader)[0].getValue();
-					logger.info("found Header[] metadata " + queryMetadata);
 				} else {
 					logger.info("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
 				}

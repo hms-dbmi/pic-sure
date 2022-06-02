@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach;
 
+import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
@@ -255,6 +256,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				
 				responseString = objectMapper.writeValueAsString(crossCounts);
 			}
+			
+			//propagate any metadata from the back end (e.g., resultId)
+			if(response.containsHeader(QUERY_METADATA_FIELD)) {
+            	Header metadataHeader = ((Header[])response.getHeaders(QUERY_METADATA_FIELD))[0];
+            	return Response.ok(responseString).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+            }
 			
 			return Response.ok(responseString).build();
 		} catch (IOException e) {
