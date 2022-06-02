@@ -52,7 +52,6 @@ public class DataService implements IDataService {
             mapper = new ObjectMapper();
         }
     }
-    }
 
     @Override
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
@@ -104,7 +103,7 @@ public class DataService implements IDataService {
             continuousDataList.add(new ContinuousData(
                     title,
                     new LinkedHashMap<>(
-                        bucketData(entry.getValue())
+                            bucketData(entry.getValue())
                     ),
                     createXAxisLabel(title),
                     "Number of Participants"
@@ -144,11 +143,8 @@ public class DataService implements IDataService {
     private String getChartTitle(String filterKey) {
         String[] titleParts = filterKey.split("\\\\");
         String title = filterKey;
-
-        if (titleParts.length > 4) {
-            title = "Variable distribution of " + titleParts[3] + ": " + titleParts[4];
-        } else if (titleParts.length > 3) {
-            title = "Variable distribution of " + titleParts[2] + ": " + titleParts[3];
+        if (titleParts.length >= 2) {
+            title = "Variable distribution of " + titleParts[titleParts.length - 2] + ": " + titleParts[titleParts.length - 1];
         }
         return title;
     }
@@ -186,6 +182,11 @@ public class DataService implements IDataService {
     }
 
     private String createXAxisLabel(String title) {
-        return title.substring(title.lastIndexOf(" "));
+        try {
+            return title.substring(title.lastIndexOf(" "));
+        } catch (IndexOutOfBoundsException e) {
+            e.printStackTrace();
+            return title;
+        }
     }
 }
