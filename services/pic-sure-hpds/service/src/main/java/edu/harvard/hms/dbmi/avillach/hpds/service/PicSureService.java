@@ -8,6 +8,8 @@ import java.util.stream.Collectors;
 import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.Response.ResponseBuilder;
+import javax.ws.rs.core.Response.Status;
 
 import org.apache.http.entity.ContentType;
 import org.slf4j.Logger;
@@ -24,12 +26,11 @@ import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.ValidationException;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 
 @Path("PIC-SURE")
@@ -50,9 +51,6 @@ public class PicSureService implements IResourceRS {
 	@Autowired
 	private QueryService queryService;
 
-	@Autowired
-	private QueryRS queryRS;
-
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	private Logger log = LoggerFactory.getLogger(PicSureService.class);
@@ -63,7 +61,7 @@ public class PicSureService implements IResourceRS {
 
 	private VariantListProcessor variantListProcessor;
 	
-	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
+	private static final String QUERY_METADATA_FIELD = "queryMetadata";
 	
 	
 	@POST
@@ -181,28 +179,13 @@ public class PicSureService implements IResourceRS {
 	@POST
 	@Path("/query")
 	public QueryStatus query(QueryRequest queryJson) {
-		Query query;
-		QueryStatus queryStatus = new QueryStatus();
 		if(Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)){
 			try {
-				query = convertIncomingQuery(queryJson);
+				Query query = convertIncomingQuery(queryJson);
 				return convertToQueryStatus(queryService.runQuery(query));		
 			} catch (IOException e) {
 				log.error("IOException caught in query processing:", e);
 				throw new ServerErrorException(500);
-			} catch (ValidationException e) {
-				QueryStatus status = queryStatus;
-				status.setStatus(PicSureStatus.ERROR);
-				try {
-					status.setResourceStatus("Validation failed for query for reason : " + new ObjectMapper().writeValueAsString(e.getResult()));
-				} catch (JsonProcessingException e2) {
-					log.error("JsonProcessingException  caught: ", e);
-				}
-					 
-		        Map<String, Object> metadata = new HashMap<String, Object>();
-		        metadata.put(QUERY_METADATA_FIELD, e.getResult());
-		        status.setResultMetadata(metadata);
-				return status;
 			} catch (ClassNotFoundException e) {
 				throw new ServerErrorException(500);
 			}  
@@ -221,7 +204,6 @@ public class PicSureService implements IResourceRS {
 	private QueryStatus convertToQueryStatus(AsyncResult entity) {
 		QueryStatus status = new QueryStatus();
 		status.setDuration(entity.completedTime==0?0:entity.completedTime - entity.queuedTime);
-		status.setResourceID(UUID.fromString(entity.id));
 		status.setResourceResultId(entity.id);
 		status.setResourceStatus(entity.status.name());
 		if(entity.status==AsyncResult.Status.SUCCESS) {
@@ -229,6 +211,10 @@ public class PicSureService implements IResourceRS {
 		}
 		status.setStartTime(entity.queuedTime);
 		status.setStatus(entity.status.toPicSureStatus());
+		
+		Map<String, Object> metadata = new HashMap<String, Object>();
+		metadata.put("picsureQueryId", UUIDv5.UUIDFromString(entity.query.toString()));
+		status.setResultMetadata(metadata);
 		return status;
 	}
 
@@ -238,7 +224,28 @@ public class PicSureService implements IResourceRS {
 	@Override
 	public Response queryResult(
 			@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
-		return queryRS.getResultFor(queryId);
+		AsyncResult result = queryService.getResultFor(queryId);
+		if(result==null) {
+			// This happens sometimes when users immediately request the status for a query
+			// before it can be initialized. We wait a bit and try again before throwing an
+			// error.
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				return Response.status(500).build();
+			}
+			
+			result = queryService.getResultFor(queryId);
+			if(result==null) {
+				return Response.status(404).build();
+			}
+		}
+		if(result.status==AsyncResult.Status.SUCCESS) {
+			result.stream.open();
+			return Response.ok(result.stream).build();			
+		}else {
+			return Response.status(400).entity("Status : " + result.status.name()).build();
+		}
 	}
 
 	@POST
@@ -273,7 +280,7 @@ public class PicSureService implements IResourceRS {
 				log.info("Query Converted");
 				switch(incomingQuery.expectedResultType) {
 				
-				case INFO_COLUMN_LISTING : {
+				case INFO_COLUMN_LISTING:
 					ArrayList<Map> infoStores = new ArrayList<>();
 					AbstractProcessor.infoStoreColumns.stream().forEach((infoColumn)->{
 						FileBackedByteIndexedInfoStore store = AbstractProcessor.getInfoStore(infoColumn);
@@ -282,56 +289,54 @@ public class PicSureService implements IResourceRS {
 						}
 					});
 					return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
-				}
 				
-				case DATAFRAME : 
-				case DATAFRAME_MERGED : {
+				case DATAFRAME: 
+				case DATAFRAME_MERGED:
 					QueryStatus status = query(resultRequest);
 					while(status.getResourceStatus().equalsIgnoreCase("RUNNING")||status.getResourceStatus().equalsIgnoreCase("PENDING")) {
 						status = queryStatus(status.getResourceResultId(), null);
 					}
 					log.info(status.toString());
-					return queryResult(status.getResourceResultId(), null);
 					
-				}
-				
-				case CROSS_COUNT : {
-					return Response.ok(countProcessor.runCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case OBSERVATION_COUNT : {
-					return Response.ok(countProcessor.runObservationCount(incomingQuery)).build();
-				}
-				
-				case OBSERVATION_CROSS_COUNT : {
-					return Response.ok(countProcessor.runObservationCrossCounts(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case VARIANT_COUNT_FOR_QUERY : {
-					return Response.ok(countProcessor.runVariantCount(incomingQuery)).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
-				}
-				
-				case VARIANT_LIST_FOR_QUERY : {
-					return Response.ok(variantListProcessor.runVariantListQuery(incomingQuery)).build();
-				}
-				
-				case VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, true)).build();
-				}
+					AsyncResult result = queryService.getResultFor(status.getResourceResultId());
+					if(result.status==AsyncResult.Status.SUCCESS) {
+						result.stream.open();
+						return queryOkResponse(result.stream, incomingQuery).build();			
+					}
+					return Response.status(400).entity("Status : " + result.status.name()).build();
+					
+				case CROSS_COUNT:
+					return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
 
-				case AGGREGATE_VCF_EXCERPT : {
-					return Response.ok(variantListProcessor.runVcfExcerptQuery(incomingQuery, false)).build();
+				case OBSERVATION_COUNT:
+					return queryOkResponse(countProcessor.runObservationCount(incomingQuery), incomingQuery).build();
+
+				case OBSERVATION_CROSS_COUNT:
+					return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+
+				case VARIANT_COUNT_FOR_QUERY:
+					return queryOkResponse(countProcessor.runVariantCount(incomingQuery), incomingQuery).header(HttpHeaders.CONTENT_TYPE, ContentType.APPLICATION_JSON).build();
+
+				case VARIANT_LIST_FOR_QUERY:
+					return queryOkResponse(variantListProcessor.runVariantListQuery(incomingQuery), incomingQuery).build();
+
+				case VCF_EXCERPT:
+					return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, true), incomingQuery).build();
+
+				case AGGREGATE_VCF_EXCERPT:
+					return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery).build();
+
+				case TIMELINE_DATA:
+					return queryOkResponse(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery)), incomingQuery).build();
+
+				case COUNT:
+					return queryOkResponse(countProcessor.runCounts(incomingQuery), incomingQuery).build();
+
+				default:
+					//no valid type
+					return Response.status(Status.BAD_REQUEST).build();
 				}
 				
-				case TIMELINE_DATA : {
-					return Response.ok(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery))).build();
-				}
-				
-				default : {
-					// The only thing left is counts, this is also the lowest security concern query type so we default to it
-					return Response.ok(countProcessor.runCounts(incomingQuery)).build();
-				}
-				}
 			} catch (IOException e) {
 				log.error("IOException  caught: ", e);
 			}
@@ -340,5 +345,9 @@ public class PicSureService implements IResourceRS {
 		} else {
 			return Response.status(403).entity("Resource is locked").build();
 		}
+	}
+
+	private ResponseBuilder queryOkResponse(Object obj, Query incomingQuery) {
+		return Response.ok(obj).header(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()));
 	}
 }
