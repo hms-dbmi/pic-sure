@@ -72,7 +72,7 @@ public class DataService implements IDataService {
                     entry.getKey().equals(PARENT_CONSENTS_KEY)){
                 continue;
             }
-            Map<String, Double> axisMap = LIMITED ? createOtherBar(entry.getValue()) : entry.getValue();
+            Map<String, Double> axisMap = (LIMITED && crossCountsMap.size()>LIMIT_SIZE) ? createOtherBar(entry.getValue()) : entry.getValue();
             String title = getChartTitle(entry.getKey());
 
             categoricalDataList.add(new CategoricalData(
@@ -90,14 +90,15 @@ public class DataService implements IDataService {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
         HttpHeaders headers = prepareQueryRequest(queryRequest, ResultType.CONTINUOUS_CROSS_COUNT);
-        Map<String, Map<Double, Integer>> crossCountsMap = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
         try {
             crossCountsMap = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        for (Map.Entry<String, Map<Double, Integer>> entry : crossCountsMap.entrySet()) {
+
+        for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             String title = getChartTitle(entry.getKey());
 
             continuousDataList.add(new ContinuousData(
@@ -149,7 +150,13 @@ public class DataService implements IDataService {
         return title;
     }
 
-    private static Map<String, Integer> bucketData(Map<Double, Integer> data) {
+    private static Map<String, Integer> bucketData(Map<String, Integer> originalMap) {
+        //Convert to doubles from string.
+        Double[] keysAsDoubles = originalMap.keySet().stream().map(Double::valueOf).toArray(Double[]::new);
+        Map<Double, Integer> data = new LinkedHashMap<>();
+        for (Double key : keysAsDoubles) {
+            data.put(key, originalMap.get(key.toString()));
+        }
         double binWidth = calcBinWidth(data);
         double min = data.keySet().stream().min(Double::compareTo).get();
         double max = data.keySet().stream().max(Double::compareTo).get();
