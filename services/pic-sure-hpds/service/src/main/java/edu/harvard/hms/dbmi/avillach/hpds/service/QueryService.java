@@ -108,8 +108,6 @@ public class QueryService {
 			p = new TimeseriesProcessor();
 			break;
 		case COUNT :
-		case CATEGORICAL_CROSS_COUNT :
-		case CONTINUOUS_CROSS_COUNT :
 			p = new CountProcessor();
 			break;
 		default : 
