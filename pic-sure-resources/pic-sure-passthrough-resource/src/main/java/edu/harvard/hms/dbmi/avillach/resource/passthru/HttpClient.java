@@ -7,7 +7,7 @@ import org.apache.http.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 
 /**
  * Wrapper class for HttpClientUtil in order used to support unit tests and mocking of responses.
@@ -40,7 +40,7 @@ public class HttpClient {
 	         try {
 	        	 response = edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse(uri, headers, body);
 	        	 break;
-	         } catch (ApplicationException e) {
+	         } catch (ResourceInterfaceException e) {
 	        	 if(i < RETRY_LIMIT ) {
 	        		 logger.warn("Failed to contact remote server.  Retrying");
 	        	 } else {
