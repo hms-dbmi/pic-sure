@@ -246,20 +246,21 @@ public class PicsureQueryService {
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest);
-		
-		Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
 		String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
 
-		if (syncResponse.getHeaders() != null && metadataHeader != null) {
-			try {
-				if (metadataHeader instanceof List) {
-					queryMetadata = ((List)metadataHeader).get(0).toString();
-					logger.debug("found List metadata " + queryMetadata);
-				} else {
-					logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
+		if (syncResponse.getHeaders() != null) {
+			Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
+			if (metadataHeader != null) {
+				try {
+					if (metadataHeader instanceof List) {
+						queryMetadata = ((List)metadataHeader).get(0).toString();
+						logger.debug("found List metadata " + queryMetadata);
+					} else {
+						logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
+					}
+				} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
+					logger.warn("failed to parse Header : ", e);
 				}
-			} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-				logger.warn("failed to parse Header : ", e);
 			}
 		}
 
