@@ -19,8 +19,19 @@ public enum ResultType {
      */
     CROSS_COUNT,
     /**
+     * Return multiple patient count for each concept and its given variables
+     * included in the categoryFilters field
+     */
+    CATEGORICAL_CROSS_COUNT,
+    /**
+     * Return one patient count for each concept path included in
+     * the numericFilters field
+     */
+    CONTINUOUS_CROSS_COUNT,
+    /**
      * Return all variant info column metadata
      */
+
     INFO_COLUMN_LISTING,
     /**
      * Return the number of total observations for included patients and
