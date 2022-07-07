@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,6 +115,90 @@ public class CountProcessor extends AbstractProcessor {
 	}
 
 	/**
+	 * Returns a separate count for each field in the requiredFields and categoryFilters query.
+	 *
+	 * @param query
+	 * @return a map of categorical data and their counts
+	 */
+	public  Map<String, Map<String, Integer>> runCategoryCrossCounts(Query query) {
+		Map<String, Map<String, Integer>> categoryCounts = new TreeMap<>();
+		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
+		query.requiredFields.parallelStream().forEach(concept -> {
+			Map<String, Integer> varCount = new TreeMap<>();;
+			try {
+				TreeMap<String, TreeSet<Integer>> categoryMap = getCube(concept).getCategoryMap();
+				//We do not have all the categories (aka variables) for required fields, so we need to get them and
+				// then ensure that our base patient set, which is filtered down by our filters. Which may include
+				// not only other required filters, but categorical filters, numerical filters, or genomic filters.
+				// We then need to get the amount a patients for each category and map that to the concept path.
+				categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
+					//If all the patients are in the base then no need to loop, this would always be true for single
+					// filter queries.
+					if (baseQueryPatientSet.containsAll(patientSet)) {
+						varCount.put(category, patientSet.size());
+					} else {
+						for (Integer patient : patientSet) {
+							if (baseQueryPatientSet.contains(patient)) {
+								varCount.put(category, varCount.getOrDefault(category, 1) + 1);
+							} else {
+								varCount.put(category, varCount.getOrDefault(category, 1));
+							}
+						}
+					}
+				});
+				categoryCounts.put(concept, varCount);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+		//For categoryFilters we need to ensure the variables included in the filter are the ones included in our count
+		//map. Then we make sure that the patients who have that variable are also in our base set.
+		query.categoryFilters.keySet().parallelStream().forEach((String concept)-> {
+			Map<String, Integer> varCount;
+			try {
+				TreeMap<String, TreeSet<Integer>> categoryMap = getCube(concept).getCategoryMap();
+				varCount = new TreeMap<>();
+				categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
+					if (Arrays.asList(query.categoryFilters.get(concept)).contains(category)) {
+						varCount.put(category, Sets.intersection(patientSet, baseQueryPatientSet).size());
+					}
+				});
+				categoryCounts.put(concept, varCount);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+		return categoryCounts;
+	}
+
+	/**
+	 * Returns a separate count for each range in numericFilters in query.
+	 *
+	 * @param query
+	 * @return a map of numerical data and their counts
+	 */
+	public Map<String, Map<Double, Integer>> runContinuousCrossCounts(Query query) {
+		TreeMap<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
+		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
+		query.numericFilters.forEach((String concept, Filter.DoubleFilter range)-> {
+			KeyAndValue[] pairs = getCube(concept).getEntriesForValueRange(range.getMin(), range.getMax());
+			Map<Double, Integer> countMap = new TreeMap<>();
+			Arrays.stream(pairs).forEach(patientConceptPair -> {
+				//The key of the patientConceptPair is the patient id. We need to make sure the patient matches our query.
+				if (baseQueryPatientSet.contains(patientConceptPair.getKey())) {
+					if (countMap.containsKey(patientConceptPair.getValue())) {
+						countMap.put((double)patientConceptPair.getValue(), countMap.get(patientConceptPair.getValue()) + 1);
+					} else {
+						countMap.put((double)patientConceptPair.getValue(), 1);
+					}
+				}
+			});
+			conceptMap.put(concept, countMap);
+		});
+		return conceptMap;
+	}
+
+	/**
 	 * Until we have a count based query that takes longer than 30 seconds to run, we should discourage
 	 * running them asynchronously in the backend as this results in unnecessary request-response cycles.
 	 */
@@ -126,7 +212,7 @@ public class CountProcessor extends AbstractProcessor {
 	 * 
 	 * This does not actually evaluate a patient set for the query.
 	 * 
-	 * @param incomingQuery
+	 * @param query
 	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
 	 */
 	public Map<String, Object> runVariantCount(Query query) {
