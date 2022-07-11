@@ -73,6 +73,15 @@ public class DataService implements IDataService {
                 continue;
             }
             Map<String, Double> axisMap = (LIMITED && crossCountsMap.size()>LIMIT_SIZE) ? createOtherBar(entry.getValue()) : entry.getValue();
+            //Replace long column names with shorter version
+            axisMap.keySet().stream().forEach(key -> {
+                if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
+                    axisMap.put(
+                            key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...",
+                            axisMap.remove(key
+                            ));
+                }
+            });
             String title = getChartTitle(entry.getKey());
 
             categoricalDataList.add(new CategoricalData(
