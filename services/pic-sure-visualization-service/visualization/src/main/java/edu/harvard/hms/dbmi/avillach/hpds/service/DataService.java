@@ -39,7 +39,7 @@ public class DataService implements IDataService {
     private static final int MAX_X_LABEL_LINE_LENGTH = 45;
     boolean LIMITED = true;
     int LIMIT_SIZE = 7;
-    private static final double NEGATIVE_THIRD = -0.3333333333333333;
+    private static final double THIRD = 0.3333333333333333;
 
     private RestTemplate restTemplate;
     private ObjectMapper mapper;
@@ -57,7 +57,7 @@ public class DataService implements IDataService {
     public List<CategoricalData> getCategoricalData(QueryRequest queryRequest) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
-        Map<String, Map<String, Double>> crossCountsMap = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
         HttpHeaders headers = prepareQueryRequest(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
         try {
             crossCountsMap = restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
@@ -65,16 +65,29 @@ public class DataService implements IDataService {
             e.printStackTrace();
         }
 
-        for (Map.Entry<String, Map<String, Double>> entry : crossCountsMap.entrySet()) {
+        for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             if (entry.getKey().equals(CONSENTS_KEY) ||
                     entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
                     entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
                     entry.getKey().equals(PARENT_CONSENTS_KEY)){
                 continue;
             }
-            Map<String, Double> axisMap = (LIMITED && crossCountsMap.size()>LIMIT_SIZE) ? createOtherBar(entry.getValue()) : entry.getValue();
-            String title = getChartTitle(entry.getKey());
+            Map<String, Integer> axisMap = (LIMITED && crossCountsMap.size()>LIMIT_SIZE) ? createOtherBar(entry.getValue()) : entry.getValue();
+            //Replace long column names with shorter version
+            List<String> toRemove = new ArrayList<>();
+            Map<String, Integer> toAdd = new HashMap<>();
+            axisMap.keySet().stream().forEach(key -> {
+                if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
+                    toRemove.add(key);
+                    toAdd.put(
+                            key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...",
+                            axisMap.get(key));
+                }
+            });
+            toRemove.forEach(key -> axisMap.remove(key));
+            axisMap.putAll(toAdd);
 
+            String title = getChartTitle(entry.getKey());
             categoricalDataList.add(new CategoricalData(
                     title,
                     new LinkedHashMap<>(axisMap),
@@ -117,9 +130,7 @@ public class DataService implements IDataService {
     private static double calcBinWidth(Map<Double, Integer> countMap) {
         double[] keys = countMap.keySet().stream().mapToDouble(Double::doubleValue).toArray();
         DescriptiveStatistics da = new DescriptiveStatistics(keys);
-        double iqr = da.getPercentile(75) - da.getPercentile(25);
-        double countToNegThird = Math.pow(countMap.size(), NEGATIVE_THIRD);
-        return 2 * iqr * countToNegThird;
+        return (3.5 * da.getStandardDeviation()) / Math.pow(countMap.size(),THIRD);
     }
 
     private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType requestType) {
@@ -132,10 +143,10 @@ public class DataService implements IDataService {
         return headers;
     }
 
-    private Map<String, Double> createOtherBar(Map<String, Double> axisMap) {
-        Map<String, Double> finalAxisMap = axisMap;
-        Supplier<Stream<Map.Entry<String, Double>>> stream = () -> finalAxisMap.entrySet().stream().sorted(Collections.reverseOrder(Map.Entry.comparingByValue()));
-        Double otherSum = stream.get().skip(LIMIT_SIZE).mapToDouble(Map.Entry::getValue).sum();
+    private Map<String, Integer> createOtherBar(Map<String, Integer> axisMap) {
+        Map<String, Integer> finalAxisMap = axisMap;
+        Supplier<Stream<Map.Entry<String, Integer>>> stream = () -> finalAxisMap.entrySet().stream().sorted(Collections.reverseOrder(Map.Entry.comparingByValue()));
+        Integer otherSum = stream.get().skip(LIMIT_SIZE).mapToInt(Map.Entry::getValue).sum();
         axisMap = stream.get().limit(LIMIT_SIZE).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, LinkedHashMap::new));
         axisMap.put("Other", otherSum);
         return axisMap;

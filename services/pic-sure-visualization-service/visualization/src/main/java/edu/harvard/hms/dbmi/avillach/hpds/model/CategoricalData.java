@@ -6,16 +6,16 @@ import java.util.Map;
 
 @Data
 public class CategoricalData extends VisualizationData{
-    Map<String, Double> categoricalMap;
+    Map<String, Integer> categoricalMap;
 
 
-    public CategoricalData(String title, Map<String, Double> categoricalMap) {
+    public CategoricalData(String title, Map<String, Integer> categoricalMap) {
         super();
         this.setTitle(title);
         this.categoricalMap = categoricalMap;
     }
 
-    public CategoricalData(String title, Map<String, Double> categoricalMap, String xAxisLabel, String yAxisLabel) {
+    public CategoricalData(String title, Map<String, Integer> categoricalMap, String xAxisLabel, String yAxisLabel) {
         super();
         this.setTitle(title);
         this.categoricalMap = categoricalMap;
