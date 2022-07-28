@@ -1,11 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.hpds.model;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.awt.Color;
 
 @Data
-
+@EqualsAndHashCode(callSuper = false)
 public class VisualizationData {
     private static final int CHART_WIDTH = 600;
     private static final int CHART_HEIGHT = 1000;
