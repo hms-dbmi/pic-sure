@@ -1,8 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.model;
 
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-
 import java.util.Map;
 
 @Data
