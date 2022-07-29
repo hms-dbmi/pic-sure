@@ -2,8 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
-import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme;
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme
 import org.knowm.xchart.*;
 import org.knowm.xchart.internal.chartpart.Chart;
 import org.knowm.xchart.style.AxesChartStyler;
