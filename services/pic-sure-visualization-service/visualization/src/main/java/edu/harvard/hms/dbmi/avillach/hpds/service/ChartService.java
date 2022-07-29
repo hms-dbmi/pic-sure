@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import edu.harvard.hms.dbmi.avillach.hpds.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.hpds.model.ContinuousData;
-import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme
+import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme;
 import org.knowm.xchart.*;
 import org.knowm.xchart.internal.chartpart.Chart;
 import org.knowm.xchart.style.AxesChartStyler;
@@ -33,7 +33,7 @@ public class ChartService implements IChartService {
         this.setUpPicSureStyler(chart);
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
         chart.getStyler().setLegendPosition(Styler.LegendPosition.OutsideS);
-        chart.getStyler().setLabelsFont(new Font("Nunito Sans", Font.PLAIN, 12));   
+        chart.getStyler().setLabelsFont(new Font("Nunito Sans", Font.PLAIN, 12));
         chartData.getCategoricalMap().forEach((k, v) -> chart.addSeries(k, v));
         return chart;
     }
