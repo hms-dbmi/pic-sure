@@ -46,4 +46,13 @@ public class QueryRequest {
 	public void setResourceUUID(UUID resourceUUID) {
 		this.resourceUUID = resourceUUID;
 	}
+
+	@Override
+	public String toString() {
+		return "QueryRequest{" +
+				"resourceCredentials=" + resourceCredentials +
+				", query=" + query +
+				", resourceUUID=" + resourceUUID +
+				'}';
+	}
 }

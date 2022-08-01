@@ -6,7 +6,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.model.domain.PicSureTheme;
 import org.knowm.xchart.*;
 import org.knowm.xchart.internal.chartpart.Chart;
 import org.knowm.xchart.style.AxesChartStyler;
-import org.knowm.xchart.style.PieStyler;
 import org.knowm.xchart.style.Styler;
 import org.springframework.stereotype.Service;
 
@@ -34,7 +33,7 @@ public class ChartService implements IChartService {
         this.setUpPicSureStyler(chart);
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
         chart.getStyler().setLegendPosition(Styler.LegendPosition.OutsideS);
-        chart.getStyler().setLabelsFont(new Font("Nunito Sans", Font.BOLD, 12));
+        chart.getStyler().setLabelsFont(new Font("Nunito Sans", Font.PLAIN, 12));
         chartData.getCategoricalMap().forEach((k, v) -> chart.addSeries(k, v));
         return chart;
     }
@@ -76,7 +75,7 @@ public class ChartService implements IChartService {
         chart.getStyler().setSeriesColors(theme.getSeriesColors());
         chart.getStyler().setPlotGridLinesVisible(false);
         chart.getStyler().setAvailableSpaceFill(.9);
-        chart.getStyler().setAxisTitleFont(new Font("Nunito Sans", Font.BOLD, 16));
+        chart.getStyler().setAxisTitleFont(new Font("Nunito Sans", Font.PLAIN, 16));
         chart.getStyler().setLegendVisible(false);
         chart.setXAxisTitle(chartData.getXAxisName());
         chart.setYAxisTitle(chartData.getYAxisName());

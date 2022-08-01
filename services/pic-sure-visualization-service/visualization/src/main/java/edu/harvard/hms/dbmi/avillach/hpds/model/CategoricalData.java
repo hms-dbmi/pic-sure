@@ -1,11 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.hpds.model;
 
 import lombok.Data;
-
 import java.util.Map;
 
 @Data
-public class CategoricalData extends VisualizationData{
+public class CategoricalData extends VisualizationData {
     Map<String, Integer> categoricalMap;
 
 
