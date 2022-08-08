@@ -4,11 +4,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 import javax.inject.Inject;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
@@ -20,13 +16,11 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
 
 @Path("/passthru")
 @Produces("application/json")
@@ -231,6 +225,13 @@ public class PassThroughResourceRS implements IResourceRS {
 				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
+			if (response.containsHeader(QUERY_METADATA_FIELD)) {
+				Header metadataHeader = ((Header[]) response.getHeaders(QUERY_METADATA_FIELD))[0];
+				logger.debug("Found Header[] : " + metadataHeader.getValue());
+				return Response.ok(response.getEntity().getContent())
+						.header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+			}
+
 			return Response.ok(response.getEntity().getContent()).build();
 		} catch (IOException e) {
 			throw new ApplicationException(
@@ -252,7 +253,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			throw new ProtocolException((ProtocolException.MISSING_DATA));
 		}
 
-		String pathName = "/search";
+		String pathName = "/search/" + properties.getTargetResourceId();
 		try {
 			QueryRequest chainRequest = new QueryRequest();
 			chainRequest.setQuery(searchRequest.getQuery());

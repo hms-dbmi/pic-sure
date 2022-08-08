@@ -45,11 +45,18 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
     @Before
     public void setUp() {
         ResourceInfo results = new ResourceInfo();
+        Resource testResource = new Resource().setName("A Mock Resource");
+        testResource.setUuid(resourceId);
+        List<Resource> resourceListing = List.of(mockResource);
+
+        when(mockResource.getName()).thenReturn("A Mock Resource");
+        when(mockResource.getUuid()).thenReturn(resourceId);
+
         when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
         when(resourceRepo.getById(not(ArgumentMatchers.same(resourceId)))).thenReturn(null);
         when(webClient.info(any(), any())).thenReturn(results);
-        when(resourceRepo.list()).thenReturn(Arrays.asList(mockResource));
-        when(mockResource.getUuid()).thenReturn(resourceId);
+        when(resourceRepo.list()).thenReturn(resourceListing);
+//        when(mockResource.getUuid()).thenReturn(resourceId);
     }
 
     @Test
@@ -98,9 +105,9 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
     @Test
     public void testResourcesEndpoint() {
         //Should give a UUID list of all resources
-        List<UUID> resourceList = infoService.resources();
+        Map<UUID, String> resourceList = infoService.resources();
         assertNotNull("Resource listing should not be null", resourceList);
         assertEquals("Resource listing should only have 1 entry", 1, resourceList.size());
-        assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.get(0));
+        assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.keySet().iterator().next());
     }
 }

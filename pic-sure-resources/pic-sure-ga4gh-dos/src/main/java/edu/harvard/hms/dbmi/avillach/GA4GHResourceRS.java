@@ -293,7 +293,7 @@ public class GA4GHResourceRS implements IResourceRS
 			status.setStatus(PicSureStatus.AVAILABLE);
 			
 			Map<String, Object> metadata = new HashMap<String, Object>();
-	        metadata.put("queryResultMetadata", responseBody);
+	        metadata.put(ResourceWebClient.QUERY_METADATA_FIELD, responseBody);
 	        status.setResultMetadata(metadata);
 			
 			status.setSizeInBytes(responseBody.length());
