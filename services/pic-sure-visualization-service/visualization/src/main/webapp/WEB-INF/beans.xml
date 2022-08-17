@@ -10,9 +10,9 @@
     <context:component-scan base-package="edu.harvard.hms.dbmi.avillach"/>
     <jaxrs:server id="services" address="/">
         <jaxrs:serviceBeans>
-            <bean class="edu.harvard.hms.dbmi.avillach.hpds.VisualizationResource"/>
-            <bean class="edu.harvard.hms.dbmi.avillach.hpds.service.VisualizationService"/>
-            <bean class="edu.harvard.hms.dbmi.avillach.hpds.service.DataService"/>
+            <bean class="edu.harvard.hms.dbmi.avillach.visualization.VisualizationResource"/>
+            <bean class="edu.harvard.hms.dbmi.avillach.visualization.service.DataProcessingProcessingService"/>
+            <bean class="edu.harvard.hms.dbmi.avillach.visualization.service.HpdsService"/>
         </jaxrs:serviceBeans>
         <jaxrs:providers>
             <bean class="com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider"/>
