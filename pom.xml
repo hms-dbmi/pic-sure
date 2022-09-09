@@ -15,7 +15,7 @@
 		<module>pic-sure-util</module>
 	</modules>
 	<properties>
-		<jackson.version>2.13.2</jackson.version>
+		<jackson.version>2.10.5</jackson.version>
 		<picsure.2.token>eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb29AYmFyLmNvbSIsImlzcyI6ImJhciIsImV4cCI6ODY1NTI4Mzk4NTQzLCJpYXQiOjE1Mjg0ODQ5NDMsImp0aSI6IkZvbyIsImVtYWlsIjoiZm9vQGJhci5jb20ifQ.KE2NIfCzQnd_vhykhb0sHdPHEwvy2Wphc4UVsKAVTgM</picsure.2.token>
 	</properties>
 	<build>
@@ -68,7 +68,7 @@
 			<dependency>
 				<groupId>com.fasterxml.jackson.core</groupId>
 				<artifactId>jackson-databind</artifactId>
-				<version>2.13.2.2</version>
+				<version>2.10.5.1</version>
 			</dependency>
 			<dependency>
                                 <groupId>com.fasterxml.jackson.core</groupId>
