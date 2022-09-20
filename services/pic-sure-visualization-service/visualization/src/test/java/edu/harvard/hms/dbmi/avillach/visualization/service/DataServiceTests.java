@@ -583,7 +583,67 @@ class DataServiceTests {
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
         }
 
+        @Test
+        @DisplayName("Test Big data set has more than 1 column when max-min>numBins")
+        void TestBigDataSetHasMoreThenOneColumnWhenNumBinsGreaterThanMaxMinusMin() {
+            QueryRequest goodQueryRequest = new QueryRequest();
+            goodQueryRequest.setResourceUUID(UUID.randomUUID());
+            goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
+            Query query = new Query();
+            query.numericFilters.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", new Filter.DoubleFilter());
+            query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
+            goodQueryRequest.setQuery(query);
+            Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
+            Map<String, Integer> variableMap1 = new TreeMap<>();
+            // Add real min and max
+            variableMap1.put("11.1056364319709",1);
+            variableMap1.put("91.797262447927",2);
+            //Most values were one
+            boolean useOne = false;
+            // Majority of people are between 18.5 and 24.9 bmi, these numbers help get a realistic distribution
+            // this makes the calculation of standard deviation create the scenario for this test and ultimately creates
+            // a small bin size.
+            int n = 209043/50*49;
+            double min = 18.5;
+            double max = 24.9;
+            while (n >=0) {
+                int numParts = (int)Math.floor(getRandomNumber(1, 3));
+                if (useOne && numParts!=1) {
+                    numParts = 1;
+                    useOne = !useOne;
+                }
+                String key = String.valueOf(getRandomDouble(min, max));
+                variableMap1.put(key,numParts);
+                n -= numParts;
+            }
+            // Fill in the last 1/50th of the samples with 0;
+            n = 209040/50;
+            min = 11.1056364319709;
+            max = 91.797262447927;
+            while (n >=0) {
+                String key = String.valueOf(getRandomDouble(min, max));
+                variableMap1.put(key, 1);
+                n -= 1;
+            }
+            crossCountsMap.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", variableMap1);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            assertEquals(1, list.size());
+            assertTrue(1 < list.get(0).getContinuousMap().size());
+        }
+
+//        @Test
+//        void TestBigDataSetHasMoreThenOneColumnWhenNumBinsGreaterThanMaxMinusMinALot() {
+//            for(int i=0; i < 1000; i++) {
+//                System.out.println(i);
+//                TestBigDataSetHasMoreThenOneColumnWhenNumBinsGreaterThanMaxMinusMin();
+//            }
+//        }
+
         private double getRandomNumber(int min, int max) {
+            return ((Math.random() * (max - min)) + min);
+        }
+
+        private double getRandomDouble(double min, double max) {
             return ((Math.random() * (max - min)) + min);
         }
     }

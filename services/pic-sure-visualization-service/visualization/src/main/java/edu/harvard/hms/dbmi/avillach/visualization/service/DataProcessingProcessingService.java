@@ -210,7 +210,7 @@ public class DataProcessingProcessingService implements IDataProcessingService {
 
         if ((min == 0.0 && max == 0.0) || numBins == 0) return new HashMap<>();
 
-        int binSize = (int)Math.round((max - min) / numBins);
+        int binSize = (int)Math.ceil((max - min) / numBins);
 
         Map<Integer, Integer> results = createBinsAndMergeCounts(data, numBins, min, binSize);
 
