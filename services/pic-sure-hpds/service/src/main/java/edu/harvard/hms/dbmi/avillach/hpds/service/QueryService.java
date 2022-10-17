@@ -2,25 +2,12 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +21,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult.Status;
 
 public class QueryService {
 
+	private static final int RESULTS_CACHE_SIZE = 50;
 	private final int SMALL_JOB_LIMIT;
 	private final int LARGE_TASK_THREADS;
 	private final int SMALL_TASK_THREADS;
@@ -48,7 +36,7 @@ public class QueryService {
 
 	ExecutorService smallTaskExecutor;
 
-	HashMap<String, AsyncResult> results = new HashMap<>();
+	protected static Cache<String, AsyncResult> resultCache;
 
 	public QueryService () throws ClassNotFoundException, FileNotFoundException, IOException{
 		SMALL_JOB_LIMIT = getIntProp("SMALL_JOB_LIMIT");
@@ -64,9 +52,22 @@ public class QueryService {
 
 		largeTaskExecutor = createExecutor(largeTaskExecutionQueue, LARGE_TASK_THREADS);
 		smallTaskExecutor = createExecutor(smallTaskExecutionQueue, SMALL_TASK_THREADS);
+		
+		//set up results cache
+		resultCache = Caffeine.newBuilder()
+				.maximumSize(RESULTS_CACHE_SIZE)
+				.build();
 	}
 
-	public AsyncResult runQuery(Query query) throws ClassNotFoundException, FileNotFoundException, IOException {
+	public AsyncResult runQuery(Query query) throws ClassNotFoundException, IOException {
+		
+		String id = UUIDv5.UUIDFromString(query.toString()).toString();
+		AsyncResult cachedResult = resultCache.getIfPresent(id);
+		if(cachedResult != null) {
+			log.debug("cache hit for " + id);
+			return cachedResult;
+		}
+		
 		// Merging fields from filters into selected fields for user validation of results
 		mergeFilterFieldsIntoSelectedFields(query);
 
@@ -74,6 +75,8 @@ public class QueryService {
 
 		AsyncResult result = initializeResult(query);
 
+		resultCache.put(id, result);
+		
 		// This is all the validation we do for now.
 		Map<String, List<String>> validationResults = ensureAllFieldsExist(query);
 		if(validationResults != null) {
@@ -122,7 +125,6 @@ public class QueryService {
 		result.id = UUIDv5.UUIDFromString(query.toString()).toString();
 		result.processor = p;
 		query.id = result.id;
-		results.put(result.id, result);
 		return result;
 	}
 	
@@ -210,12 +212,15 @@ public class QueryService {
 	}
 
 	public AsyncResult getStatusFor(String queryId) {
-		AsyncResult asyncResult = results.get(queryId);
+		AsyncResult asyncResult = resultCache.getIfPresent(queryId);
+		if(asyncResult == null) {
+			return null;
+		}
 		AsyncResult[] queue = asyncResult.query.fields.size() > SMALL_JOB_LIMIT ? 
 				largeTaskExecutionQueue.toArray(new AsyncResult[largeTaskExecutionQueue.size()]) : 
 					smallTaskExecutionQueue.toArray(new AsyncResult[smallTaskExecutionQueue.size()]);
 				if(asyncResult.status == Status.PENDING) {
-					ArrayList<AsyncResult> queueSnapshot = new ArrayList<AsyncResult>();
+					List<AsyncResult> queueSnapshot = Arrays.asList(queue);
 					for(int x = 0;x<queueSnapshot.size();x++) {
 						if(queueSnapshot.get(x).id.equals(queryId)) {
 							asyncResult.positionInQueue = x;
@@ -230,7 +235,7 @@ public class QueryService {
 	}
 
 	public AsyncResult getResultFor(String queryId) {
-		return results.get(queryId);
+		return resultCache.getIfPresent(queryId);
 	}
 
 	public TreeMap<String, ColumnMeta> getDataDictionary() {
