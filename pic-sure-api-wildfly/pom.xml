@@ -251,8 +251,7 @@
 					<!--<PIC_SURE_CLIENT_SECRET>foo</PIC_SURE_CLIENT_SECRET> -->
 					<!--<PIC_SURE_USER_ID_CLAIM>email</PIC_SURE_USER_ID_CLAIM> -->
 					<!--<TARGET_IRCT_URL>https://nhanes.hms.harvard.edu/rest/v1/</TARGET_IRCT_URL> -->
-					<!--<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}/PICSURE</TARGET_PICSURE_URL> -->
-					<!--<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN> -->
+					<!--<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}/PICSURE</TARGET_PICSURE_URL> -->					
 					<!--<RESULT_FORMAT>JSON</RESULT_FORMAT> -->
 					<!--</env> -->
 					<!--<add-user> -->
@@ -300,7 +299,6 @@
 								<TARGET_GNOME_URL>http://localhost:8079</TARGET_GNOME_URL>
 								<TARGET_I2B2_URL>http://localhost:8079</TARGET_I2B2_URL>
 								<I2B2_LABEL>Patient Id</I2B2_LABEL>
-								<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN>
 								<IRCT_RS_URL>http://localhost:8080/pic-sure-irct-resource-${project.version}/pic-sure/v1.4</IRCT_RS_URL>
 								<AGGREGATE_RS_URL>http://localhost:8080/pic-sure-aggregate-resource-${project.version}/pic-sure/group</AGGREGATE_RS_URL>
 								<GNOME_I2B2_RS_URL>http://localhost:8080/pic-sure-gnome-i2b2-count-resource-${project.version}/pic-sure/gnome-i2b2-count</GNOME_I2B2_RS_URL>
@@ -349,8 +347,7 @@
 								<TARGET_GNOME_URL>http://localhost:8079</TARGET_GNOME_URL>
 								<TARGET_I2B2_URL>http://localhost:8079</TARGET_I2B2_URL>
 								<I2B2_LABEL>Patient Id</I2B2_LABEL>
-								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>
-								<!--<PICSURE_2_TOKEN>${picsure.2.token}</PICSURE_2_TOKEN> -->
+								<TARGET_PICSURE_URL>http://localhost:8080/${project.artifactId}-${project.version}/pic-sure</TARGET_PICSURE_URL>								
 								<!--<RESULT_FORMAT>CSV</RESULT_FORMAT> -->
 							</environmentVariables>
 							<systemPropertyVariables>
