@@ -1,19 +1,19 @@
 package edu.harvard.dbmi.avillach.service;
 
-import edu.harvard.dbmi.avillach.data.entity.Resource;
-import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
-import edu.harvard.dbmi.avillach.util.PicsureNaming;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.List;
 
-import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
 
 /**
  * Service handling business logic for CRUD on resources
