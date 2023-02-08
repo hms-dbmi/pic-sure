@@ -9,3 +9,4 @@ workflows:
     jobs:
       - maven/test:
           settings_file: .circleci/maven-settings.xml
+          command: 'deploy'
