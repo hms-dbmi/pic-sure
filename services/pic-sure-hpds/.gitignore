@@ -29,3 +29,5 @@ war-exec.manifest
 
 *.iml
 .idea/
+
+.java-version
