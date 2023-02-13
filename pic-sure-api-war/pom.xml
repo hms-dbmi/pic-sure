@@ -91,9 +91,9 @@
 						<configuration>
 							<artifactItems>
 								<artifactItem>
-									<groupId>mysql</groupId>
-									<artifactId>mysql-connector-java</artifactId>
-									<version>5.1.38</version>
+									<groupId>com.mysql</groupId>
+									<artifactId>mysql-connector-j</artifactId>
+									<version>8.0.32</version>
 									<type>jar</type>
 									<overWrite>true</overWrite>
 									<outputDirectory>${project.build.directory}/modules/system/layers/base/com/sql/mysql/main/</outputDirectory>
