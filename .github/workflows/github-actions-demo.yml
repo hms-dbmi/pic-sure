@@ -18,6 +18,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Publish to GitHub Packages Apache Maven
-        run: mvn deploy -U -s $GITHUB_WORKSPACE/settings.xml
+        run: mvn deploy -U
         env:
           GITHUB_TOKEN: ${{ github.token }}
