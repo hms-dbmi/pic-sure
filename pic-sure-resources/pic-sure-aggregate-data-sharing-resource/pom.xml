@@ -1,26 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-        <artifactId>pic-sure-resources</artifactId>
-        <version>2.0.0-SNAPSHOT</version>
-    </parent>
-    <artifactId>pic-sure-aggregate-data-sharing-resource</artifactId>
-    <name>pic-sure-aggregate-data-sharing-resource</name>
-    <packaging>war</packaging>
-    <url>http://maven.apache.org</url>
-    <properties>
-        <wildfly.version>13.0.0.Final</wildfly.version>
-        <jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-    <build>
-	    <finalName>pic-sure-aggregate-data-sharing-resource</finalName>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-resources</artifactId>
+		<version>2.0.1-SNAPSHOT</version>
+	</parent>
+	<artifactId>pic-sure-aggregate-data-sharing-resource</artifactId>
+	<name>pic-sure-aggregate-data-sharing-resource</name>
+	<packaging>war</packaging>
+	<url>http://maven.apache.org</url>
+	<properties>
+		<wildfly.version>13.0.0.Final</wildfly.version>
+		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+	<build>
+		<finalName>pic-sure-aggregate-data-sharing-resource</finalName>
 	</build>
-    
-    <dependencies>
-<dependency>
+	<dependencies>
+		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
@@ -30,11 +31,16 @@
 			<artifactId>javaee-api</artifactId>
 			<scope>provided</scope>
 		</dependency>
+
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
             <version>4.5.13</version>
         </dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
@@ -82,5 +88,5 @@
 			<artifactId>jersey-common</artifactId>
 			<scope>test</scope>
 		</dependency>
-    </dependencies>
+	</dependencies>
 </project>

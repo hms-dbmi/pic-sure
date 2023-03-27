@@ -3,30 +3,32 @@ package edu.harvard.dbmi.avillach.service;
 import java.sql.Date;
 import java.util.*;
 
-import edu.harvard.dbmi.avillach.data.entity.Query;
-import edu.harvard.dbmi.avillach.data.entity.Resource;
-import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
-import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.security.JWTFilter;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import javax.inject.Inject;
+import javax.transaction.Transactional;
+import javax.ws.rs.core.Response;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import javax.inject.Inject;
-import javax.transaction.Transactional;
-import javax.ws.rs.core.Response;
+import edu.harvard.dbmi.avillach.data.entity.Query;
+import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 /**
  * Service handling business logic for queries to resources
  */
 public class PicsureQueryService {
 
-	private static final String QUERY_METADATA_FIELD = "queryResultMetadata";
+	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
 	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
@@ -80,12 +82,11 @@ public class PicsureQueryService {
 		queryEntity.setResource(resource);
 		queryEntity.setStatus(results.getStatus());
 		queryEntity.setStartTime(new Date(results.getStartTime()));
-		
-		
+
+		ObjectMapper mapper = new ObjectMapper();
 		String queryJson = null;
 		if( dataQueryRequest.getQuery() != null) {
 			try {
-				ObjectMapper mapper = new ObjectMapper();
 				queryJson = mapper.writeValueAsString( dataQueryRequest);
 			} catch (JsonProcessingException e) {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
@@ -95,7 +96,11 @@ public class PicsureQueryService {
 		queryEntity.setQuery(queryJson);
 		
 		if (results.getResultMetadata() != null) {
-			queryEntity.setMetadata((byte[])results.getResultMetadata().get(QUERY_METADATA_FIELD));
+			try {
+				queryEntity.setMetadata(mapper.writeValueAsString(results.getResultMetadata()).getBytes());
+			} catch (JsonProcessingException e) {
+				logger.warn("Unable to parse metadata ", e);
+			}
 		}
 		queryRepo.persist(queryEntity);
 
@@ -237,11 +242,32 @@ public class PicsureQueryService {
 		}
 		
 		queryEntity.setQuery(queryJson);
-		
 		queryRepo.persist(queryEntity);
-		queryEntity.setResourceResultId(queryEntity.getUuid().toString());
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return Response.ok(resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest).getEntity()).header("resultId", queryEntity.getResourceResultId()).build();
+
+		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest);
+		String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
+
+		if (syncResponse.getHeaders() != null) {
+			Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
+			if (metadataHeader != null) {
+				try {
+					if (metadataHeader instanceof List) {
+						queryMetadata = ((List)metadataHeader).get(0).toString();
+						logger.debug("found List metadata " + queryMetadata);
+					} else {
+						logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
+					}
+				} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
+					logger.warn("failed to parse Header : ", e);
+				}
+			}
+		}
+
+		queryEntity.setResourceResultId(queryMetadata);
+		queryRepo.persist(queryEntity);
+
+		return syncResponse;
 	}
 
     /**
@@ -262,16 +288,14 @@ public class PicsureQueryService {
         response.setResourceResultId(query.getResourceResultId());
         
         Map<String, Object> metadata = new HashMap<String, Object>();
-        
         try {
 			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
+			metadata.put(QUERY_RESULT_METADATA_FIELD, String.valueOf(query.getMetadata()));
 		} catch (JsonProcessingException e) {
 			logger.warn("Unable to use object mapper", e);
 		}
         
-        metadata.put(QUERY_METADATA_FIELD, query.getMetadata());
         response.setResultMetadata(metadata);
-        
         
         return response;
     }
