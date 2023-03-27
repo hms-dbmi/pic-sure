@@ -1,4 +1,4 @@
-name: Java CI
+name: Maven Run Tests
 
 on: [ push ]
 
@@ -13,11 +13,7 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-      - name: Build with Maven
-        run: mvn --update-snapshots package
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Publish to GitHub Packages Apache Maven
-        run: mvn deploy -U
+      - name: Test with Maven
+        run: mvn --update-snapshots test
         env:
           GITHUB_TOKEN: ${{ github.token }}
