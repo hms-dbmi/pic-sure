@@ -9,6 +9,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.apache.http.Header;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,17 +120,22 @@ public class AuthenticationService {
 
     private JsonNode retrieveUserInfo(String accessToken){
         String auth0UserInfoURI = JAXRSConfiguration.auth0host + "/userinfo";
-        List<Header> headers = new ArrayList<>();
-        headers.add(new BasicHeader("Content-Type", MediaType.APPLICATION_JSON));
-        headers.add(new BasicHeader("Authorization", "Bearer " + accessToken));
+        Header[] headers = {
+            new BasicHeader("Content-Type", MediaType.APPLICATION_JSON),
+            new BasicHeader("Authorization", "Bearer " + accessToken)
+        };
         JsonNode auth0Response = null;
-         
+        RequestConfig requestConfig = createRequestConfigWithCustomTimeout(5000);
+
         for(int i = 1; i <= AUTH_RETRY_LIMIT && auth0Response == null; i++) {
 	         try {
-	        	auth0Response = HttpClientUtil.simpleGet(auth0UserInfoURI,
+	        	auth0Response = HttpClientUtil.simpleGetWithConfig(
+                    auth0UserInfoURI,
 	                JAXRSConfiguration.client,
 	                JAXRSConfiguration.objectMapper,
-	                headers.toArray(new Header[headers.size()]));
+                    requestConfig,
+	                headers
+                );
 	         } catch (ApplicationException e) {
 	        	 if(i < AUTH_RETRY_LIMIT ) {
 	        		 logger.warn("Failed to authenticate.  Retrying");
@@ -140,5 +146,13 @@ public class AuthenticationService {
 	         }
         }
         return auth0Response;
+    }
+
+    private RequestConfig createRequestConfigWithCustomTimeout(int timeoutMs) {
+        return RequestConfig.custom()
+            .setConnectionRequestTimeout(timeoutMs)
+            .setConnectTimeout(timeoutMs)
+            .setSocketTimeout(timeoutMs)
+            .build();
     }
 }
