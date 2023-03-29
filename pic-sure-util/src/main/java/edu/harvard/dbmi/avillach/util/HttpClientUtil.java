@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
@@ -275,22 +277,24 @@ public class HttpClientUtil {
 	}
 
 	public static InputStream simpleGet(String uri, HttpClient client, Header... headers) {
+		return simpleGetWithConfig(uri, client, null, headers);
+	}
+
+	public static InputStream simpleGetWithConfig(
+		String uri, HttpClient client, RequestConfig config, Header... headers
+	) throws ApplicationException {
 		HttpGet get = new HttpGet(uri);
 		get.setHeaders(headers);
-
-		HttpResponse response;
-
-		try {
-			response = client.execute(get, buildHttpClientContext());
-		} catch (IOException ex) {
-			logger.error("InputStream simpleGet() cannot get response by GET from url: {} - " + ex.getLocalizedMessage(), uri);
-			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		if (config != null) {
+			get.setConfig(config);
 		}
 
 		try {
-			return response.getEntity().getContent();
+			return client.execute(get, buildHttpClientContext())
+				.getEntity()
+				.getContent();
 		} catch (IOException ex) {
-			logger.error("InputStream simpleGet() cannot get content by GET from url: {} - " + ex.getLocalizedMessage(), uri);
+			logger.error("InputStream simpleGet() cannot get response by GET from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}
@@ -307,6 +311,17 @@ public class HttpClientUtil {
 	public static JsonNode simpleGet(String uri, HttpClient client, ObjectMapper objectMapper, Header... headers) {
 		try {
 			return objectMapper.readTree(simpleGet(uri, client, headers));
+		} catch (IOException ex) {
+			logger.error("simpleGet() cannot parse content from by GET from url: {}", uri, ex);
+			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
+		}
+	}
+
+	public static JsonNode simpleGetWithConfig(
+		String uri, HttpClient client, ObjectMapper objectMapper, RequestConfig requestConfig, Header... headers
+	) {
+		try {
+			return objectMapper.readTree(simpleGetWithConfig(uri, client, requestConfig, headers));
 		} catch (IOException ex) {
 			logger.error("simpleGet() cannot parse content from by GET from url: {}", uri, ex);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
