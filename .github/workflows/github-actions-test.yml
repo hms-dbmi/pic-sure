@@ -14,6 +14,6 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
       - name: Test with Maven
-        run: mvn --update-snapshots test
+        run: mvn test
         env:
           GITHUB_TOKEN: ${{ github.token }}
