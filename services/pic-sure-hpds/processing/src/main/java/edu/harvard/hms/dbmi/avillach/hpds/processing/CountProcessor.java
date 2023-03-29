@@ -14,20 +14,20 @@ import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
-public class CountProcessor extends AbstractProcessor { 
+@Component
+public class CountProcessor implements HpdsProcessor {
 
 	Logger log = LoggerFactory.getLogger(CountProcessor.class);
 
-	public CountProcessor() throws ClassNotFoundException, FileNotFoundException, IOException {
-		super();
-	}
+	private final AbstractProcessor abstractProcessor;
 
-	public CountProcessor(boolean isOnlyForTests) throws ClassNotFoundException, FileNotFoundException, IOException  {
-		super(true);
-		if(!isOnlyForTests) {
-			throw new IllegalArgumentException("This constructor should never be used outside tests");
-		}
+	@Autowired
+	public CountProcessor(AbstractProcessor abstractProcessor) {
+		this.abstractProcessor = abstractProcessor;
 	}
 	
 	/**
@@ -45,7 +45,7 @@ public class CountProcessor extends AbstractProcessor {
 	 * @return
 	 */
 	public int runCounts(Query query) {
-		return getPatientSubsetForQuery(query).size();
+		return abstractProcessor.getPatientSubsetForQuery(query).size();
 	}
 
 	/**
@@ -56,12 +56,12 @@ public class CountProcessor extends AbstractProcessor {
 	 * @return
 	 */
 	public int runObservationCount(Query query) {
-		TreeSet<Integer> patients = getPatientSubsetForQuery(query);
+		TreeSet<Integer> patients = abstractProcessor.getPatientSubsetForQuery(query);
 		int[] observationCount = {0};
-		query.fields.stream().forEach(field -> {
-			observationCount[0] += Arrays.stream(getCube(field).sortedByKey()).filter(keyAndValue->{
+		query.getFields().stream().forEach(field -> {
+			observationCount[0] += Arrays.stream(abstractProcessor.getCube(field).sortedByKey()).filter(keyAndValue->{
 				return patients.contains(keyAndValue.getKey());
-			}).collect(Collectors.counting());
+			}).count();
 		});
 		return observationCount[0];
 	}
@@ -75,14 +75,14 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public Map<String, Integer> runObservationCrossCounts(Query query) {
 		TreeMap<String, Integer> counts = new TreeMap<>();
-		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
-		query.crossCountFields.parallelStream().forEach((String concept)->{
+		TreeSet<Integer> baseQueryPatientSet = abstractProcessor.getPatientSubsetForQuery(query);
+		query.getCrossCountFields().parallelStream().forEach((String concept)->{
 			try {
 				//breaking these statements to allow += operator to cast long to int.
 				int observationCount = 0;
-				observationCount += Arrays.stream(getCube(concept).sortedByKey()).filter(keyAndValue->{
+				observationCount += (Long) Arrays.stream(abstractProcessor.getCube(concept).sortedByKey()).filter(keyAndValue -> {
 					return baseQueryPatientSet.contains(keyAndValue.getKey());
-				}).collect(Collectors.counting());
+				}).count();
 				counts.put(concept, observationCount);
 			} catch (Exception e) {
 				counts.put(concept, -1);
@@ -100,13 +100,12 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public Map<String, Integer> runCrossCounts(Query query) {
 		TreeMap<String, Integer> counts = new TreeMap<>();
-		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
-		query.crossCountFields.parallelStream().forEach((String concept)->{
+		TreeSet<Integer> baseQueryPatientSet = abstractProcessor.getPatientSubsetForQuery(query);
+		query.getCrossCountFields().parallelStream().forEach((String concept)->{
 			try {
 				Query safeCopy = new Query();
-				safeCopy.requiredFields = new ArrayList<String>();
-				safeCopy.requiredFields.add(concept);
-				counts.put(concept, Sets.intersection(getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+				safeCopy.setRequiredFields(List.of(concept));
+				counts.put(concept, Sets.intersection(abstractProcessor.getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
 			} catch (Exception e) {
 				counts.put(concept, -1);
 			}
@@ -122,11 +121,11 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public  Map<String, Map<String, Integer>> runCategoryCrossCounts(Query query) {
 		Map<String, Map<String, Integer>> categoryCounts = new TreeMap<>();
-		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
-		query.requiredFields.parallelStream().forEach(concept -> {
+		TreeSet<Integer> baseQueryPatientSet = abstractProcessor.getPatientSubsetForQuery(query);
+		query.getRequiredFields().parallelStream().forEach(concept -> {
 			Map<String, Integer> varCount = new TreeMap<>();;
 			try {
-				TreeMap<String, TreeSet<Integer>> categoryMap = getCube(concept).getCategoryMap();
+				TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(concept).getCategoryMap();
 				//We do not have all the categories (aka variables) for required fields, so we need to get them and
 				// then ensure that our base patient set, which is filtered down by our filters. Which may include
 				// not only other required filters, but categorical filters, numerical filters, or genomic filters.
@@ -153,17 +152,17 @@ public class CountProcessor extends AbstractProcessor {
 		});
 		//For categoryFilters we need to ensure the variables included in the filter are the ones included in our count
 		//map. Then we make sure that the patients who have that variable are also in our base set.
-		query.categoryFilters.keySet().parallelStream().forEach((String concept)-> {
+		query.getCategoryFilters().entrySet().parallelStream().forEach(categoryFilterEntry-> {
 			Map<String, Integer> varCount;
 			try {
-				TreeMap<String, TreeSet<Integer>> categoryMap = getCube(concept).getCategoryMap();
+				TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(categoryFilterEntry.getKey()).getCategoryMap();
 				varCount = new TreeMap<>();
 				categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
-					if (Arrays.asList(query.categoryFilters.get(concept)).contains(category)) {
+					if (Arrays.asList(categoryFilterEntry.getValue()).contains(category)) {
 						varCount.put(category, Sets.intersection(patientSet, baseQueryPatientSet).size());
 					}
 				});
-				categoryCounts.put(concept, varCount);
+				categoryCounts.put(categoryFilterEntry.getKey(), varCount);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -179,9 +178,9 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public Map<String, Map<Double, Integer>> runContinuousCrossCounts(Query query) {
 		TreeMap<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
-		TreeSet<Integer> baseQueryPatientSet = getPatientSubsetForQuery(query);
-		query.numericFilters.forEach((String concept, Filter.DoubleFilter range)-> {
-			KeyAndValue[] pairs = getCube(concept).getEntriesForValueRange(range.getMin(), range.getMax());
+		TreeSet<Integer> baseQueryPatientSet = abstractProcessor.getPatientSubsetForQuery(query);
+		query.getNumericFilters().forEach((String concept, Filter.DoubleFilter range)-> {
+			KeyAndValue[] pairs = abstractProcessor.getCube(concept).getEntriesForValueRange(range.getMin(), range.getMax());
 			Map<Double, Integer> countMap = new TreeMap<>();
 			Arrays.stream(pairs).forEach(patientConceptPair -> {
 				//The key of the patientConceptPair is the patient id. We need to make sure the patient matches our query.
@@ -203,7 +202,7 @@ public class CountProcessor extends AbstractProcessor {
 	 * running them asynchronously in the backend as this results in unnecessary request-response cycles.
 	 */
 	@Override
-	public void runQuery(Query query, AsyncResult asyncResult) throws NotEnoughMemoryException {
+	public void runQuery(Query query, AsyncResult asyncResult) {
 		throw new UnsupportedOperationException("Counts do not run asynchronously.");
 	}
 
@@ -217,9 +216,9 @@ public class CountProcessor extends AbstractProcessor {
 	 */
 	public Map<String, Object> runVariantCount(Query query) {
 		TreeMap<String, Object> response = new TreeMap<String, Object>();
-		if(query.variantInfoFilters != null && !query.variantInfoFilters.isEmpty()) {
+		if(!query.getVariantInfoFilters().isEmpty()) {
 			try {
-				response.put("count", getVariantList(query).size());
+				response.put("count", abstractProcessor.getVariantList(query).size());
 			} catch (IOException e) {
 				e.printStackTrace();
 				response.put("count", "0");

@@ -42,11 +42,11 @@ public class BucketIndexBySample implements Serializable {
 		log.info("Creating new Bucket Index by Sample");
 		final String storageFileStr = storageDir + STORAGE_FILE_NAME;
 		
-		contigSet = new ArrayList<String>(variantStore.variantMaskStorage.keySet());
+		contigSet = new ArrayList<String>(variantStore.getVariantMaskStorage().keySet());
 		
 		//Create a bucketList, containing keys for all buckets in the variantStore
 		for(String contig: contigSet){
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore = variantStore.variantMaskStorage.get(contig);
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore = variantStore.getVariantMaskStorage().get(contig);
 			if(contigStore != null && contigStore.keys() != null) {
 				bucketList.addAll(contigStore.keys().stream().map(
 						(Integer bucket)->{
@@ -78,7 +78,7 @@ public class BucketIndexBySample implements Serializable {
 		}
 		contigSet.parallelStream().forEach((contig)->{
 			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore =
-					variantStore.variantMaskStorage.get(contig);
+					variantStore.getVariantMaskStorage().get(contig);
 			if(contigStore != null && contigStore.keys() != null) {
 				contigStore.keys().stream().forEach(
 						(Integer bucket)->{

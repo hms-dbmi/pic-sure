@@ -176,9 +176,9 @@ public class NewVCFLoader {
 		if (logger.isDebugEnabled()) {
 			// Log out the first and last 50 variants
 			int[] count = { 0 };
-			for (String contig : store.variantMaskStorage.keySet()) {
+			for (String contig : store.getVariantMaskStorage().keySet()) {
 				ArrayList<Integer> chunkIds = new ArrayList<>();
-				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.variantMaskStorage
+				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> chromosomeStorage = store.getVariantMaskStorage()
 						.get(contig);
 				if (chromosomeStorage != null) {
 					// print out the top and bottom 50 variants in the store (that have masks)
@@ -307,7 +307,7 @@ public class NewVCFLoader {
 	private static void saveVariantStore(VariantStore store,
 			TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage)
 			throws IOException, FileNotFoundException {
-		store.variantMaskStorage = variantMaskStorage;
+		store.setVariantMaskStorage(variantMaskStorage);
 		for (FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage : variantMaskStorage
 				.values()) {
 			if (storage != null)
@@ -318,8 +318,6 @@ public class NewVCFLoader {
 				ObjectOutputStream oos = new ObjectOutputStream(gzos);) {
 			oos.writeObject(store);
 		}
-		store = null;
-		variantMaskStorage = null;
 		logger.debug("Done saving variant masks.");
 	}
 

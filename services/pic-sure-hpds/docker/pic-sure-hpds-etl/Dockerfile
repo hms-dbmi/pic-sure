@@ -1,6 +1,10 @@
-FROM openjdk:11-jre-slim as loader
+FROM docker.io/alpine:3.16
 
-RUN apt-get update -y && apt-get install -y gnupg openssl && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache --purge -uU bash &&     rm -rf /var/cache/apk/* /tmp/*
+
+RUN apk add --no-cache --purge -uU curl wget unzip gnupg openssl
+
+RUN apk add --no-cache --purge openjdk11
 
 ADD create_key.sh .
 ADD SQLLoader-jar-with-dependencies.jar .
@@ -15,5 +19,5 @@ ADD RemoveConceptFromMetadata-jar-with-dependencies.jar .
 ADD HideAnnotationCategoryValue-jar-with-dependencies.jar .
 ADD SequentialLoader-jar-with-dependencies.jar .
 
-ENTRYPOINT java $JAVA_OPTS -Xmx${HEAPSIZE:-2048}m -jar ${LOADER_NAME:-CSVLoader}-jar-with-dependencies.jar 
+ENTRYPOINT java $JAVA_OPTS -Xmx${HEAPSIZE:-2048}m -jar ${LOADER_NAME:-CSVLoader}-jar-with-dependencies.jar
 

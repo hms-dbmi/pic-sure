@@ -1,11 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -190,5 +189,16 @@ public class VariantMetadataIndex implements Serializable {
 			contigFbbis.complete();
 		}
 		
+	}
+
+	public static VariantMetadataIndex createInstance(String metadataIndexPath) {
+		try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
+				new FileInputStream(metadataIndexPath)))){
+			return (VariantMetadataIndex) in.readObject();
+		} catch(Exception e) {
+			// todo: handle exceptions better
+			log.error("No Metadata Index found at " + metadataIndexPath, e);
+			return null;
+		}
 	}
 }

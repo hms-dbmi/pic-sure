@@ -28,15 +28,88 @@ public class Query {
 		this.id = query.id;
 	}
 
-	public ResultType expectedResultType = ResultType.COUNT;
-	public List<String> crossCountFields = new ArrayList<String>();
-	public List<String> fields = new ArrayList<String>();
-	public List<String> requiredFields;
-	public List<String> anyRecordOf;
-	public Map<String, DoubleFilter> numericFilters;
-	public Map<String, String[]> categoryFilters;
-	public List<VariantInfoFilter> variantInfoFilters;
-	public String id;
+	private ResultType expectedResultType = ResultType.COUNT;
+	private List<String> crossCountFields = new ArrayList<>();
+	private List<String> fields = new ArrayList<>();
+	private List<String> requiredFields = new ArrayList<>();
+	private List<String> anyRecordOf = new ArrayList<>();
+	private Map<String, DoubleFilter> numericFilters = new HashMap<>();
+	private Map<String, String[]> categoryFilters = new HashMap<>();
+	private List<VariantInfoFilter> variantInfoFilters = new ArrayList<>();
+	private String id;
+
+
+	public ResultType getExpectedResultType() {
+		return expectedResultType;
+	}
+
+	public List<String> getCrossCountFields() {
+		return crossCountFields;
+	}
+
+	public List<String> getFields() {
+		return fields;
+	}
+
+	public List<String> getRequiredFields() {
+		return requiredFields;
+	}
+
+	public List<String> getAnyRecordOf() {
+		return anyRecordOf;
+	}
+
+	public Map<String, DoubleFilter> getNumericFilters() {
+		return numericFilters;
+	}
+
+	public Map<String, String[]> getCategoryFilters() {
+		return categoryFilters;
+	}
+
+	public List<VariantInfoFilter> getVariantInfoFilters() {
+		return variantInfoFilters;
+	}
+
+	public String getId() {
+		return id;
+	}
+
+	public void setExpectedResultType(ResultType expectedResultType) {
+		this.expectedResultType = expectedResultType;
+	}
+
+	public void setCrossCountFields(Collection<String> crossCountFields) {
+		this.crossCountFields = crossCountFields != null ? new ArrayList<>(crossCountFields) : new ArrayList<>();
+	}
+
+	public void setFields(Collection<String> fields) {
+		this.fields = fields != null ? new ArrayList<>(fields) : new ArrayList<>();
+	}
+
+	public void setRequiredFields(Collection<String> requiredFields) {
+		this.requiredFields = requiredFields!= null ? new ArrayList<>(requiredFields) : new ArrayList<>();
+	}
+
+	public void setAnyRecordOf(Collection<String> anyRecordOf) {
+		this.anyRecordOf = anyRecordOf != null ? new ArrayList<>(anyRecordOf) : new ArrayList<>();
+	}
+
+	public void setNumericFilters(Map<String, DoubleFilter> numericFilters) {
+		this.numericFilters = numericFilters != null ? new HashMap<>(numericFilters) : new HashMap<>();
+	}
+
+	public void setCategoryFilters(Map<String, String[]> categoryFilters) {
+		this.categoryFilters = categoryFilters != null ? new HashMap<>(categoryFilters) : new HashMap<>();
+	}
+
+	public void setVariantInfoFilters(Collection<VariantInfoFilter> variantInfoFilters) {
+		this.variantInfoFilters = variantInfoFilters != null ? new ArrayList<>(variantInfoFilters) : new ArrayList<>();
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
 
 	public static class VariantInfoFilter {
 		public VariantInfoFilter() {

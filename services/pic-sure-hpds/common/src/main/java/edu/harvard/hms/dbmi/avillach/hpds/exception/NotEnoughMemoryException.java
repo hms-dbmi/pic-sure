@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.exception;
 
-public class NotEnoughMemoryException extends Exception {
+public class NotEnoughMemoryException extends RuntimeException {
 
 	private static final long serialVersionUID = 2592915631853567560L;
 

@@ -29,6 +29,10 @@
             <artifactId>javaee-api</artifactId>
              <version>8.0</version>
             <scope>provided</scope>
-        </dependency>		
+        </dependency>
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-web</artifactId>
+		</dependency>
 	</dependencies>
 </project>

@@ -21,10 +21,14 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	public boolean isContinuous;
 	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
 
-	public FileBackedByteIndexedStorage<String, String[]> allValues;
+	private FileBackedByteIndexedStorage<String, String[]> allValues;
 	public TreeMap<Double, TreeSet<String>> continuousValueMap;
 
 	public CompressedIndex continuousValueIndex;
+
+	public FileBackedByteIndexedStorage<String, String[]> getAllValues() {
+		return allValues;
+	}
 
 	public List<String> search(String term) {
 		if(isContinuous) {

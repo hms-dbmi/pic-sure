@@ -35,7 +35,7 @@ public class HideAnnotationCategoryValue {
 				ObjectInputStream ois = new ObjectInputStream(gis)
 				){
 			FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-			infoStore.allValues.keys().remove(valueToScrub);
+			infoStore.getAllValues().keys().remove(valueToScrub);
 			try(
 					FileOutputStream fos = new FileOutputStream(infoStoreFilename);
 					GZIPOutputStream gos = new GZIPOutputStream(fos);
