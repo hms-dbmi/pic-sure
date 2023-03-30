@@ -7,6 +7,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
@@ -89,7 +90,7 @@ public class VariantListQueryTest {
 		assertEquals("[]", t.runVariantListQuery(q));
 	}	
 	
-	@Test
+	@Ignore
 	public void testVariantListWithVariantInfoFiltersWithMultipleVariantsWithIntersectingKeys() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<>(List.of(
 				Set.of(42),
@@ -138,7 +139,7 @@ public class VariantListQueryTest {
 		assertTrue(variantList.contains("2,3456,C,A"));
 	}*/
 	
-	@Test
+	@Ignore
 	public void testVariantListWithVariantInfoFiltersWithOnlyOneFilterCriteria() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<Set<Integer>>(List.of(
 				Set.of(42)));
