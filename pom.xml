@@ -14,6 +14,15 @@
 		<!--module>pic-sure-api-wildfly</module-->
 		<module>pic-sure-util</module>
 	</modules>
+	<repositories>
+		<repository>
+			<id>github</id>
+			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
 	<properties>
 		<jackson.version>2.10.5</jackson.version>		
 	</properties>
