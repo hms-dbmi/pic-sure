@@ -43,7 +43,7 @@ import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 public class JWTFilter implements ContainerRequestFilter {
 
 	@Context
-	private UriInfo uriInfo;
+	UriInfo uriInfo;
 
 	Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
