@@ -6,6 +6,11 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
@@ -15,6 +20,11 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 public class PicsureInfoService {
+
+	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+
+	@Context
+	private HttpHeaders headers;
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -30,6 +40,9 @@ public class PicsureInfoService {
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
 	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
+		logger.info("Info requested for resource: " + resourceId + " with credentials: " + credentialsQueryRequest.toString()
+				+ " and headers: " + headers.getRequestHeaders().toString());
+
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());

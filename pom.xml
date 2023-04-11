@@ -11,7 +11,6 @@
 		<module>pic-sure-api-war</module>
 		<module>pic-sure-api-data</module>
 		<module>pic-sure-resources</module>
-		<!--module>pic-sure-api-wildfly</module-->
 		<module>pic-sure-util</module>
 	</modules>
 	<repositories>
@@ -62,7 +61,7 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.12</version>
+			<version>4.13.1</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -148,11 +147,11 @@
 			</dependency>
 
 			<!--  Removed log4j 1.2.7 and adding log4j-core -->
-                        <dependency>
-                                <groupId>org.apache.logging.log4j</groupId>
-                                <artifactId>log4j-core</artifactId>
-                                <version>2.18.0</version>
-                        </dependency>
+			<dependency>
+					<groupId>org.apache.logging.log4j</groupId>
+					<artifactId>log4j-core</artifactId>
+					<version>2.18.0</version>
+			</dependency>
 
 			<!-- https://mvnrepository.com/artifact/org.hibernate/hibernate-core -->
 			<dependency>

@@ -31,7 +31,7 @@ public class PicsureQueryService {
 	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
-	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
 	@Inject
 	JWTFilter jwtFilter;
@@ -55,7 +55,8 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
-		if (dataQueryRequest == null){
+		logger.info("Query - resourceUUID: " + dataQueryRequest.getResourceUUID() + " and query: " + dataQueryRequest.getQuery());
+		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		UUID resourceId = dataQueryRequest.getResourceUUID();

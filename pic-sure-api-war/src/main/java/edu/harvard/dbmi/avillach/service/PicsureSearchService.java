@@ -3,6 +3,9 @@ package edu.harvard.dbmi.avillach.service;
 import java.util.HashMap;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
@@ -11,8 +14,15 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 
 public class PicsureSearchService {
+
+	private final Logger logger = LoggerFactory.getLogger(PicsureSearchService.class);
+
+	@Context
+	private HttpHeaders headers;
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -29,6 +39,9 @@ public class PicsureSearchService {
 	 * @return {@link SearchResults}
 	 */
 	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
+		logger.info("Search - resourceId: " + resourceId + " AND query: " + searchQueryRequest.getQuery() +
+				" AND headers: " + headers.getRequestHeaders().toString());
+
 		if (resourceId == null){
 			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
