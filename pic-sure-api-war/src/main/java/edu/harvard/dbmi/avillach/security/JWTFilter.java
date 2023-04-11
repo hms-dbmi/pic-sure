@@ -31,6 +31,7 @@ import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 
 import java.io.*;
@@ -40,6 +41,9 @@ import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
+
+	@Context
+	private UriInfo uriInfo;
 
 	Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
@@ -66,6 +70,16 @@ public class JWTFilter implements ContainerRequestFilter {
 	@Override
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
+
+		if (uriInfo.getPath().endsWith("authentication")
+				|| uriInfo.getPath().endsWith("/swagger.yaml")
+				|| uriInfo.getPath().endsWith("/swagger.json")
+				|| uriInfo.getPath().endsWith("/swagger-ui.html")
+				|| uriInfo.getPath().endsWith("/openapi.yaml")
+				|| uriInfo.getPath().endsWith("/openapi.json")
+		) {
+			return;
+		}
 
 		if(requestContext.getUriInfo().getPath().contentEquals("/system/status") 
 				&& requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)) {
