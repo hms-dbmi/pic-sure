@@ -1,8 +1,13 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import io.swagger.annotations.ApiModelProperty;
+
 public class SearchResults {
+
+	@ApiModelProperty(value = "The results of the search.", required = true)
 	Object results;
-	
+
+	@ApiModelProperty(value = "The query that was used to generate the results.", required = true)
 	String searchQuery;
 
 	public Object getResults() {
