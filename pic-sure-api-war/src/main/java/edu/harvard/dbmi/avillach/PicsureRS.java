@@ -14,9 +14,6 @@ import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 @Path("/")
 @Produces("application/json")
@@ -35,14 +32,7 @@ public class PicsureRS {
 
 	@POST
 	@Path("/info/{resourceId}")
-	@Operation(
-			summary = "Returns information about the provided resource",
-			responses = @ApiResponse(
-					responseCode = "200",
-					description = "Information about the resource",
-					content = @Content(mediaType = "application/json")
-			)
-	)
+	@ApiOperation(value = "Returns information about the provided resource")
 	public ResourceInfo resourceInfo(@ApiParam(value="The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
 									 @ApiParam(value="Object with field named 'resourceCredentials' which is a key-value map, " +
 											 "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
@@ -52,14 +42,14 @@ public class PicsureRS {
 	
 	@GET
 	@Path("/info/resources")
-	@Operation(summary = "Returns list of resources available")
+	@ApiOperation(value = "Returns list of resources available")
 	public Map<UUID,String> resources(){
 		return infoService.resources();
 	}
 	
 	@POST
 	@Path("/search/{resourceId}")
-	@Operation(summary = "Searches for paths on the given resource matching the supplied search term")
+	@ApiOperation(value = "Searches for paths on the given resource matching the supplied search term")
 	public SearchResults search(@ApiParam(value="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
 								@ApiParam(value="Object containing credentials map under 'resourceCredentials' " +
 										"and search term under 'query'") QueryRequest searchQueryRequest) {
