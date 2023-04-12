@@ -4,56 +4,55 @@ import java.util.Map;
 import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-@ApiModel(description = "A query status object")
+@Schema(description = "A query status object")
 public class QueryStatus {
 
-	@ApiModelProperty(value = "The status of the query", allowableValues = "PENDING, RUNNING, COMPLETED, FAILED, CANCELED")
+	@Schema(description = "The status of the query", allowableValues = "PENDING, RUNNING, COMPLETED, FAILED, CANCELED")
 	private PicSureStatus status;
 
 	/**
 	 * a uuid associated to a Resource in the database
 	 */
-	@ApiModelProperty(value = "The resource ID")
+	@Schema(description = "The resource ID")
 	private UUID resourceID;
 
 	/**
 	 * a status string returned by the resource
 	 */
-	@ApiModelProperty(value = "The resource status")
+	@Schema(description = "The resource status")
 	private String resourceStatus;
 
 	/**
 	 * when user makes a query, a corresponding Result uuid is generated
 	 */
-	@ApiModelProperty(value = "The result UUID")
+	@Schema(description = "The result UUID")
 	private UUID picsureResultId;
 
 	/**
 	 * when a resource might generate its own resultId and return it,
 	 * we can keep it here
 	 */
-	@ApiModelProperty(value = "The resource result ID")
+	@Schema(description = "The resource result ID")
 	private String resourceResultId;
 
 	/**
 	 * any metadata will be stored here
 	 */
-	@ApiModelProperty(value = "The result metadata")
+	@Schema(description = "The result metadata")
 	private Map<String, Object> resultMetadata;
 
-	@ApiModelProperty(value = "The size of the result in bytes")
+	@Schema(description = "The size of the result in bytes")
 	private long sizeInBytes;
 
-	@ApiModelProperty(value = "The start time of the query")
+	@Schema(description = "The start time of the query")
 	private long startTime;
 
-	@ApiModelProperty(value = "The duration of the query")
+	@Schema(description = "The duration of the query")
 	private long duration;
 
-	@ApiModelProperty(value = "The expiration time of the query")
+	@Schema(description = "The expiration time of the query")
 	private long expiration;
 
 	public PicSureStatus getStatus() {

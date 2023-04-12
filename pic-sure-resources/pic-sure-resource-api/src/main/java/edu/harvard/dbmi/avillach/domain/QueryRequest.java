@@ -4,15 +4,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import io.swagger.annotations.ApiModel;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-@ApiModel(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
+@Schema(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
 		" token for the resource.  The query is a string or object that contains a search term or query")
 public class QueryRequest {
 
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
-	//instead of string
 	private Object query;
 
 	private UUID resourceUUID;
