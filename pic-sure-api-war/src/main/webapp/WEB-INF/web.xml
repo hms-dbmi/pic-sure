@@ -1,36 +1,36 @@
-<!--<?xml version="1.0" encoding="ISO-8859-1"?>-->
-<!--<web-app version="2.4" xmlns="http://java.sun.com/xml/ns/j2ee"-->
-<!--         xmlns:j2ee="http://java.sun.com/xml/ns/j2ee"-->
-<!--         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"-->
-<!--         xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee  http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd">-->
-<!--    <display-name>pic-sure-api</display-name>-->
-<!--    <description>pic-sure-api</description>-->
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<web-app version="2.4" xmlns="http://java.sun.com/xml/ns/j2ee"
+         xmlns:j2ee="http://java.sun.com/xml/ns/j2ee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee  http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd">
+    <display-name>pic-sure-api</display-name>
+    <description>pic-sure-api</description>
 
-<!--    <context-param>-->
-<!--        <param-name>resteasy.providers</param-name>-->
-<!--        <param-value>-->
-<!--            io.swagger.jaxrs.listing.ApiListingResource,-->
-<!--            io.swagger.jaxrs.listing.SwaggerSerializers,-->
-<!--            org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider,-->
-<!--            edu.harvard.dbmi.avillach.ContainerResponseLogger,-->
-<!--            edu.harvard.dbmi.avillach.JAXRSConfiguration,-->
-<!--            edu.harvard.dbmi.avillach.EJBAccessExceptionMapper,-->
-<!--            edu.harvard.dbmi.avillach.security.JWTFilter-->
-<!--        </param-value>-->
-<!--    </context-param>-->
+    <context-param>
+        <param-name>resteasy.providers</param-name>
+        <param-value>
+            io.swagger.jaxrs.listing.ApiListingResource,
+            io.swagger.jaxrs.listing.SwaggerSerializers,
+            org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider,
+            edu.harvard.dbmi.avillach.ContainerResponseLogger,
+            edu.harvard.dbmi.avillach.JAXRSConfiguration,
+            edu.harvard.dbmi.avillach.EJBAccessExceptionMapper,
+            edu.harvard.dbmi.avillach.security.JWTFilter
+        </param-value>
+    </context-param>
 
-<!--    <servlet>-->
-<!--        <servlet-name>Jersey2Config</servlet-name>-->
-<!--        <servlet-class>io.swagger.jaxrs.config.DefaultJaxrsConfig</servlet-class>-->
-<!--        <init-param>-->
-<!--            <param-name>api.version</param-name>-->
-<!--            <param-value>1.0.0</param-value>-->
-<!--        </init-param>-->
-<!--        <init-param>-->
-<!--            <param-name>swagger.api.basepath</param-name>-->
-<!--            <param-value>http://localhost:8080/pic-sure-api-2/picsure</param-value>-->
-<!--        </init-param>-->
-<!--        <load-on-startup>2</load-on-startup>-->
-<!--    </servlet>-->
+    <servlet>
+        <servlet-name>Jersey2Config</servlet-name>
+        <servlet-class>io.swagger.jaxrs.config.DefaultJaxrsConfig</servlet-class>
+        <init-param>
+            <param-name>api.version</param-name>
+            <param-value>1.0.0</param-value>
+        </init-param>
+        <init-param>
+            <param-name>swagger.api.basepath</param-name>
+            <param-value>http://localhost:8080/pic-sure-api-2/picsure</param-value>
+        </init-param>
+        <load-on-startup>2</load-on-startup>
+    </servlet>
 
-<!--</web-app>-->
+</web-app>
