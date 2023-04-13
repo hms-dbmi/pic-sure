@@ -23,9 +23,6 @@ import java.util.stream.Stream;
 @ApplicationPath("PICSURE")
 public class JAXRSConfiguration extends Application {
 
-    @javax.ws.rs.core.Context
-     ServletConfig servletConfig;
-
     private Logger logger = LoggerFactory.getLogger(JAXRSConfiguration.class);
 
     public static String rolesClaim;
@@ -37,28 +34,7 @@ public class JAXRSConfiguration extends Application {
         logger.info("Initializing roles claim.");
         initializeRolesClaim();
         logger.info("Finished initializing roles claim.");
-        initializeSwagger();
-    }
 
-    private void initializeSwagger(){
-        OpenAPI oas = new OpenAPI();
-        Info info = new Info()
-                .title("PICSURE API")
-                .description("PICSURE API");
-        oas.info(info);
-        SwaggerConfiguration oasConfig = new SwaggerConfiguration()
-                .openAPI(oas)
-                .prettyPrint(true)
-                .resourcePackages(Stream.of("edu.harvard.dbmi.avillach").collect(Collectors.toSet()));
-        try {
-            new JaxrsOpenApiContextBuilder<>()
-                    .servletConfig(this.servletConfig)
-                    .application(this)
-                    .openApiConfiguration(oasConfig)
-                    .buildContext(true);
-        } catch (OpenApiConfigurationException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private void initializeRolesClaim(){
