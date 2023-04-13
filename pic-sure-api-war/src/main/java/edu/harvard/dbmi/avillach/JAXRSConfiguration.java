@@ -48,6 +48,30 @@ public class JAXRSConfiguration extends Application {
     }
 
     public JAXRSConfiguration(){
+        logger.info("Initializing OpenAPI.");
+        initializeOpenAPI();
+        logger.info("Finished initializing OpenAPI.");
     }
 
+    private void initializeOpenAPI() {
+        // initialize the OpenAPI configuration
+        SwaggerConfiguration oasConfig = new SwaggerConfiguration()
+                .openAPI(new OpenAPI()
+                        .info(new Info()
+                                .title("PICSURE API")
+                                .description("PICSURE API")
+                                .version("1.0.0")))
+                .prettyPrint(true)
+                .resourcePackages(Stream.of("edu.harvard.dbmi.avillach").collect(Collectors.toSet()));
+
+        try {
+            new JaxrsOpenApiContextBuilder<>()
+                    .servletConfig(null)
+                    .application(this)
+                    .openApiConfiguration(oasConfig)
+                    .buildContext(true);
+        } catch (OpenApiConfigurationException e) {
+            logger.error("Failed to initialize OpenAPI.", e);
+        }
+    }
 }
