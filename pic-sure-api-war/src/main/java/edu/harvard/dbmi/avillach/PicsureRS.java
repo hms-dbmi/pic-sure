@@ -160,8 +160,6 @@ public class PicsureRS {
 
 	@POST
 	@Path("/query/sync")
-//	@ApiOperation(value = "Returns result for given query")
-//	@ApiResponse(code = 200, message = "Query result", response = Response.class)
 	@Operation(
 			description = "Returns result for given query",
 			responses = {
@@ -183,8 +181,6 @@ public class PicsureRS {
 	
 	@GET
 	@Path("/query/{queryId}/metadata")
-//	@ApiOperation(value = "Returns metadata for given query")
-//	@ApiResponse(code = 200, message = "Query metadata", response = QueryStatus.class)
 	@Operation(
 			description = "Returns metadata for given query",
 			responses = {
