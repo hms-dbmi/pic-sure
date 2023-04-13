@@ -11,7 +11,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.*;
 
-@Path("/openapi.{type:json|yaml}")
+@Path("/custom-openapi.{type:json|yaml}")
 public class OpenApiResource extends BaseOpenApiResource {
 
     @Context
