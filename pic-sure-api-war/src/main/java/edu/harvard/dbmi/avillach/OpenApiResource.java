@@ -1,7 +1,9 @@
 package edu.harvard.dbmi.avillach;
 
 import io.swagger.v3.jaxrs2.integration.resources.BaseOpenApiResource;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.info.Info;
 
 
 import javax.servlet.ServletConfig;
@@ -11,6 +13,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.*;
 
+@OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/custom-openapi.{type:json|yaml}")
 public class OpenApiResource extends BaseOpenApiResource {
 
