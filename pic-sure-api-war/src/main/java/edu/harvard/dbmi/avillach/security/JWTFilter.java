@@ -71,13 +71,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	public void filter(ContainerRequestContext requestContext) throws IOException {
 		logger.debug("Entered jwtfilter.filter()...");
 
-		if (uriInfo.getPath().endsWith("authentication")
-				|| uriInfo.getPath().endsWith("/swagger.yaml")
-				|| uriInfo.getPath().endsWith("/swagger.json")
-				|| uriInfo.getPath().endsWith("/swagger-ui.html")
-				|| uriInfo.getPath().endsWith("/openapi.yaml")
-				|| uriInfo.getPath().endsWith("/openapi.json")
-		) {
+		if (uriInfo.getPath().endsWith("/openapi.json")) {
 			return;
 		}
 
