@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach;
 
-import io.swagger.annotations.Api;
 import io.swagger.v3.jaxrs2.integration.resources.BaseOpenApiResource;
 import io.swagger.v3.oas.annotations.Operation;
 
@@ -13,7 +12,6 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.*;
 
 @Path("/openapi.{type:json|yaml}")
-@Api
 public class OpenApiResource extends BaseOpenApiResource {
 
     @Context
