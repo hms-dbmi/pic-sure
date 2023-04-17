@@ -30,8 +30,8 @@ public class PicsureRS {
 
 	@POST
 	@Path("/info/{resourceId}")
-	@Operation(summary = "Returns information about the provided resource",
-			description = "Returns information about the provided resource",
+	@Operation(
+			summary = "Returns information about the provided resource",
 			tags = { "info" },
 			operationId = "resourceInfo",
 			responses = { @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -54,7 +54,7 @@ public class PicsureRS {
 	@GET
 	@Path("/info/resources")
 	@Operation(
-			description = "Returns list of resources available",
+			summary = "Returns list of resources available",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -74,7 +74,7 @@ public class PicsureRS {
 	@POST
 	@Path("/search/{resourceId}")
 	@Operation(
-			description = "Searches for paths on the given resource matching the supplied search term",
+			summary = "Searches for HPDS paths on the given resource matching the supplied search term",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -96,7 +96,7 @@ public class PicsureRS {
 	@POST
 	@Path("/query")
 	@Operation(
-			description = "Submits a query to the given resource",
+			summary = "Submits a query to the given resource",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -117,7 +117,7 @@ public class PicsureRS {
 	@POST
 	@Path("/query/{queryId}/status")
 	@Operation(
-			description = "Returns the status of the given query",
+			summary = "Returns the status of the given query",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -139,7 +139,7 @@ public class PicsureRS {
 	@POST
 	@Path("/query/{queryId}/result")
 	@Operation(
-			description = "Returns result for given query",
+			summary = "Returns result for given query",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -161,7 +161,7 @@ public class PicsureRS {
 	@POST
 	@Path("/query/sync")
 	@Operation(
-			description = "Returns result for given query",
+			summary = "Returns result for given query",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
@@ -182,7 +182,7 @@ public class PicsureRS {
 	@GET
 	@Path("/query/{queryId}/metadata")
 	@Operation(
-			description = "Returns metadata for given query",
+			summary = "Returns metadata for given query",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
