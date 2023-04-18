@@ -113,7 +113,7 @@ public class PicsureRS {
 			}
 	)
 	public QueryStatus query(@Parameter(description="Object containing credentials map under 'resourceCredentials' " +
-									 "and query object under 'query'")QueryRequest dataQueryRequest) {
+									 "and query object under 'query'") QueryRequest dataQueryRequest) {
 		return queryService.query(dataQueryRequest);
 	}
 	
@@ -133,7 +133,7 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch the status of") @PathParam("queryId") UUID queryId,
+	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch") @PathParam("queryId") UUID queryId,
 								   @Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
 										   "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
 		return queryService.queryStatus(queryId, credentialsQueryRequest);
@@ -155,7 +155,7 @@ public class PicsureRS {
 					)
 			}
 	)
-	public Response queryResult(@Parameter(description = "The UUID of the query to fetch the results of") @PathParam("queryId") UUID queryId,
+	public Response queryResult(@Parameter(description = "The UUID of the query to fetch") @PathParam("queryId") UUID queryId,
 								@Parameter(description = "Object with field named 'resourceCredentials' which is a key-value map, " +
 										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
 		return queryService.queryResult(queryId, credentialsQueryRequest);
