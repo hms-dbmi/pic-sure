@@ -15,31 +15,22 @@ public class QueryStatus {
 	/**
 	 * a uuid associated to a Resource in the database
 	 */
-	@Schema(description = "The resource ID")
+	@Schema(description = "A UUID associated to a Resource")
 	private UUID resourceID;
 
-	/**
-	 * a status string returned by the resource
-	 */
-	@Schema(description = "The resource status")
+	@Schema(description = "A status string returned by the resource")
 	private String resourceStatus;
 
-	/**
-	 * when user makes a query, a corresponding Result uuid is generated
-	 */
-	@Schema(description = "The result UUID")
+	@Schema(description = "When a user makes a query, a corresponding Result UUID is generated")
 	private UUID picsureResultId;
 
 	/**
 	 * when a resource might generate its own resultId and return it,
 	 * we can keep it here
 	 */
-	@Schema(description = "The resource result ID")
+	@Schema(description = "If a resource generates its own resultId, it is stored here")
 	private String resourceResultId;
 
-	/**
-	 * any metadata will be stored here
-	 */
 	@Schema(description = "The result metadata")
 	private Map<String, Object> resultMetadata;
 
