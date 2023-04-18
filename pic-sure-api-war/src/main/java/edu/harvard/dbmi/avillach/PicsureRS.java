@@ -11,9 +11,12 @@ import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.info.Info;
 
+@OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
 @Produces("application/json")
 @Consumes("application/json")
