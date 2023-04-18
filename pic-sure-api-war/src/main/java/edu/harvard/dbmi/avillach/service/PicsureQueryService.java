@@ -192,8 +192,7 @@ public class PicsureQueryService {
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
-		
-		//TODO Do we need to update any information in the query object?
+
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 	}
