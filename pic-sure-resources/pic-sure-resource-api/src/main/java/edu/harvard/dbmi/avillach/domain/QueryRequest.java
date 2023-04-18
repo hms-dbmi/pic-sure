@@ -13,7 +13,21 @@ public class QueryRequest {
 	@Schema(description = "Map with the key identifying the resource and the value an authorization token for the resource")
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
-	@Schema(description = "A string or object that contains a search term or query")
+	@Schema(description = "A string or object that contains a search term or query",
+	example = "{" +
+			"\"resourceUUID\": \"<Resource UUID>\"," +
+			"\"query\": {" +
+			"\"categoryFilters\": {}," +
+			"\"numericFilters\": {}," +
+			"\"requiredFields\": []," +
+			"\"anyRecordOf\": []," +
+			"\"variantInfoFilters\": [{" +
+			"\"categoryVariantInfoFilters\": {}," +
+			"\"numericVariantInfoFilters\": {}" +
+			"}]," +
+			"\"expectedResultType\": \"COUNT\"" +
+			"}" +
+			"}")
 	private Object query;
 
 	@Schema(description = "The UUID of the resource to query")
