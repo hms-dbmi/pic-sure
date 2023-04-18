@@ -77,7 +77,7 @@ public class PicsureRS {
 	@POST
 	@Path("/search/{resourceId}")
 	@Operation(
-			summary = "Searches for HPDS paths on the given resource matching the supplied search term",
+			summary = "Searches for concept paths on the given resource matching the supplied search term",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
