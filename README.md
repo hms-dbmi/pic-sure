@@ -10,17 +10,15 @@ This is the git repository for version 2+ of the PIC-SURE API.
 The build consists of the following top level maven modules:
 *  pic-sure-api-data - for anything database related
 *  pic-sure-api-war - the actual packaged web application
-*  pic-sure-api-wildfly - a fully configured wildfly environment which serves as an example configuration as well as an integration testing environment.
 *  pic-sure-resources - the API that resources must implement to become PIC-SURE compatible as well as any resources we choose to develop(HAIL, i2b2, gNOME, etc)
 
 To build the entire project, change directory to the projects top level, and execute:
 
-```
+```shell
 mvn clean install
-
 ```
 
-This command will run all tests, with the included WildFly server.
+This command will run all tests and build all artifacts.
 
 ## Deployment
 
@@ -29,19 +27,10 @@ In order to run the app for development you need to set the following environmen
 PIC_SURE_CLIENT_SECRET - This can be anything you want for testing, foo, bar, just set it to something.
 PIC_SURE_USER_ID_CLAIM - This should be "email" 
 
-To run the app for development, go into the pic-sure-api-wildfly folder and use this:
-
-mvn wildfly:run && mvn wildfly:shutdown
-
-This will start the app with the console output in your terminal session and CTRL-C will kill it correctly.
+In its current state, there's no simple way to run this app locally for development. There was a
+wildfly setup, but it hasn't compiled since 2019, so we deleted it. If you want to try and revive it,
+look at the commit associated with this comment.
 
 If you wish to debug your tests from Eclipse, use `mvnDebug clean install` and connect your debugger.
-
-If you wish to debug your services while the tests run, set the suspend=n to suspend=y in 
-the wildfly-maven-plugin configuration in the pom file for pic-sure-api-wildfly on the line that looks like:
-
-<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
-						
-Both of these will pause the build allowing you to connect your debuggers.
 
 
