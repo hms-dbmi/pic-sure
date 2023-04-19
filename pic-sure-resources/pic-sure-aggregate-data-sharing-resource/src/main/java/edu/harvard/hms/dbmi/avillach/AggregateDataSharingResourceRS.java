@@ -1,10 +1,7 @@
 package edu.harvard.hms.dbmi.avillach;
 
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.composeURL;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.retrievePostResponse;
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.throwResponseError;
 
 import java.io.IOException;
 import java.util.*;
@@ -18,6 +15,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -46,42 +44,30 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private static final ObjectMapper objectMapper = new ObjectMapper();
 
-	private Header[] headers;
+	private final Header[] headers;
 
 	private static final String BEARER_STRING = "Bearer ";
 
 	private final static ObjectMapper json = new ObjectMapper();
-	private Logger logger = LoggerFactory.getLogger(this.getClass());
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	private final int threshold;
 	private final int variance;
 
 	private final String randomSalt;
 
-	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
-		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT"
-	});
-
 	public AggregateDataSharingResourceRS() {
-		logger.info("initialize Aggregate Resource NO INJECTION");
-
-		if (properties == null) {
-			properties = new ApplicationProperties();
-			properties.init("pic-sure-aggregate-resource");
-		}
-
-		threshold = properties.getTargetPicsureObfuscationThreshold();
-		variance = properties.getTargetPicsureObfuscationVariance();
-		randomSalt = properties.getTargetPicsureObfuscationSalt();
-
-		headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
-
+		this(null);
 	}
 
 	@Inject
 	public AggregateDataSharingResourceRS(ApplicationProperties applicationProperties) {
 		this.properties = applicationProperties;
-		logger.info("initialize Aggregate Resource Injected " + applicationProperties);
+		if (applicationProperties == null) {
+			logger.info("initialize Aggregate Resource NO INJECTION");
+		} else {
+			logger.info("initialize Aggregate Resource Injected " + applicationProperties);
+		}
 
 		if (properties == null) {
 			properties = new ApplicationProperties();
@@ -124,12 +110,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
-
-			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
+			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
+			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
+			if (HttpClientUtil.is2xx(response)) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, properties.getTargetPicsureUrl());
+				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			//if we are proxying an info request, we need to return our own resource ID
@@ -152,12 +138,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@Override
 	public SearchResults search(QueryRequest searchRequest) {
 		logger.debug("Calling Aggregate Data Sharing Search");
-		if (searchRequest == null) {
+		if (searchRequest == null || searchRequest.getQuery() == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = searchRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
 		}
 
 		String pathName = "/search";
@@ -173,12 +155,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
-
-			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
+			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
+			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
+			if (HttpClientUtil.is2xx(response)) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, properties.getTargetPicsureUrl());
+				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 			return readObjectFromResponse(response, SearchResults.class);
 		} catch (IOException e) {
@@ -234,23 +216,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
 
-			if (! ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
+			Set<String> allowedResultTypes =
+				Set.of("COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT");
+			if (!allowedResultTypes.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String queryString = json.writeValueAsString(queryRequest);
+			String payload = json.writeValueAsString(queryRequest);
 			String pathName = "/query/sync";
-			String composedURL = composeURL(targetPicsureUrl, pathName);
-			logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("Not 200 status!");
+			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
+			logger.debug("Aggregate Data Sharing Resource, sending query: " + payload + ", to: " + composedURL);
+			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
+			if (HttpClientUtil.is2xx(response)) {
 				logger.error(
-						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+						"{} calling resource with id {} did not return a 200: {} {} ", composedURL, resourceUUID,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, targetPicsureUrl);
+				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 
@@ -258,11 +240,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
 
-			if(expectedResultType.equals("COUNT")) {
+			if("COUNT".equals(expectedResultType)) {
 				responseString = aggregateCount(entityString).orElse(entityString);
-			} else if(expectedResultType.equals("CROSS_COUNT")) {
+			} else if("CROSS_COUNT".equals(expectedResultType)) {
 				Map<String, String> crossCounts = processCrossCounts(entityString);
-
 				responseString = objectMapper.writeValueAsString(crossCounts);
 			}
 			
@@ -287,28 +268,22 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@POST
 	@Path("/query/format")
 	public Response queryFormat(QueryRequest queryRequest) {
-		if (queryRequest == null) {
+		if (queryRequest == null || queryRequest.getQuery() == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = queryRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
 		}
 
 		UUID resourceUUID = queryRequest.getResourceUUID();
 		String pathName = "/query/format";
 
 		try {
-			String targetPicsureUrl = properties.getTargetPicsureUrl();
 			String queryString = json.writeValueAsString(queryRequest);
-			String composedURL = composeURL(targetPicsureUrl, pathName);
-			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, queryString);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("Not 200 status!");
+			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
+			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, queryString);
+			if (HttpClientUtil.is2xx(response)) {
 				logger.error(
 						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, targetPicsureUrl);
+				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			return Response.ok(response.getEntity().getContent()).build();
@@ -323,7 +298,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
 		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>(){});
-		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+		final List<Map.Entry<String, String>> entryList = new ArrayList<>(crossCounts.entrySet());
 		entryList.sort(Map.Entry.comparingByKey());
 		final StringBuffer crossCountsString = new StringBuffer();
 		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
