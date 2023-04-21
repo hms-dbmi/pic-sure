@@ -112,7 +112,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
 			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
-			if (HttpClientUtil.is2xx(response)) {
+			if (!HttpClientUtil.is2xx(response)) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
@@ -139,7 +139,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	public SearchResults search(QueryRequest searchRequest) {
 		logger.debug("Calling Aggregate Data Sharing Search");
 		checkQuery(searchRequest);
-		return postRequest(searchRequest, "/search", SearchResults.class);
+		HttpResponse response = postRequest(searchRequest, "/search");
+		return readObjectFromResponse(response, SearchResults.class);
 	}
 
 	@POST
@@ -148,7 +149,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	public QueryStatus query(QueryRequest queryRequest) {
 		logger.debug("Calling Aggregate Data Sharing Resource query()");
 		checkQuery(queryRequest);
-		return postRequest(queryRequest, "/query", QueryStatus.class);
+		HttpResponse response = postRequest(queryRequest, "/query");
+		return readObjectFromResponse(response, QueryStatus.class);
+
 	}
 
 	@POST
@@ -157,7 +160,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
 		checkQuery(statusRequest);
-		return postRequest(statusRequest, "/query/" + queryId + "/status", QueryStatus.class);
+		HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
+		return readObjectFromResponse(response, QueryStatus.class);
 	}
 
 	@POST
@@ -166,13 +170,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
 		logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
 		checkQuery(resultRequest);
-		return postRequest(resultRequest, "/query/" + queryId + "/result", Response.class);
+		HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
+		try {
+			return Response.ok(response.getEntity().getContent()).build();
+		} catch (IOException e) {
+			throw new ApplicationException(
+				"Error encoding query for resource with id " + resultRequest.getResourceUUID()
+			);
+		}
 	}
 
-	private <T> T postRequest(QueryRequest statusRequest, String pathName, Class<T> responseClazz) {
+	private HttpResponse postRequest(QueryRequest statusRequest, String pathName) {
 		try {
 			QueryRequest chainRequest = createChainRequest(statusRequest);
-
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
 			HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
@@ -181,7 +191,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
 				HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
 			}
-			return readObjectFromResponse(response, responseClazz);
+			return response;
 		} catch (IOException e) {
 			// Note: this shouldn't ever happen
 			logger.error("Error encoding search payload", e);
