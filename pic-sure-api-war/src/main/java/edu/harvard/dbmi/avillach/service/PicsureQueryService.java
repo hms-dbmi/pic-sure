@@ -31,7 +31,7 @@ public class PicsureQueryService {
 	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
-	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
 	@Inject
 	JWTFilter jwtFilter;
