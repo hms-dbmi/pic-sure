@@ -13,7 +13,8 @@ public class QueryRequest {
 	@Schema(description = "Map with the key identifying the resource and the value an authorization token for the resource")
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
-	@Schema(description = "A string or object that contains a search term or query",
+	@Schema(description = "A string or object that contains a search term or query. Potential Expect Result Type: " +
+			"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\"",
 	example = "{" +
 			"\"resourceUUID\": \"<Resource UUID>\"," +
 			"\"query\": {" +
