@@ -45,7 +45,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
 
 	@Context
-	private UriInfo uriInfo;
+	UriInfo uriInfo;
 
 	@Context
 	ResourceInfo resourceInfo;
