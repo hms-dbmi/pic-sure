@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -39,9 +40,12 @@ public class PicsureInfoService {
 	 * @param credentialsQueryRequest - Contains resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
-		logger.info("Info requested for resource: " + resourceId + " with credentials: " + credentialsQueryRequest.toString()
-				+ " and headers: " + headers.getRequestHeaders().toString());
+	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest, Optional<String> authOrOpenAccessResourceUUID) {
+		logger.info("path=/info/{resourceId}, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+				resourceId,
+				authOrOpenAccessResourceUUID.orElse(""),
+				credentialsQueryRequest
+		);
 
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
@@ -65,7 +69,8 @@ public class PicsureInfoService {
 	 *
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
-	public Map<UUID, String> resources() {
+	public Map<UUID, String> resources(Optional<String> resourceUUID) {
+		logger.info("path=/info/resources, resourceUUID={}", resourceUUID.orElse(""));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }

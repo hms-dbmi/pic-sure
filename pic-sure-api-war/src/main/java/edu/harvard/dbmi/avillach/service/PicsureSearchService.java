@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.service;
 
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -31,16 +32,20 @@ public class PicsureSearchService {
 	ResourceWebClient resourceWebClient;
 
 	/**
-	 * Executes a concept search against a target resource
-	 * 
-	 * @param resourceId - UUID of target resource
-	 * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object
-     *                       and resource specific query (could be a string or a json object)
-	 * @return {@link SearchResults}
-	 */
-	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
-		logger.info("Search - resourceId: " + resourceId + " AND query: " + searchQueryRequest.getQuery() +
-				" AND headers: " + headers.getRequestHeaders().toString());
+     * Executes a concept search against a target resource
+     *
+     * @param resourceId         - UUID of target resource
+     * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object
+     *                           and resource specific query (could be a string or a json object)
+     * @param resourceUUID
+     * @return {@link SearchResults}
+     */
+	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest, Optional<String> resourceUUID) {
+		logger.info("path=/search/{resourceId}, resourceId={}, resourceUUID={}, searchQueryRequest={}",
+				resourceId,
+				resourceUUID.orElse(""),
+				searchQueryRequest
+		);
 
 		if (resourceId == null){
 			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
