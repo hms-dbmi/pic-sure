@@ -46,7 +46,7 @@ public class PicsureRS {
 	@Path("/info/resources")
 	@ApiOperation(value = "Returns list of resources available")
 	public Map<UUID,String> resources(
-			@ApiParam(value = "Optional: resource UUID of Open or Authorized Access. Utilized for logging purposes.") Optional<String> resourceUUID){
+			@ApiParam(value = "Optional: resource UUID of Open or Authorized Access. Utilized for logging purposes.") Optional<String> resourceUUID) {
 		return infoService.resources(resourceUUID);
 	}
 	
@@ -101,7 +101,7 @@ public class PicsureRS {
 	@GET
 	@Path("/query/{queryId}/metadata")
 	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId,
-									 @ApiParam(value = "Optional: resource UUID of Open or Authorized Access. Utilized for logging purposes.") Optional<String> resourceUUID){
+									 @ApiParam(value = "Optional: resource UUID of Open or Authorized Access. Utilized for logging purposes.") Optional<String> resourceUUID) {
 		return queryService.queryMetadata(queryId, resourceUUID);
 	}
 	
