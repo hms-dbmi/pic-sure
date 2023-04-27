@@ -5,6 +5,8 @@ import java.util.*;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import org.slf4j.Logger;
@@ -23,6 +25,8 @@ import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
+import static edu.harvard.dbmi.avillach.util.Utilities.getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent;
+
 /**
  * Service handling business logic for queries to resources
  */
@@ -32,6 +36,9 @@ public class PicsureQueryService {
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
 	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+
+	@Context
+	private HttpHeaders headers;
 
 	@Inject
 	JWTFilter jwtFilter;
@@ -51,15 +58,10 @@ public class PicsureQueryService {
 	 *
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
 	 *                         and resource specific query (could be a string or a json object)
-	 * @param authOrOpenAccessResourceUUID - optional resource id for auth or open access resource
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus query(QueryRequest dataQueryRequest, Optional<String> authOrOpenAccessResourceUUID) {
-		logger.info("path=/query, resourceUUID={}, dataQueryRequest={}",
-				authOrOpenAccessResourceUUID.orElse(""),
-				dataQueryRequest
-		);
+	public QueryStatus query(QueryRequest dataQueryRequest) {
 
 		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
@@ -78,6 +80,12 @@ public class PicsureQueryService {
 		if (dataQueryRequest.getResourceCredentials() == null){
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
+
+		logger.info("path=/query, resourceUUID={}, dataQueryRequest={}",
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				dataQueryRequest
+		);
+
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
@@ -129,16 +137,10 @@ public class PicsureQueryService {
 	 *
 	 * @param queryId - id of targeted resource
 	 * @param credentialsQueryRequest - contains resource specific credentials object
-	 * @param authOrOpenAccessResourceUUID - optional resource id for auth or open access resource
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest, Optional<String> authOrOpenAccessResourceUUID) {
-		logger.info("path=/query/{queryId}/status, queryId={}, resourceUUID={}, credentialsQueryRequest={}",
-				queryId,
-				authOrOpenAccessResourceUUID.orElse(""),
-				credentialsQueryRequest
-		);
+	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
 
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
@@ -164,6 +166,13 @@ public class PicsureQueryService {
 		if(resource.getToken()!=null) {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
+
+		logger.info("path=/query/{queryId}/status, queryId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+				queryId,
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				credentialsQueryRequest
+		);
+
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 		status.setPicsureResultId(queryId);
@@ -181,16 +190,10 @@ public class PicsureQueryService {
 	 *
 	 * @param queryId - id of target resource
 	 * @param credentialsQueryRequest - contains resource specific credentials object
-	 * @param authOrOpenAccessResourceUUID - optional resource id for auth or open access resource
 	 * @return Response
 	 */
 	@Transactional
-	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest, Optional<String> authOrOpenAccessResourceUUID) {
-		logger.info("path=/query/{queryId}/result, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
-				queryId,
-				authOrOpenAccessResourceUUID.orElse(""),
-				credentialsQueryRequest
-		);
+	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
 
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
@@ -213,6 +216,13 @@ public class PicsureQueryService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 
+		logger.info("path=/query/{queryId}/result, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+				queryId,
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				credentialsQueryRequest
+		);
+
+
 		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -223,13 +233,12 @@ public class PicsureQueryService {
 	 * from the database and calling the target resource for a result.
 	 *
 	 * @param queryRequest - contains resource specific credentials object
-	 * @param authOrOpenAccessResourceUUID - optional resource id for auth or open access resource
 	 * @return Response
 	 */
 	@Transactional
-	public Response querySync(QueryRequest queryRequest, Optional<String> authOrOpenAccessResourceUUID) {
+	public Response querySync(QueryRequest queryRequest) {
 
-		if (queryRequest == null){
+		if (queryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		UUID resourceId = queryRequest.getResourceUUID();
@@ -251,7 +260,7 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/sync, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={},",
 				queryRequest.getResourceUUID(),
-				authOrOpenAccessResourceUUID.orElse(""),
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				queryRequest.getResourceCredentials());
 
 		Query queryEntity = new Query();
@@ -300,18 +309,21 @@ public class PicsureQueryService {
 
     /**
      * @param queryId      The UUID of the query to get metadata about
-	 * @param authOrOpenAccessResourceUUID - optional resource id for auth or open access resource
      * @return a QueryStatus object containing the metadata stored about the given query
      */
-	public QueryStatus queryMetadata(UUID queryId, Optional<String> authOrOpenAccessResourceUUID){
-		logger.info("path=/query/{queryId}/metadata, authOrOpenAccessResourceUUID={}, queryId={}"
-				, authOrOpenAccessResourceUUID, queryId);
+	public QueryStatus queryMetadata(UUID queryId){
 
         Query query = queryRepo.getById(queryId);
         if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
-        QueryStatus response = new QueryStatus();
+
+		logger.info("path=/query/{queryId}/metadata, authOrOpenAccessResourceUUID={}, queryId={}",
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				queryId);
+
+
+		QueryStatus response = new QueryStatus();
         response.setStartTime(query.getStartTime().getTime());
         response.setPicsureResultId(query.getUuid());
         response.setResourceID(query.getResource().getUuid());

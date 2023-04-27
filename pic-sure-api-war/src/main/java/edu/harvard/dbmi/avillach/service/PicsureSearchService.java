@@ -1,22 +1,21 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.util.HashMap;
-import java.util.Optional;
-import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import java.util.HashMap;
+import java.util.UUID;
+
+import static edu.harvard.dbmi.avillach.util.Utilities.getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent;
 
 public class PicsureSearchService {
 
@@ -40,14 +39,6 @@ public class PicsureSearchService {
      * @return {@link SearchResults}
      */
 	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
-		Optional<String> authOrOpenAccessResourceUUID = Optional.ofNullable(headers.getHeaderString("auth_or_open_resource_uuid"));
-
-		logger.info("path=/search/{resourceId}, resourceId={}, resourceUUID={}, searchQueryRequest={}",
-				resourceId,
-				authOrOpenAccessResourceUUID.orElse(""),
-				searchQueryRequest
-		);
-
 		if (resourceId == null){
 			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
 		}
@@ -61,6 +52,12 @@ public class PicsureSearchService {
 		if (searchQueryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
+
+		logger.info("path=/search/{resourceId}, resourceId={}, resourceUUID={}, searchQueryRequest={}",
+				resourceId,
+				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				searchQueryRequest
+		);
 
 		if (searchQueryRequest.getResourceCredentials() == null){
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
