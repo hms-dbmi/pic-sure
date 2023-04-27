@@ -37,13 +37,14 @@ public class PicsureSearchService {
      * @param resourceId         - UUID of target resource
      * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object
      *                           and resource specific query (could be a string or a json object)
-     * @param resourceUUID
      * @return {@link SearchResults}
      */
-	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest, Optional<String> resourceUUID) {
+	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest) {
+		Optional<String> authOrOpenAccessResourceUUID = Optional.ofNullable(headers.getHeaderString("auth_or_open_resource_uuid"));
+
 		logger.info("path=/search/{resourceId}, resourceId={}, resourceUUID={}, searchQueryRequest={}",
 				resourceId,
-				resourceUUID.orElse(""),
+				authOrOpenAccessResourceUUID.orElse(""),
 				searchQueryRequest
 		);
 
