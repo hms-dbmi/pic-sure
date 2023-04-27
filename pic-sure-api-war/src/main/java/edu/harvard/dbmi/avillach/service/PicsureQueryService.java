@@ -228,8 +228,6 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response querySync(QueryRequest queryRequest, Optional<String> authOrOpenAccessResourceUUID) {
-		logger.info("path=/query/sync, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={},",
-				queryRequest.getResourceUUID(), authOrOpenAccessResourceUUID, queryRequest.getResourceCredentials());
 
 		if (queryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
@@ -250,6 +248,12 @@ public class PicsureQueryService {
 		if (queryRequest.getResourceCredentials() == null){
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
+
+		logger.info("path=/query/sync, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={},",
+				queryRequest.getResourceUUID(),
+				authOrOpenAccessResourceUUID.orElse(""),
+				queryRequest.getResourceCredentials());
+
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
 		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
