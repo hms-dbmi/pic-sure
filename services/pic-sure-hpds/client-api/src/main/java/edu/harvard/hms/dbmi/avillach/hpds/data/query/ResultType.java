@@ -13,6 +13,14 @@ public enum ResultType {
 	 * id.
 	 */
 	DATAFRAME,
+
+	/**
+	 * Create a dataframe, but do not allow conventional access to it.
+	 * Instead, the dataframe will be accessed in the backend only,
+	 * where it is sent to a S3 bucket by a GIC admin.
+	 *
+	 */
+	SECRET_ADMIN_DATAFRAME,
 	/**
 	 * Return one patient count for each concept path included in
 	 * the crossCountFields

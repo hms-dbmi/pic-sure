@@ -164,6 +164,7 @@ public class Query {
 			break;
 		case DATAFRAME:
 		case DATAFRAME_MERGED:
+		case SECRET_ADMIN_DATAFRAME:
 			writePartFormat("Data Export Fields", fields, builder, true);
 			break;
 		case DATAFRAME_TIMESERIES:

@@ -102,6 +102,7 @@ public class QueryService {
 		HpdsProcessor p;
 		switch(query.getExpectedResultType()) {
 		case DATAFRAME :
+		case SECRET_ADMIN_DATAFRAME:
 		case DATAFRAME_MERGED :
 			p = queryProcessor;
 			break;

@@ -301,6 +301,7 @@ public class PicSureService implements IResourceRS {
 			return Response.ok(infoStores, MediaType.APPLICATION_JSON_VALUE).build();
 
 		case DATAFRAME:
+		case SECRET_ADMIN_DATAFRAME:
 		case DATAFRAME_MERGED:
 			QueryStatus status = query(resultRequest);
 			while (status.getResourceStatus().equalsIgnoreCase("RUNNING")
