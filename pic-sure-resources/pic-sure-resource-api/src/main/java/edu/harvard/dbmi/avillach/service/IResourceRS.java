@@ -52,4 +52,13 @@ public interface IResourceRS
 	default Response queryFormat(QueryRequest resultRequest) {
 		throw new NotSupportedException("Query formatting is not implemented in this resource.");
 	}
+
+	@GET
+	@Path("/variable/{conceptPath}/values/")
+	default PaginatedSearchResult<?> values(
+			@PathParam("conceptPath") String conceptPath,
+			@QueryParam("query") String query
+	) {
+		throw new NotSupportedException();
+	}
 }
