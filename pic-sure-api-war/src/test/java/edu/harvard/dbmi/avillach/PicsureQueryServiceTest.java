@@ -45,7 +45,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	private Query queryEntity;
 	private QueryStatus results;
 
-	private Optional<String> resourceUUID = Optional.of("a035116c-4881-405a-91d5-f03886d1fc0d");
+	private final Optional<String> resourceUUID = Optional.of("a035116c-4881-405a-91d5-f03886d1fc0d");
 
 	@InjectMocks
 	private PicsureQueryService queryService = new PicsureQueryService();
