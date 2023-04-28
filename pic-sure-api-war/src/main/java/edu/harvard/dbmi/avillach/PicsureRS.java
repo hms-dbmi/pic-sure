@@ -183,6 +183,20 @@ public class PicsureRS {
 	
 	@GET
 	@Path("/query/{queryId}/metadata")
+	@Operation(
+			summary = "Returns metadata for given query",
+			responses = {
+					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+							responseCode = "200",
+							description = "Query metadata",
+							content = @io.swagger.v3.oas.annotations.media.Content(
+									schema = @io.swagger.v3.oas.annotations.media.Schema(
+											implementation = QueryStatus.class
+									)
+							)
+					)
+			}
+	)
 	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId){
 		return queryService.queryMetadata(queryId);
 	}
