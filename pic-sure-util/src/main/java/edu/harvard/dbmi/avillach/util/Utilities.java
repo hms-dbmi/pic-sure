@@ -25,6 +25,7 @@ public class Utilities {
     }
 
     public static String getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(HttpHeaders headers) {
+        if (headers == null) return "";
         return Optional.ofNullable(headers.getHeaderString("auth_or_open_resource_uuid")).orElse("");
     }
 
