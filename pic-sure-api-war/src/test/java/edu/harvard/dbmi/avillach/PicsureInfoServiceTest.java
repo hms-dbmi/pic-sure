@@ -30,8 +30,6 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
     private UUID resourceId = UUID.randomUUID();
 
-    private Optional<String> resourceUUID = Optional.of("a035116c-4881-405a-91d5-f03886d1fc0d");
-
     @InjectMocks
     private PicsureInfoService infoService = new PicsureInfoService();
 
@@ -68,7 +66,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail with a nonexistent id
         try {
-            ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest, this.resourceUUID);
+            ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest);
             fail();
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -76,7 +74,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail without the url in the resource
         try {
-            ResourceInfo info = infoService.info(resourceId, infoRequest, this.resourceUUID);
+            ResourceInfo info = infoService.info(resourceId, infoRequest);
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
@@ -95,18 +93,18 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
 //        when(mockResource.getTargetURL()).thenReturn("testUrl");
 
-        ResourceInfo responseInfo = infoService.info(resourceId, infoRequest, this.resourceUUID);
+        ResourceInfo responseInfo = infoService.info(resourceId, infoRequest);
         assertNotNull("Resource response should not be null", responseInfo);
 
         //Should also work without clientCredentials
-        responseInfo = infoService.info(resourceId, null, this.resourceUUID);
+        responseInfo = infoService.info(resourceId, null);
         assertNotNull("Resource response should not be null", responseInfo);
     }
 
     @Test
     public void testResourcesEndpoint() {
         //Should give a UUID list of all resources
-        Map<UUID, String> resourceList = infoService.resources(this.resourceUUID);
+        Map<UUID, String> resourceList = infoService.resources();
         assertNotNull("Resource listing should not be null", resourceList);
         assertEquals("Resource listing should only have 1 entry", 1, resourceList.size());
         assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.keySet().iterator().next());
