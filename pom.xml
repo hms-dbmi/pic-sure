@@ -192,7 +192,7 @@
 			<dependency>
 				<groupId>org.jboss.resteasy</groupId>
 				<artifactId>resteasy-jaxb-provider</artifactId>
-				<version>3.0.8.Final</version>
+				<version>3.15.1</version>
 			</dependency>
 			<dependency>
 				<groupId>org.mockito</groupId>
@@ -200,6 +200,12 @@
 				<version>2.23.4</version>
 				<scope>test</scope>
 			</dependency>
+			<dependency>
+				<groupId>org.jboss.resteasy</groupId>
+				<artifactId>resteasy-jackson2-provider</artifactId>
+				<version>3.15.6.Final</version>
+			</dependency>
+
 		</dependencies>
 
 	</dependencyManagement>
