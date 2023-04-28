@@ -62,7 +62,7 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
-
+		logger.info("Query - resourceUUID: " + dataQueryRequest.getResourceUUID() + " and query: " + dataQueryRequest.getQuery());
 		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -89,8 +89,7 @@ public class PicsureQueryService {
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
-		//TODO Deal with possible errors
-        //Save query entity
+
 		Query queryEntity = new Query();
 		queryEntity.setResourceResultId(results.getResourceResultId());
 		queryEntity.setResource(resource);
@@ -141,7 +140,6 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
-
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -194,7 +192,6 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
-
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -237,8 +234,7 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public Response querySync(QueryRequest queryRequest) {
-
-		if (queryRequest == null) {
+		if (queryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		UUID resourceId = queryRequest.getResourceUUID();
@@ -312,7 +308,6 @@ public class PicsureQueryService {
      * @return a QueryStatus object containing the metadata stored about the given query
      */
 	public QueryStatus queryMetadata(UUID queryId){
-
         Query query = queryRepo.getById(queryId);
         if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());

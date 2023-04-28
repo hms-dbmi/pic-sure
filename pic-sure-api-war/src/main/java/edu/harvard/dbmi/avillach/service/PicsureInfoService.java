@@ -70,6 +70,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources() {
+		logger.info("/info/resources request with headers: " + headers.getRequestHeaders().toString());
 		logger.info("path=/info/resources, resourceUUID={}", getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
