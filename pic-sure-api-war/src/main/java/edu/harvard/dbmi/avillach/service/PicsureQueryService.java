@@ -62,7 +62,6 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
-		logger.info("Query - resourceUUID: " + dataQueryRequest.getResourceUUID() + " and query: " + dataQueryRequest.getQuery());
 		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -220,7 +219,6 @@ public class PicsureQueryService {
 		);
 
 
-		//TODO Do we need to update any information in the query object?
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 	}
