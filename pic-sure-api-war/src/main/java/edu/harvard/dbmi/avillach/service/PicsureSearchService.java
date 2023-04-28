@@ -53,7 +53,7 @@ public class PicsureSearchService {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 
-		logger.info("path=/search/{resourceId}, resourceId={}, resourceUUID={}, searchQueryRequest={}",
+		logger.info("path=/search/{resourceId}, resourceId={}, targetResourceId={}, searchQueryRequest={}",
 				resourceId,
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				searchQueryRequest

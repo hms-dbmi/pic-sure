@@ -80,7 +80,7 @@ public class PicsureQueryService {
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 
-		logger.info("path=/query, resourceUUID={}, dataQueryRequest={}",
+		logger.info("path=/query, targetResourceId={}, dataQueryRequest={}",
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				dataQueryRequest
 		);
@@ -164,7 +164,7 @@ public class PicsureQueryService {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
 
-		logger.info("path=/query/{queryId}/status, queryId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/status, queryId={}, targetResourceId={}, credentialsQueryRequest={}",
 				queryId,
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				credentialsQueryRequest
@@ -212,7 +212,7 @@ public class PicsureQueryService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/{queryId}/result, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/result, resourceId={}, targetResourceId={}, credentialsQueryRequest={}",
 				queryId,
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				credentialsQueryRequest
@@ -252,7 +252,7 @@ public class PicsureQueryService {
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/sync, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={},",
+		logger.info("path=/query/sync, resourceId={}, targetResourceId={}, credentialsQueryRequest={},",
 				queryRequest.getResourceUUID(),
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				queryRequest.getResourceCredentials());
@@ -311,7 +311,7 @@ public class PicsureQueryService {
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
 
-		logger.info("path=/query/{queryId}/metadata, authOrOpenAccessResourceUUID={}, queryId={}",
+		logger.info("path=/query/{queryId}/metadata, targetResourceId={}, queryId={}",
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				queryId);
 

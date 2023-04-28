@@ -54,7 +54,7 @@ public class PicsureInfoService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 
-		logger.info("path=/info/{resourceId}, resourceId={}, authOrOpenAccessResourceUUID={}, credentialsQueryRequest={}",
+		logger.info("path=/info/{resourceId}, resourceId={}, targetResourceId={}, credentialsQueryRequest={}",
 				resourceId,
 				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
 				credentialsQueryRequest
@@ -70,7 +70,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources() {
-		logger.info("path=/info/resources, resourceUUID={}", getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers));
+		logger.info("path=/info/resources, targetResourceId={}", getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }
