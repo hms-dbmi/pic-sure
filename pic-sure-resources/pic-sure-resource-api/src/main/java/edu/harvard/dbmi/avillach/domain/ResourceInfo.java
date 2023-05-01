@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.domain;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 import java.util.UUID;
@@ -9,10 +10,17 @@ import java.util.UUID;
  * Information about interacting with a specific resource.
  * 
  */
+@Schema(description = "Information about interacting with a specific resource.")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ResourceInfo {
+
+	@Schema(description = "The UUID of the resource.")
 	private UUID id;
+
+	@Schema(description = "The name of the resource.")
 	private String name;
+
+	@Schema(description = "The query formats supported by the resource.")
 	private List<QueryFormat> queryFormats;
 	public UUID getId() {
 		return id;
