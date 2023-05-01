@@ -16,7 +16,7 @@ public class QueryRequest {
 	@Schema(description = "A string or object that contains a search term or query. Potential Expect Result Type: " +
 			"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\"",
 			example = "{"
-					+ "    \"resourceUUID\": \"de273216-3b46-4dec-a330-1aa0634624ae\","
+					+ "    \"resourceUUID\": \"<Resource UUID>\","
 					+ "    \"query\": {"
 					+ "        \"categoryFilters\": {"
 					+ "            \"\\\\ACT Demographics\\\\Sex\\\\\": ["
