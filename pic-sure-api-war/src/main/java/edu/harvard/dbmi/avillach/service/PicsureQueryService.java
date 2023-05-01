@@ -64,54 +64,17 @@ public class PicsureQueryService {
 		}
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
-			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId);
 		}
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (dataQueryRequest.getResourceCredentials() == null){
-			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
+			dataQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
-		//TODO Deal with possible errors
-        //Save query entity
-		Query queryEntity = new Query();
-		queryEntity.setResourceResultId(results.getResourceResultId());
-		queryEntity.setResource(resource);
-		queryEntity.setStatus(results.getStatus());
-		queryEntity.setStartTime(new Date(results.getStartTime()));
-
-		ObjectMapper mapper = new ObjectMapper();
-		String queryJson = null;
-		if( dataQueryRequest.getQuery() != null) {
-			try {
-				queryJson = mapper.writeValueAsString( dataQueryRequest);
-			} catch (JsonProcessingException e) {
-				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-			}
-		}
-		
-		queryEntity.setQuery(queryJson);
-		
-		if (results.getResultMetadata() != null) {
-			try {
-				queryEntity.setMetadata(mapper.writeValueAsString(results.getResultMetadata()).getBytes());
-			} catch (JsonProcessingException e) {
-				logger.warn("Unable to parse metadata ", e);
-			}
-		}
-		queryRepo.persist(queryEntity);
-
-		logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
-		results.setPicsureResultId(queryEntity.getUuid());
-		//In cases where there is no resource result id, the picsure result id will stand in
-		if (queryEntity.getResourceResultId() == null){
-		    results.setResourceResultId(queryEntity.getUuid().toString());
-			queryEntity.setResourceResultId(results.getPicsureResultId().toString());
-			queryRepo.persist(queryEntity);
-		}
 		results.setResourceID(resourceId);
 		return results;
 	}
@@ -130,11 +93,7 @@ public class PicsureQueryService {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
-		Query query = queryRepo.getById(queryId);
-		if (query == null){
-			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
-		}
-		Resource resource = query.getResource();
+		Resource resource = resourceRepo.getById(credentialsQueryRequest.getResourceUUID());
 		if (resource == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
 		}
@@ -142,9 +101,6 @@ public class PicsureQueryService {
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 
-		if (credentialsQueryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
@@ -152,13 +108,7 @@ public class PicsureQueryService {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
 		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
-		status.setPicsureResultId(queryId);
-		query.setStatus(status.getStatus());
-		queryRepo.persist(query);
-		status.setStartTime(query.getStartTime().getTime());
-		status.setResourceID(resource.getUuid());
-		return status;
+		return resourceWebClient.queryStatus(resource.getResourceRSPath(), queryId.toString(), credentialsQueryRequest);
 	}
 
 	/**
