@@ -90,17 +90,22 @@ public class PicsureRS {
 						)
 				)
 		)},
+		// override the @Schema annotation in the QueryRequest class to change the example of the query object
 		parameters = {
 				@Parameter(
-						name = "searchQueryRequest",
-						description = "Object containing credentials map under 'resourceCredentials' " +
-								"and search term under 'query'",
-						required = true,
+						name = "query",
+						description = "Object containing the search term and the credentials map",
 						in = ParameterIn.DEFAULT,
-						schema = @Schema(implementation = String.class),
-						example = "{\"query\": \"Age\" }"
+						required = true,
+						schema = @Schema(
+								implementation = QueryRequest.class,
+								example = "{\n" +
+										"  \"query\": {\n" +
+										"    \"query\": \"searchTerm\"\n" +
+										"  }\n" +
+										"}"
+						)
 				)
-
 		}
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
