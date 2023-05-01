@@ -98,7 +98,7 @@ public class PicsureRS {
 						required = true,
 						in = ParameterIn.DEFAULT,
 						schema = @Schema(implementation = String.class),
-						example = "{\"query:\" \"Age\" }"
+						example = "{\"query\": \"Age\" }"
 				)
 
 		}
