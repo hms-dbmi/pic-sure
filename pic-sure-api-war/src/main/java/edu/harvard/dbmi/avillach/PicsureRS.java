@@ -104,8 +104,7 @@ public class PicsureRS {
 		}
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-								@Parameter(description="Object containing credentials map under 'resourceCredentials' " +
-										"and search term under 'query'") QueryRequest searchQueryRequest) {
+								QueryRequest searchQueryRequest) {
 		return searchService.search(resourceId, searchQueryRequest);
 	}
 	
