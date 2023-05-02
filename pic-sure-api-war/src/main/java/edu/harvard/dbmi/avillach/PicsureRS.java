@@ -103,7 +103,9 @@ public class PicsureRS {
 										"    \"query\": \"searchTerm\"\n" +
 										"  }\n" +
 										"}"
-						))
+						),
+						ref = ""
+				)
 		}
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
