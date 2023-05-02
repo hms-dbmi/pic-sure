@@ -92,7 +92,7 @@ public class PicsureRS {
 		)},
 		parameters = {
 				@Parameter(
-						name = "searchQueryRequest",
+						name = "QueryRequest",
 						description = "Object containing the search term and the credentials map",
 						in = ParameterIn.DEFAULT,
 						required = true,
@@ -102,8 +102,7 @@ public class PicsureRS {
 										"    \"query\": \"searchTerm\"\n" +
 										"  }\n" +
 										"}"
-						),
-						ref = ""
+						)
 				)
 		}
 	)
