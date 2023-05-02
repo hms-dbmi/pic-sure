@@ -98,7 +98,6 @@ public class PicsureRS {
 						in = ParameterIn.DEFAULT,
 						required = true,
 						schema = @Schema(
-								implementation = QueryRequest.class,
 								example = "{\n" +
 										"  \"query\": {\n" +
 										"    \"query\": \"searchTerm\"\n" +
