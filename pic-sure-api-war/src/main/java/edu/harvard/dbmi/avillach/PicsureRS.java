@@ -90,7 +90,6 @@ public class PicsureRS {
 						)
 				)
 		)},
-		// override the @Schema annotation in the QueryRequest class to change the example of the query object
 		parameters = {
 				@Parameter(
 						name = "searchQueryRequest",
@@ -109,7 +108,7 @@ public class PicsureRS {
 		}
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-								QueryRequest searchQueryRequest) {
+								@Parameter(hidden = true) QueryRequest searchQueryRequest) {
 		return searchService.search(resourceId, searchQueryRequest);
 	}
 	
