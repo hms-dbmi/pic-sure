@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
@@ -90,23 +91,30 @@ public class PicsureRS {
 						)
 				)
 		)},
-		parameters = {
-				@Parameter(
-						name = "QueryRequest",
-						description = "Object containing the search term and the credentials map",
-						required = true,
-						example = "{\n" +
-								"  \"query\": {\n" +
-								"    \"query\": \"searchTerm\"\n" +
-								"  }\n" +
-								"}"
+		// give example request body
+		requestBody = @RequestBody(
+				required = true,
+				content = @io.swagger.v3.oas.annotations.media.Content(
+						schema = @io.swagger.v3.oas.annotations.media.Schema(
+								example = "{\n" +
+										"  \"query\": {\n" +
+										"    \"query\": \"searchTerm\"\n" +
+										"  }\n" +
+										"}"
+						)
 				)
-		}
+		)
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
 								@Parameter(hidden = true) QueryRequest searchQueryRequest) {
 		return searchService.search(resourceId, searchQueryRequest);
 	}
+
+//	example = "{\n" +
+//			"  \"query\": {\n" +
+//			"    \"query\": \"searchTerm\"\n" +
+//			"  }\n" +
+//			"}"
 	
 	@POST
 	@Path("/query")
