@@ -94,15 +94,12 @@ public class PicsureRS {
 				@Parameter(
 						name = "QueryRequest",
 						description = "Object containing the search term and the credentials map",
-						in = ParameterIn.DEFAULT,
 						required = true,
-						schema = @Schema(
-								example = "{\n" +
-										"  \"query\": {\n" +
-										"    \"query\": \"searchTerm\"\n" +
-										"  }\n" +
-										"}"
-						)
+						example = "{\n" +
+								"  \"query\": {\n" +
+								"    \"query\": \"searchTerm\"\n" +
+								"  }\n" +
+								"}"
 				)
 		}
 	)
