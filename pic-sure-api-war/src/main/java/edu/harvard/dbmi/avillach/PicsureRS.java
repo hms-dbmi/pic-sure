@@ -93,7 +93,7 @@ public class PicsureRS {
 		// override the @Schema annotation in the QueryRequest class to change the example of the query object
 		parameters = {
 				@Parameter(
-						name = "query",
+						name = "searchQueryRequest",
 						description = "Object containing the search term and the credentials map",
 						in = ParameterIn.DEFAULT,
 						required = true,
@@ -103,8 +103,7 @@ public class PicsureRS {
 										"    \"query\": \"searchTerm\"\n" +
 										"  }\n" +
 										"}"
-						)
-				)
+						))
 		}
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
