@@ -13,8 +13,11 @@ import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
@@ -87,14 +90,21 @@ public class PicsureRS {
 								implementation = SearchResults.class
 						)
 				)
-		)}
+		)},
+		requestBody = @RequestBody(
+				required = true,
+				content = @io.swagger.v3.oas.annotations.media.Content(
+						schema = @io.swagger.v3.oas.annotations.media.Schema(
+								example = "{ \"query\": \"searchTerm\" }"
+						)
+				)
+		)
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-								@Parameter(description="Object containing credentials map under 'resourceCredentials' " +
-										"and search term under 'query'") QueryRequest searchQueryRequest) {
+								@Parameter(hidden = true) QueryRequest searchQueryRequest) {
 		return searchService.search(resourceId, searchQueryRequest);
 	}
-	
+
 	@POST
 	@Path("/query")
 	@Operation(
