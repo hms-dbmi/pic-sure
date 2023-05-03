@@ -91,16 +91,11 @@ public class PicsureRS {
 						)
 				)
 		)},
-		// give example request body
 		requestBody = @RequestBody(
 				required = true,
 				content = @io.swagger.v3.oas.annotations.media.Content(
 						schema = @io.swagger.v3.oas.annotations.media.Schema(
-								example = "{\n" +
-										"  \"query\": {\n" +
-										"    \"query\": \"searchTerm\"\n" +
-										"  }\n" +
-										"}"
+								example = "{ \"query\": \"searchTerm\" }"
 						)
 				)
 		)
@@ -110,12 +105,6 @@ public class PicsureRS {
 		return searchService.search(resourceId, searchQueryRequest);
 	}
 
-//	example = "{\n" +
-//			"  \"query\": {\n" +
-//			"    \"query\": \"searchTerm\"\n" +
-//			"  }\n" +
-//			"}"
-	
 	@POST
 	@Path("/query")
 	@Operation(
