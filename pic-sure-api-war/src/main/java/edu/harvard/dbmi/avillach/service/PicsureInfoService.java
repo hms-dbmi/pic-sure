@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent;
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureInfoService {
 
@@ -54,9 +54,9 @@ public class PicsureInfoService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 
-		logger.info("path=/info/{resourceId}, resourceId={}, targetResourceId={}, credentialsQueryRequest={}",
+		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				getRequestSourceFromHeader(headers),
 				credentialsQueryRequest
 		);
 
@@ -70,7 +70,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources() {
-		logger.info("path=/info/resources, targetResourceId={}", getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers));
+		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }

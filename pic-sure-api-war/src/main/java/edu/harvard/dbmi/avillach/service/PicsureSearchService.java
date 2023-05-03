@@ -15,7 +15,7 @@ import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
 import java.util.UUID;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent;
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureSearchService {
 
@@ -53,9 +53,9 @@ public class PicsureSearchService {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 
-		logger.info("path=/search/{resourceId}, resourceId={}, targetResourceId={}, searchQueryRequest={}",
+		logger.info("path=/search/{resourceId}, resourceId={}, requestSource={}, searchQueryRequest={}",
 				resourceId,
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				getRequestSourceFromHeader(headers),
 				searchQueryRequest
 		);
 

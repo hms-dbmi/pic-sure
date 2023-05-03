@@ -25,7 +25,7 @@ import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent;
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 /**
  * Service handling business logic for queries to resources
@@ -80,8 +80,8 @@ public class PicsureQueryService {
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 
-		logger.info("path=/query, targetResourceId={}, dataQueryRequest={}",
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+		logger.info("path=/query, requestSource={}, dataQueryRequest={}",
+				getRequestSourceFromHeader(headers),
 				dataQueryRequest
 		);
 
@@ -164,9 +164,9 @@ public class PicsureQueryService {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
 
-		logger.info("path=/query/{queryId}/status, queryId={}, targetResourceId={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, credentialsQueryRequest={}",
 				queryId,
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				getRequestSourceFromHeader(headers),
 				credentialsQueryRequest
 		);
 
@@ -212,9 +212,9 @@ public class PicsureQueryService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/{queryId}/result, resourceId={}, targetResourceId={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				queryId,
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				getRequestSourceFromHeader(headers),
 				credentialsQueryRequest
 		);
 
@@ -252,9 +252,9 @@ public class PicsureQueryService {
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/sync, resourceId={}, targetResourceId={}, credentialsQueryRequest={},",
+		logger.info("path=/query/sync, resourceId={}, requestSource={}, credentialsQueryRequest={},",
 				queryRequest.getResourceUUID(),
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+				getRequestSourceFromHeader(headers),
 				queryRequest.getResourceCredentials());
 
 		Query queryEntity = new Query();
@@ -311,8 +311,8 @@ public class PicsureQueryService {
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
 
-		logger.info("path=/query/{queryId}/metadata, targetResourceId={}, queryId={}",
-				getAuthOrOpenAccessResourceUUIDFromHeaderIfPresent(headers),
+		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
+				getRequestSourceFromHeader(headers),
 				queryId);
 
 
