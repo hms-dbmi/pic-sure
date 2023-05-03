@@ -26,7 +26,7 @@ public class Utilities {
 
     public static String getRequestSourceFromHeader(HttpHeaders headers) {
         if (headers == null) return "";
-        return Optional.ofNullable(headers.getHeaderString("auth_or_open_resource_uuid")).orElse("");
+        return Optional.ofNullable(headers.getHeaderString("requestSource")).orElse("");
     }
 
 }
