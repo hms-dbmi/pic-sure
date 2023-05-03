@@ -205,6 +205,21 @@
 				<version>3.15.6.Final</version>
 			</dependency>
 
+			<dependency>
+				<groupId>io.swagger.core.v3</groupId>
+				<artifactId>swagger-jaxrs2</artifactId>
+				<version>2.2.7</version>
+			</dependency>
+			<dependency>
+				<groupId>io.swagger.core.v3</groupId>
+				<artifactId>swagger-jaxrs2-servlet-initializer-v2</artifactId>
+				<version>2.2.7</version>
+			</dependency>
+			<dependency>
+				<groupId>io.swagger.core.v3</groupId>
+				<artifactId>swagger-annotations</artifactId>
+				<version>2.2.8</version>
+			</dependency>
 		</dependencies>
 
 	</dependencyManagement>

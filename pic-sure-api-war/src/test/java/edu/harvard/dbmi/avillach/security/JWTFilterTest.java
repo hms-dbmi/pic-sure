@@ -61,6 +61,8 @@ public class JWTFilterTest {
 		filter.resourceWebClient = new ResourceWebClient();
 		filter.queryRepo = mock(QueryRepository.class);
 		filter.resourceRepo = mock(ResourceRepository.class);
+		filter.uriInfo = mock(UriInfo.class);
+		when(filter.uriInfo.getPath()).thenReturn("/test");
 	}
 
 	private ContainerRequestContext createRequestContext() {
