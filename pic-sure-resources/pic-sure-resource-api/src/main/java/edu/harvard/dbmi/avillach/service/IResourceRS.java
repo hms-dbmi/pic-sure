@@ -54,10 +54,12 @@ public interface IResourceRS
 	}
 
 	@GET
-	@Path("/variable/{conceptPath}/values/")
-	default PaginatedSearchResult<?> values(
+	@Path("/info/{conceptPath}/values/")
+	default PaginatedSearchResult<?> infoConceptValues(
 			@PathParam("conceptPath") String conceptPath,
-			@QueryParam("query") String query
+			@QueryParam("query") String query,
+			@QueryParam("page") Integer page,
+			@QueryParam("size") Integer size
 	) {
 		throw new NotSupportedException();
 	}
