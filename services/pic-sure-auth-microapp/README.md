@@ -1,7 +1,7 @@
 # PIC-SURE Auth MicroApp
 
 ### Local Development
-At present, local development is conducted using our All-In-One Virtual Box. We offer implementations for both CentOS and Redhat based operating systems. To get started, please consult the README section of the All-In-One repository.
+At present, local development is conducted using our [All-In-One](https://github.com/hms-dbmi/pic-sure-all-in-one) Virtual Box. We offer implementations for both [CentOS](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/master) and [Redhat](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/feature/redhat)  based operating systems. To get started, please consult the [README](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/master#readme) section of the [All-In-One](https://github.com/hms-dbmi/pic-sure-all-in-one) repository.
 
 #### To add an initial top admin user in the system
 If you follow the steps above, spins up the docker containers and you can see the login page in the browser, you are almost there.
