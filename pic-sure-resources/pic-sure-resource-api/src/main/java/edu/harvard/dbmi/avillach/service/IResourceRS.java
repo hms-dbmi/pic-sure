@@ -54,9 +54,9 @@ public interface IResourceRS
 	}
 
 	@GET
-	@Path("/info/{conceptPath}/values/")
-	default PaginatedSearchResult<?> infoConceptValues(
-			@PathParam("conceptPath") String conceptPath,
+	@Path("/search/values/")
+	default PaginatedSearchResult<?> searchConceptValues(
+			@QueryParam("conceptPath") String conceptPath,
 			@QueryParam("query") String query,
 			@QueryParam("page") Integer page,
 			@QueryParam("size") Integer size

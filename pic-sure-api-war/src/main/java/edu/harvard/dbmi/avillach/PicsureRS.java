@@ -46,6 +46,20 @@ public class PicsureRS {
 	public Map<UUID,String> resources(){
 		return infoService.resources();
 	}
+
+	@GET
+	@Path("/search/{resourceId}/values/")
+	public PaginatedSearchResult<?> searchConceptValues(
+			@ApiParam(value="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
+			@ApiParam(value="Object containing credentials map under 'resourceCredentials' " +
+					"and search term under 'query'") QueryRequest searchQueryRequest,
+			@QueryParam("conceptPath") String conceptPath,
+			@QueryParam("query") String query,
+			@QueryParam("page") Integer page,
+			@QueryParam("size") Integer size
+	) {
+		return searchService.searchConceptValues(resourceId, searchQueryRequest, conceptPath, query, page, size);
+	}
 	
 	@POST
 	@Path("/search/{resourceId}")

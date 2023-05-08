@@ -10,6 +10,7 @@ import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,8 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Map;
 
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
@@ -64,6 +67,27 @@ public class ResourceWebClient {
             return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
+        }
+    }
+
+    public PaginatedSearchResult<?> searchConceptValues(String rsURL, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size) {
+        try {
+            logger.debug("Calling /info/values at ResourceURL: {}");
+            String pathName = "/search/values/";
+            URIBuilder uriBuilder = new URIBuilder(rsURL);
+            uriBuilder.setPath(pathName);
+            uriBuilder.addParameter("conceptPath", conceptPath);
+            uriBuilder.addParameter("query", query);
+            uriBuilder.addParameter("page", page.toString());
+            uriBuilder.addParameter("size", size.toString());
+            HttpResponse resourcesResponse = retrieveGetResponse(uriBuilder.build().toString(), createHeaders(queryRequest.getResourceCredentials()));
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                logger.error("ResourceRS did not return a 200");
+                throwResponseError(resourcesResponse, rsURL);
+            }
+            return readObjectFromResponse(resourcesResponse, PaginatedSearchResult.class);
+        } catch (URISyntaxException e) {
+            throw new ApplicationException("rsURL invalid : " + rsURL, e);
         }
     }
 

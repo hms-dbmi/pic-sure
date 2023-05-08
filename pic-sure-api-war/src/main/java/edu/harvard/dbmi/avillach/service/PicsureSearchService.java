@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -47,6 +48,17 @@ public class PicsureSearchService {
 			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
+	}
+
+	public PaginatedSearchResult<?> searchConceptValues(UUID resourceId, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size) {
+		Resource resource = resourceRepo.getById(resourceId);
+		if (resource == null){
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
+		}
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+		return resourceWebClient.searchConceptValues(resource.getResourceRSPath(), queryRequest, conceptPath, query, page, size);
 	}
 
 }
