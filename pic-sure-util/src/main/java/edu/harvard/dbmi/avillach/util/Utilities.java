@@ -6,6 +6,9 @@ import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 
+import javax.ws.rs.core.HttpHeaders;
+import java.util.Optional;
+
 public class Utilities {
 
     public static HttpClientContext buildHttpClientContext() {
@@ -20,4 +23,10 @@ public class Utilities {
         }
         return httpClientContext;
     }
+
+    public static String getRequestSourceFromHeader(HttpHeaders headers) {
+        if (headers == null) return "";
+        return Optional.ofNullable(headers.getHeaderString("requestSource")).orElse("");
+    }
+
 }

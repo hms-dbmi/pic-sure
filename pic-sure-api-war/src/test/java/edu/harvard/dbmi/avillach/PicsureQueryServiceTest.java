@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.*;
 
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
@@ -59,6 +60,9 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 	@Mock
 	private ResourceWebClient webClient = mock(ResourceWebClient.class);
+
+	@Mock
+	private HttpHeaders headers = mock(HttpHeaders.class);
 
 	@Before
 	public void setUp() {

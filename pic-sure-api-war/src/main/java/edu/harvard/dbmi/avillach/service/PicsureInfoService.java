@@ -1,20 +1,30 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import javax.inject.Inject;
-
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.inject.Inject;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureInfoService {
+
+	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+
+	@Context
+	private HttpHeaders headers;
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -43,6 +53,13 @@ public class PicsureInfoService {
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
+
+		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
+				resourceId,
+				getRequestSourceFromHeader(headers),
+				credentialsQueryRequest
+		);
+
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.info(resource.getResourceRSPath(), credentialsQueryRequest);
 	}
@@ -53,6 +70,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources() {
+		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }

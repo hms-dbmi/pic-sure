@@ -5,6 +5,8 @@ import java.util.*;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import org.slf4j.Logger;
@@ -23,6 +25,8 @@ import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
+
 /**
  * Service handling business logic for queries to resources
  */
@@ -31,11 +35,14 @@ public class PicsureQueryService {
 	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
 	private static final String QUERY_JSON_FIELD = "queryJson";
 
-	private Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+
+	@Context
+	private HttpHeaders headers;
 
 	@Inject
 	JWTFilter jwtFilter;
-	
+
 	@Inject
 	ResourceRepository resourceRepo;
 
@@ -50,12 +57,12 @@ public class PicsureQueryService {
 	 * database for the query.
 	 *
 	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
-	 *                       and resource specific query (could be a string or a json object)
+	 *                         and resource specific query (could be a string or a json object)
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest) {
-		if (dataQueryRequest == null){
+		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
 		UUID resourceId = dataQueryRequest.getResourceUUID();
@@ -72,11 +79,16 @@ public class PicsureQueryService {
 		if (dataQueryRequest.getResourceCredentials() == null){
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
+
+		logger.info("path=/query, requestSource={}, dataQueryRequest={}",
+				getRequestSourceFromHeader(headers),
+				dataQueryRequest
+		);
+
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
-		//TODO Deal with possible errors
-        //Save query entity
+
 		Query queryEntity = new Query();
 		queryEntity.setResourceResultId(results.getResourceResultId());
 		queryEntity.setResource(resource);
@@ -92,9 +104,9 @@ public class PicsureQueryService {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 			}
 		}
-		
+
 		queryEntity.setQuery(queryJson);
-		
+
 		if (results.getResultMetadata() != null) {
 			try {
 				queryEntity.setMetadata(mapper.writeValueAsString(results.getResultMetadata()).getBytes());
@@ -151,6 +163,13 @@ public class PicsureQueryService {
 		if(resource.getToken()!=null) {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
+
+		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, credentialsQueryRequest={}",
+				queryId,
+				getRequestSourceFromHeader(headers),
+				credentialsQueryRequest
+		);
+
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 		status.setPicsureResultId(queryId);
@@ -192,8 +211,14 @@ public class PicsureQueryService {
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
-		
-		//TODO Do we need to update any information in the query object?
+
+		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, credentialsQueryRequest={}",
+				queryId,
+				getRequestSourceFromHeader(headers),
+				credentialsQueryRequest
+		);
+
+
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
 	}
@@ -226,10 +251,16 @@ public class PicsureQueryService {
 		if (queryRequest.getResourceCredentials() == null){
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
+
+		logger.info("path=/query/sync, resourceId={}, requestSource={}, credentialsQueryRequest={},",
+				queryRequest.getResourceUUID(),
+				getRequestSourceFromHeader(headers),
+				queryRequest.getResourceCredentials());
+
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
 		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
-		
+
 
 		String queryJson = null;
 		if( queryRequest.getQuery() != null) {
@@ -240,7 +271,7 @@ public class PicsureQueryService {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 			}
 		}
-		
+
 		queryEntity.setQuery(queryJson);
 		queryRepo.persist(queryEntity);
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -271,8 +302,7 @@ public class PicsureQueryService {
 	}
 
     /**
-     *
-     * @param queryId The UUID of the query to get metadata about
+     * @param queryId      The UUID of the query to get metadata about
      * @return a QueryStatus object containing the metadata stored about the given query
      */
 	public QueryStatus queryMetadata(UUID queryId){
@@ -280,13 +310,19 @@ public class PicsureQueryService {
         if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
-        QueryStatus response = new QueryStatus();
+
+		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
+				getRequestSourceFromHeader(headers),
+				queryId);
+
+
+		QueryStatus response = new QueryStatus();
         response.setStartTime(query.getStartTime().getTime());
         response.setPicsureResultId(query.getUuid());
         response.setResourceID(query.getResource().getUuid());
         response.setStatus(query.getStatus());
         response.setResourceResultId(query.getResourceResultId());
-        
+
         Map<String, Object> metadata = new HashMap<String, Object>();
         try {
 			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
@@ -294,9 +330,10 @@ public class PicsureQueryService {
 		} catch (JsonProcessingException e) {
 			logger.warn("Unable to use object mapper", e);
 		}
-        
+
         response.setResultMetadata(metadata);
-        
+
         return response;
     }
 }
+
