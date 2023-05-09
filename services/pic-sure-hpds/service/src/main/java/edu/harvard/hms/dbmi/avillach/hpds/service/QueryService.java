@@ -76,8 +76,7 @@ public class QueryService {
 		AsyncResult result = initializeResult(query);
 		
 		// This is all the validation we do for now.
-		Map<String, List<String>> validationResults = ensureAllFieldsExist(query);
-		if(validationResults != null) {
+		if(!ensureAllFieldsExist(query)) {
 			result.status = Status.ERROR;
 		}else {
 			if(query.getFields().size() > SMALL_JOB_LIMIT) {
@@ -153,9 +152,8 @@ public class QueryService {
 		query.setFields(fields);
 	}
 
-	private Map<String, List<String>> ensureAllFieldsExist(Query query) {
+	private boolean ensureAllFieldsExist(Query query) {
 		TreeSet<String> allFields = new TreeSet<>();
-		List<String> missingFields = new ArrayList<String>();
 		List<String> badNumericFilters = new ArrayList<String>();
 		List<String> badCategoryFilters = new ArrayList<String>();
 		Set<String> dictionaryFields = abstractProcessor.getDictionary().keySet();
@@ -173,33 +171,27 @@ public class QueryService {
 		Set<String> catFieldNames = query.getCategoryFilters().keySet().stream()
 				.filter(Predicate.not(VariantUtils::pathIsVariantSpec))
 				.collect(Collectors.toSet());
-		//catFieldNames.removeIf((field)->{return VariantUtils.pathIsVariantSpec(field);});
+
 		allFields.addAll(catFieldNames);
 		for(String field : includingOnlyDictionaryFields(catFieldNames, dictionaryFields)) {
-			if( ! abstractProcessor.getDictionary().get(field).isCategorical()) {
+			if(!abstractProcessor.getDictionary().get(field).isCategorical()) {
 				badCategoryFilters.add(field);
 			}
 		}
 
-		for(String field : allFields) {
-			if(!dictionaryFields.contains(field)) {
-				missingFields.add(field);
-			}
-		}
+		List<String> missingFields = allFields.stream()
+			.filter(Predicate.not(dictionaryFields::contains))
+			.collect(Collectors.toList());
 
-		if(missingFields.isEmpty() && badNumericFilters.isEmpty() && badCategoryFilters.isEmpty()) {
-			System.out.println("All fields passed validation");
-			return null;
+		if(badNumericFilters.isEmpty() && badCategoryFilters.isEmpty()) {
+			log.info("All fields passed validation");
+			return true;
 		} else {
 			log.info("Query failed due to field validation : " + query.getId());
 			log.info("Non-existant fields : " + String.join(",", missingFields));
 			log.info("Bad numeric fields : " + String.join(",", badNumericFilters));
 			log.info("Bad category fields : " + String.join(",", badCategoryFilters));
-			return ImmutableMap.of(
-					"nonExistantFileds", missingFields, 
-					"numeric_filters_on_categorical_variables", badNumericFilters, 
-					"category_filters_on_numeric_variables", badCategoryFilters)
-					;
+			return false;
 		}
 	}
 

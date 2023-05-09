@@ -3,9 +3,11 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,10 +66,13 @@ public class QueryProcessor implements HpdsProcessor {
 		List<String> paths = query.getFields();
 		int columnCount = paths.size() + 1;
 
+		List<ColumnMeta> columns = paths.stream()
+			.map(abstractProcessor.getDictionary()::get)
+			.filter(Objects::nonNull)
+			.collect(Collectors.toList());
+
 		ArrayList<Integer> columnIndex = abstractProcessor.useResidentCubesFirst(paths, columnCount);
-		ResultStore results = new ResultStore(result.id, paths.stream().map((path)->{
-			return abstractProcessor.getDictionary().get(path);
-		}).collect(Collectors.toList()), ids);
+		ResultStore results = new ResultStore(result.id, columns, ids);
 
 		columnIndex.parallelStream().forEach((column)->{
 			clearColumn(paths, ids, results, column);
