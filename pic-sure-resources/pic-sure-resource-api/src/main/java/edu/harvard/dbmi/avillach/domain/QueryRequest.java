@@ -1,20 +1,53 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import io.swagger.annotations.ApiModel;
-
-@ApiModel(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
+@Schema(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
 		" token for the resource.  The query is a string or object that contains a search term or query")
 public class QueryRequest {
 
+	@Schema(description = "Map with the key identifying the resource and the value an authorization token for the resource")
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
-	//instead of string
+	@Schema(description = "A string or object that contains a search term or query. Potential Expect Result Type: " +
+			"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\"",
+			example = "{"
+					+ "    \"resourceUUID\": \"<Resource UUID>\","
+					+ "    \"query\": {"
+					+ "        \"categoryFilters\": {"
+					+ "            \"\\\\ACT Demographics\\\\Sex\\\\\": ["
+					+ "                \"Female\","
+					+ "                \"Male\""
+					+ "            ]"
+					+ "        },"
+					+ "        \"numericFilters\": {"
+					+ "            \"\\\\ACT Demographics\\\\Age\\\\\": {"
+					+ "                \"min\": \"5\","
+					+ "                \"max\": \"12\""
+					+ "            }"
+					+ "        },"
+					+ "        \"requiredFields\": [],"
+					+ "        \"anyRecordOf\": [],"
+					+ "        \"variantInfoFilters\": ["
+					+ "            {"
+					+ "                \"categoryVariantInfoFilters\": {"
+					+ "                    \"Gene_with_variant\": ["
+					+ "                        \"CHD8\""
+					+ "                    ]"
+					+ "                },"
+					+ "                \"numericVariantInfoFilters\": {}"
+					+ "            }"
+					+ "        ],"
+					+ "        \"expectedResultType\": \"COUNT\""
+					+ "    }"
+					+ "}")
 	private Object query;
 
+	@Schema(description = "The UUID of the resource to query")
 	private UUID resourceUUID;
 
 	public Map<String, String> getResourceCredentials() {

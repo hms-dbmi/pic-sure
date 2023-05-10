@@ -56,7 +56,6 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
         when(resourceRepo.getById(not(ArgumentMatchers.same(resourceId)))).thenReturn(null);
         when(webClient.info(any(), any())).thenReturn(results);
         when(resourceRepo.list()).thenReturn(resourceListing);
-//        when(mockResource.getUuid()).thenReturn(resourceId);
     }
 
     @Test
@@ -82,17 +81,6 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
             assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
         }
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
-
-        //Should fail without the url in the resource
-//        try {
-//            ResourceInfo info = infoService.info(resourceId, infoRequest);
-//            fail();
-//        } catch (ApplicationException e){
-//            assertNotNull(e.getContent());
-//            assertEquals("Error message should say '" + ApplicationException.MISSING_TARGET_URL + "'", ApplicationException.MISSING_TARGET_URL, e.getContent().toString());
-//        }
-
-//        when(mockResource.getTargetURL()).thenReturn("testUrl");
 
         ResourceInfo responseInfo = infoService.info(resourceId, infoRequest);
         assertNotNull("Resource response should not be null", responseInfo);

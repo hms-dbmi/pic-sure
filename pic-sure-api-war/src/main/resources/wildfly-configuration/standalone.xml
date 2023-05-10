@@ -499,6 +499,7 @@
                 <host name="default-host" alias="localhost">
                     <location name="/" handler="welcome-content"/>
                     <http-invoker security-realm="ApplicationRealm"/>
+                    <filter-ref name="cors" />
                 </host>
             </server>
             <servlet-container name="default">
@@ -509,6 +510,13 @@
                 <file name="welcome-content" path="${jboss.home.dir}/welcome-content"/>
             </handlers>
         </subsystem>
+        <filters>
+            <response-header name="cors" header-name="Access-Control-Allow-Origin" header-value="*"/>
+            <response-header name="cors-headers" header-name="Access-Control-Allow-Headers" header-value="Origin, X-Requested-With, Content-Type, Accept, Authorization"/>
+            <response-header name="cors-methods" header-name="Access-Control-Allow-Methods" header-value="GET, POST, PUT, DELETE, OPTIONS, HEAD"/>
+            <response-header name="cors-credentials" header-name="Access-Control-Allow-Credentials" header-value="true"/>
+            <response-header name="cors-max-age" header-name="Access-Control-Max-Age" header-value="3600"/>
+        </filters>
         <subsystem xmlns="urn:jboss:domain:webservices:2.0">
             <wsdl-host>${jboss.bind.address:127.0.0.1}</wsdl-host>
             <endpoint-config name="Standard-Endpoint-Config"/>
