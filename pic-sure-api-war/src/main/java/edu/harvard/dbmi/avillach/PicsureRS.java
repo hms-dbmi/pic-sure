@@ -81,9 +81,8 @@ public class PicsureRS {
 	@Path("/search/{resourceId}/values/")
 	@Consumes("*/*")
 	public PaginatedSearchResult<?> searchConceptValues(
-			@ApiParam(value="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-			@ApiParam(value="Object containing credentials map under 'resourceCredentials' " +
-					"and search term under 'query'") QueryRequest searchQueryRequest,
+			@PathParam("resourceId") UUID resourceId,
+			QueryRequest searchQueryRequest,
 			@QueryParam("conceptPath") String conceptPath,
 			@QueryParam("query") String query,
 			@QueryParam("page") Integer page,
