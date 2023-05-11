@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Schema(name = "QueryRequest", description = "Object containing credentials map under 'resourceCredentials' and query" +
 		" object under 'query'. The query object expectedResultType can be on of the following " +
-		"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\"",
+		"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\", \"DATAFRAME\". ",
 		example = "{\n" +
 				"    \"resourceUUID\": \"<RESOURCE UUID>\",\n" +
 				"    \"query\": {\n" +
