@@ -10,6 +10,7 @@ import java.util.UUID;
 		" object under 'query'. The query object expectedResultType can be on of the following " +
 		"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\", \"DATAFRAME\". ",
 		example = "{\n" +
+				"    \"resourceUUID\": \"<RESOURCE UUID>\",\n" +
 				"    \"query\": {\n" +
 				"        \"categoryFilters\": {\n" +
 				"            \"\\\\demographics\\\\SEX\\\\\": [\n" +
@@ -42,8 +43,10 @@ public class QueryRequest {
 	@Schema(hidden = true)
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
+	@Schema(hidden = true)
 	private Object query;
 
+	@Schema(hidden = true)
 	private UUID resourceUUID;
 
 	public Map<String, String> getResourceCredentials() {
