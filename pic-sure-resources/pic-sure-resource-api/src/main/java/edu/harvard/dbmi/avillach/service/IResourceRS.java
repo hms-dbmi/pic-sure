@@ -66,8 +66,8 @@ public interface IResourceRS
 	default PaginatedSearchResult<?> searchConceptValues(
 			@QueryParam("conceptPath") String conceptPath,
 			@QueryParam("query") String query,
-			@QueryParam("page") Integer page,
-			@QueryParam("size") Integer size
+			@QueryParam("page") int page,
+			@QueryParam("size") int size
 	) {
 		throw new NotSupportedException();
 	}
