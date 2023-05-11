@@ -13,10 +13,8 @@ import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
@@ -80,15 +78,15 @@ public class PicsureRS {
 	@GET
 	@Path("/search/{resourceId}/values/")
 	@Consumes("*/*")
-	public PaginatedSearchResult<?> searchConceptValues(
+	public PaginatedSearchResult<?> searchGenomicConceptValues(
 			@PathParam("resourceId") UUID resourceId,
 			QueryRequest searchQueryRequest,
-			@QueryParam("conceptPath") String conceptPath,
+			@QueryParam("genomicConceptPath") String genomicConceptPath,
 			@QueryParam("query") String query,
 			@QueryParam("page") Integer page,
 			@QueryParam("size") Integer size
 	) {
-		return searchService.searchConceptValues(resourceId, searchQueryRequest, conceptPath, query, page, size);
+		return searchService.searchGenomicConceptValues(resourceId, searchQueryRequest, genomicConceptPath, query, page, size);
 	}
 	
 	@POST

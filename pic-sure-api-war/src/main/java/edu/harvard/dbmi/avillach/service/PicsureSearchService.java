@@ -66,7 +66,7 @@ public class PicsureSearchService {
 		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
 	}
 
-	public PaginatedSearchResult<?> searchConceptValues(UUID resourceId, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size) {
+	public PaginatedSearchResult<?> searchGenomicConceptValues(UUID resourceId, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());

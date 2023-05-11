@@ -63,8 +63,8 @@ public interface IResourceRS
 
 	@GET
 	@Path("/search/values/")
-	default PaginatedSearchResult<?> searchConceptValues(
-			@QueryParam("conceptPath") String conceptPath,
+	default PaginatedSearchResult<?> searchGenomicConceptValues(
+			@QueryParam("genomicConceptPath") String genomicConceptPath,
 			@QueryParam("query") String query,
 			@QueryParam("page") int page,
 			@QueryParam("size") int size
