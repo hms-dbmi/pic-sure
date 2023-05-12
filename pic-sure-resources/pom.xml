@@ -16,6 +16,7 @@
 		<module>pic-sure-hsapi-resource</module>
 		<module>pic-sure-passthrough-resource</module>
 		<module>pic-sure-aggregate-data-sharing-resource</module>
+		<module>pic-sure-visualization</module>
 	</modules>
 	<dependencies>
 		<!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-api -->
