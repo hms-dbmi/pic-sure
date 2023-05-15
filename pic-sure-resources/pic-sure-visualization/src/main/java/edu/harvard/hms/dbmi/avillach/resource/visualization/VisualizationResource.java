@@ -39,10 +39,18 @@ public class VisualizationResource implements IResourceRS {
     @Inject
     private final @NonNull HpdsService hpdsService;
 
+    @Inject
+    private ApplicationProperties properties;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Value("${UUID}")
-    private UUID uuid;
+//    public VisualizationResource() {
+//    }
+//
+//    @Inject
+//    public VisualizationResource(ApplicationProperties applicationProperties) {
+//        this.properties = applicationProperties;
+//    }
 
     @Override
     @POST
@@ -50,7 +58,7 @@ public class VisualizationResource implements IResourceRS {
     public ResourceInfo info(QueryRequest infoRequest) {
         ResourceInfo info = new ResourceInfo();
         info.setName("Pic-Sure Visualization Resource");
-        info.setId(uuid);
+        info.setId(properties.getVisualizationResourceId());
         QueryFormat queryFormat = new QueryFormat();
         queryFormat.setName("Pic-Sure Query Format");
         info.getQueryFormats().add(queryFormat);

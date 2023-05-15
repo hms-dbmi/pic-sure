@@ -4,6 +4,9 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.faces.context.FacesContext;
+import javax.servlet.ServletContext;
+import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Files;
@@ -18,6 +21,7 @@ public class ApplicationProperties implements Serializable {
     private UUID visualizationResourceId;
     private UUID authHpdsResourceId;
     private UUID openHpdsResourceId;
+    private String origin;
 
     public String getContextPath() {
         return contextPath;
@@ -35,6 +39,8 @@ public class ApplicationProperties implements Serializable {
         return openHpdsResourceId;
     }
 
+    public String getOrigin() { return origin; }
+
     public void init(String contextPath) {
         this.contextPath = contextPath;
 
@@ -46,6 +52,13 @@ public class ApplicationProperties implements Serializable {
             properties.load(Files.newInputStream(configFile));
         } catch (IOException e) {
             throw new ApplicationException("Error while reading resource properties file: " + configFile, e);
+        }
+
+        origin = properties.getProperty("origin");
+        if (origin == null) {
+            HttpServletRequest request = (HttpServletRequest) FacesContext.getCurrentInstance().getExternalContext().getRequest();
+            ServletContext servletContext = request.getServletContext();
+            origin = servletContext.getInitParameter("origin");
         }
 
         visualizationResourceId = UUID.fromString(properties.getProperty("visualization.resource.id"));

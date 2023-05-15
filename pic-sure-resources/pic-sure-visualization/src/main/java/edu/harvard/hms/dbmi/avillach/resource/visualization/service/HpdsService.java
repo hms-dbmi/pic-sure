@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import javax.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -23,12 +25,10 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
 
     private static final String AUTH_HEADER_NAME = "Authorization";
 
-    @Value("${picSure.url}")
-    private String picSureUrl;
-    @Value("${picSure.uuid}")
-    private UUID picSureUuid;
-
     private RestTemplate restTemplate;
+
+    @Inject
+    private ApplicationProperties applicationProperties;
 
     public HpdsService() {
         if (restTemplate == null) {
@@ -47,7 +47,8 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
         try {
             sanityCheck(queryRequest, resultType);
             HttpHeaders headers = prepareQueryRequest(queryRequest, resultType);
-            return restTemplate.exchange(picSureUrl, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
+            String url = applicationProperties.getOrigin() + "/query/sync/";
+            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
         } catch (Exception e) {
             logger.error("Error getting cross counts: " + e.getMessage());
             return new LinkedHashMap<>();
@@ -75,13 +76,13 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
         } catch (Exception e) {
             throw new IllegalArgumentException("QueryRequest must contain a Query object");
         }
-        queryRequest.setResourceUUID(picSureUuid);
+        queryRequest.setResourceUUID(applicationProperties.getAuthHpdsResourceId());
         return headers;
     }
 
     private void sanityCheck(QueryRequest queryRequest, ResultType requestType) {
-        if (picSureUrl == null) throw new IllegalArgumentException("picSureUrl is required");
-        if (picSureUuid == null) throw new IllegalArgumentException("picSureUuid is required");
+        if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
+        if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
             throw new IllegalArgumentException("No authorization token found in queryRequest");
         if (requestType == null) throw new IllegalArgumentException("ResultType is required");

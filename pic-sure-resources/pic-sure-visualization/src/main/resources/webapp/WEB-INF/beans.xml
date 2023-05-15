@@ -16,6 +16,7 @@
         </jaxrs:serviceBeans>
         <jaxrs:providers>
             <bean class="com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider"/>
+            <bean class="edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties"/>
         </jaxrs:providers>
     </jaxrs:server>
 </beans>
