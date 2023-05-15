@@ -25,7 +25,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Response;
 import java.util.*;
 
-@Path("/pic-sure")
+@Path("/visualization")
 @Produces({"application/json"})
 @Consumes({"application/json"})
 @JsonIgnoreProperties
