@@ -60,4 +60,15 @@ public interface IResourceRS
 	default Response queryFormat(QueryRequest resultRequest) {
 		throw new NotSupportedException("Query formatting is not implemented in this resource.");
 	}
+
+	@GET
+	@Path("/search/values/")
+	default PaginatedSearchResult<?> searchGenomicConceptValues(
+			@QueryParam("genomicConceptPath") String genomicConceptPath,
+			@QueryParam("query") String query,
+			@QueryParam("page") int page,
+			@QueryParam("size") int size
+	) {
+		throw new NotSupportedException();
+	}
 }

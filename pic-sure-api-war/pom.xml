@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 		<artifactId>pic-sure-api</artifactId>
-		<version>2.0.1-SNAPSHOT</version>
+		<version>2.1.0-SNAPSHOT</version>
 	</parent>
 	<artifactId>pic-sure-api-war</artifactId>
 	<name>PIC-SURE API war</name>
@@ -79,17 +79,14 @@
 		<dependency>
 			<groupId>io.swagger.core.v3</groupId>
 			<artifactId>swagger-jaxrs2</artifactId>
-			<version>2.2.7</version>
 		</dependency>
 		<dependency>
 			<groupId>io.swagger.core.v3</groupId>
 			<artifactId>swagger-jaxrs2-servlet-initializer-v2</artifactId>
-			<version>2.2.7</version>
 		</dependency>
 		<dependency>
 			<groupId>io.swagger.core.v3</groupId>
 			<artifactId>swagger-annotations</artifactId>
-			<version>2.2.8</version>
 		</dependency>
 	</dependencies>
 	<build>
