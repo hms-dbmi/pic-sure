@@ -7,7 +7,7 @@
     <description>JAX-RS Simple Service</description>
     <context-param>
         <param-name>contextConfigLocation</param-name>
-        <param-value>WEB-INF/beans.xml</param-value>
+        <param-value>classpath*:jaxrs-context.xml</param-value>
     </context-param>
     <listener>
         <listener-class>

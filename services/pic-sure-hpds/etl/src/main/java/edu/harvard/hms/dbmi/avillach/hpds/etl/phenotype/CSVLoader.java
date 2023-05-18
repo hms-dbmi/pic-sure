@@ -31,15 +31,20 @@ public class CSVLoader {
 
 	private static final int DATETIME = 4;
 
+	private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+
 	public static void main(String[] args) throws IOException {
-		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		if (args.length > 0) {
+			HPDS_DIRECTORY = args[0] + "/";
+		}
+		store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
 		initialLoad();
-		store.saveStore();
+		store.saveStore(HPDS_DIRECTORY);
 	}
 
 	private static void initialLoad() throws IOException {
 		Crypto.loadDefaultKey();
-		Reader in = new FileReader("/opt/local/hpds/allConcepts.csv");
+		Reader in = new FileReader(HPDS_DIRECTORY + "allConcepts.csv");
 		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024*1024));
 
 		final PhenoCube[] currentConcept = new PhenoCube[1];

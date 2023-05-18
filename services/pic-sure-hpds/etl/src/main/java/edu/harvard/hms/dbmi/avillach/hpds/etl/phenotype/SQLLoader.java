@@ -44,13 +44,15 @@ public class SQLLoader {
 
 	private static final Properties props = new Properties();
 
+	private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+
 	public static void main(String[] args) throws IOException {
-		props.load(new FileInputStream("/opt/local/hpds/sql.properties"));
+		props.load(new FileInputStream(HPDS_DIRECTORY + "sql.properties"));
 		template = new JdbcTemplate(new DriverManagerDataSource(prop("datasource.url"), prop("datasource.user"), prop("datasource.password")));
-		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
 		Crypto.loadDefaultKey();
 		initialLoad();
-		store.saveStore();
+		store.saveStore(HPDS_DIRECTORY);
 		store.dumpStats();
 	}
 

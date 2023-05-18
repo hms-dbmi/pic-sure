@@ -20,6 +20,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
  * a fast, disk-based backing store.
  */
 public class VariantMetadataIndex implements Serializable {
+	// todo: make this variable
 	public static String VARIANT_METADATA_BIN_FILE = "/opt/local/hpds/all/VariantMetadata.javabin";
 	
 	private static final long serialVersionUID = 5917054606643971537L;
@@ -27,6 +28,8 @@ public class VariantMetadataIndex implements Serializable {
 
 	// (String) contig  --> (Integer) Bucket -->  (String) variant spec --> INFO column data[].
 	private Map<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> > indexMap = new HashMap<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> >();
+
+	// todo: make this variable
 	private static String fileStoragePrefix = "/opt/local/hpds/all/VariantMetadataStorage";
 
 	/**

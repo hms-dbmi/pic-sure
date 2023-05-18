@@ -109,12 +109,12 @@ public class LoadingStore {
 
 	public TreeSet<Integer> allIds = new TreeSet<Integer>();
 	
-	public void saveStore() throws FileNotFoundException, IOException {
+	public void saveStore(String hpdsDirectory) throws FileNotFoundException, IOException {
 		System.out.println("Invalidating store");
 		store.invalidateAll();
 		store.cleanUp();
 		System.out.println("Writing metadata");
-		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File("/opt/local/hpds/columnMeta.javabin"))));
+		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(hpdsDirectory + "columnMeta.javabin"))));
 		metaOut.writeObject(metadataMap);
 		metaOut.writeObject(allIds);
 		metaOut.flush();

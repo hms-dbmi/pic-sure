@@ -33,17 +33,19 @@ public class RekeyDataset {
 
 	protected static TreeMap<String, ColumnMeta> sourceMetaStore;
 
+	private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+
 	public static void main(String[] args) throws IOException, ClassNotFoundException, ExecutionException {
 		Crypto.loadDefaultKey();
 		Crypto.loadKey(SOURCE, "/opt/local/source/encryption_key");
 		sourceStore = initializeCache(); 
 		Object[] metadata = loadMetadata();
 		sourceMetaStore = (TreeMap<String, ColumnMeta>) metadata[0];
-		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
 		store.allIds = (TreeSet<Integer>) metadata[1];
 		initialLoad();
 		
-		store.saveStore();
+		store.saveStore(HPDS_DIRECTORY);
 	}
 
 	private static void initialLoad() throws IOException, ExecutionException {

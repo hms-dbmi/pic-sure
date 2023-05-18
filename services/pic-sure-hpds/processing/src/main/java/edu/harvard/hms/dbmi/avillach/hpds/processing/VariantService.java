@@ -25,9 +25,12 @@ public class VariantService {
     private static Logger log = LoggerFactory.getLogger(VariantService.class);
 
     private static final Integer VARIANT_INDEX_BLOCK_SIZE = 1000000;
-    private static final String VARIANT_INDEX_FBBIS_STORAGE_FILE = "/opt/local/hpds/all/variantIndex_fbbis_storage.javabin";
-    private static final String VARIANT_INDEX_FBBIS_FILE = "/opt/local/hpds/all/variantIndex_fbbis.javabin";
-    private static final String BUCKET_INDEX_BY_SAMPLE_FILE = "/opt/local/hpds/all/BucketIndexBySample.javabin";
+
+    private final String genomicDataDirectory;
+
+    private final String VARIANT_INDEX_FBBIS_STORAGE_FILE;
+    private final String VARIANT_INDEX_FBBIS_FILE;
+    private final String BUCKET_INDEX_BY_SAMPLE_FILE;
 
 
     private final VariantStore variantStore;
@@ -52,7 +55,12 @@ public class VariantService {
     }
 
     public VariantService() throws IOException, ClassNotFoundException, InterruptedException {
-        variantStore = VariantStore.deserializeInstance();
+        genomicDataDirectory = System.getProperty("HPDS_DATA_HOME", "/opt/local/hpds/all/");
+        VARIANT_INDEX_FBBIS_STORAGE_FILE = genomicDataDirectory + "variantIndex_fbbis_storage.javabin";
+        VARIANT_INDEX_FBBIS_FILE = genomicDataDirectory + "variantIndex_fbbis.javabin";
+        BUCKET_INDEX_BY_SAMPLE_FILE = genomicDataDirectory + "BucketIndexBySample.javabin";
+
+        variantStore = VariantStore.deserializeInstance(genomicDataDirectory);
         try {
             loadGenomicCacheFiles();
         } catch (Exception e) {

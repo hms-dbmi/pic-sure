@@ -41,13 +41,15 @@ public class FixCategoricalConcepts {
 
 	private static final int TIMESTAMP = 4;
 
+	private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+
 	public static void main(String[] args) throws IOException, ClassNotFoundException, ExecutionException {
 		sourceStore = initializeCache(); 
 		Object[] metadata = loadMetadata();
 		sourceMetaStore = (TreeMap<String, ColumnMeta>) metadata[0];
-		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
+		store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
 		initialLoad();
-		store.saveStore();
+		store.saveStore(HPDS_DIRECTORY);
 	}
 
 	private static void initialLoad() throws IOException, ExecutionException {

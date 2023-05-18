@@ -20,6 +20,7 @@ public class PhenotypeMetaStore {
     private TreeMap<String, ColumnMeta> metaStore;
 
     private TreeSet<Integer> patientIds;
+    private String columnMetaFile;
 
     public TreeMap<String, ColumnMeta> getMetaStore() {
         return metaStore;
@@ -38,7 +39,9 @@ public class PhenotypeMetaStore {
     }
 
     public PhenotypeMetaStore() {
-        try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/columnMeta.javabin")));){
+        String hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
+        columnMetaFile = hpdsDataDirectory + "columnMeta.javabin";
+        try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)));){
             TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
             TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
             for(Map.Entry<String,ColumnMeta> entry : _metastore.entrySet()) {
@@ -52,7 +55,7 @@ public class PhenotypeMetaStore {
             log.warn("************************************************");
             log.warn("************************************************");
             log.warn("Could not load metastore");
-            log.warn("If you meant to include phenotype data of any kind, please check that the file /opt/local/hpds/columnMeta.javabin exists and is readable by the service.");
+            log.warn("If you meant to include phenotype data of any kind, please check that the file " + columnMetaFile + " exists and is readable by the service.");
             log.warn("************************************************");
             log.warn("************************************************");
             metaStore = new TreeMap<String, ColumnMeta>();

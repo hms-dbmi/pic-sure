@@ -43,9 +43,9 @@ public class VariantStore implements Serializable {
 		this.variantMaskStorage = variantMaskStorage;
 	}
 
-	public static VariantStore deserializeInstance() throws IOException, ClassNotFoundException, InterruptedException {
-		if(new File("/opt/local/hpds/all/variantStore.javabin").exists()) {
-			ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin")));
+	public static VariantStore deserializeInstance(String genomicDataDirectory) throws IOException, ClassNotFoundException, InterruptedException {
+		if(new File(genomicDataDirectory + "variantStore.javabin").exists()) {
+			ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(genomicDataDirectory + "variantStore.javabin")));
 			VariantStore variantStore = (VariantStore) ois.readObject();
 			ois.close();
 			variantStore.open();

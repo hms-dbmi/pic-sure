@@ -43,6 +43,8 @@ public class RemapIds {
 
 	private static final int TIMESTAMP = 4;
 
+	private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+
 	public static void main(String[] args) throws IOException, ClassNotFoundException, ExecutionException {
 		loadPatientIdMap();
 		sourceStore = initializeCache(); 
@@ -50,7 +52,7 @@ public class RemapIds {
 		sourceMetaStore = (TreeMap<String, ColumnMeta>) metadata[0];
 		store.allObservationsStore = new RandomAccessFile("/opt/local/hpds/allObservationsStore.javabin", "rw");
 		initialLoad();
-		store.saveStore();
+		store.saveStore(HPDS_DIRECTORY);
 	}
 
 	private static void loadPatientIdMap() throws IOException {
