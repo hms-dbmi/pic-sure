@@ -4,9 +4,6 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
 
 import javax.enterprise.context.ApplicationScoped;
-import javax.faces.context.FacesContext;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Files;
@@ -54,12 +51,9 @@ public class ApplicationProperties implements Serializable {
             throw new ApplicationException("Error while reading resource properties file: " + configFile, e);
         }
 
-        origin = properties.getProperty("origin");
-        if (origin == null) {
-            HttpServletRequest request = (HttpServletRequest) FacesContext.getCurrentInstance().getExternalContext().getRequest();
-            ServletContext servletContext = request.getServletContext();
-            origin = servletContext.getInitParameter("origin");
-        }
+        origin = properties.getProperty("target.origin.id");
+        if (origin == null)
+            throw new PicsureQueryException("origin property must be set.");
 
         visualizationResourceId = UUID.fromString(properties.getProperty("visualization.resource.id"));
         if (visualizationResourceId == null)
