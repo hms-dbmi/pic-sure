@@ -286,9 +286,13 @@ public class NewVCFLoader {
 			chunkWriteEx.execute(() -> {
 				try {
 					if (variantMaskStorage_f.get(lastContigProcessed_f) == null) {
+						String fileName = lastContigProcessed_f + "masks.bin";
+						if ("chr".startsWith(fileName)) {
+							fileName = "chr" + fileName;
+						}
 						variantMaskStorage_f.put(lastContigProcessed_f,
 								new FileBackedByteIndexedStorage(Integer.class, ConcurrentHashMap.class,
-										new File(storageDir, "chr" + lastContigProcessed_f + "masks.bin")));
+										new File(storageDir, fileName)));
 					}
 					variantMaskStorage_f.get(lastContigProcessed_f).put(lastChunkProcessed_f,
 							convertLoadingMapToMaskMap(zygosityMaskStrings_f));
