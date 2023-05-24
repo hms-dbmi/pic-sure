@@ -11,11 +11,9 @@ import edu.harvard.hms.dbmi.avillach.resource.visualization.model.*;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.*;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.DataProcessingProcessingService;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.HpdsService;
-import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
@@ -34,15 +32,28 @@ public class VisualizationResource implements IResourceRS {
 
     private final Logger logger = LoggerFactory.getLogger(VisualizationResource.class);
 
-    @Inject
-    private final @NonNull DataProcessingProcessingService dataProcessingService;
-    @Inject
-    private final @NonNull HpdsService hpdsService;
+    private DataProcessingProcessingService dataProcessingService;
+
+    private HpdsService hpdsService;
 
     @Inject
     private ApplicationProperties properties;
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Inject
+    public VisualizationResource(DataProcessingProcessingService dataProcessingService, HpdsService hpdsService, ApplicationProperties properties) {
+        logger.info("initialize visualization Resource NO INJECTION");
+
+        this.dataProcessingService = dataProcessingService;
+        this.hpdsService = hpdsService;
+
+        if (properties == null) {
+            properties = new ApplicationProperties();
+            properties.init("pic-sure-visualization-resource");
+        }
+
+    }
 
 //    public VisualizationResource() {
 //    }

@@ -15,15 +15,18 @@ class VisualizationResourceTests extends VisualizationResource {
 
     static DataProcessingProcessingService dataProcessingService;
     static HpdsService hpdsService;
+    static ApplicationProperties properties;
 
     @BeforeAll
     static void setUp() {
         dataProcessingService = new DataProcessingProcessingService();
         hpdsService = new HpdsService();
+        properties = new ApplicationProperties();
+        properties.init("pic-sure-visualization-resource");
     }
 
     public VisualizationResourceTests() {
-        super(dataProcessingService, hpdsService);
+        super(dataProcessingService, hpdsService, properties);
     }
 
     @Test

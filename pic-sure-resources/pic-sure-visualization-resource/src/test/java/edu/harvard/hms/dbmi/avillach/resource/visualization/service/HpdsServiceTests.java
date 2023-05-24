@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,10 +15,12 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HpdsServiceTests {
 
     static HpdsService service;
+    static ApplicationProperties properties;
 
     @BeforeAll
     static void setUp() {
         service = new HpdsService();
+        properties = new ApplicationProperties();
     }
 
     @Test
