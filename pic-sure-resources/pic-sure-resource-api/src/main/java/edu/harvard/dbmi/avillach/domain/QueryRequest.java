@@ -6,48 +6,47 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-@Schema(description = "resourceCredentials should be a map with the key identifying the resource and the value an authorization" +
-		" token for the resource.  The query is a string or object that contains a search term or query")
+@Schema(name = "QueryRequest", description = "Object containing credentials map under 'resourceCredentials' and query" +
+		" object under 'query'. The query object expectedResultType can be on of the following " +
+		"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\", \"DATAFRAME\". ",
+		example = "{\n" +
+				"    \"resourceUUID\": \"<RESOURCE UUID>\",\n" +
+				"    \"query\": {\n" +
+				"        \"categoryFilters\": {\n" +
+				"            \"\\\\demographics\\\\SEX\\\\\": [\n" +
+				"                \"female\",\n" +
+				"                \"male\"\n" +
+				"            ]\n" +
+				"        },\n" +
+				"        \"numericFilters\": {\n" +
+				"            \"\\\\demographics\\\\AGE\\\\\": {\n" +
+				"                \"min\": \"0\",\n" +
+				"                \"max\": \"85\"\n" +
+				"            }\n" +
+				"        },\n" +
+				"        \"requiredFields\": [],\n" +
+				"        \"anyRecordOf\": [\n" +
+				"            \"\\\\demographics\\\\RACE\\\\\"\n" +
+				"        ],\n" +
+				"        \"variantInfoFilters\": [\n" +
+				"            {\n" +
+				"                \"categoryVariantInfoFilters\": {},\n" +
+				"                \"numericVariantInfoFilters\": {}\n" +
+				"            }\n" +
+				"        ],\n" +
+				"        \"expectedResultType\": \"DATAFRAME\",\n" +
+				"        \"fields\": []\n" +
+				"    }\n" +
+				"}")
 public class QueryRequest {
 
-	@Schema(description = "Map with the key identifying the resource and the value an authorization token for the resource")
+	@Schema(hidden = true)
 	private Map<String, String> resourceCredentials = new HashMap<>();
 
-	@Schema(description = "A string or object that contains a search term or query. Potential Expect Result Type: " +
-			"\"COUNT\", \"CROSS_COUNT\", \"INFO_COLUMN_LISTING\", \"OBSERVATION_COUNT\", \"OBSERVATION_CROSS_COUNT\"",
-			example = "{"
-					+ "    \"resourceUUID\": \"<Resource UUID>\","
-					+ "    \"query\": {"
-					+ "        \"categoryFilters\": {"
-					+ "            \"\\\\ACT Demographics\\\\Sex\\\\\": ["
-					+ "                \"Female\","
-					+ "                \"Male\""
-					+ "            ]"
-					+ "        },"
-					+ "        \"numericFilters\": {"
-					+ "            \"\\\\ACT Demographics\\\\Age\\\\\": {"
-					+ "                \"min\": \"5\","
-					+ "                \"max\": \"12\""
-					+ "            }"
-					+ "        },"
-					+ "        \"requiredFields\": [],"
-					+ "        \"anyRecordOf\": [],"
-					+ "        \"variantInfoFilters\": ["
-					+ "            {"
-					+ "                \"categoryVariantInfoFilters\": {"
-					+ "                    \"Gene_with_variant\": ["
-					+ "                        \"CHD8\""
-					+ "                    ]"
-					+ "                },"
-					+ "                \"numericVariantInfoFilters\": {}"
-					+ "            }"
-					+ "        ],"
-					+ "        \"expectedResultType\": \"COUNT\""
-					+ "    }"
-					+ "}")
+	@Schema(hidden = true)
 	private Object query;
 
-	@Schema(description = "The UUID of the resource to query")
+	@Schema(hidden = true)
 	private UUID resourceUUID;
 
 	public Map<String, String> getResourceCredentials() {

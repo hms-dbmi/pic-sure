@@ -49,8 +49,7 @@ public class PicsureRS {
 			)}
 	)
 	public ResourceInfo resourceInfo(@Parameter(description="The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
-									 @Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
-											 "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+									 @Parameter QueryRequest credentialsQueryRequest) {
 		System.out.println("Resource info requested for : " + resourceId);
 		return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest);
 	}
@@ -133,8 +132,7 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus query(@Parameter(description="Object containing credentials map under 'resourceCredentials' " +
-									 "and query object under 'query'")QueryRequest dataQueryRequest) {
+	public QueryStatus query(@Parameter QueryRequest dataQueryRequest) {
 		return queryService.query(dataQueryRequest);
 	}
 	
@@ -154,9 +152,9 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch the status of") @PathParam("queryId") UUID queryId,
-								   @Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
-										   "key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
+			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
+								   @Parameter QueryRequest credentialsQueryRequest) {
 		return queryService.queryStatus(queryId, credentialsQueryRequest);
 	}
 	
@@ -176,9 +174,9 @@ public class PicsureRS {
 					)
 			}
 	)
-	public Response queryResult(@Parameter(description="The UUID of the query to fetch the results of") @PathParam("queryId") UUID queryId,
-								@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
-										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
+	public Response queryResult(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
+			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
+								@Parameter QueryRequest credentialsQueryRequest) {
 		return queryService.queryResult(queryId, credentialsQueryRequest);
 	}
 
@@ -207,6 +205,8 @@ public class PicsureRS {
 	@Path("/query/{queryId}/metadata")
 	@Operation(
 			summary = "Returns metadata for given query",
+			description = "Generally used to reconstruct a query that was previously submitted.	The queryId is " +
+					"returned by the /query endpoint as the \"picsureResultId\" in the response object",
 			responses = {
 					@io.swagger.v3.oas.annotations.responses.ApiResponse(
 							responseCode = "200",
