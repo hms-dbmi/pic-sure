@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ContinuousData;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
@@ -10,15 +9,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import javax.enterprise.inject.Default;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
-public class DataProcessingProcessingService implements edu.harvard.hms.dbmi.avillach.resource.visualization.service.IDataProcessingService {
+@Default
+public class DataProcessingService implements edu.harvard.hms.dbmi.avillach.resource.visualization.service.IDataProcessingService {
 
-    private Logger logger = LoggerFactory.getLogger(DataProcessingProcessingService.class);
+    private Logger logger = LoggerFactory.getLogger(DataProcessingService.class);
 
     private static final String CONSENTS_KEY = "\\_consents\\";
     private static final String HARMONIZED_CONSENT_KEY = "\\_harmonized_consent\\";
@@ -32,7 +33,7 @@ public class DataProcessingProcessingService implements edu.harvard.hms.dbmi.avi
     private RestTemplate restTemplate;
     private ObjectMapper mapper;
 
-    public DataProcessingProcessingService() {
+    public DataProcessingService() {
         if (restTemplate == null) {
             restTemplate = new RestTemplate();
         }
@@ -46,11 +47,10 @@ public class DataProcessingProcessingService implements edu.harvard.hms.dbmi.avi
      * we only return the top limit and an "Other" category. We create a LinkedHashMap with the processed results
      * and ascertain the title from the HPDS Path.
      *
-     * @param queryRequest - id of target resource
      * @return List<CategoricalData> - result of query
      */
     @Override
-    public List<CategoricalData> getCategoricalData(QueryRequest queryRequest, Map<String, Map<String, Integer>> crossCountsMap) {
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
@@ -77,11 +77,10 @@ public class DataProcessingProcessingService implements edu.harvard.hms.dbmi.avi
     /**
      * For each continuous cross count we create a histogram of the values.
      *
-     * @param queryRequest - id of target resource
      * @return List<CategoricalData> - result of query
      */
     @Override
-    public List<ContinuousData> getContinuousData(QueryRequest queryRequest, Map<String, Map<String, Integer>> crossCountsMap) {
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {

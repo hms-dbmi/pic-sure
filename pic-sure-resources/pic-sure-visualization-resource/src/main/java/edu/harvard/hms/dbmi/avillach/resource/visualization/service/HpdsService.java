@@ -1,24 +1,25 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import javax.enterprise.inject.Default;
 import javax.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
+@Default
 public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visualization.service.IHpdsService {
 
     private Logger logger = LoggerFactory.getLogger(HpdsService.class);
@@ -29,6 +30,8 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
 
     @Inject
     private ApplicationProperties applicationProperties;
+
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public HpdsService() {
         if (restTemplate == null) {
@@ -70,7 +73,7 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
         );
         Query query;
         try {
-            query = (Query) queryRequest.getQuery();
+            query = mapper.readValue(mapper.writeValueAsString(queryRequest.getQuery()), Query.class);
             query.expectedResultType = resultType;
             queryRequest.setQuery(query);
         } catch (Exception e) {

@@ -15,11 +15,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DataServiceTests {
 
-    static DataProcessingProcessingService dataProcessingService;
+    static DataProcessingService dataProcessingService;
 
     @BeforeAll
     static void setUp() {
-        dataProcessingService = new DataProcessingProcessingService();
+        dataProcessingService = new DataProcessingService();
     }
 
     @Nested
@@ -41,7 +41,7 @@ class DataServiceTests {
             variableMap.put("I DON'T KNOW", 3);
             crossCountsMap.put("\\phs000209\\pht001121\\phv00087119\\asthmaf\\", variableMap);
 
-            List<CategoricalData> list = dataProcessingService.getCategoricalData(goodQueryRequest, crossCountsMap);
+            List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
             assertTrue(list.size()>0);
             assertEquals("Variable distribution of phv00087119: asthmaf", list.get(0).getTitle());
@@ -86,7 +86,7 @@ class DataServiceTests {
             variableMap.put("WHI Observational Study", 80922); //1
             crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
 
-            List<CategoricalData> list = dataProcessingService.getCategoricalData(goodQueryRequest, crossCountsMap);
+            List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
             assertTrue(list.size()>0);
             assertEquals("Variable distribution of demographic: subcohort_1", list.get(0).getTitle());
@@ -133,7 +133,7 @@ class DataServiceTests {
             variableMap.put("WHI Observational Study", 80922); //1
             crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
 
-            List<CategoricalData> list = dataProcessingService.getCategoricalData(goodQueryRequest, crossCountsMap);
+            List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
             assertTrue(list.size()>0);
             assertEquals("Variable distribution of demographic: subcohort_1", list.get(0).getTitle());
@@ -170,7 +170,7 @@ class DataServiceTests {
             variableMap.put("WHI Observational Study", 80922);
             crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
 
-            List<CategoricalData> list = dataProcessingService.getCategoricalData(goodQueryRequest, crossCountsMap);
+            List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
             assertTrue(list.size()>0);
             assertEquals("Variable distribution of demographic: subcohort_1", list.get(0).getTitle());
@@ -211,7 +211,7 @@ class DataServiceTests {
             crossCountsMap.put("\\phs000209\\pht001121\\phv00087301\\alcfc\\", variableMap2);
             crossCountsMap.put(("\\phs000209\\pht001121\\phv00087319\\benzodfc\\"), variableMap3);
 
-            List<CategoricalData> list = dataProcessingService.getCategoricalData(goodQueryRequest, crossCountsMap);
+            List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             assertEquals(crossCountsMap.size(), list.size());
             Map<String, Integer> varMap1 = list.get(0).getCategoricalMap();
             Map<String, Integer> varMap2 = list.get(1).getCategoricalMap();
@@ -296,7 +296,7 @@ class DataServiceTests {
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\platelet_ncnc_bld_1\\", variableMap2);
             crossCountsMap.put("\\DCC Harmonized data set\\lipids\\hdl_1\\", variableMap3);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals("Variable distribution of blood_cell_count: hemoglobin_mcnc_bld_1", list.get(0).getTitle());
             assertEquals("Variable distribution of blood_cell_count: platelet_ncnc_bld_1", list.get(1).getTitle());
@@ -354,7 +354,7 @@ class DataServiceTests {
             expectedOutputMap.put("23.0 +", 434);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap.size(), list.get(0).getContinuousMap().size());
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
@@ -468,7 +468,7 @@ class DataServiceTests {
             expectedOutputMap.put("23.0 +", 434);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
             assertEquals(crossCountsMap.size(), list.size());
             List<Map.Entry<String,Integer>> entryList =
                     new ArrayList<>(list.get(0).getContinuousMap().entrySet());
@@ -578,7 +578,7 @@ class DataServiceTests {
             expectedOutputMap.put("91.0 +", 7350);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
         }
@@ -626,7 +626,7 @@ class DataServiceTests {
                 n -= 1;
             }
             crossCountsMap.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(goodQueryRequest, crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
             assertEquals(1, list.size());
             assertTrue(1 < list.get(0).getContinuousMap().size());
         }

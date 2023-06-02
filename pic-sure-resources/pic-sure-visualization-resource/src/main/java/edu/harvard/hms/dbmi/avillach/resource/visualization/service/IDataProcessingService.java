@@ -9,8 +9,8 @@ import java.util.Map;
 
 public interface IDataProcessingService {
 
-    List<CategoricalData> getCategoricalData(QueryRequest queryRequest, Map<String, Map<String, Integer>> crossCountsMap);
+    List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap);
 
-    List<ContinuousData> getContinuousData(QueryRequest queryRequest, Map<String, Map<String, Integer>> crossCountsMap);
+    List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap);
 
 }

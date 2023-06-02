@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
@@ -9,11 +10,13 @@ import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.*;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.*;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.DataProcessingProcessingService;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.HpdsService;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.IDataProcessingService;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.IHpdsService;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
@@ -32,36 +35,14 @@ public class VisualizationResource implements IResourceRS {
 
     private final Logger logger = LoggerFactory.getLogger(VisualizationResource.class);
 
-    private DataProcessingProcessingService dataProcessingService;
-
-    private HpdsService hpdsService;
-
+    @Autowired
+    private IDataProcessingService dataProcessingService;
+    @Autowired
+    private IHpdsService hpdsService;
     @Inject
     private ApplicationProperties properties;
 
     private final ObjectMapper mapper = new ObjectMapper();
-
-    @Inject
-    public VisualizationResource(DataProcessingProcessingService dataProcessingService, HpdsService hpdsService, ApplicationProperties properties) {
-        logger.info("initialize visualization Resource NO INJECTION");
-
-        this.dataProcessingService = dataProcessingService;
-        this.hpdsService = hpdsService;
-
-        if (properties == null) {
-            properties = new ApplicationProperties();
-            properties.init("pic-sure-visualization-resource");
-        }
-
-    }
-
-//    public VisualizationResource() {
-//    }
-//
-//    @Inject
-//    public VisualizationResource(ApplicationProperties applicationProperties) {
-//        this.properties = applicationProperties;
-//    }
 
     @Override
     @POST
@@ -87,13 +68,17 @@ public class VisualizationResource implements IResourceRS {
         logger.debug("Received query:  \n" + query);
         Query queryJson;
         try {
-            queryJson = (Query) query.getQuery();
+            queryJson = mapper.readValue(mapper.writeValueAsString(query.getQuery()), Query.class);
+            if (queryJson == null) return Response.status(Response.Status.BAD_REQUEST).entity("queryJson null").build();
         } catch (Exception e) {
             logger.error("Error parsing query:  \n" + query, e);
             return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
         }
         Map<String, Map<String, Integer>> categroyCrossCountsMap;
         if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+            if (hpdsService == null) {
+                Response.status(Response.Status.BAD_REQUEST).entity("Error with loading service").build();
+            }
             categroyCrossCountsMap = hpdsService.getCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
         } else {
             categroyCrossCountsMap = new HashMap<>();
@@ -106,8 +91,8 @@ public class VisualizationResource implements IResourceRS {
         }
         if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty())) return Response.ok().build();
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingService.getCategoricalData(query, categroyCrossCountsMap));
-        response.getContinuousData().addAll(dataProcessingService.getContinuousData(query, continuousCrossCountsMap));
+        response.getCategoricalData().addAll(dataProcessingService.getCategoricalData(categroyCrossCountsMap));
+        response.getContinuousData().addAll(dataProcessingService.getContinuousData(continuousCrossCountsMap));
         return Response.ok(response).build();
     }
 
