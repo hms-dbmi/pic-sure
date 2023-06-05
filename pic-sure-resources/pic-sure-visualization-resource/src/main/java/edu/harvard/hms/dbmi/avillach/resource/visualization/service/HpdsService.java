@@ -10,17 +10,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import javax.enterprise.inject.Default;
+import javax.ejb.Stateless;
 import javax.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@Service
-@Default
-public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visualization.service.IHpdsService {
+@Stateless
+public class HpdsService {
 
     private Logger logger = LoggerFactory.getLogger(HpdsService.class);
 
@@ -37,6 +35,10 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
         if (restTemplate == null) {
             restTemplate = new RestTemplate();
         }
+        if (applicationProperties == null) {
+            applicationProperties = new ApplicationProperties();
+            applicationProperties.init("pic-sure-visualization-resource");
+        }
     }
 
     /**
@@ -48,9 +50,11 @@ public class HpdsService implements edu.harvard.hms.dbmi.avillach.resource.visua
      */
     public Map<String, Map<String, Integer>> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
         try {
+            logger.debug("Getting cross counts map from query:", queryRequest);
             sanityCheck(queryRequest, resultType);
             HttpHeaders headers = prepareQueryRequest(queryRequest, resultType);
             String url = applicationProperties.getOrigin() + "/query/sync/";
+            queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
             return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
         } catch (Exception e) {
             logger.error("Error getting cross counts: " + e.getMessage());

@@ -2,6 +2,8 @@ package edu.harvard.hms.dbmi.avillach.resource.visualization;
 
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.PicsureQueryException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import java.io.IOException;
@@ -13,6 +15,8 @@ import java.util.UUID;
 
 @ApplicationScoped
 public class ApplicationProperties implements Serializable {
+
+    private final Logger logger = LoggerFactory.getLogger(ApplicationProperties.class);
 
     private String contextPath;
     private UUID visualizationResourceId;
@@ -43,6 +47,7 @@ public class ApplicationProperties implements Serializable {
 
         Path configFile = Path.of(System.getProperty("jboss.server.config.dir"), "visualization", contextPath,
                 "resource.properties");
+        logger.debug("Loading resource properties file: " + configFile);
         Properties properties;
         try {
             properties = new Properties();
@@ -52,10 +57,12 @@ public class ApplicationProperties implements Serializable {
         }
 
         origin = properties.getProperty("target.origin.id");
+        logger.debug("origin: " + origin);
         if (origin == null)
             throw new PicsureQueryException("origin property must be set.");
 
         visualizationResourceId = UUID.fromString(properties.getProperty("visualization.resource.id"));
+        logger.debug("visualizationResourceId: " + visualizationResourceId);
         if (visualizationResourceId == null)
             throw new PicsureQueryException("visualization.resource.id property must be set.");
 

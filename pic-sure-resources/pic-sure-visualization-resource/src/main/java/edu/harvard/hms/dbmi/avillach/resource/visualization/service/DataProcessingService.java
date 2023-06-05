@@ -6,18 +6,16 @@ import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ContinuousData
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import javax.enterprise.inject.Default;
+import javax.ejb.Stateless;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Service
-@Default
-public class DataProcessingService implements edu.harvard.hms.dbmi.avillach.resource.visualization.service.IDataProcessingService {
+@Stateless
+public class DataProcessingService {
 
     private Logger logger = LoggerFactory.getLogger(DataProcessingService.class);
 
@@ -49,7 +47,6 @@ public class DataProcessingService implements edu.harvard.hms.dbmi.avillach.reso
      *
      * @return List<CategoricalData> - result of query
      */
-    @Override
     public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
@@ -79,7 +76,6 @@ public class DataProcessingService implements edu.harvard.hms.dbmi.avillach.reso
      *
      * @return List<CategoricalData> - result of query
      */
-    @Override
     public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 

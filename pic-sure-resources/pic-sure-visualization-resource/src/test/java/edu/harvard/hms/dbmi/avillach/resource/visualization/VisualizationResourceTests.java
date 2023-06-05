@@ -33,7 +33,7 @@ class VisualizationResourceTests extends VisualizationResource {
     void TestEmptyQuery() {
         QueryRequest queryRequest = new QueryRequest();
         queryRequest.setQuery(new Query());
-        Response response = getProcessedCrossCounts(queryRequest);
+        Response response = querySync(queryRequest);
         assertNull(response.getEntity());
     }
 }

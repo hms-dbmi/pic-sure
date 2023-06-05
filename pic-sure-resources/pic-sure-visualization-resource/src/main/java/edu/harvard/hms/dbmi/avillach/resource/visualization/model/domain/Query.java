@@ -75,6 +75,9 @@ public class Query {
                 return builder.toString();
 
             case CROSS_COUNT:
+            //Rethink these two as required fields work
+            case CATEGORICAL_CROSS_COUNT:
+            case CONTINUOUS_CROSS_COUNT:
                 writePartFormat("Cross Count Fields", crossCountFields, builder, true);
                 break;
             case OBSERVATION_COUNT:
