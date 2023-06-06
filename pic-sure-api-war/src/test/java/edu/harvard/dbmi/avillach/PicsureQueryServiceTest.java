@@ -62,7 +62,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
 	@Mock
-	private HttpHeaders headers = mock(HttpHeaders.class);
+	private HeaderContext headerContext = mock(HeaderContext.class);
 
 	@Before
 	public void setUp() {

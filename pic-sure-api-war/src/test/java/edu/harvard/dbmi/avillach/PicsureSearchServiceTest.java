@@ -49,6 +49,9 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
     @Mock
     private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
+    @Mock
+    private HeaderContext headerContext = mock(HeaderContext.class);
+
     @Before
     public void setUp() {
         SearchResults results = new SearchResults();
