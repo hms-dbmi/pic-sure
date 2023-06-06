@@ -27,8 +27,8 @@ public class Utilities {
     }
 
     public static String getRequestSourceFromHeader(HttpHeaders headers) {
-        if (headers == null) return "";
-        return Optional.ofNullable(headers.getHeaderString("request-source")).orElse("");
+        if (headers == null) return "headers are null";
+        return Optional.ofNullable(headers.getHeaderString("request-source")).orElse("request-source header is null");
     }
 
     public static String convertQueryRequestToString(ObjectMapper mapper, Object searchQueryRequest) {
