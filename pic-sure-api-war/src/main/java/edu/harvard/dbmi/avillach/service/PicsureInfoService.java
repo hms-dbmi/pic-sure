@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
@@ -18,10 +19,13 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
+import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
 
 public class PicsureInfoService {
 
 	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+
+	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Context
 	private HttpHeaders headers;
@@ -57,7 +61,7 @@ public class PicsureInfoService {
 		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
 				getRequestSourceFromHeader(headers),
-				credentialsQueryRequest
+				convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());

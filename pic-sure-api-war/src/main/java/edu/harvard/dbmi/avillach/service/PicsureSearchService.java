@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
@@ -17,10 +18,13 @@ import java.util.HashMap;
 import java.util.UUID;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
+import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
 
 public class PicsureSearchService {
 
 	private final Logger logger = LoggerFactory.getLogger(PicsureSearchService.class);
+
+	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Context
 	private HttpHeaders headers;
@@ -57,7 +61,7 @@ public class PicsureSearchService {
 		logger.info("path=/search/{resourceId}, resourceId={}, requestSource={}, searchQueryRequest={}",
 				resourceId,
 				getRequestSourceFromHeader(headers),
-				searchQueryRequest
+				convertQueryRequestToString(mapper, searchQueryRequest)
 		);
 
 		if (searchQueryRequest.getResourceCredentials() == null){
@@ -74,6 +78,14 @@ public class PicsureSearchService {
 		if (resource.getResourceRSPath() == null){
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
+
+		logger.info("path=/search/{resourceId}/concept/{conceptPath}, resourceId={}, requestSource={}, queryRequest={}, conceptPath={}, query={}",
+				resourceId,
+				getRequestSourceFromHeader(headers),
+				convertQueryRequestToString(mapper, queryRequest),
+				conceptPath,
+				query);
+
 		return resourceWebClient.searchConceptValues(resource.getResourceRSPath(), queryRequest, conceptPath, query, page, size);
 	}
 
