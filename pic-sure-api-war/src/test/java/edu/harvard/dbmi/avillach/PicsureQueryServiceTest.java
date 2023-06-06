@@ -61,9 +61,6 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Mock
 	private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
-	@Mock
-	private HeaderContext headerContext = mock(HeaderContext.class);
-
 	@Before
 	public void setUp() {
 		resourceId = UUID.randomUUID();
@@ -99,7 +96,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 		// Test missing query data
 		try {
-			QueryStatus result = queryService.query(null);
+			QueryStatus result = queryService.query(null, null);
 			fail("Missing query request info should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -121,7 +118,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 		dataQueryRequest.setQuery(queryString);
 		try {
-			QueryStatus result = queryService.query(dataQueryRequest);
+			QueryStatus result = queryService.query(dataQueryRequest, null);
 			fail("Missing resourceId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -143,7 +140,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		// Test nonexistent resourceId
 		dataQueryRequest.setResourceUUID(UUID.randomUUID());
 		try {
-			QueryStatus result = queryService.query(dataQueryRequest);
+			QueryStatus result = queryService.query(dataQueryRequest, null);
 			fail("Nonexistent resourceId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -162,7 +159,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		dataQueryRequest.setResourceUUID(resourceId);
 		dataQueryRequest.setQuery(queryString);
 		
-		QueryStatus result = queryService.query(dataQueryRequest);
+		QueryStatus result = queryService.query(dataQueryRequest, null);
 		assertNotNull("Status should not be null", result.getStatus());
 		assertNotNull("Resource result id should not be null", result.getResourceResultId());
 		assertNotNull("Picsure result id should not be null", result.getPicsureResultId());
@@ -188,7 +185,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		statusRequest.setResourceCredentials(clientCredentials);
 		try {
-			QueryStatus result = queryService.queryStatus(null, statusRequest);
+			QueryStatus result = queryService.queryStatus(null, statusRequest, null);
 			fail("Missing queryId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -207,7 +204,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 		// Nonexistent queryId
 		try {
-			QueryStatus result = queryService.queryStatus(UUID.randomUUID(), statusRequest);
+			QueryStatus result = queryService.queryStatus(UUID.randomUUID(), statusRequest, null);
 			fail("Nonexistent queryId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -238,7 +235,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		when(webClient.queryStatus(any(), any(), any())).thenReturn(results);
 
 		// This one should work
-		QueryStatus result = queryService.queryStatus(queryId, statusRequest);
+		QueryStatus result = queryService.queryStatus(queryId, statusRequest, null);
 		// These fields are set by the method
 		assertNotNull("Result should not be null", result);
 		assertEquals("Picsure ResultId should match", queryId, result.getPicsureResultId());
@@ -257,7 +254,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		resultRequest.setResourceCredentials(clientCredentials);
 		try {
-			Response result = queryService.queryResult(null, resultRequest);
+			Response result = queryService.queryResult(null, resultRequest, null);
 			fail("Missing queryId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -275,7 +272,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		resultRequest.setResourceCredentials(clientCredentials);
 		try {
-			Response result = queryService.queryResult(UUID.randomUUID(), resultRequest);
+			Response result = queryService.queryResult(UUID.randomUUID(), resultRequest, null);
 			fail("Nonexistent queryId should throw an error");
 		} catch (ProtocolException e) {
 			assertNotNull(e.getContent());
@@ -309,7 +306,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 
 		// This one should work
-		Response result = queryService.queryResult(queryId, resultRequest);
+		Response result = queryService.queryResult(queryId, resultRequest, null);
 		assertNotNull("Result should not be null", result);
 	}
 

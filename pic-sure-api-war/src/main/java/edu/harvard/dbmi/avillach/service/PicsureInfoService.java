@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.HeaderContext;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
@@ -12,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -27,9 +27,6 @@ public class PicsureInfoService {
 	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Inject
-	private HeaderContext headerContext;
-
-	@Inject
 	ResourceRepository resourceRepo;
 
 	@Inject
@@ -42,7 +39,7 @@ public class PicsureInfoService {
 	 * @param credentialsQueryRequest - Contains resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
+	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
@@ -59,7 +56,7 @@ public class PicsureInfoService {
 
 		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
@@ -72,8 +69,8 @@ public class PicsureInfoService {
 	 *
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
-	public Map<UUID, String> resources() {
-		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headerContext.getHeaders()));
+	public Map<UUID, String> resources(HttpHeaders headers) {
+		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }

@@ -9,7 +9,6 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
@@ -49,9 +48,6 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
     @Mock
     private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
-    @Mock
-    private HeaderContext headerContext = mock(HeaderContext.class);
-
     @Before
     public void setUp() {
         SearchResults results = new SearchResults();
@@ -69,7 +65,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         searchQueryRequest.setQuery("blood");
 
         try {
-            SearchResults results = searchService.search(resourceId, searchQueryRequest);
+            SearchResults results = searchService.search(resourceId, searchQueryRequest, null);
             fail("Missing request data should throw an error");
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
@@ -80,7 +76,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
 
         //Missing requestdata should throw an error
         try {
-            SearchResults results = searchService.search(resourceId, null);
+            SearchResults results = searchService.search(resourceId, null, null);
             fail("Missing request data should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -89,7 +85,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
 
         //Missing resourceId should error
         try {
-            SearchResults results = searchService.search(null, searchQueryRequest);
+            SearchResults results = searchService.search(null, searchQueryRequest, null);
             fail("Missing resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -99,7 +95,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
 
         //Nonexistent resourceId should error
         try {
-            SearchResults results = searchService.search(UUID.randomUUID(), searchQueryRequest);
+            SearchResults results = searchService.search(UUID.randomUUID(), searchQueryRequest, null);
             fail("Nonexistent resourceId should throw an error");
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -107,12 +103,12 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         }
 
         //This should work
-        SearchResults results = searchService.search(resourceId, searchQueryRequest);
+        SearchResults results = searchService.search(resourceId, searchQueryRequest, null);
         assertNotNull("SearchResults should not be null", results);
 
         //There should also be no problem if the resourceCredentials are null
         searchQueryRequest.setResourceCredentials(null);
-        results = searchService.search(resourceId, searchQueryRequest);
+        results = searchService.search(resourceId, searchQueryRequest, null);
         assertNotNull("SearchResults should not be null", results);
     }
 }

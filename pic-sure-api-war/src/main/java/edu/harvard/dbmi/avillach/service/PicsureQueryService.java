@@ -2,7 +2,6 @@ package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.HeaderContext;
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
@@ -38,9 +37,6 @@ public class PicsureQueryService {
 	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Inject
-	private HeaderContext headerContext;
-
-	@Inject
 	JWTFilter jwtFilter;
 
 	@Inject
@@ -61,7 +57,7 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus query(QueryRequest dataQueryRequest) {
+	public QueryStatus query(QueryRequest dataQueryRequest, HttpHeaders headers) {
 		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -81,7 +77,7 @@ public class PicsureQueryService {
 		}
 
 		logger.info("path=/query, requestSource={}, queryRequest={}",
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				convertQueryRequestToString(mapper, dataQueryRequest)
 		);
 
@@ -138,7 +134,7 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
+	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -166,7 +162,7 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
@@ -190,7 +186,7 @@ public class PicsureQueryService {
 	 * @return Response
 	 */
 	@Transactional
-	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
+	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -214,7 +210,7 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
@@ -306,14 +302,14 @@ public class PicsureQueryService {
      * @param queryId      The UUID of the query to get metadata about
      * @return a QueryStatus object containing the metadata stored about the given query
      */
-	public QueryStatus queryMetadata(UUID queryId){
+	public QueryStatus queryMetadata(UUID queryId, HttpHeaders headers){
         Query query = queryRepo.getById(queryId);
         if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
 
 		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				queryId);
 
 
