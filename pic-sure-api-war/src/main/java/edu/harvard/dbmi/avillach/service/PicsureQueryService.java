@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.transaction.Transactional;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.sql.Date;
 import java.util.*;
@@ -230,7 +231,7 @@ public class PicsureQueryService {
 	 * @return Response
 	 */
 	@Transactional
-	public Response querySync(QueryRequest queryRequest) {
+	public Response querySync(QueryRequest queryRequest, HttpHeaders headers) {
 		if (queryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -253,7 +254,7 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/sync, resourceId={}, requestSource={}, queryRequest={}",
 				queryRequest.getResourceUUID(),
-				getRequestSourceFromHeader(headerContext.getHeaders()),
+				getRequestSourceFromHeader(headers),
 				convertQueryRequestToString(mapper, queryRequest)
 		);
 

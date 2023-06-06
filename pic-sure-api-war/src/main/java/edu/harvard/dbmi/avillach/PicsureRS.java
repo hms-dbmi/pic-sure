@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.*;
@@ -196,9 +198,10 @@ public class PicsureRS {
 					)
 			}
 	)
-	public Response querySync(@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
+	public Response querySync(@Context HttpHeaders headers,
+			@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
 										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
-		return queryService.querySync(credentialsQueryRequest);
+		return queryService.querySync(credentialsQueryRequest, headers);
 	}
 	
 	@GET
