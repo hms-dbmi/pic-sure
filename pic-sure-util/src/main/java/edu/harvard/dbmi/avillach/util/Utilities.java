@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
@@ -26,7 +28,18 @@ public class Utilities {
 
     public static String getRequestSourceFromHeader(HttpHeaders headers) {
         if (headers == null) return "";
-        return Optional.ofNullable(headers.getHeaderString("requestSource")).orElse("");
+        return Optional.ofNullable(headers.getHeaderString("request-source")).orElse("");
+    }
+
+    public static String convertQueryRequestToString(ObjectMapper mapper, Object searchQueryRequest) {
+        if (mapper == null) return "";
+        if (searchQueryRequest == null) return "";
+        try {
+            return mapper.writeValueAsString(searchQueryRequest);
+        } catch (JsonProcessingException e) {
+            // We don't want to stop code execution if this fails
+            return "";
+        }
     }
 
 }
