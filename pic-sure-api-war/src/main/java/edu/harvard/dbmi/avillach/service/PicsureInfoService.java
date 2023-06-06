@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.HeaderContext;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
@@ -11,15 +12,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
+import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureInfoService {
 
@@ -27,8 +26,8 @@ public class PicsureInfoService {
 
 	private final static ObjectMapper mapper = new ObjectMapper();
 
-	@Context
-	private HttpHeaders headers;
+	@Inject
+	private HeaderContext headerContext;
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -60,7 +59,7 @@ public class PicsureInfoService {
 
 		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
-				getRequestSourceFromHeader(headers),
+				getRequestSourceFromHeader(headerContext.getHeaders()),
 				convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
@@ -74,7 +73,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources() {
-		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
+		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headerContext.getHeaders()));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }
