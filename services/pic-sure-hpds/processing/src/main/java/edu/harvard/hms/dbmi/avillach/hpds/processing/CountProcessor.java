@@ -140,7 +140,7 @@ public class CountProcessor implements HpdsProcessor {
 							if (baseQueryPatientSet.contains(patient)) {
 								varCount.put(category, varCount.getOrDefault(category, 1) + 1);
 							} else {
-								varCount.put(category, varCount.getOrDefault(category, 1));
+								varCount.put(category, varCount.getOrDefault(category, 0));
 							}
 						}
 					}
