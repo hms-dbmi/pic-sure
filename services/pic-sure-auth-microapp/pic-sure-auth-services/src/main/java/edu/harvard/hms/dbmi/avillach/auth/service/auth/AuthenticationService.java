@@ -125,7 +125,7 @@ public class AuthenticationService {
             new BasicHeader("Authorization", "Bearer " + accessToken)
         };
         JsonNode auth0Response = null;
-        RequestConfig requestConfig = createRequestConfigWithCustomTimeout(5000);
+        RequestConfig requestConfig = createRequestConfigWithCustomTimeout(2000);
 
         for(int i = 1; i <= AUTH_RETRY_LIMIT && auth0Response == null; i++) {
 	         try {
