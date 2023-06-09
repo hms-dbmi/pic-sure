@@ -1,3 +1,4 @@
+![Swagger Validator](https://img.shields.io/swagger/valid/3.0?specUrl=https://nhanes-dev.hms.harvard.edu/picsure/openapi.json)
 # PIC-SURE API
 
 This is the git repository for version 2+ of the PIC-SURE API.
