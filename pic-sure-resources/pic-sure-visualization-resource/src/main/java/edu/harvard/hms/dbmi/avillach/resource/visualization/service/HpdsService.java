@@ -16,6 +16,7 @@ import javax.ejb.Stateless;
 import javax.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Stateless
 public class HpdsService {
@@ -24,6 +25,10 @@ public class HpdsService {
 
     private static final String AUTH_HEADER_NAME = "Authorization";
 
+    private static final String ACCESS_TYPE = "request-source";
+
+    private static final String OPEN_ACCESS = "Open";
+    private static final String AUTHORIZED_ACCESS = "Authorized";
     private RestTemplate restTemplate;
 
     @Inject
@@ -48,14 +53,14 @@ public class HpdsService {
      * @return List<ContinuousData> - A LinkedHashMap of the cross counts for category or continuous
      * date range and their respective counts
      */
-    public Map<String, Map<String, Integer>> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+    public Map<String, Map<String, Integer>> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType, String accessType) {
         try {
             logger.debug("Getting cross counts map from query:", queryRequest);
-            sanityCheck(queryRequest, resultType);
-            HttpHeaders headers = prepareQueryRequest(queryRequest, resultType);
+            sanityCheck(queryRequest, resultType, accessType);
+            HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, accessType);
             String url = applicationProperties.getOrigin() + "/query/sync/";
             queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
-            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
+            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), LinkedHashMap.class).getBody();
         } catch (Exception e) {
             logger.error("Error getting cross counts: " + e.getMessage());
             return new LinkedHashMap<>();
@@ -70,7 +75,7 @@ public class HpdsService {
      * @param resultType - {@link ResultType} - determines the type of query to be sent to HPDS
      * @return HttpHeaders - the headers to be sent to HPDS
      */
-    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType) {
+    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType, String accessType) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(AUTH_HEADER_NAME,
                 queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
@@ -83,11 +88,27 @@ public class HpdsService {
         } catch (Exception e) {
             throw new IllegalArgumentException("QueryRequest must contain a Query object");
         }
-        queryRequest.setResourceUUID(applicationProperties.getAuthHpdsResourceId());
+        queryRequest.setResourceUUID(getAppropriateResourceUUID(accessType));
         return headers;
     }
 
-    private void sanityCheck(QueryRequest queryRequest, ResultType requestType) {
+    private UUID getAppropriateResourceUUID(String accessType) {
+        if (accessType.equals("open")) {
+            return applicationProperties.getOpenHpdsResourceId();
+        } else if (accessType.equals("auth")) {
+            return applicationProperties.getAuthHpdsResourceId();
+        } else {
+            // TODO: Remove after we test the headers functionality
+            return applicationProperties.getAuthHpdsResourceId();
+        }
+
+        // TODO: For testing purposes I am setting a default of type auth. That was the previous default.
+        // throw new IllegalArgumentException("accessType must be either open or auth");
+    }
+
+    private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
+        if (accessType == null || accessType.trim().equals("")) throw new IllegalArgumentException("request-source header is required");
+        if (accessType.equals(AUTHORIZED_ACCESS) || accessType.equals(OPEN_ACCESS)) throw new IllegalArgumentException("accessType must be either Open or Authorized");
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
         if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
