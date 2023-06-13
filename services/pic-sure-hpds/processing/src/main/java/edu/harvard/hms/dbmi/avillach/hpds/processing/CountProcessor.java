@@ -138,9 +138,15 @@ public class CountProcessor implements HpdsProcessor {
 					} else {
 						for (Integer patient : patientSet) {
 							if (baseQueryPatientSet.contains(patient)) {
+								// If we have a patient in the base set, we add 1 to the count.
+								// We are only worried about patients in the base set
 								varCount.put(category, varCount.getOrDefault(category, 1) + 1);
 							} else {
-								varCount.put(category, varCount.getOrDefault(category, 1));
+								// If we don't have a patient in the base set, we add 0 to the count.
+								// This is necessary because we need to ensure that all categories are included in the
+								// map, even if they have a count of 0. This is because we are displaying the counts
+								// in a table (or other form).
+								varCount.put(category, varCount.getOrDefault(category, 0));
 							}
 						}
 					}
