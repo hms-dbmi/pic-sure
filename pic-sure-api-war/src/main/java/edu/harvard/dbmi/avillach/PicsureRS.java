@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.*;
@@ -49,9 +51,10 @@ public class PicsureRS {
 			)}
 	)
 	public ResourceInfo resourceInfo(@Parameter(description="The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
-									 @Parameter QueryRequest credentialsQueryRequest) {
+									 @Parameter QueryRequest credentialsQueryRequest,
+									 @Context HttpHeaders headers) {
 		System.out.println("Resource info requested for : " + resourceId);
-		return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest);
+		return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest, headers);
 	}
 	
 	@GET
@@ -70,8 +73,8 @@ public class PicsureRS {
 					)
 			}
 	)
-	public Map<UUID,String> resources(){
-		return infoService.resources();
+	public Map<UUID,String> resources(@Context HttpHeaders headers){
+		return infoService.resources(headers);
 	}
 
 	@GET
@@ -83,9 +86,10 @@ public class PicsureRS {
 			@QueryParam("genomicConceptPath") String genomicConceptPath,
 			@QueryParam("query") String query,
 			@QueryParam("page") Integer page,
-			@QueryParam("size") Integer size
+			@QueryParam("size") Integer size,
+			@Context HttpHeaders headers
 	) {
-		return searchService.searchGenomicConceptValues(resourceId, searchQueryRequest, genomicConceptPath, query, page, size);
+		return searchService.searchGenomicConceptValues(resourceId, searchQueryRequest, genomicConceptPath, query, page, size, headers);
 	}
 	
 	@POST
@@ -112,8 +116,9 @@ public class PicsureRS {
 		)
 	)
 	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-								@Parameter(hidden = true) QueryRequest searchQueryRequest) {
-		return searchService.search(resourceId, searchQueryRequest);
+								@Parameter(hidden = true) QueryRequest searchQueryRequest,
+								@Context HttpHeaders headers) {
+		return searchService.search(resourceId, searchQueryRequest, headers);
 	}
 
 	@POST
@@ -132,8 +137,8 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus query(@Parameter QueryRequest dataQueryRequest) {
-		return queryService.query(dataQueryRequest);
+	public QueryStatus query(@Parameter QueryRequest dataQueryRequest, @Context HttpHeaders headers) {
+		return queryService.query(dataQueryRequest, headers);
 	}
 	
 	@POST
@@ -154,8 +159,8 @@ public class PicsureRS {
 	)
 	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
 			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
-								   @Parameter QueryRequest credentialsQueryRequest) {
-		return queryService.queryStatus(queryId, credentialsQueryRequest);
+								   @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers) {
+		return queryService.queryStatus(queryId, credentialsQueryRequest, headers);
 	}
 	
 	@POST
@@ -176,8 +181,9 @@ public class PicsureRS {
 	)
 	public Response queryResult(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
 			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
-								@Parameter QueryRequest credentialsQueryRequest) {
-		return queryService.queryResult(queryId, credentialsQueryRequest);
+								@Parameter QueryRequest credentialsQueryRequest,
+								@Context HttpHeaders headers) {
+		return queryService.queryResult(queryId, credentialsQueryRequest, headers);
 	}
 
 	@POST
@@ -196,9 +202,10 @@ public class PicsureRS {
 					)
 			}
 	)
-	public Response querySync(@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
+	public Response querySync(@Context HttpHeaders headers,
+			@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
 										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
-		return queryService.querySync(credentialsQueryRequest);
+		return queryService.querySync(credentialsQueryRequest, headers);
 	}
 	
 	@GET
@@ -219,8 +226,8 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId){
-		return queryService.queryMetadata(queryId);
+	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId, @Context HttpHeaders headers){
+		return queryService.queryMetadata(queryId, headers);
 	}
 	
 }

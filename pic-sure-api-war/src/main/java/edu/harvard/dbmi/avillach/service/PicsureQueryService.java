@@ -1,20 +1,7 @@
 package edu.harvard.dbmi.avillach.service;
 
-import java.sql.Date;
-import java.util.*;
-
-import javax.inject.Inject;
-import javax.transaction.Transactional;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
@@ -22,10 +9,18 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
+import javax.inject.Inject;
+import javax.transaction.Transactional;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Response;
+import java.sql.Date;
+import java.util.*;
 
 /**
  * Service handling business logic for queries to resources
@@ -37,8 +32,7 @@ public class PicsureQueryService {
 
 	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
-	@Context
-	private HttpHeaders headers;
+	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Inject
 	JWTFilter jwtFilter;
@@ -61,7 +55,7 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus query(QueryRequest dataQueryRequest) {
+	public QueryStatus query(QueryRequest dataQueryRequest, HttpHeaders headers) {
 		if (dataQueryRequest == null) {
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -80,9 +74,9 @@ public class PicsureQueryService {
 			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
 		}
 
-		logger.info("path=/query, requestSource={}, dataQueryRequest={}",
-				getRequestSourceFromHeader(headers),
-				dataQueryRequest
+		logger.info("path=/query, requestSource={}, queryRequest={}",
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
 		);
 
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -138,7 +132,7 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest) {
+	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -164,10 +158,10 @@ public class PicsureQueryService {
 			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 		}
 
-		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headers),
-				credentialsQueryRequest
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 		//Update status on query object
@@ -190,7 +184,7 @@ public class PicsureQueryService {
 	 * @return Response
 	 */
 	@Transactional
-	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest) {
+	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -212,10 +206,10 @@ public class PicsureQueryService {
 			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, credentialsQueryRequest={}",
+		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headers),
-				credentialsQueryRequest
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 
@@ -231,7 +225,7 @@ public class PicsureQueryService {
 	 * @return Response
 	 */
 	@Transactional
-	public Response querySync(QueryRequest queryRequest) {
+	public Response querySync(QueryRequest queryRequest, HttpHeaders headers) {
 		if (queryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
@@ -252,10 +246,11 @@ public class PicsureQueryService {
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
 
-		logger.info("path=/query/sync, resourceId={}, requestSource={}, credentialsQueryRequest={},",
+		logger.info("path=/query/sync, resourceId={}, requestSource={}, queryRequest={}",
 				queryRequest.getResourceUUID(),
-				getRequestSourceFromHeader(headers),
-				queryRequest.getResourceCredentials());
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, queryRequest)
+		);
 
 		Query queryEntity = new Query();
 		queryEntity.setResource(resource);
@@ -305,14 +300,14 @@ public class PicsureQueryService {
      * @param queryId      The UUID of the query to get metadata about
      * @return a QueryStatus object containing the metadata stored about the given query
      */
-	public QueryStatus queryMetadata(UUID queryId){
+	public QueryStatus queryMetadata(UUID queryId, HttpHeaders headers){
         Query query = queryRepo.getById(queryId);
         if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
 
 		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
-				getRequestSourceFromHeader(headers),
+				Utilities.getRequestSourceFromHeader(headers),
 				queryId);
 
 

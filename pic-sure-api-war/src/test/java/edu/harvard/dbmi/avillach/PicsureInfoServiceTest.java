@@ -66,7 +66,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail with a nonexistent id
         try {
-            ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest);
+            ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest, null);
             fail();
         } catch (ProtocolException e){
             assertNotNull(e.getContent());
@@ -74,7 +74,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
         //Should fail without the url in the resource
         try {
-            ResourceInfo info = infoService.info(resourceId, infoRequest);
+            ResourceInfo info = infoService.info(resourceId, infoRequest, null);
             fail();
         } catch (ApplicationException e){
             assertNotNull(e.getContent());
@@ -82,18 +82,18 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
         }
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 
-        ResourceInfo responseInfo = infoService.info(resourceId, infoRequest);
+        ResourceInfo responseInfo = infoService.info(resourceId, infoRequest, null);
         assertNotNull("Resource response should not be null", responseInfo);
 
         //Should also work without clientCredentials
-        responseInfo = infoService.info(resourceId, null);
+        responseInfo = infoService.info(resourceId, null, null);
         assertNotNull("Resource response should not be null", responseInfo);
     }
 
     @Test
     public void testResourcesEndpoint() {
         //Should give a UUID list of all resources
-        Map<UUID, String> resourceList = infoService.resources();
+        Map<UUID, String> resourceList = infoService.resources(null);
         assertNotNull("Resource listing should not be null", resourceList);
         assertEquals("Resource listing should only have 1 entry", 1, resourceList.size());
         assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.keySet().iterator().next());
