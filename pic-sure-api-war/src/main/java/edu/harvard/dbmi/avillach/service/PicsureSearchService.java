@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
@@ -15,9 +16,6 @@ import javax.inject.Inject;
 import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
 import java.util.UUID;
-
-import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureSearchService {
 
@@ -57,8 +55,8 @@ public class PicsureSearchService {
 
 		logger.info("path=/search/{resourceId}, resourceId={}, requestSource={}, searchQueryRequest={}",
 				resourceId,
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, searchQueryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, searchQueryRequest)
 		);
 
 		if (searchQueryRequest.getResourceCredentials() == null){
@@ -79,8 +77,8 @@ public class PicsureSearchService {
 
 		logger.info("path=/search/{resourceId}/concept/{conceptPath}, resourceId={}, requestSource={}, queryRequest={}, conceptPath={}, query={}",
 				resourceId,
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, queryRequest),
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, queryRequest),
 				conceptPath,
 				query);
 

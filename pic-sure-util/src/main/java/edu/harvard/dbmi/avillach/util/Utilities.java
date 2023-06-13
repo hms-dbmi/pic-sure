@@ -7,11 +7,15 @@ import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.core.HttpHeaders;
 import java.util.Optional;
 
 public class Utilities {
+
+    private static final Logger logger = LoggerFactory.getLogger(Utilities.class);
 
     public static HttpClientContext buildHttpClientContext() {
         HttpClientContext httpClientContext = null;
@@ -28,16 +32,18 @@ public class Utilities {
 
     public static String getRequestSourceFromHeader(HttpHeaders headers) {
         if (headers == null) return "headers are null";
-        return Optional.ofNullable(headers.getHeaderString("request-source")).orElse("request-source header is null");
+        return headers.getHeaderString("request-source") == null ? "request-source header is null" : headers.getHeaderString("request-source");
     }
 
     public static String convertQueryRequestToString(ObjectMapper mapper, Object searchQueryRequest) {
-        if (mapper == null) return "";
-        if (searchQueryRequest == null) return "";
+        if (mapper == null || searchQueryRequest == null) {
+            logger.info("Error converting query request to string: mapper or searchQueryRequest is null");
+            return "";
+        }
         try {
             return mapper.writeValueAsString(searchQueryRequest);
         } catch (JsonProcessingException e) {
-            // We don't want to stop code execution if this fails
+            logger.info("Error converting query request to string: " + e.getMessage());
             return "";
         }
     }

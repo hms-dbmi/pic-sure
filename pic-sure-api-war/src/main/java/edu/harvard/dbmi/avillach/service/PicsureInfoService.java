@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
@@ -16,9 +17,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 public class PicsureInfoService {
 
@@ -56,8 +54,8 @@ public class PicsureInfoService {
 
 		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, credentialsQueryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -70,7 +68,7 @@ public class PicsureInfoService {
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
 	public Map<UUID, String> resources(HttpHeaders headers) {
-		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
+		logger.info("path=/info/resources, requestSource={}", Utilities.getRequestSourceFromHeader(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }

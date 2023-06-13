@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
@@ -20,9 +21,6 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.sql.Date;
 import java.util.*;
-
-import static edu.harvard.dbmi.avillach.util.Utilities.convertQueryRequestToString;
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
 
 /**
  * Service handling business logic for queries to resources
@@ -77,8 +75,8 @@ public class PicsureQueryService {
 		}
 
 		logger.info("path=/query, requestSource={}, queryRequest={}",
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, dataQueryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
 		);
 
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -162,8 +160,8 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, credentialsQueryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 		//Update status on query object
@@ -210,8 +208,8 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}",
 				queryId,
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, credentialsQueryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 
@@ -250,8 +248,8 @@ public class PicsureQueryService {
 
 		logger.info("path=/query/sync, resourceId={}, requestSource={}, queryRequest={}",
 				queryRequest.getResourceUUID(),
-				getRequestSourceFromHeader(headers),
-				convertQueryRequestToString(mapper, queryRequest)
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, queryRequest)
 		);
 
 		Query queryEntity = new Query();
@@ -309,7 +307,7 @@ public class PicsureQueryService {
         }
 
 		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
-				getRequestSourceFromHeader(headers),
+				Utilities.getRequestSourceFromHeader(headers),
 				queryId);
 
 
