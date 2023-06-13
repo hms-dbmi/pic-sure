@@ -1,28 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.model.*;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.*;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.DataProcessingService;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.HpdsService;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.VisualizationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.ejb.Stateless;
 import javax.inject.Inject;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
+import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
-import java.util.*;
+import java.util.Map;
 
 @Path("/visualization")
 @Produces({"application/json"})
@@ -34,13 +28,13 @@ public class VisualizationResource implements IResourceRS {
     private final Logger logger = LoggerFactory.getLogger(VisualizationResource.class);
 
     @Inject
-    DataProcessingService dataProcessingServices;
-
-    @Inject
-    HpdsService hpdsServices;
+    VisualizationService visualizationService;
 
     @Inject
     ApplicationProperties properties;
+
+    @HeaderParam("request-source")
+    private String requestSource;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -75,31 +69,8 @@ public class VisualizationResource implements IResourceRS {
     @POST
     @Path("/query/sync")
     public Response querySync(QueryRequest query) {
-        logger.debug("Received query:  \n" + query);
-        Query queryJson;
-        try {
-            queryJson = mapper.readValue(mapper.writeValueAsString(query.getQuery()), Query.class);
-        } catch (Exception e) {
-            logger.error("Error parsing query:  \n" + query, e);
-            return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
-        }
-        Map<String, Map<String, Integer>> categroyCrossCountsMap;
-        if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
-            categroyCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
-        } else {
-            categroyCrossCountsMap = new HashMap<>();
-        }
-        Map<String, Map<String, Integer>> continuousCrossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
-            continuousCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
-        } else {
-            continuousCrossCountsMap = new HashMap<>();
-        }
-        if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty())) return Response.ok().build();
-        ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap));
-        return Response.ok(response).build();
+        logger.info("resource=visualization /query/sync requestSource=" + this.requestSource + " query=" + query.toString());
+        return visualizationService.handleQuerySync(query, this.requestSource);
     }
 
     @Override
