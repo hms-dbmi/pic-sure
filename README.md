@@ -1,6 +1,6 @@
 [![Swagger Validator](https://img.shields.io/swagger/valid/3.0?specUrl=https://nhanes-dev.hms.harvard.edu/picsure/openapi.json)](https://app.gitbook.com/o/HwwUMljKAspjFDq5CK7G/s/meNaViOuPB9U832fUSEa/pic-sure-api)
 [![GitBook](https://img.shields.io/badge/GitBook-PICSURE-brightgreen)](https://app.gitbook.com/o/HwwUMljKAspjFDq5CK7G/s/G6504U3TjKPfCoTEdgY8/)
-[![GitHub Wiki](https://img.shields.io/badge/GitHub%20Wiki-Home-blueviolet)](https://github.com/hms-dbmi/pic-sure/wiki)
+[![GitHub Wiki](https://img.shields.io/badge/GitHub%20Wiki-PIC&#8209;SURE%20Home-blueviolet)](https://github.com/hms-dbmi/pic-sure/wiki)
 
 # PIC-SURE API
 
