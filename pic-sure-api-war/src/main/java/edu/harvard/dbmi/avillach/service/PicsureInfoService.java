@@ -1,30 +1,28 @@
 package edu.harvard.dbmi.avillach.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static edu.harvard.dbmi.avillach.util.Utilities.getRequestSourceFromHeader;
-
 public class PicsureInfoService {
 
 	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
-	@Context
-	private HttpHeaders headers;
+	private final static ObjectMapper mapper = new ObjectMapper();
 
 	@Inject
 	ResourceRepository resourceRepo;
@@ -39,7 +37,7 @@ public class PicsureInfoService {
 	 * @param credentialsQueryRequest - Contains resource specific credentials map
 	 * @return a {@link edu.harvard.dbmi.avillach.domain.ResourceInfo ResourceInfo}
 	 */
-	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest) {
+	public ResourceInfo info(UUID resourceId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		Resource resource = resourceRepo.getById(resourceId);
 		if (resource == null){
 			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
@@ -56,8 +54,8 @@ public class PicsureInfoService {
 
 		logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
 				resourceId,
-				getRequestSourceFromHeader(headers),
-				credentialsQueryRequest
+				Utilities.getRequestSourceFromHeader(headers),
+				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
 		);
 
 		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
@@ -69,8 +67,8 @@ public class PicsureInfoService {
 	 *
 	 * @return List containing limited metadata about all available resources and ids.
 	 */
-	public Map<UUID, String> resources() {
-		logger.info("path=/info/resources, requestSource={}", getRequestSourceFromHeader(headers));
+	public Map<UUID, String> resources(HttpHeaders headers) {
+		logger.info("path=/info/resources, requestSource={}", Utilities.getRequestSourceFromHeader(headers));
 		return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
 	}
 }
