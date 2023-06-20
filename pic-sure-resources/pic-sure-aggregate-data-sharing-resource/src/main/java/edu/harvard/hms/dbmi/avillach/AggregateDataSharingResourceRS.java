@@ -385,11 +385,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	protected Map<String, String> processContinuousCrossCounts(String entityString) {
-		return null;
+		logger.info("Processing continuous cross counts");
+		logger.info("Entity string: {}", entityString);
+		// TODO: Implement this method
+		return new HashMap<>();
 	}
 
 	protected Map<String, String> processCategoricalCrossCounts(String entityString) {
-		return null;
+		logger.info("Processing categorical cross counts");
+		logger.info("Entity string: {}", entityString);
+		// TODO: Implement this method
+		return new HashMap<>();
 	}
 
 	/**
