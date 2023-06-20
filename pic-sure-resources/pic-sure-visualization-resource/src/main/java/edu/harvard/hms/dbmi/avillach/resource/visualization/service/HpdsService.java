@@ -93,9 +93,9 @@ public class HpdsService {
     }
 
     private UUID getAppropriateResourceUUID(String accessType) {
-        if (accessType.equals("open")) {
+        if (accessType.equals("Open")) {
             return applicationProperties.getOpenHpdsResourceId();
-        } else if (accessType.equals("auth")) {
+        } else if (accessType.equals("Authorized")) {
             return applicationProperties.getAuthHpdsResourceId();
         } else {
             // Use OpenHpds as the default. This is to ensure that the resource is always available and that
