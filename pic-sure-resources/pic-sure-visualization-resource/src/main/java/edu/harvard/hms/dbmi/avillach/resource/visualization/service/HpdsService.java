@@ -98,12 +98,10 @@ public class HpdsService {
         } else if (accessType.equals("auth")) {
             return applicationProperties.getAuthHpdsResourceId();
         } else {
-            // TODO: Remove after we test the headers functionality
-            return applicationProperties.getAuthHpdsResourceId();
+            // Use OpenHpds as the default. This is to ensure that the resource is always available and that
+            // we don't return Authorized data to an Open user.
+            return applicationProperties.getOpenHpdsResourceId();
         }
-
-        // TODO: For testing purposes I am setting a default of type auth. That was the previous default.
-        // throw new IllegalArgumentException("accessType must be either open or auth");
     }
 
     private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
