@@ -9,11 +9,13 @@ import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultT
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.ejb.Stateless;
 import javax.inject.Inject;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
 import java.util.Map;
 
+@Stateless
 public class VisualizationService {
 
     private final Logger logger = LoggerFactory.getLogger(VisualizationService.class);
@@ -28,6 +30,10 @@ public class VisualizationService {
     ApplicationProperties properties;
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    // TODO: We should set this the same way it is done in the AggregateDataSharingResourceRS class
+    // In that class it is configurable
+    private static final String[] obfuscationTypes = {"< 10", "± 3"};
 
     VisualizationService() {
         if (properties == null) {
@@ -80,8 +86,61 @@ public class VisualizationService {
         if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()))
             return Response.ok().build();
 
+        Map<String, Map<String, Boolean>> obfuscationMap = generateObfuscationMap(categroyCrossCountsMap);
+        Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categroyCrossCountsMap);
+
         ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(categroyCrossCountsMap);
         return Response.ok(response).build();
+    }
+
+    private Map<String, Map<String, Integer>> cleanCategoricalData(Map<String, Map<String, String>> categroyCrossCountsMap) {
+        // remove the obfuscation types from the categorical data
+        Map<String, Map<String, Integer>> cleanedCategoricalData = new HashMap<>();
+
+        categroyCrossCountsMap.forEach((key, value) -> {
+            Map<String, Integer> temp = new HashMap<>();
+            value.forEach((subKey, subValue) -> {
+                for (String obfuscationType : obfuscationTypes) {
+                    if (subValue.contains(obfuscationType)) {
+                        subValue = subValue.replace(obfuscationType, "");
+                        break;
+                    }
+                }
+
+                temp.put(subKey, Integer.parseInt(subValue));
+            });
+
+            cleanedCategoricalData.put(key, temp);
+        });
+
+        return cleanedCategoricalData;
+    }
+
+    private Map<String, Map<String, Boolean>> generateObfuscationMap(Map<String, Map<String, String>> categroyCrossCountsMap) {
+        Map<String, Map<String, Boolean>> crossCountsObfuscationMap = new HashMap<>();
+
+        categroyCrossCountsMap.forEach((key, value) -> {
+            Map<String, Boolean> tempObf = new HashMap<>();
+            value.forEach((subKey, subValue) -> {
+                // If the value contains either of the obfuscation types, set the value to true
+                for (String obfuscationType : obfuscationTypes) {
+                    if (subValue.contains(obfuscationType)) {
+                        tempObf.put(obfuscationType, true);
+                        break;
+                    }
+                }
+
+                // If the value does not contain either of the obfuscation types, set the value to false
+                if (!tempObf.containsKey(subKey)) {
+                    tempObf.put(subKey, false);
+                }
+
+            });
+
+            crossCountsObfuscationMap.put(key, tempObf);
+        });
+
+        return crossCountsObfuscationMap;
     }
 
     private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, String>> categroyCrossCountsMap) {
