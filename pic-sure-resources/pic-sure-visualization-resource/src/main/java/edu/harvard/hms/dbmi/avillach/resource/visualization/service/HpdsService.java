@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -53,18 +54,31 @@ public class HpdsService {
      * @return List<ContinuousData> - A LinkedHashMap of the cross counts for category or continuous
      * date range and their respective counts
      */
-    public Map<String, Map<String, Integer>> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType, String accessType) {
+    private <T> Map<String, T> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType, String type, ParameterizedTypeReference<Map<String, T>> typeRef) {
+        if (queryRequest == null) {
+            logger.error("QueryRequest is null");
+            return new LinkedHashMap<>();
+        }
+        
         try {
-            logger.debug("Getting cross counts map from query:", queryRequest);
-            sanityCheck(queryRequest, resultType, accessType);
-            HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, accessType);
+            logger.debug("Getting {} cross counts map from query:", type, queryRequest);
+            sanityCheck(queryRequest, resultType, type);
+            HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, type);
             String url = applicationProperties.getOrigin() + "/query/sync/";
             queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
-            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), LinkedHashMap.class).getBody();
+            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), typeRef).getBody();
         } catch (Exception e) {
             logger.error("Error getting cross counts: " + e.getMessage());
             return new LinkedHashMap<>();
         }
+    }
+
+    public Map<String, Map<String, Integer>> getAuthCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+       return getCrossCountsMap(queryRequest, resultType, "Authorized", new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
+    }
+
+    public Map<String, Map<String, String>> getOpenCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+        return getCrossCountsMap(queryRequest, resultType, "Open", new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
     }
 
     /**
