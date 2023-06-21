@@ -56,58 +56,13 @@ public class PicsureQueryService {
 	 */
 	@Transactional
 	public QueryStatus query(QueryRequest dataQueryRequest, HttpHeaders headers) {
-		if (dataQueryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		UUID resourceId = dataQueryRequest.getResourceUUID();
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
-		Resource resource = resourceRepo.getById(resourceId);
-		if (resource == null){
-			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (dataQueryRequest.getResourceCredentials() == null){
-			dataQueryRequest.setResourceCredentials(new HashMap<String, String>());
-		}
-
-		logger.info("path=/query, requestSource={}, queryRequest={}",
-				Utilities.getRequestSourceFromHeader(headers),
-				Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
-		);
+		Resource resource = verifyQueryRequest(dataQueryRequest, headers);
 
 		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
 		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
 
-		Query queryEntity = new Query();
-		queryEntity.setResourceResultId(results.getResourceResultId());
-		queryEntity.setResource(resource);
-		queryEntity.setStatus(results.getStatus());
-		queryEntity.setStartTime(new Date(results.getStartTime()));
-
-		ObjectMapper mapper = new ObjectMapper();
-		String queryJson = null;
-		if( dataQueryRequest.getQuery() != null) {
-			try {
-				queryJson = mapper.writeValueAsString( dataQueryRequest);
-			} catch (JsonProcessingException e) {
-				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-			}
-		}
-
-		queryEntity.setQuery(queryJson);
-
-		if (results.getResultMetadata() != null) {
-			try {
-				queryEntity.setMetadata(mapper.writeValueAsString(results.getResultMetadata()).getBytes());
-			} catch (JsonProcessingException e) {
-				logger.warn("Unable to parse metadata ", e);
-			}
-		}
+		Query queryEntity = copyQuery(dataQueryRequest, resource, results);
 		queryRepo.persist(queryEntity);
 
 		logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
@@ -118,7 +73,7 @@ public class PicsureQueryService {
 			queryEntity.setResourceResultId(results.getPicsureResultId().toString());
 			queryRepo.persist(queryEntity);
 		}
-		results.setResourceID(resourceId);
+		results.setResourceID(resource.getUuid());
 		return results;
 	}
 
@@ -140,29 +95,11 @@ public class PicsureQueryService {
 		if (query == null){
 			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
 		}
-		Resource resource = query.getResource();
-		if (resource == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-
 		if (credentialsQueryRequest == null){
 			throw new ProtocolException(ProtocolException.MISSING_DATA);
 		}
-		if (credentialsQueryRequest.getResourceCredentials() == null){
-			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
-		}
-		if(resource.getToken()!=null) {
-			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		}
-
-		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
-				queryId,
-				Utilities.getRequestSourceFromHeader(headers),
-				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
-		);
+		Resource resource = query.getResource();
+		verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
 
 		//Update status on query object
 		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -330,5 +267,120 @@ public class PicsureQueryService {
 
         return response;
     }
+
+	/**
+	 * Executes a query on a PIC-SURE resource and creates a Query entity in the
+	 * database for the query.
+	 *
+	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
+	 *                         and resource specific query (could be a string or a json object)
+	 * @return {@link QueryStatus}
+	 */
+	public QueryStatus institutionalQuery(QueryRequest dataQueryRequest, HttpHeaders headers) {
+		Resource resource = verifyQueryRequest(dataQueryRequest, headers);
+		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+
+		QueryStatus response = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
+		Query queryEntity = copyQuery(dataQueryRequest, resource, response);
+		queryRepo.persist(queryEntity);
+		// we don't want the user to see the common area ID for now, but this could be useful later
+		// for editing the query
+		response.getResultMetadata().put("commonAreaId", queryEntity.getUuid().toString());
+
+		return response;
+	}
+
+	private Query copyQuery(QueryRequest dataQueryRequest, Resource resource, QueryStatus response) {
+		Query queryEntity = new Query();
+		queryEntity.setResourceResultId(response.getResourceResultId());
+		queryEntity.setResource(resource);
+		queryEntity.setStatus(response.getStatus());
+		queryEntity.setStartTime(new Date(response.getStartTime()));
+
+		ObjectMapper mapper = new ObjectMapper();
+		String queryJson = null;
+		if( dataQueryRequest.getQuery() != null) {
+			try {
+				queryJson = mapper.writeValueAsString(dataQueryRequest);
+			} catch (JsonProcessingException e) {
+				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+			}
+		}
+
+		queryEntity.setQuery(queryJson);
+
+		if (response.getResultMetadata() != null) {
+			try {
+				queryEntity.setMetadata(mapper.writeValueAsString(response.getResultMetadata()).getBytes());
+			} catch (JsonProcessingException e) {
+				logger.warn("Unable to parse metadata ", e);
+			}
+		}
+		return queryEntity;
+	}
+
+	public QueryStatus institutionQueryStatus(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
+		if (queryId == null) {
+			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+		}
+		if (credentialsQueryRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		Resource resource = resourceRepo.getById(credentialsQueryRequest.getResourceUUID());
+
+		verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
+
+		//Update status on query object
+		return resourceWebClient.queryStatus(resource.getResourceRSPath(), queryId.toString(), credentialsQueryRequest);
+	}
+
+	private void verifyQueryStatusRequest(
+		Resource resource, QueryRequest credentialsQueryRequest, UUID queryId, HttpHeaders headers
+	) throws ProtocolException {
+		if (resource == null) {
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
+		}
+		if (resource.getResourceRSPath() == null) {
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+		if (credentialsQueryRequest.getResourceCredentials() == null) {
+			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
+		}
+		if (resource.getToken() != null) {
+			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+		}
+
+		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
+			queryId,
+			Utilities.getRequestSourceFromHeader(headers),
+			Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+		);
+	}
+
+	private Resource verifyQueryRequest(QueryRequest dataQueryRequest, HttpHeaders headers) throws ProtocolException {
+		if (dataQueryRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		UUID resourceId = dataQueryRequest.getResourceUUID();
+		if (resourceId == null){
+			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+		}
+		Resource resource = resourceRepo.getById(resourceId);
+		if (resource == null){
+			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId);
+		}
+		if (resource.getResourceRSPath() == null){
+			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		}
+		if (dataQueryRequest.getResourceCredentials() == null){
+			dataQueryRequest.setResourceCredentials(new HashMap<>());
+		}
+
+		logger.info("path=/query, requestSource={}, queryRequest={}",
+			Utilities.getRequestSourceFromHeader(headers),
+			Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
+		);
+		return resource;
+	}
 }
 
