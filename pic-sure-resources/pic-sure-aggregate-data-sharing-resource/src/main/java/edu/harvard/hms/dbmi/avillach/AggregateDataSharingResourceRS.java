@@ -304,13 +304,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 				break;
 			case "CATEGORICAL_CROSS_COUNT":
-				Map<String, String> categoricalCrossCounts = processCategoricalCrossCounts(entityString);
-				responseString = objectMapper.writeValueAsString(categoricalCrossCounts);
+				responseString = processCategoricalCrossCounts(entityString);
 
 				break;
 			case "CONTINUOUS_CROSS_COUNT":
-				Map<String, String> continuousCrossCounts = processContinuousCrossCounts(entityString);
-				responseString = objectMapper.writeValueAsString(continuousCrossCounts);
+				responseString = processContinuousCrossCounts(entityString);
 
 				break;
 		}
@@ -384,7 +382,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return crossCounts;
 	}
 
-	protected Map<String, String> processContinuousCrossCounts(String entityString) throws JsonProcessingException {
+	protected String processContinuousCrossCounts(String entityString) throws JsonProcessingException {
 		logger.info("Processing continuous cross counts");
 		logger.info("Entity string: {}", entityString);
 
@@ -392,10 +390,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return null;
 		}
 
-		return processCrossCounts(entityString);
+		return entityString;
 	}
 
-	protected Map<String, String> processCategoricalCrossCounts(String entityString) throws JsonProcessingException {
+	protected String processCategoricalCrossCounts(String entityString) throws JsonProcessingException {
 		logger.info("Processing categorical cross counts");
 		logger.info("Entity string: {}", entityString);
 
@@ -403,7 +401,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return null;
 		}
 
-		return processCrossCounts(entityString);
+		// TODO: We need to obfuscate the categorical cross counts
+
+		/*
+
+		I can base this implementation based on what is currently done in cross counts. However, I believe that
+		there will be no children in the categorical cross counts. Therefore, I believe that I can just obfuscate
+		the categorical cross counts and not worry about the parents.
+
+		 */
+
+
+
+		return entityString;
 	}
 
 	/**
