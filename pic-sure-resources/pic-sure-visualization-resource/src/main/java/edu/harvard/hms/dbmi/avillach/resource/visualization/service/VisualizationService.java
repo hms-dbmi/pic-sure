@@ -56,10 +56,17 @@ public class VisualizationService {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
         }
 
-        Map<String, Map<String, Integer>> categroyCrossCountsMap = getCategroyCrossCountsMap(requestSource, query, queryJson);
-        Map<String, Map<String, Integer>> continuousCrossCountsMap = getContinuousCrossCount(requestSource, query, queryJson);
+        if (requestSource.equals("Authorized")) {
+            Map<String, Map<String, Integer>> categroyCrossCountsMap = getCategroyCrossCountsMap(query, queryJson);
+            Map<String, Map<String, Integer>> continuousCrossCountsMap = getContinuousCrossCount(query, queryJson);
 
-        return getProcessedCrossCountResponse(categroyCrossCountsMap, continuousCrossCountsMap);
+            return getProcessedCrossCountResponse(categroyCrossCountsMap, continuousCrossCountsMap);
+        } else {
+            Map<String, Map<String, String>> openCategoricalCrossCounts = getOpenCrossCounts(query, queryJson, ResultType.CATEGORICAL_CROSS_COUNT);
+
+            logger.info("openCategoricalCrossCounts: " + openCategoricalCrossCounts);
+            return getOpenProcessedCrossCountResponse(openCategoricalCrossCounts);
+        }
     }
 
     private Response getProcessedCrossCountResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
@@ -69,6 +76,20 @@ public class VisualizationService {
         return Response.ok(response).build();
     }
 
+    private Response getOpenProcessedCrossCountResponse(Map<String, Map<String, String>> categroyCrossCountsMap) {
+        if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()))
+            return Response.ok().build();
+
+        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(categroyCrossCountsMap);
+        return Response.ok(response).build();
+    }
+
+    private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, String>> categroyCrossCountsMap) {
+        ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
+//        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
+        return response;
+    }
+
     private ProcessedCrossCountsResponse buildProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
         response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
@@ -76,24 +97,35 @@ public class VisualizationService {
         return response;
     }
 
-    private Map<String, Map<String, Integer>> getCategroyCrossCountsMap(String requestSource, QueryRequest query, Query queryJson) {
+    private Map<String, Map<String, Integer>> getCategroyCrossCountsMap(QueryRequest query, Query queryJson) {
         Map<String, Map<String, Integer>> categroyCrossCountsMap;
         if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
-            categroyCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT, requestSource);
+            categroyCrossCountsMap = hpdsServices.getAuthCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
         } else {
             categroyCrossCountsMap = new HashMap<>();
         }
         return categroyCrossCountsMap;
     }
 
-    private Map<String, Map<String, Integer>> getContinuousCrossCount(String requestSource, QueryRequest query, Query queryJson) {
+    private Map<String, Map<String, Integer>> getContinuousCrossCount(QueryRequest query, Query queryJson) {
         Map<String, Map<String, Integer>> continuousCrossCountsMap;
         if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
-            continuousCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT, requestSource);
+            continuousCrossCountsMap = hpdsServices.getAuthCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
         } else {
             continuousCrossCountsMap = new HashMap<>();
         }
         return continuousCrossCountsMap;
+    }
+
+    private Map<String, Map<String, String>> getOpenCrossCounts(QueryRequest query, Query queryJson, ResultType resultType) {
+        Map<String, Map<String, String>> crossCountsMap;
+        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0) || (queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+            crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, resultType);
+        } else {
+            crossCountsMap = new HashMap<>();
+        }
+
+        return crossCountsMap;
     }
 
 }
