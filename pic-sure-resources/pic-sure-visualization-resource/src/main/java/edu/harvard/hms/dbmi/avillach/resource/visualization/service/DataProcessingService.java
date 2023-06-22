@@ -51,12 +51,7 @@ public class DataProcessingService {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            if (entry.getKey().equals(CONSENTS_KEY) ||
-                    entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
-                    entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
-                    entry.getKey().equals(PARENT_CONSENTS_KEY)){
-                continue;
-            }
+            if (skipKey(entry)) continue;
             Map<String, Integer> axisMap = processResults(entry.getValue());
 
             String title = getChartTitle(entry.getKey());
@@ -70,6 +65,37 @@ public class DataProcessingService {
         logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
     }
+
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, Map<String, Map<String, Boolean>> obfuscationMap) {
+        List<CategoricalData> categoricalDataList = new ArrayList<>();
+
+        for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
+            if (skipKey(entry)) continue;
+            Map<String, Integer> axisMap = processResults(entry.getValue());
+
+            String title = getChartTitle(entry.getKey());
+            categoricalDataList.add(new CategoricalData(
+                    title,
+                    new LinkedHashMap<>(axisMap),
+                    obfuscationMap.get(entry.getKey()),
+                    createXAxisLabel(title),
+                    "Number of Participants"
+            ));
+        }
+        logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
+        return categoricalDataList;
+    }
+
+    private static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
+        if (entry.getKey().equals(CONSENTS_KEY) ||
+                entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
+                entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
+                entry.getKey().equals(PARENT_CONSENTS_KEY)){
+            return true;
+        }
+        return false;
+    }
+
 
     /**
      * For each continuous cross count we create a histogram of the values.
