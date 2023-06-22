@@ -90,7 +90,7 @@ public class VisualizationService {
         Map<String, Map<String, Boolean>> obfuscationMap = generateObfuscationMap(categroyCrossCountsMap);
         Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categroyCrossCountsMap);
 
-        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, null);
+        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, obfuscationMap);
         return Response.ok(response).build();
     }
 
@@ -144,10 +144,11 @@ public class VisualizationService {
         return crossCountsObfuscationMap;
     }
 
-    private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
+    private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap,
+                                                                               Map<String, Map<String, Boolean>> categoryCrossCountsObfuscationMap) {
+
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap));
+        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap, categoryCrossCountsObfuscationMap));
         return response;
     }
 
