@@ -1,10 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.bean;
 
-import org.springframework.web.context.annotation.RequestScope;
-
+import javax.enterprise.context.RequestScoped;
 import javax.ws.rs.core.MultivaluedMap;
 
-@RequestScope
+@RequestScoped
 public class RequestScopedHeader {
 
     private MultivaluedMap<String, String> headers;
