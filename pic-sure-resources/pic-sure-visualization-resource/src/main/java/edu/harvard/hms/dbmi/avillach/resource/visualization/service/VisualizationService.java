@@ -53,6 +53,7 @@ public class VisualizationService {
      */
     public Response handleQuerySync(QueryRequest query, String requestSource) {
         logger.debug("Received query:  \n" + query);
+        logger.debug("Received requestSource:  \n" + requestSource);
 
         Query queryJson;
         try {
@@ -62,7 +63,7 @@ public class VisualizationService {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
         }
 
-        if (requestSource.equals("Authorized")) {
+        if (requestSource != null && requestSource.equals("Authorized")) {
             Map<String, Map<String, Integer>> categroyCrossCountsMap = getCategroyCrossCountsMap(query, queryJson);
             Map<String, Map<String, Integer>> continuousCrossCountsMap = getContinuousCrossCount(query, queryJson);
 
@@ -89,7 +90,7 @@ public class VisualizationService {
         Map<String, Map<String, Boolean>> obfuscationMap = generateObfuscationMap(categroyCrossCountsMap);
         Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categroyCrossCountsMap);
 
-        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(categroyCrossCountsMap);
+        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, null);
         return Response.ok(response).build();
     }
 
@@ -143,9 +144,10 @@ public class VisualizationService {
         return crossCountsObfuscationMap;
     }
 
-    private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, String>> categroyCrossCountsMap) {
+    private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-//        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
+        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
+        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap));
         return response;
     }
 
