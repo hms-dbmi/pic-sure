@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.bean.RequestScopedHeader;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.VisualizationService;
 import org.slf4j.Logger;
@@ -33,8 +34,8 @@ public class VisualizationResource implements IResourceRS {
     @Inject
     ApplicationProperties properties;
 
-    @HeaderParam("request-source")
-    private String requestSource;
+    @Inject
+    RequestScopedHeader requestScopedHeader;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -69,8 +70,12 @@ public class VisualizationResource implements IResourceRS {
     @POST
     @Path("/query/sync")
     public Response querySync(QueryRequest query) {
-        logger.info("resource=visualization /query/sync requestSource=" + this.requestSource + " query=" + query.toString());
-        return visualizationService.handleQuerySync(query, this.requestSource);
+        String requestSource = null;
+        if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
+            requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
+        }
+        logger.info("resource=visualization /query/sync requestSource=" + requestSource + " query=" + query.toString());
+        return visualizationService.handleQuerySync(query, requestSource);
     }
 
     @Override
