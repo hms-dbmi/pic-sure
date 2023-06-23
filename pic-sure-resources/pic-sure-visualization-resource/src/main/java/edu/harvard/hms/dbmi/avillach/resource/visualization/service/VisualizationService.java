@@ -63,7 +63,7 @@ public class VisualizationService {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
         }
 
-        if (requestSource != null && requestSource.equals("Authorized")) {
+        if ("Authorized".equals(requestSource)) {
             Map<String, Map<String, Integer>> categroyCrossCountsMap = getCategroyCrossCountsMap(query, queryJson);
             Map<String, Map<String, Integer>> continuousCrossCountsMap = getContinuousCrossCount(query, queryJson);
 
