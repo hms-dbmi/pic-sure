@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.filter.HeaderFilter;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ProcessedCrossCountsResponse;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
@@ -28,6 +29,9 @@ public class VisualizationService {
 
     @Inject
     ApplicationProperties properties;
+
+    @Inject
+    HeaderFilter headerFilter;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
