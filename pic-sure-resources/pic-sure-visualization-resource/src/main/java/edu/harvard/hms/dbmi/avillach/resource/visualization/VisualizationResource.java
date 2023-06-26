@@ -7,7 +7,7 @@ import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.bean.RequestScopedHeader;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.RequestScopedHeader;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.VisualizationService;
 import org.slf4j.Logger;

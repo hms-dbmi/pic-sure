@@ -1,5 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization;
 
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.HeaderFilter;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.RequestScopedHeader;
+
+import javax.ejb.Startup;
 import javax.inject.Inject;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
@@ -8,6 +12,7 @@ import javax.servlet.annotation.WebListener;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
 
+@Startup
 @ApplicationPath("pic-sure")
 @WebListener
 public class JAXRSConfiguration extends Application implements ServletContextListener {

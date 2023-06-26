@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.resource.visualization.bean;
+package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
 import javax.enterprise.context.RequestScoped;
 import javax.ws.rs.core.MultivaluedMap;

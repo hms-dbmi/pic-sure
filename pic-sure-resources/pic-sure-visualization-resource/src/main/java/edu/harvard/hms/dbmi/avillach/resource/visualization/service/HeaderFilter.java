@@ -1,9 +1,9 @@
-package edu.harvard.hms.dbmi.avillach.resource.visualization.filter;
+package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
-import edu.harvard.hms.dbmi.avillach.resource.visualization.bean.RequestScopedHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Priority;
 import javax.inject.Inject;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
@@ -11,6 +11,7 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.ext.Provider;
 
 @Provider
+@Priority(1)
 public class HeaderFilter implements ContainerRequestFilter {
 
     @Inject
