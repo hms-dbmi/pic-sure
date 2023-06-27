@@ -246,9 +246,10 @@ public class PicsureQueryService {
 			queryRequest.setResourceCredentials(new HashMap<>());
 		}
 
+		String requestSource = Utilities.getRequestSourceFromHeader(headers);
 		logger.info("path=/query/sync, resourceId={}, requestSource={}, queryRequest={}",
 				queryRequest.getResourceUUID(),
-				Utilities.getRequestSourceFromHeader(headers),
+				requestSource,
 				Utilities.convertQueryRequestToString(mapper, queryRequest)
 		);
 
@@ -270,8 +271,7 @@ public class PicsureQueryService {
 		queryEntity.setQuery(queryJson);
 		queryRepo.persist(queryEntity);
 		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-
-		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest);
+		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest, requestSource);
 		String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
 
 		if (syncResponse.getHeaders() != null) {

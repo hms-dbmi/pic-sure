@@ -19,7 +19,6 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 
@@ -238,7 +237,7 @@ public class ResourceWebClient {
         }
     }
 
-	public Response querySync(String rsURL, QueryRequest queryRequest) {
+	public Response querySync(String rsURL, QueryRequest queryRequest, String requestSource) {
 		logger.debug("Calling ResourceWebClient querySync()");
 		try {
 			if (queryRequest == null) {
@@ -253,7 +252,20 @@ public class ResourceWebClient {
 
 			String pathName = "/query/sync";
 			String body = json.writeValueAsString(queryRequest);
-			HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+
+
+            Header[] headers = createHeaders(queryRequest.getResourceCredentials());
+            if (requestSource != null) {
+                Header sourceHeader = new BasicHeader("request-source", requestSource);
+
+                // Add the source header to the headers array.
+                Header[] newHeaders = new Header[headers.length + 1];
+                System.arraycopy(headers, 0, newHeaders, 0, headers.length);
+                newHeaders[headers.length] = sourceHeader;
+                headers = newHeaders;
+            }
+
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
 			if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
 				throwError(resourcesResponse, rsURL);
 			}

@@ -21,8 +21,10 @@ public class HeaderFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext containerRequestContext) {
-        logger.info("HeaderFilter called with headers: " + containerRequestContext.getHeaders().toString());
-        MultivaluedMap<String, String> httpHeaders = containerRequestContext.getHeaders();
-        headers.setHeaders(httpHeaders);
+        if (containerRequestContext.getUriInfo().getPath().startsWith("/visualization")) {
+            logger.info("HeaderFilter called for path: /visualization with headers: " + containerRequestContext.getHeaders().toString());
+            MultivaluedMap<String, String> httpHeaders = containerRequestContext.getHeaders();
+            headers.setHeaders(httpHeaders);
+        }
     }
 }
