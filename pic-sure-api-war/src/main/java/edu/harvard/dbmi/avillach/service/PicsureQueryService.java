@@ -19,6 +19,7 @@ import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.util.*;
 
@@ -258,8 +259,8 @@ public class PicsureQueryService {
         Map<String, Object> metadata = new HashMap<String, Object>();
         try {
 			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
-			metadata.put(QUERY_RESULT_METADATA_FIELD, String.valueOf(query.getMetadata()));
-		} catch (JsonProcessingException e) {
+			metadata.put(QUERY_RESULT_METADATA_FIELD, new String(query.getMetadata(), StandardCharsets.UTF_8));
+		} catch (JsonProcessingException | NullPointerException e) {
 			logger.warn("Unable to use object mapper", e);
 		}
 
