@@ -74,11 +74,11 @@ public class HpdsService {
     }
 
     public Map<String, Map<String, Integer>> getAuthCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-       return getCrossCountsMap(queryRequest, resultType, "Authorized", new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
+       return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
     }
 
     public Map<String, Map<String, String>> getOpenCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-        return getCrossCountsMap(queryRequest, resultType, "Open", new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+        return getCrossCountsMap(queryRequest, resultType, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
     }
 
     /**
@@ -120,7 +120,7 @@ public class HpdsService {
 
     private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
         if (accessType == null || accessType.trim().equals("")) throw new IllegalArgumentException("request-source header is required");
-        if (accessType.equals(AUTHORIZED_ACCESS) || accessType.equals(OPEN_ACCESS)) throw new IllegalArgumentException("accessType must be either Open or Authorized");
+        if (!(accessType.equals(AUTHORIZED_ACCESS) || accessType.equals(OPEN_ACCESS))) throw new IllegalArgumentException("accessType must be either Open or Authorized");
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
         if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
