@@ -19,6 +19,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -241,26 +242,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String queryString = json.writeValueAsString(queryRequest);
-			String pathName = "/query/sync";
-			String composedURL = composeURL(targetPicsureUrl, pathName);
-			logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("Not 200 status!");
-				logger.error(
-						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, targetPicsureUrl);
-			}
-
+			HttpResponse response = getHttpResponse(queryRequest, resourceUUID);
 
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
 
-			responseString = getExpectedResponse(expectedResultType, entityString, responseString);
+			responseString = getExpectedResponse(expectedResultType, entityString, responseString, queryRequest);
 
 			//propagate any metadata from the back end (e.g., resultId)
 			if (response.containsHeader(QUERY_METADATA_FIELD)) {
@@ -279,6 +267,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 	}
 
+	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID) throws JsonProcessingException {
+		String targetPicsureUrl = properties.getTargetPicsureUrl();
+		String queryString = json.writeValueAsString(queryRequest);
+		String pathName = "/query/sync";
+		String composedURL = composeURL(targetPicsureUrl, pathName);
+		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
+		HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error("Not 200 status!");
+			logger.error(
+					composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetPicsureUrl);
+		}
+		return response;
+	}
+
 	/**
 	 * This method will process the response from the backend and return the
 	 * expected response based on the expected result type.
@@ -292,7 +297,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 * @return String The response that will be returned
 	 * @throws JsonProcessingException If there is an error processing the response
 	 */
-	private String getExpectedResponse(String expectedResultType, String entityString, String responseString) throws JsonProcessingException {
+	private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest) throws IOException {
+		String crossCountResponse;
 		switch (expectedResultType) {
 			case "COUNT":
 				responseString = aggregateCount(entityString).orElse(entityString);
@@ -304,15 +310,37 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 				break;
 			case "CATEGORICAL_CROSS_COUNT":
-				responseString = processCategoricalCrossCounts(entityString);
+				crossCountResponse = getCrossCountForQuery(queryRequest);
+				responseString = processCategoricalCrossCounts(entityString, crossCountResponse);
 
 				break;
 			case "CONTINUOUS_CROSS_COUNT":
-				responseString = processContinuousCrossCounts(entityString);
+				crossCountResponse = getCrossCountForQuery(queryRequest);
+				responseString = processContinuousCrossCounts(entityString, crossCountResponse);
 
 				break;
 		}
 		return responseString;
+	}
+
+	/**
+	 * No matter what the expected result type is we will get the cross count instead.
+	 *
+	 * @param queryRequest The query request
+	 * @return String The cross count for the query
+	 */
+	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
+		HttpResponse response = getHttpResponse(changeQueryExpectedResultType(queryRequest), queryRequest.getResourceUUID());
+		HttpEntity entity = response.getEntity();
+		return EntityUtils.toString(entity, "UTF-8");
+	}
+
+	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) throws JsonProcessingException {
+		String query = queryRequest.getQuery().toString();
+		JsonNode jsonNode = json.valueToTree(query);
+		((ObjectNode) jsonNode).put("expectedResultType", "CROSS_COUNT");
+		String crossCountQuery = jsonNode.toString();
+		return queryRequest.setQuery(crossCountQuery);
 	}
 
 	@Override
@@ -355,22 +383,39 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
 		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>(){});
-		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
-		entryList.sort(Map.Entry.comparingByKey());
-		final StringBuffer crossCountsString = new StringBuffer();
-		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
-		int requestVariance = generateRequestVariance(crossCountsString.toString());
+		int requestVariance = generateVarianceWithCrossCounts(crossCounts);
+		crossCounts = obfuscateCrossCounts(crossCounts, requestVariance);
+
+		return crossCounts;
+	}
+
+	/**
+	 * This method will appropriately process the obfuscation of the cross counts.
+	 *
+	 * @param crossCounts The cross counts
+	 * @param requestVariance The variance for the request
+	 * @return Map<String, String> The obfuscated cross counts
+	 */
+	private Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts, int requestVariance) {
+		// Obfuscate the counts. This is done by generating a random number between 0 and the variance (=-3 for bdc)
+		// and adding that to the count. This is done for each count.
 		Set<String> obfuscatedKeys = new HashSet<>();
 		if(crossCounts != null) {
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
+				// Aggregate count converts the count to "< threshold" if the count is less than the threshold and greater than 0.
 				Optional<String> aggregatedCount = aggregateCount(crossCount);
 				aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
 				crossCounts.put(key, aggregatedCount.orElse(crossCount));
 			});
+
+			// This confuses me. We are generating the parents of the obfuscated keys?
+			// break down the keys into their parents
 			Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
 				return generateParents(key);
 			}).collect(Collectors.toSet());
+
+			// obfuscate the parents.
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
 				if (!obfuscatedKeys.contains(key) && obfuscatedParents.contains(key)) {
@@ -382,38 +427,108 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return crossCounts;
 	}
 
-	protected String processContinuousCrossCounts(String entityString) throws JsonProcessingException {
+	/**
+	 * This method is used to generate a variance for Cross Count queries.
+	 * The variance is generated by taking the cross counts and sorting them by key.
+	 * Then we generate a string with lines like consent:1\n consent:2\ consent:3\n etc.
+	 * Then we generate a variance using the string. This is to give us a random variance that is deterministic for each
+	 * query.
+	 *
+	 * @param crossCounts A map of cross counts
+	 * @return int The variance
+	 */
+	private int generateVarianceWithCrossCounts(Map<String, String> crossCounts) {
+		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+
+		// sort the entry set. By sorting the entry set first we can ensure that the variance is the same for each run.
+		// This is to give us a random variance that is deterministic.
+		entryList.sort(Map.Entry.comparingByKey());
+
+		final StringBuffer crossCountsString = new StringBuffer();
+
+		// build a string with lines like consent:1\n consent:2\n consent:3\n etc.
+		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
+
+		return generateRequestVariance(crossCountsString.toString());
+	}
+
+	protected String processContinuousCrossCounts(String entityString, String crossCountResponse) throws JsonProcessingException {
 		logger.info("Processing continuous cross counts");
 		logger.info("Entity string: {}", entityString);
 
-		if (entityString == null) {
+		if (entityString == null || crossCountResponse == null) {
 			return null;
 		}
 
 		return entityString;
 	}
 
-	protected String processCategoricalCrossCounts(String entityString) throws JsonProcessingException {
+	/**
+	 * This method will process the categorical cross counts. It will first determine if the cross counts need to be
+	 * obfuscated. This is done by checking if any of the cross_counts were obfuscated. If they were we need to obfuscate
+	 * the categorical cross counts. If not we can just return the categorical entity string.
+	 *
+	 * @param categoricalEntityString The categorical entity string
+	 * @param crossCountEntityString The cross count entity string
+	 * @return String The processed categorical entity string
+	 * @throws JsonProcessingException If there is an error processing the JSON
+	 */
+	protected String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString) throws JsonProcessingException {
 		logger.info("Processing categorical cross counts");
-		logger.info("Entity string: {}", entityString);
+		logger.info("Entity string: {}", categoricalEntityString);
 
-		if (entityString == null) {
+		if (categoricalEntityString == null || crossCountEntityString == null) {
 			return null;
 		}
 
-		// TODO: We need to obfuscate the categorical cross counts
+		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
+		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-		/*
+		String lessThanThresholdStr = "< " + this.threshold;
+		String varianceStr = " \u00B1" + variance;
 
-		I can base this implementation based on what is currently done in cross counts. However, I believe that
-		there will be no children in the categorical cross counts. Therefore, I believe that I can just obfuscate
-		the categorical cross counts and not worry about the parents.
+		// Based on the results of the cross counts, we need to determine if we need to obfuscate our categoricalCrossCount
+		// If any of the cross counts are less than the threshold or have a variance, we need to obfuscate.
+		boolean mustObfuscate = false;
+		Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
+		for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
+			String v = entry.getValue();
+			if (v.contains(lessThanThresholdStr) || v.contains(varianceStr)) {
+				mustObfuscate = true;
+				break;
+			}
+		}
 
-		 */
+		// If we don't need to obfuscate we can just return the entity string.
+		if (!mustObfuscate) {
+			return categoricalEntityString;
+		}
 
+		Map<String, Map<String, Object>> categoricalCrossCount = null;
+		try {
+			categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>(){});
+		} catch (Exception e) {
+			logger.error("Error processing categorical cross counts: {}", e.getMessage());
+			throw new JsonProcessingException(e.getMessage()) {};
+		}
 
+		if (categoricalCrossCount == null) {
+			return categoricalEntityString;
+		}
 
-		return entityString;
+		// Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
+		categoricalCrossCount.forEach((key, value) -> {
+			value.forEach((innerKey, innerValue) -> {
+				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
+				if (aggregateCount.isPresent()) {
+					value.put(innerKey, aggregateCount.get());
+				} else {
+					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
+				}
+			});
+		});
+
+		return categoricalEntityString;
 	}
 
 	/**
@@ -458,6 +573,21 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 		} catch (NumberFormatException nfe) {
 			logger.warn("Count was not a number! " + actualCount);
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Helper method to handle the fact that the actualCount could be an Integer or a String.
+	 *
+	 * @param actualCount
+	 * @return
+	 */
+	private Optional<String> aggregateCountHelper(Object actualCount) {
+		if (actualCount instanceof Integer) {
+			return aggregateCount(actualCount.toString());
+		} else if (actualCount instanceof String) {
+			return aggregateCount((String) actualCount);
 		}
 		return Optional.empty();
 	}
