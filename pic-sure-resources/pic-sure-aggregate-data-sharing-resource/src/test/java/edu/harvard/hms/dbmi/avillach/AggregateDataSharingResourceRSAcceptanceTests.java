@@ -267,12 +267,12 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	@Test
 	public void testProcessContinuousCrossCounts() throws JsonProcessingException {
-		assertNull(objectUnderTest.processContinuousCrossCounts(null));
+		assertNull(objectUnderTest.processContinuousCrossCounts(null, null));
 	}
 
 	@Test
 	public void testProcessCategoricalCrossCounts() throws JsonProcessingException {
-		assertNull(objectUnderTest.processCategoricalCrossCounts(null));
+		assertNull(objectUnderTest.processCategoricalCrossCounts(null, null));
 	}
 
 	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
