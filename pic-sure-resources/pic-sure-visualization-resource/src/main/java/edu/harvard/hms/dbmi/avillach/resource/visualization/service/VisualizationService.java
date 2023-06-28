@@ -35,6 +35,8 @@ public class VisualizationService {
     // In that class it is configurable
     private static final String[] obfuscationTypes = {"< 10", "± 3"};
 
+    private static final String AUTHORIZED = "Authorized";
+
     VisualizationService() {
         if (properties == null) {
             properties = new ApplicationProperties();
@@ -52,9 +54,6 @@ public class VisualizationService {
      * @return ProcessedCrossCountsResponse
      */
     public Response handleQuerySync(QueryRequest query, String requestSource) {
-        logger.debug("Received query:  \n" + query);
-        logger.debug("Received requestSource:  \n" + requestSource);
-
         Query queryJson;
         try {
             queryJson = mapper.readValue(mapper.writeValueAsString(query.getQuery()), Query.class);
@@ -63,7 +62,7 @@ public class VisualizationService {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
         }
 
-        if ("Authorized".equals(requestSource)) {
+        if (AUTHORIZED.equals(requestSource)) {
             Map<String, Map<String, Integer>> categroyCrossCountsMap = getCategroyCrossCountsMap(query, queryJson);
             Map<String, Map<String, Integer>> continuousCrossCountsMap = getContinuousCrossCount(query, queryJson);
 
