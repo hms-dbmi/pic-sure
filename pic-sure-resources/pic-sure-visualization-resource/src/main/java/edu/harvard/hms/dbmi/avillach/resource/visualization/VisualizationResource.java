@@ -57,7 +57,7 @@ public class VisualizationResource implements IResourceRS {
     public ResourceInfo info(QueryRequest infoRequest) {
         ResourceInfo info = new ResourceInfo();
         info.setName("Pic-Sure Visualization Resource");
-        info.setId(properties.getVisualizationResourceId());
+//        info.setId(properties.getVisualizationResourceId());
         QueryFormat queryFormat = new QueryFormat();
         queryFormat.setName("Pic-Sure Query Format");
         info.getQueryFormats().add(queryFormat);
@@ -66,6 +66,7 @@ public class VisualizationResource implements IResourceRS {
                 "requiredFields", "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie and Bar Charts.",
                 "categoryFilters", "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie and Bar Charts."
         ));
+
         return info;
     }
 
