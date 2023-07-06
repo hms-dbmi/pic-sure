@@ -335,12 +335,18 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return EntityUtils.toString(entity, "UTF-8");
 	}
 
-	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) throws JsonProcessingException {
-		String query = queryRequest.getQuery().toString();
+	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) {
+		String query = (String) queryRequest.getQuery();
+		logger.debug("Changing query: " + query);
 		JsonNode jsonNode = json.valueToTree(query);
-		((ObjectNode) jsonNode).put("expectedResultType", "CROSS_COUNT");
-		String crossCountQuery = jsonNode.toString();
-		return queryRequest.setQuery(crossCountQuery);
+		List<JsonNode> expectedResultTypeParents = jsonNode.findParents("expectedResultType");
+		// loop through the children of the expected result type and change the value to CROSS_COUNT. We need to use
+		// this approach because expectedResultType
+		for (JsonNode node : expectedResultTypeParents) {
+			((ObjectNode) node).put("expectedResultType", "CROSS_COUNT");
+		}
+		queryRequest.setQuery(jsonNode);
+		return queryRequest;
 	}
 
 	@Override
@@ -504,7 +510,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return categoricalEntityString;
 		}
 
-		Map<String, Map<String, Object>> categoricalCrossCount = null;
+		Map<String, Map<String, Object>> categoricalCrossCount;
 		try {
 			categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>(){});
 		} catch (Exception e) {
