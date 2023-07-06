@@ -345,7 +345,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		for (JsonNode node : expectedResultTypeParents) {
 			((ObjectNode) node).put("expectedResultType", "CROSS_COUNT");
 		}
-		queryRequest.setQuery(jsonNode);
+
+		// Convert the jsonNode back to a string
+		String newQuery = jsonNode.toString();
+		logger.debug("Changed query: " + newQuery);
+
+		queryRequest.setQuery(newQuery);
 		return queryRequest;
 	}
 
