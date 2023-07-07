@@ -336,7 +336,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) {
-		String query = (String) queryRequest.getQuery();
+		Object query = queryRequest.getQuery();
 		logger.debug("Changing query: " + query);
 		JsonNode jsonNode = json.valueToTree(query);
 		List<JsonNode> expectedResultTypeParents = jsonNode.findParents("expectedResultType");
