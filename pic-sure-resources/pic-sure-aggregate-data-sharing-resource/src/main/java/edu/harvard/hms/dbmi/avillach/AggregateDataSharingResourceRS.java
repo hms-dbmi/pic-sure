@@ -337,20 +337,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) {
 		Object query = queryRequest.getQuery();
-		logger.debug("Changing query: " + query);
 		JsonNode jsonNode = json.valueToTree(query);
 		List<JsonNode> expectedResultTypeParents = jsonNode.findParents("expectedResultType");
-		// loop through the children of the expected result type and change the value to CROSS_COUNT. We need to use
-		// this approach because expectedResultType
+
+		// The reason we need to do this is that expected result type is a TextNode that is immutable.
+		// This is a jackson work around to replace the expectedResultType field with a new value.
 		for (JsonNode node : expectedResultTypeParents) {
 			((ObjectNode) node).put("expectedResultType", "CROSS_COUNT");
 		}
 
-		// Convert the jsonNode back to a string
-		String newQuery = jsonNode.toString();
-		logger.debug("Changed query: " + newQuery);
-
-		queryRequest.setQuery(newQuery);
+		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(jsonNode, new TypeReference<>(){});
+		queryRequest.setQuery(rebuiltQuery);
 		return queryRequest;
 	}
 
