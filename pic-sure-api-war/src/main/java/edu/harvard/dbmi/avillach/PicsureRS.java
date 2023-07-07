@@ -137,8 +137,20 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus query(@Parameter QueryRequest dataQueryRequest, @Context HttpHeaders headers) {
-		return queryService.query(dataQueryRequest, headers);
+	public QueryStatus query(
+		@Parameter
+		QueryRequest dataQueryRequest,
+
+		@Context
+		HttpHeaders headers,
+
+		@Parameter
+		@QueryParam("isInstitute")
+		Boolean isInstitutionQuery
+	) {
+		return isInstitutionQuery == null || !isInstitutionQuery ?
+			queryService.query(dataQueryRequest, headers) :
+			queryService.institutionalQuery(dataQueryRequest, headers);
 	}
 	
 	@POST
@@ -157,10 +169,27 @@ public class PicsureRS {
 					)
 			}
 	)
-	public QueryStatus queryStatus(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
-			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
-								   @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers) {
-		return queryService.queryStatus(queryId, credentialsQueryRequest, headers);
+	public QueryStatus queryStatus(
+		@Parameter(
+			description="The UUID of the query to fetch the status of. The UUID is returned by the /query " +
+			"endpoint as the \"picsureResultId\" in the response object"
+		)
+		@PathParam("queryId")
+		UUID queryId,
+
+		@Parameter
+		QueryRequest credentialsQueryRequest,
+
+		@Context
+		HttpHeaders headers,
+
+		@Parameter
+		@QueryParam("isInstitute")
+		Boolean isInstitutionQuery
+	) {
+		return isInstitutionQuery == null || !isInstitutionQuery ?
+			queryService.queryStatus(queryId, credentialsQueryRequest, headers) :
+			queryService.institutionQueryStatus(queryId, credentialsQueryRequest, headers);
 	}
 	
 	@POST

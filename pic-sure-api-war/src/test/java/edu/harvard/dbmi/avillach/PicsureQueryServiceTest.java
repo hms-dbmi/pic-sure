@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import javax.ws.rs.core.HttpHeaders;
@@ -16,11 +17,13 @@ import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
@@ -413,6 +416,31 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		assertEquals("Resource result id and Picsure result id should match in case of no resource result id",
 				queryId.toString(), queryEntity.getResourceResultId());
 
+	}
+
+	@Test
+	public void testShouldQueryMetadata() {
+		Resource resource = new Resource();
+		resource.setUuid(resourceId);
+		String resultId = UUID.randomUUID().toString();
+		Query query = new Query();
+		query.setQuery("{}");
+		query.setResource(resource);
+		query.setStatus(PicSureStatus.AVAILABLE);
+		query.setStartTime(new java.sql.Date(System.currentTimeMillis()));
+		query.setResourceResultId(resultId);
+
+		String metaData = "{\\\"picsureQueryId\\\":\\\"b9e6cea7-142e-5859-8e98-1245c959fc0b\\\"," +
+			"\\\"commonAreaId\\\":\\\"290a9d2e-1a20-4407-b351-499185f5554e\\\"}";
+
+		query.setMetadata(metaData.getBytes(StandardCharsets.UTF_8));
+
+		Mockito.when(queryRepo.getById(query.getUuid()))
+			.thenReturn(query);
+
+		QueryStatus status = queryService.queryMetadata(query.getUuid(), null);
+		String actual = (String) status.getResultMetadata().get("queryResultMetadata");
+		Assert.assertEquals(metaData, actual);
 	}
 	
 	@Test
