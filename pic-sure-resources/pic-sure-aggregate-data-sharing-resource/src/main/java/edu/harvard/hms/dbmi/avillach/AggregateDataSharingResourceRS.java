@@ -377,16 +377,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		logger.debug("Calling Aggregate Data Sharing Resource addStudyConsentsToQuery()");
 
 		SearchResults consentResults = getAllStudyConsents();
-		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), LinkedHashMap.class);
+		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
 		Object phenotypes = linkedHashMap.get("phenotypes");
+		LinkedHashMap<String, Object> phenotypesLinkedHashMap = objectMapper.convertValue(phenotypes, new TypeReference<>() {});
 
-		// convert the phenotypes to a json node
-		JsonNode phenotypesJsonNode = json.valueToTree(phenotypes);
-		ArrayNode crossCountFields = ((ObjectNode) jsonNode).putArray("crossCountFields");
+		// get all the keys from phenotypes
+		Set<String> keys = phenotypesLinkedHashMap.keySet();
 
-		// Add all elements from phenotypesJsonNode to crossCountFields list
-		crossCountFields.addAll((ArrayNode) phenotypesJsonNode);
-		((ObjectNode) jsonNode).replace("crossCountFields", crossCountFields);
+		// create an ArrayNode to hold the keys
+		ArrayNode arrayNode = objectMapper.createArrayNode();
+
+		// add the keys to the arraynode
+		for (String key : keys) {
+			arrayNode.add(key);
+		}
+
+		// add the ArrayNode to the query
+		((ObjectNode) jsonNode).set("crossCountFields", arrayNode);
 
 		return jsonNode;
 	}
