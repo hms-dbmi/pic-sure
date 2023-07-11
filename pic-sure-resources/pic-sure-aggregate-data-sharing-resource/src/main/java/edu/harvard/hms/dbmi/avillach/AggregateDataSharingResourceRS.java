@@ -19,6 +19,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -324,41 +325,43 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	/**
-	 * No matter what the expected result type is we will get the cross count instead.
+	 * No matter what the expected result type is we will get the cross count instead. Additionally,
+	 * it will include ALL study consents in the query.
 	 *
 	 * @param queryRequest The query request
 	 * @return String The cross count for the query
 	 */
 	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
-		// We need to add the studies consents to the query request
-		// data: JSON.stringify({"query":"\\_studies_consents\\"})
-		// We need to add the studies consents to the query request
-		QueryRequest studiesConsents = new QueryRequest();
-		studiesConsents.setQuery("\\_studies_consents\\");
-		SearchResults consentResults = this.search(studiesConsents);
+		logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
 
-		// We need to add the studies consents to the query request
-		// queryStudies.query.crossCountFields = studyConcepts;
-		Object query = queryRequest.getQuery();
-		JsonNode jsonNode = json.valueToTree(query);
-		// add the cross count fields to the query
-		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), LinkedHashMap.class);
-		Object phenotypes = linkedHashMap.get("phenotypes");
-
-		// convert the phenotypes to a json node
-		JsonNode phenotypesJsonNode = json.valueToTree(phenotypes);
-		JsonNode crossCountFields = ((ObjectNode) jsonNode).set("crossCountFields", phenotypesJsonNode);
-		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(crossCountFields, new TypeReference<>(){});
-		queryRequest.setQuery(rebuiltQuery);
-
-		HttpResponse response = getHttpResponse(changeQueryExpectedResultType(queryRequest), queryRequest.getResourceUUID());
+		HttpResponse response = getHttpResponse(handleAlterQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID());
 		HttpEntity entity = response.getEntity();
 		return EntityUtils.toString(entity, "UTF-8");
 	}
 
-	private QueryRequest changeQueryExpectedResultType(QueryRequest queryRequest) {
+	/**
+	 * This method will add the study consents to the query. It will also set the expected result type to cross count.
+	 *
+	 * @param queryRequest The query request
+	 * @return QueryRequest The query request with the study consents added and the expected result type set to cross count
+	 */
+	private QueryRequest handleAlterQueryToOpenCrossCount(QueryRequest queryRequest) {
+		logger.debug("Calling Aggregate Data Sharing Resource handleAlterQueryToOpenCrossCount()");
+
 		Object query = queryRequest.getQuery();
 		JsonNode jsonNode = json.valueToTree(query);
+
+		JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
+		JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
+
+		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>(){});
+		queryRequest.setQuery(rebuiltQuery);
+		return queryRequest;
+	}
+
+	private JsonNode setExpectedResultTypeToCrossCount(JsonNode jsonNode) {
+		logger.debug("Calling Aggregate Data Sharing Resource setExpectedResultTypeToCrossCount()");
+
 		List<JsonNode> expectedResultTypeParents = jsonNode.findParents("expectedResultType");
 
 		// The reason we need to do this is that expected result type is a TextNode that is immutable.
@@ -367,9 +370,33 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			((ObjectNode) node).put("expectedResultType", "CROSS_COUNT");
 		}
 
-		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(jsonNode, new TypeReference<>(){});
-		queryRequest.setQuery(rebuiltQuery);
-		return queryRequest;
+		return jsonNode;
+	}
+
+	private JsonNode addStudyConsentsToQuery(JsonNode jsonNode) {
+		logger.debug("Calling Aggregate Data Sharing Resource addStudyConsentsToQuery()");
+
+		SearchResults consentResults = getAllStudyConsents();
+		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), LinkedHashMap.class);
+		Object phenotypes = linkedHashMap.get("phenotypes");
+
+		// convert the phenotypes to a json node
+		JsonNode phenotypesJsonNode = json.valueToTree(phenotypes);
+		ArrayNode crossCountFields = ((ObjectNode) jsonNode).putArray("crossCountFields");
+
+		// Add all elements from phenotypesJsonNode to crossCountFields list
+		crossCountFields.addAll((ArrayNode) phenotypesJsonNode);
+		((ObjectNode) jsonNode).replace("crossCountFields", crossCountFields);
+
+		return jsonNode;
+	}
+
+	private SearchResults getAllStudyConsents() {
+		logger.debug("Calling Aggregate Data Sharing Resource getAllStudyConsents()");
+
+		QueryRequest studiesConsents = new QueryRequest();
+		studiesConsents.setQuery("\\_studies_consents\\");
+		return this.search(studiesConsents);
 	}
 
 	@Override
