@@ -334,7 +334,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
 		logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
 
-		HttpResponse response = getHttpResponse(handleAlterQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID());
+		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID());
 		HttpEntity entity = response.getEntity();
 		return EntityUtils.toString(entity, "UTF-8");
 	}
@@ -345,7 +345,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 * @param queryRequest The query request
 	 * @return QueryRequest The query request with the study consents added and the expected result type set to cross count
 	 */
-	private QueryRequest handleAlterQueryToOpenCrossCount(QueryRequest queryRequest) {
+	private QueryRequest changeQueryToOpenCrossCount(QueryRequest queryRequest) {
 		logger.debug("Calling Aggregate Data Sharing Resource handleAlterQueryToOpenCrossCount()");
 
 		Object query = queryRequest.getQuery();
@@ -387,7 +387,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		// create an ArrayNode to hold the keys
 		ArrayNode arrayNode = objectMapper.createArrayNode();
 
-		// add the keys to the arraynode
+		// add the keys to the ArrayNode
 		for (String key : keys) {
 			arrayNode.add(key);
 		}
@@ -586,7 +586,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				if (aggregateCount.isPresent()) {
 					value.put(innerKey, aggregateCount.get());
 				} else {
-					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
+					value.put(innerKey, randomize(innerValue.toString(), generatedVariance) + " \u00B1" + variance);
 				}
 			});
 		});
