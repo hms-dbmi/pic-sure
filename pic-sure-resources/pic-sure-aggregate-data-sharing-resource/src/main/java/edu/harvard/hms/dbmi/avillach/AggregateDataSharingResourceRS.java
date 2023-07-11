@@ -330,6 +330,27 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 * @return String The cross count for the query
 	 */
 	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
+		// We need to add the studies consents to the query request
+		// data: JSON.stringify({"query":"\\_studies_consents\\"})
+		// We need to add the studies consents to the query request
+		QueryRequest studiesConsents = new QueryRequest();
+		studiesConsents.setQuery("\\_studies_consents\\");
+		SearchResults consentResults = this.search(studiesConsents);
+
+		// We need to add the studies consents to the query request
+		// queryStudies.query.crossCountFields = studyConcepts;
+		Object query = queryRequest.getQuery();
+		JsonNode jsonNode = json.valueToTree(query);
+		// add the cross count fields to the query
+		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), LinkedHashMap.class);
+		Object phenotypes = linkedHashMap.get("phenotypes");
+
+		// convert the phenotypes to a json node
+		JsonNode phenotypesJsonNode = json.valueToTree(phenotypes);
+		JsonNode crossCountFields = ((ObjectNode) jsonNode).set("crossCountFields", phenotypesJsonNode);
+		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(crossCountFields, new TypeReference<>(){});
+		queryRequest.setQuery(rebuiltQuery);
+
 		HttpResponse response = getHttpResponse(changeQueryExpectedResultType(queryRequest), queryRequest.getResourceUUID());
 		HttpEntity entity = response.getEntity();
 		return EntityUtils.toString(entity, "UTF-8");
