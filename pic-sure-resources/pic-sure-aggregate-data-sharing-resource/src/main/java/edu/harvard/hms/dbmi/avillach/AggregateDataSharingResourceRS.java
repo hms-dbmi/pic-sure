@@ -586,12 +586,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				if (aggregateCount.isPresent()) {
 					value.put(innerKey, aggregateCount.get());
 				} else {
-					value.put(innerKey, randomize(innerValue.toString(), generatedVariance) + " \u00B1" + variance);
+					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
 				}
 			});
 		});
 
-		return categoricalEntityString;
+		return objectMapper.writeValueAsString(categoricalCrossCount);
 	}
 
 	/**
