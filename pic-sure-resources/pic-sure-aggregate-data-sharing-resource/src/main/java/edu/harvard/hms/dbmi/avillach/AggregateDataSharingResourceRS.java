@@ -459,25 +459,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 * @return Map<String, String> The obfuscated cross counts
 	 */
 	private Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts, int requestVariance) {
-		// Obfuscate the counts. This is done by generating a random number between 0 and the variance (=-3 for bdc)
-		// and adding that to the count. This is done for each count.
 		Set<String> obfuscatedKeys = new HashSet<>();
 		if(crossCounts != null) {
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
-				// Aggregate count converts the count to "< threshold" if the count is less than the threshold and greater than 0.
 				Optional<String> aggregatedCount = aggregateCount(crossCount);
 				aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
 				crossCounts.put(key, aggregatedCount.orElse(crossCount));
 			});
 
-			// This confuses me. We are generating the parents of the obfuscated keys?
-			// break down the keys into their parents
 			Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
 				return generateParents(key);
 			}).collect(Collectors.toSet());
 
-			// obfuscate the parents.
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
 				if (!obfuscatedKeys.contains(key) && obfuscatedParents.contains(key)) {
