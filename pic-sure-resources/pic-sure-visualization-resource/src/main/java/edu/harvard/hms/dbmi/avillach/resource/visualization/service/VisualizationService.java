@@ -125,10 +125,7 @@ public class VisualizationService {
                 // If the value contains either of the obfuscation types, set the value to true
                 if (subValue.contains(threshold) || subValue.contains(variance)) {
                     tempObf.put(subKey, true);
-                }
-
-                // If the value does not contain either of the obfuscation types, set the value to false
-                if (!tempObf.containsKey(subKey)) {
+                } else {
                     tempObf.put(subKey, false);
                 }
 
@@ -177,7 +174,9 @@ public class VisualizationService {
 
     private Map<String, Map<String, String>> getOpenCrossCounts(QueryRequest query, Query queryJson, ResultType resultType) {
         Map<String, Map<String, String>> crossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0) || (queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)
+                || (queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0)
+                || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
             crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, resultType);
         } else {
             crossCountsMap = new HashMap<>();
