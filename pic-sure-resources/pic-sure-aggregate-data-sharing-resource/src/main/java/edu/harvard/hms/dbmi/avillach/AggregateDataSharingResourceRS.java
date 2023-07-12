@@ -53,7 +53,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private static final String BEARER_STRING = "Bearer ";
 
-	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	private final int threshold;
@@ -232,7 +231,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			Object query = queryRequest.getQuery();
 			UUID resourceUUID = queryRequest.getResourceUUID();
 
-			JsonNode jsonNode = json.valueToTree(query);
+			JsonNode jsonNode = objectMapper.valueToTree(query);
 			if (!jsonNode.has("expectedResultType")) {
 				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
@@ -270,7 +269,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID) throws JsonProcessingException {
 		String targetPicsureUrl = properties.getTargetPicsureUrl();
-		String queryString = json.writeValueAsString(queryRequest);
+		String queryString = objectMapper.writeValueAsString(queryRequest);
 		String pathName = "/query/sync";
 		String composedURL = composeURL(targetPicsureUrl, pathName);
 		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
@@ -349,7 +348,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		logger.debug("Calling Aggregate Data Sharing Resource handleAlterQueryToOpenCrossCount()");
 
 		Object query = queryRequest.getQuery();
-		JsonNode jsonNode = json.valueToTree(query);
+		JsonNode jsonNode = objectMapper.valueToTree(query);
 
 		JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
 		JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
@@ -423,7 +422,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		try {
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String queryString = json.writeValueAsString(queryRequest);
+			String queryString = objectMapper.writeValueAsString(queryRequest);
 			String composedURL = composeURL(targetPicsureUrl, pathName);
 			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, queryString);
 			if (response.getStatusLine().getStatusCode() != 200) {
