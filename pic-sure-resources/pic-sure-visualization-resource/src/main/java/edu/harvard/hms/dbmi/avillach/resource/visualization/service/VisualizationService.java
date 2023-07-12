@@ -30,12 +30,10 @@ public class VisualizationService {
     ApplicationProperties properties;
 
     private final ObjectMapper mapper = new ObjectMapper();
-
-    // TODO: We should set this the same way it is done in the AggregateDataSharingResourceRS class
-    // In that class it is configurable
-    private static final String[] obfuscationTypes = {"< 10", "± 3"};
-
     private static final String AUTHORIZED = "Authorized";
+
+    private final String threshold;
+    private final String variance;
 
     VisualizationService() {
         if (properties == null) {
@@ -44,6 +42,9 @@ public class VisualizationService {
         }
         properties.init("pic-sure-visualization-resource");
         logger.info("VisualizationResource initialized ->", properties.getOrigin());
+
+        threshold = "< " + properties.getTargetPicsureObfuscationThreshold();
+        variance = "±" + properties.getTargetPicsureObfuscationVariance();
     }
 
     /**
@@ -100,14 +101,13 @@ public class VisualizationService {
         categroyCrossCountsMap.forEach((key, value) -> {
             Map<String, Integer> temp = new HashMap<>();
             value.forEach((subKey, subValue) -> {
-                for (String obfuscationType : obfuscationTypes) {
-                    if (subValue.contains(obfuscationType)) {
-                        subValue = subValue.replace(obfuscationType, "");
-                        break;
-                    }
+                if (subValue.contains(threshold)) {
+                    subValue = subValue.replace(threshold, "9");
+                } else if (subValue.contains(variance)) {
+                    subValue = subValue.replace(variance, "");
                 }
 
-                temp.put(subKey, Integer.parseInt(subValue));
+                temp.put(subKey, Integer.parseInt(subValue.trim()));
             });
 
             cleanedCategoricalData.put(key, temp);
@@ -123,11 +123,8 @@ public class VisualizationService {
             Map<String, Boolean> tempObf = new HashMap<>();
             value.forEach((subKey, subValue) -> {
                 // If the value contains either of the obfuscation types, set the value to true
-                for (String obfuscationType : obfuscationTypes) {
-                    if (subValue.contains(obfuscationType)) {
-                        tempObf.put(obfuscationType, true);
-                        break;
-                    }
+                if (subValue.contains(threshold) || subValue.contains(variance)) {
+                    tempObf.put(subKey, true);
                 }
 
                 // If the value does not contain either of the obfuscation types, set the value to false
