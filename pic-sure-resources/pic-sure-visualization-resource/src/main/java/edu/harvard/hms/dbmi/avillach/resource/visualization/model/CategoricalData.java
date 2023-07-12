@@ -31,5 +31,7 @@ public class CategoricalData extends edu.harvard.hms.dbmi.avillach.resource.visu
         this.setTitle(title);
         this.categoricalMap = categoricalMap;
         this.categoricalObfuscatedMap = categoricalObfuscatedMap;
+        this.setXAxisName(xAxisLabel);
+        this.setYAxisName(yAxisLabel);
     }
 }
