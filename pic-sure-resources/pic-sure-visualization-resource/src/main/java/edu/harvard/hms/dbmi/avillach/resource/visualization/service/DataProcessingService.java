@@ -341,4 +341,13 @@ public class DataProcessingService {
             return title;
         }
     }
+
+    public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousDataMap) {
+        Map<String, Map<String, Integer>> continuousBucketedData = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Integer>> entry : continuousDataMap.entrySet()) {
+              continuousBucketedData.put(entry.getKey(), bucketData(entry.getValue()));
+        }
+
+        return continuousBucketedData;
+    }
 }

@@ -206,7 +206,7 @@ public class VisualizationService {
 
     public Response generateContinuousBin(QueryRequest continuousData) {
         Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {});
-        List<ContinuousData> continuousData1 = dataProcessingServices.getContinuousData(continuousDataMap);
-        return Response.ok(continuousData1).build();
+        Map<String, Map<String, Integer>> continuousProcessedData = dataProcessingServices.binContinuousData(continuousDataMap);
+        return Response.ok(continuousProcessedData).build();
     }
 }
