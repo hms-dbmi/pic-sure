@@ -266,7 +266,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	}
 
 	@Test
-	public void testProcessContinuousCrossCounts() throws JsonProcessingException {
+	public void testProcessContinuousCrossCounts() throws IOException {
 		assertNull(objectUnderTest.processContinuousCrossCounts(null, null));
 	}
 

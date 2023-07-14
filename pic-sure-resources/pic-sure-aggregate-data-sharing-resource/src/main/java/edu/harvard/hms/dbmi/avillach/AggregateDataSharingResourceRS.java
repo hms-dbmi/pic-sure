@@ -242,7 +242,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			HttpResponse response = getHttpResponse(queryRequest, resourceUUID);
+			HttpResponse response = getHttpResponse(queryRequest, resourceUUID, "/query/sync");
 
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
@@ -267,10 +267,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 	}
 
-	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID) throws JsonProcessingException {
+	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName) throws JsonProcessingException {
 		String targetPicsureUrl = properties.getTargetPicsureUrl();
 		String queryString = objectMapper.writeValueAsString(queryRequest);
-		String pathName = "/query/sync";
+		return doHttpRequest(resourceUUID, targetPicsureUrl, queryString, pathName);
+	}
+
+	private HttpResponse doHttpRequest(UUID resourceUUID, String targetPicsureUrl, String queryString, String pathName) {
 		String composedURL = composeURL(targetPicsureUrl, pathName);
 		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
 		HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
@@ -297,7 +300,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 * @return String The response that will be returned
 	 * @throws JsonProcessingException If there is an error processing the response
 	 */
-	private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest) throws IOException {
+	private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest) throws IOException, JsonProcessingException {
 		String crossCountResponse;
 		switch (expectedResultType) {
 			case "COUNT":
@@ -333,7 +336,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
 		logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
 
-		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID());
+		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync");
 		HttpEntity entity = response.getEntity();
 		return EntityUtils.toString(entity, "UTF-8");
 	}
@@ -508,15 +511,32 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return generateRequestVariance(crossCountsString.toString());
 	}
 
-	protected String processContinuousCrossCounts(String entityString, String crossCountResponse) throws JsonProcessingException {
+	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse) throws IOException {
 		logger.info("Processing continuous cross counts");
-		logger.info("Entity string: {}", entityString);
+		logger.info("Cross count response: {} ", crossCountResponse);
+		logger.info("Continuous count response: {}", continuousCrossCountResponse);
 
-		if (entityString == null || crossCountResponse == null) {
+		// convert continuousCrossCountResponse to a map
+		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.convertValue(continuousCrossCountResponse, new TypeReference<>() {});
+
+		// I want to call the binning endpoint from the visualization service
+		QueryRequest queryRequest = new QueryRequest();
+		queryRequest.setResourceUUID(properties.getVisualizationResourceId());
+		queryRequest.setQuery(continuousCrossCounts);
+
+		// call the binning endpoint
+		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/format/continuous");
+
+		HttpEntity entity = httpResponse.getEntity();
+		String responseString = EntityUtils.toString(entity, "UTF-8");
+
+		logger.info("Response from binning endpoint: {}", responseString);
+
+		if (continuousCrossCountResponse == null || crossCountResponse == null) {
 			return null;
 		}
 
-		return entityString;
+		return continuousCrossCountResponse;
 	}
 
 	/**
@@ -555,19 +575,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 		}
 
-		// If we don't need to obfuscate we can just return the entity string.
 		if (!mustObfuscate) {
 			return categoricalEntityString;
 		}
 
-		Map<String, Map<String, Object>> categoricalCrossCount;
-		try {
-			categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>(){});
-		} catch (Exception e) {
-			logger.error("Error processing categorical cross counts: {}", e.getMessage());
-			throw new JsonProcessingException(e.getMessage()) {};
-		}
-
+		Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>(){});
 		if (categoricalCrossCount == null) {
 			return categoricalEntityString;
 		}

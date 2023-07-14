@@ -57,7 +57,7 @@ public class VisualizationResource implements IResourceRS {
     public ResourceInfo info(QueryRequest infoRequest) {
         ResourceInfo info = new ResourceInfo();
         info.setName("Pic-Sure Visualization Resource");
-//        info.setId(properties.getVisualizationResourceId());
+        info.setId(properties.getVisualizationResourceId());
         QueryFormat queryFormat = new QueryFormat();
         queryFormat.setName("Pic-Sure Query Format");
         info.getQueryFormats().add(queryFormat);
@@ -100,5 +100,11 @@ public class VisualizationResource implements IResourceRS {
         } catch (JsonProcessingException e) {
             return Response.serverError().entity("An error occurred formatting the query for display: " + e.getLocalizedMessage()).build();
         }
+    }
+
+    @POST
+    @Path("/format/continuous")
+    public Response generateContinuousBin(QueryRequest continuousData) {
+    	return visualizationService.generateContinuousBin(continuousData);
     }
 }

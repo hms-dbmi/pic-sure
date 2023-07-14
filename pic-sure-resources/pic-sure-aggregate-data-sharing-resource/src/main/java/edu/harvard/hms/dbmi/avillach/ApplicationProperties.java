@@ -26,6 +26,7 @@ public class ApplicationProperties implements Serializable {
     private int targetPicsureObfuscationThreshold;
     private int targetPicsureObfuscationVariance;
     private String targetPicsureObfuscationSalt;
+    private UUID visualizationResourceId;
 
     public static final int DEFAULT_OBFUSCATION_THRESHOLD = 10;
     public static final int DEFAULT_OBFUSCATION_VARIANCE = 3;
@@ -60,6 +61,10 @@ public class ApplicationProperties implements Serializable {
         return targetPicsureObfuscationSalt;
     }
 
+    public UUID getVisualizationResourceId() {
+        return visualizationResourceId;
+    }
+
     public void init(String contextPath) {
     	logger.info("initializing aggregate Resource properties");
 
@@ -88,6 +93,11 @@ public class ApplicationProperties implements Serializable {
         if (targetPicsureToken == null) {
             throw new PicsureQueryException("target.picsure.token property must be set.");
         }
+
+        visualizationResourceId = UUID.fromString(properties.getProperty("visualization.resource.id"));
+        logger.debug("visualizationResourceId: " + visualizationResourceId);
+        if (visualizationResourceId == null)
+            throw new PicsureQueryException("visualization.resource.id property must be set.");
 
         targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
                 .map(Integer::parseInt)

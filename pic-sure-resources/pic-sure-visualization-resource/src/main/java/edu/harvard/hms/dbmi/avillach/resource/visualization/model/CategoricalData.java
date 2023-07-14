@@ -9,8 +9,6 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = false)
 public class CategoricalData extends edu.harvard.hms.dbmi.avillach.resource.visualization.model.VisualizationData {
     Map<String, Integer> categoricalMap;
-    Map<String, Boolean> categoricalObfuscatedMap;
-
 
     public CategoricalData(String title, Map<String, Integer> categoricalMap) {
         super();
@@ -24,14 +22,15 @@ public class CategoricalData extends edu.harvard.hms.dbmi.avillach.resource.visu
         this.categoricalMap = categoricalMap;
         this.setXAxisName(xAxisLabel);
         this.setYAxisName(yAxisLabel);
+        this.isObfuscated = false;
     }
 
-    public CategoricalData(String title, Map<String, Integer> categoricalMap, Map<String, Boolean> categoricalObfuscatedMap, String xAxisLabel, String yAxisLabel) {
+    public CategoricalData(String title, Map<String, Integer> categoricalMap, String xAxisLabel, String yAxisLabel, boolean isObfuscated) {
         super();
         this.setTitle(title);
         this.categoricalMap = categoricalMap;
-        this.categoricalObfuscatedMap = categoricalObfuscatedMap;
         this.setXAxisName(xAxisLabel);
         this.setYAxisName(yAxisLabel);
+        this.isObfuscated = isObfuscated;
     }
 }

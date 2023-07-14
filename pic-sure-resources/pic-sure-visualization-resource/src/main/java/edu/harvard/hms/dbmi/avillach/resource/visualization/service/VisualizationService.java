@@ -1,8 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ProcessedCrossCountsResponse;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
@@ -13,6 +15,7 @@ import javax.ejb.Stateless;
 import javax.inject.Inject;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Stateless
@@ -87,10 +90,10 @@ public class VisualizationService {
         if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()))
             return Response.ok().build();
 
-        Map<String, Map<String, Boolean>> obfuscationMap = generateObfuscationMap(categroyCrossCountsMap);
+        boolean isCategoricalObfuscated = isObfuscated(categroyCrossCountsMap);
         Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categroyCrossCountsMap);
 
-        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, obfuscationMap);
+        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, isCategoricalObfuscated);
         return Response.ok(response).build();
     }
 
@@ -128,7 +131,6 @@ public class VisualizationService {
                 } else {
                     tempObf.put(subKey, false);
                 }
-
             });
 
             crossCountsObfuscationMap.put(key, tempObf);
@@ -137,11 +139,28 @@ public class VisualizationService {
         return crossCountsObfuscationMap;
     }
 
+    private boolean isObfuscated(Map<String, Map<String, String>> categroyCrossCountsMap) {
+        boolean isObfuscated = false;
+        for (Map.Entry<String, Map<String, String>> e : categroyCrossCountsMap.entrySet()) {
+            Map<String, String> value = e.getValue();
+
+            for (Map.Entry<String, String> entry : value.entrySet()) {
+                String subValue = entry.getValue();
+                if (subValue.contains(threshold) || subValue.contains(variance)) {
+                    isObfuscated = true;
+                    break;
+                }
+            }
+        }
+
+        return isObfuscated;
+    }
+
     private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap,
-                                                                               Map<String, Map<String, Boolean>> categoryCrossCountsObfuscationMap) {
+                                                                               boolean isObfuscated) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap, categoryCrossCountsObfuscationMap));
+        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap, isObfuscated));
         return response;
     }
 
@@ -185,4 +204,9 @@ public class VisualizationService {
         return crossCountsMap;
     }
 
+    public Response generateContinuousBin(QueryRequest continuousData) {
+        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {});
+        List<ContinuousData> continuousData1 = dataProcessingServices.getContinuousData(continuousDataMap);
+        return Response.ok(continuousData1).build();
+    }
 }

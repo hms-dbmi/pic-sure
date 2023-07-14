@@ -48,25 +48,14 @@ public class DataProcessingService {
      * @return List<CategoricalData> - result of query
      */
     public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
-        List<CategoricalData> categoricalDataList = new ArrayList<>();
-
-        for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            if (skipKey(entry)) continue;
-            Map<String, Integer> axisMap = processResults(entry.getValue());
-
-            String title = getChartTitle(entry.getKey());
-            categoricalDataList.add(new CategoricalData(
-                    title,
-                    new LinkedHashMap<>(axisMap),
-                    createXAxisLabel(title),
-                    "Number of Participants"
-            ));
-        }
-        logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
-        return categoricalDataList;
+        return handleGetCategoricalData(crossCountsMap, false);
     }
 
-    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, Map<String, Map<String, Boolean>> obfuscationMap) {
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+        return handleGetCategoricalData(crossCountsMap, isObfuscated);
+    }
+
+    private List<CategoricalData> handleGetCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
@@ -77,9 +66,9 @@ public class DataProcessingService {
             categoricalDataList.add(new CategoricalData(
                     title,
                     new LinkedHashMap<>(axisMap),
-                    obfuscationMap.get(entry.getKey()),
                     createXAxisLabel(title),
-                    "Number of Participants"
+                    "Number of Participants",
+                    isObfuscated
             ));
         }
         logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
