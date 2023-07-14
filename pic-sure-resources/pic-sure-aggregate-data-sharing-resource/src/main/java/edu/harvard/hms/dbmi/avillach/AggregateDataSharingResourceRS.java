@@ -516,6 +516,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		logger.info("Cross count response: {} ", crossCountResponse);
 		logger.info("Continuous count response: {}", continuousCrossCountResponse);
 
+		if (continuousCrossCountResponse == null || crossCountResponse == null) {
+			return null;
+		}
+
 		// convert continuousCrossCountResponse to a map
 		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.convertValue(continuousCrossCountResponse, new TypeReference<>() {});
 
@@ -531,10 +535,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
 		logger.info("Response from binning endpoint: {}", responseString);
-
-		if (continuousCrossCountResponse == null || crossCountResponse == null) {
-			return null;
-		}
 
 		return continuousCrossCountResponse;
 	}
