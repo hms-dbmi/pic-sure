@@ -85,27 +85,42 @@ public class DataProcessingService {
         return false;
     }
 
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
+        return handleGetContinuousData(crossCountsMap, false);
+    }
+
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+        return handleGetContinuousData(crossCountsMap, isObfuscated);
+    }
 
     /**
      * For each continuous cross count we create a histogram of the values.
      *
      * @return List<CategoricalData> - result of query
      */
-    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
+    private List<ContinuousData> handleGetContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
+        // If it's not obfuscated we need to bin the data
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             String title = getChartTitle(entry.getKey());
 
+            LinkedHashMap<String, Integer> binnedData;
+            if (!isObfuscated) {
+                binnedData = new LinkedHashMap<>(bucketData(entry.getValue()));
+            } else {
+                // If it is obfuscated the data is already binned
+                binnedData = new LinkedHashMap<>(entry.getValue());
+            }
+
             continuousDataList.add(new ContinuousData(
                     title,
-                    new LinkedHashMap<>(
-                            bucketData(entry.getValue())
-                    ),
+                    binnedData,
                     createXAxisLabel(title),
                     "Number of Participants"
             ));
         }
+
         logger.debug("Finished Categorical Data with " + continuousDataList.size() + " results");
         return continuousDataList;
     }

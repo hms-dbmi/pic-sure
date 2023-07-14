@@ -23,4 +23,13 @@ public class ContinuousData extends edu.harvard.hms.dbmi.avillach.resource.visua
         this.setYAxisName(yAxisLabel);
         this.continuousMap = continuousMap;
     }
+
+    public ContinuousData(String title, Map<String, Integer> continuousMap, String xAxisLabel, String yAxisLabel, boolean isObfuscated) {
+        super();
+        this.setTitle(title);
+        this.setXAxisName(xAxisLabel);
+        this.setYAxisName(yAxisLabel);
+        this.setObfuscated(isObfuscated);
+        this.continuousMap = continuousMap;
+    }
 }

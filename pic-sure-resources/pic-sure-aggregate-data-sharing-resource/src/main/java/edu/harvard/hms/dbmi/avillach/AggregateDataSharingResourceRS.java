@@ -530,12 +530,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		// call the binning endpoint
 		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/format/continuous");
-
 		HttpEntity entity = httpResponse.getEntity();
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
 		logger.info("Response from binning endpoint: {}", responseString);
-		Map<String, Map<String, Integer>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<>() {});
+		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<>() {});
 
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
@@ -546,6 +545,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		if (!mustObfuscate) {
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 		}
+
+		// TODO: We can refactor this code as it is duplicated in the categorical cross count obfuscation
+		binnedContinuousCrossCounts.forEach((key, value) -> {
+			value.forEach((innerKey, innerValue) -> {
+				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
+				if (aggregateCount.isPresent()) {
+					value.put(innerKey, aggregateCount.get());
+				} else {
+					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
+				}
+			});
+		});
+
 
 		return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 	}

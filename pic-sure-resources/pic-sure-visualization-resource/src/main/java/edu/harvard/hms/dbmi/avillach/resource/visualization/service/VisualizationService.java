@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ProcessedCrossCountsResponse;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
@@ -15,7 +14,6 @@ import javax.ejb.Stateless;
 import javax.inject.Inject;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Stateless
@@ -73,9 +71,10 @@ public class VisualizationService {
             return getProcessedCrossCountResponse(categroyCrossCountsMap, continuousCrossCountsMap);
         } else {
             Map<String, Map<String, String>> openCategoricalCrossCounts = getOpenCrossCounts(query, queryJson, ResultType.CATEGORICAL_CROSS_COUNT);
+            Map<String, Map<String, String>> openContinuousCrossCounts = getOpenCrossCounts(query, queryJson, ResultType.CONTINUOUS_CROSS_COUNT);
 
             logger.info("openCategoricalCrossCounts: " + openCategoricalCrossCounts);
-            return getOpenProcessedCrossCountResponse(openCategoricalCrossCounts);
+            return getOpenProcessedCrossCountResponse(openCategoricalCrossCounts, openContinuousCrossCounts);
         }
     }
 
@@ -86,14 +85,18 @@ public class VisualizationService {
         return Response.ok(response).build();
     }
 
-    private Response getOpenProcessedCrossCountResponse(Map<String, Map<String, String>> categroyCrossCountsMap) {
+    private Response getOpenProcessedCrossCountResponse(Map<String, Map<String, String>> categroyCrossCountsMap,
+                                                        Map<String, Map<String, String>> continuousCrossCountsMap) {
         if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()))
             return Response.ok().build();
 
         boolean isCategoricalObfuscated = isObfuscated(categroyCrossCountsMap);
         Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categroyCrossCountsMap);
 
-        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, isCategoricalObfuscated);
+        boolean isContinuousObfuscated = isObfuscated(continuousCrossCountsMap);
+        Map<String, Map<String, Integer>> cleanedContinuousData = cleanCategoricalData(continuousCrossCountsMap);
+
+        ProcessedCrossCountsResponse response = buildOpenProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, (isCategoricalObfuscated || isContinuousObfuscated));
         return Response.ok(response).build();
     }
 
@@ -157,10 +160,12 @@ public class VisualizationService {
     }
 
     private ProcessedCrossCountsResponse buildOpenProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categroyCrossCountsMap,
+                                                                               Map<String, Map<String, Integer>> continuousCrossCountsMap,
                                                                                boolean isObfuscated) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
         response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap, isObfuscated));
+        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isObfuscated));
         return response;
     }
 
