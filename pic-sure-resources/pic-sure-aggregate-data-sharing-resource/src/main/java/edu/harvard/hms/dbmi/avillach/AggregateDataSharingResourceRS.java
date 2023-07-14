@@ -511,12 +511,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return generateRequestVariance(crossCountsString.toString());
 	}
 
-	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse) throws IOException {
+	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountEntityString) throws IOException {
 		logger.info("Processing continuous cross counts");
-		logger.info("Cross count response: {} ", crossCountResponse);
+		logger.info("Cross count response: {} ", crossCountEntityString);
 		logger.info("Continuous count response: {}", continuousCrossCountResponse);
 
-		if (continuousCrossCountResponse == null || crossCountResponse == null) {
+		if (continuousCrossCountResponse == null || crossCountEntityString == null) {
 			return null;
 		}
 
@@ -535,8 +535,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
 		logger.info("Response from binning endpoint: {}", responseString);
+		Map<String, Map<String, Integer>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<>() {});
 
-		return continuousCrossCountResponse;
+		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
+		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
+
+		String lessThanThresholdStr = "< " + this.threshold;
+		String varianceStr = " \u00B1" + variance;
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance, lessThanThresholdStr, varianceStr);
+		if (!mustObfuscate) {
+			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+		}
+
+		return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 	}
 
 	/**
@@ -565,15 +576,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		// Based on the results of the cross counts, we need to determine if we need to obfuscate our categoricalCrossCount
 		// If any of the cross counts are less than the threshold or have a variance, we need to obfuscate.
-		boolean mustObfuscate = false;
-		Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
-		for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
-			String v = entry.getValue();
-			if (v.contains(lessThanThresholdStr) || v.contains(varianceStr)) {
-				mustObfuscate = true;
-				break;
-			}
-		}
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance, lessThanThresholdStr, varianceStr);
 
 		if (!mustObfuscate) {
 			return categoricalEntityString;
@@ -597,6 +600,20 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		});
 
 		return objectMapper.writeValueAsString(categoricalCrossCount);
+	}
+
+	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance, String lessThanThresholdStr, String varianceStr) {
+		boolean mustObfuscate = false;
+		Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
+		for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
+			String v = entry.getValue();
+			if (v.contains(lessThanThresholdStr) || v.contains(varianceStr)) {
+				mustObfuscate = true;
+				break;
+			}
+		}
+
+		return mustObfuscate;
 	}
 
 	/**
