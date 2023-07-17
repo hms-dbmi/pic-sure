@@ -102,8 +102,9 @@ public class VisualizationResource implements IResourceRS {
         }
     }
 
+    @Override
     @POST
-    @Path("/format/continuous")
+    @Path("/bin/continuous")
     public Response generateContinuousBin(QueryRequest continuousData) {
     	return visualizationService.generateContinuousBin(continuousData);
     }

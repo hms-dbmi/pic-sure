@@ -521,7 +521,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 
 		// convert continuousCrossCountResponse to a map
-		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.convertValue(continuousCrossCountResponse, new TypeReference<>() {});
+		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
 
 		// I want to call the binning endpoint from the visualization service
 		QueryRequest queryRequest = new QueryRequest();
@@ -529,12 +529,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		queryRequest.setQuery(continuousCrossCounts);
 
 		// call the binning endpoint
-		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/format/continuous");
+		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/bin/continuous");
 		HttpEntity entity = httpResponse.getEntity();
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
 		logger.info("Response from binning endpoint: {}", responseString);
-		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<>() {});
+		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<Map<String, Map<String, Object>>>() {});
 
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
