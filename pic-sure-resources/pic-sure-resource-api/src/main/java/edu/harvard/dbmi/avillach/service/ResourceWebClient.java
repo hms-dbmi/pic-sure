@@ -284,6 +284,47 @@ public class ResourceWebClient {
 		}
 	}
 
+    // Write a query to the visualization service to the new /bin/continuous endpoint and return the response.
+    public Response queryContinuous(String rsURL, QueryRequest queryRequest, String requestSource) {
+        logger.debug("Calling ResourceWebClient queryContinuous()");
+        try {
+            if (queryRequest == null) {
+                throw new ProtocolException("Missing query data");
+            }
+            if (queryRequest.getResourceCredentials() == null) {
+                throw new NotAuthorizedException("Missing credentials");
+            }
+            if (rsURL == null) {
+                throw new ApplicationException("Missing resource URL");
+            }
+
+            String pathName = "/bin/continuous";
+            String body = json.writeValueAsString(queryRequest);
+
+            Header[] headers = createHeaders(queryRequest.getResourceCredentials());
+            if (requestSource != null) {
+                Header sourceHeader = new BasicHeader("request-source", requestSource);
+
+                // Add the source header to the headers array.
+                Header[] newHeaders = new Header[headers.length + 1];
+                System.arraycopy(headers, 0, newHeaders, 0, headers.length);
+                newHeaders[headers.length] = sourceHeader;
+                headers = newHeaders;
+            }
+
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                throwError(resourcesResponse, rsURL);
+            }
+
+        return Response.ok(resourcesResponse.getEntity().getContent()).build();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new ResourceInterfaceException("Error getting results", e);
+        }
+    }
+
     private void throwError(HttpResponse response, String baseURL){
         logger.error("ResourceRS did not return a 200");
         String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " " + response.getStatusLine().getReasonPhrase();

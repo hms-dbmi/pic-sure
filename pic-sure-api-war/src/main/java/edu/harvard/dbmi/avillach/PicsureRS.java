@@ -10,6 +10,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.service.FormatService;
 import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
@@ -17,7 +18,10 @@ import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.info.Info;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
@@ -34,17 +38,20 @@ public class PicsureRS {
 	@Inject
 	PicsureQueryService queryService;
 
+	@Inject
+	FormatService formatService;
+
 	@POST
 	@Path("/info/{resourceId}")
 	@Operation(
 			summary = "Returns information about the provided resource",
 			tags = { "info" },
 			operationId = "resourceInfo",
-			responses = { @io.swagger.v3.oas.annotations.responses.ApiResponse(
+			responses = { @ApiResponse(
 					responseCode = "200",
 					description = "Resource information",
-					content = @io.swagger.v3.oas.annotations.media.Content(
-							schema = @io.swagger.v3.oas.annotations.media.Schema(
+					content = @Content(
+							schema = @Schema(
 									implementation = ResourceInfo.class
 							)
 					)
@@ -62,11 +69,11 @@ public class PicsureRS {
 	@Operation(
 			summary = "Returns list of resources available",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Resource information",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = Map.class
 									)
 							)
@@ -97,19 +104,19 @@ public class PicsureRS {
 	@Operation(
 		summary = "Searches for concept paths on the given resource matching the supplied search term",
 		responses = {
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
+		@ApiResponse(
 				responseCode = "200",
 				description = "Search results",
-				content = @io.swagger.v3.oas.annotations.media.Content(
-						schema = @io.swagger.v3.oas.annotations.media.Schema(
+				content = @Content(
+						schema = @Schema(
 								implementation = SearchResults.class
 						)
 				)
 		)},
 		requestBody = @RequestBody(
 				required = true,
-				content = @io.swagger.v3.oas.annotations.media.Content(
-						schema = @io.swagger.v3.oas.annotations.media.Schema(
+				content = @Content(
+						schema = @Schema(
 								example = "{ \"query\": \"searchTerm\" }"
 						)
 				)
@@ -126,11 +133,11 @@ public class PicsureRS {
 	@Operation(
 			summary = "Submits a query to the given resource",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Query status",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = QueryStatus.class
 									)
 							)
@@ -158,11 +165,11 @@ public class PicsureRS {
 	@Operation(
 			summary = "Returns the status of the given query",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Query status",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = QueryStatus.class
 									)
 							)
@@ -197,11 +204,11 @@ public class PicsureRS {
 	@Operation(
 			summary = "Returns result for given query",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Query result",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = Response.class
 									)
 							)
@@ -220,11 +227,11 @@ public class PicsureRS {
 	@Operation(
 			summary = "Returns result for given query",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Query result",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = Response.class
 									)
 							)
@@ -244,11 +251,11 @@ public class PicsureRS {
 			description = "Generally used to reconstruct a query that was previously submitted.	The queryId is " +
 					"returned by the /query endpoint as the \"picsureResultId\" in the response object",
 			responses = {
-					@io.swagger.v3.oas.annotations.responses.ApiResponse(
+					@ApiResponse(
 							responseCode = "200",
 							description = "Query metadata",
-							content = @io.swagger.v3.oas.annotations.media.Content(
-									schema = @io.swagger.v3.oas.annotations.media.Schema(
+							content = @Content(
+									schema = @Schema(
 											implementation = QueryStatus.class
 									)
 							)
@@ -257,6 +264,12 @@ public class PicsureRS {
 	)
 	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId, @Context HttpHeaders headers){
 		return queryService.queryMetadata(queryId, headers);
+	}
+
+	@POST
+	@Path("/bin/continuous")
+	public Response generateContinuousBin(QueryRequest continuousData, @Context HttpHeaders headers) {
+		return formatService.format(continuousData, headers);
 	}
 	
 }
