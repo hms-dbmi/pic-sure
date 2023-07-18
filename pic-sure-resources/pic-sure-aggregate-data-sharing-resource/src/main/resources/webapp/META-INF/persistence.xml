@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence version="2.1"
+			 xmlns="http://xmlns.jcp.org/xml/ns/persistence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+			 xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/persistence http://xmlns.jcp.org/xml/ns/persistence/persistence_2_1.xsd">
+	<persistence-unit name="picsure">
+		<jta-data-source>java:jboss/datasources/PicsureDS</jta-data-source>
+		<class>edu.harvard.dbmi.avillach.data.entity.User</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.Query</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.Resource</class>
+
+		<properties>
+			<property name="hibernate.archive.autodetection" value="class" />
+			<property name="hibernate.show_sql" value="false" />
+			<property name="hibernate.dialect" value="org.hibernate.dialect.MySQLDialect" />
+			<property name="hibernate.hbm2ddl.update" value="validate" />
+			<!--
+			https://docs.jboss.org/hibernate/orm/5.2/userguide/html_single/Hibernate_User_Guide.html#configurations-hbmddl
+			For how to use this (hibernate.hbm2ddl) option.
+			<property name="hibernate.hbm2ddl.auto" value="validate" />
+			-->
+		</properties>
+	</persistence-unit>
+</persistence>
