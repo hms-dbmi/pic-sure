@@ -97,8 +97,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 		try {
 			stream = new ResultStoreStream(headerRow, query.getExpectedResultType() == ResultType.DATAFRAME_MERGED);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			log.error("Exception creating result stream", e);
 		}
 	}
 

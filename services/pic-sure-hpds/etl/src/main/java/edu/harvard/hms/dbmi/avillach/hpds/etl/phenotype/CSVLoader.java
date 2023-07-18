@@ -106,7 +106,8 @@ public class CSVLoader {
 				store.allIds.add(patientId);
 			}
 		} catch (ExecutionException e) {
-			e.printStackTrace();
+			// todo: do we really want to ignore this?
+			log.error("Error processing record", e);
 		}
 	}
 }

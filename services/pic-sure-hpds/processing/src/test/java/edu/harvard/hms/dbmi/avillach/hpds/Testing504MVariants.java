@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Random;
@@ -39,8 +40,7 @@ public class Testing504MVariants {
 					buf.putInt(x);
 					out.write(buf.array());
 				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+					throw new UncheckedIOException(e);
 				}
 			}
 			mask = new BigInteger(out.toByteArray());

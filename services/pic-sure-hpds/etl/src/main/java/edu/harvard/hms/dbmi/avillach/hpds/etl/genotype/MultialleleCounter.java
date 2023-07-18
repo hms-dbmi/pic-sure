@@ -1,9 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,8 +43,7 @@ public class MultialleleCounter {
 							}
 						}
 					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+						throw new UncheckedIOException(e);
 					}
 					System.out.println("Completed bucket : " + offsetBucket);
 				});

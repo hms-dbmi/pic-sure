@@ -78,7 +78,6 @@ public class RemoveConceptFromMetadata {
 			
 			return metastore;
 		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
 			throw new RuntimeException("Could not load metastore");
 		} 
 	}

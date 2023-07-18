@@ -190,8 +190,7 @@ public class VariantService {
                                         System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
                                         log.info("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
                                     } catch (IOException e) {
-                                        // TODO Auto-generated catch block
-                                        e.printStackTrace();
+                                        throw new UncheckedIOException(e);
                                     }
                                 }
                             });

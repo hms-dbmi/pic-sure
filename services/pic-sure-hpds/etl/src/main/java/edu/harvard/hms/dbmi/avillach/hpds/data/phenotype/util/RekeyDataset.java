@@ -100,10 +100,9 @@ public class RekeyDataset {
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
 			return new Object[] {metastoreScrubbed, allIds};
 		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
 			log.warn("************************************************");
 			log.warn("************************************************");
-			log.warn("Could not load metastore");
+			log.warn("Could not load metastore", e);
 			log.warn("If you meant to include phenotype data of any kind, please check that the file /opt/local/source/columnMeta.javabin exists and is readable by the service.");
 			log.warn("************************************************");
 			log.warn("************************************************");

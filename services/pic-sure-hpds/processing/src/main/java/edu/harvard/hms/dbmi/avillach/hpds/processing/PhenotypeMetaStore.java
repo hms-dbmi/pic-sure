@@ -51,12 +51,9 @@ public class PhenotypeMetaStore {
             patientIds = (TreeSet<Integer>) objectInputStream.readObject();
             objectInputStream.close();
         } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
             log.warn("************************************************");
-            log.warn("************************************************");
-            log.warn("Could not load metastore");
+            log.warn("Could not load metastore", e);
             log.warn("If you meant to include phenotype data of any kind, please check that the file " + columnMetaFile + " exists and is readable by the service.");
-            log.warn("************************************************");
             log.warn("************************************************");
             metaStore = new TreeMap<String, ColumnMeta>();
             patientIds = new TreeSet<Integer>();

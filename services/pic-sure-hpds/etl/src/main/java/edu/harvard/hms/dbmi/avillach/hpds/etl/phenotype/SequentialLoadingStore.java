@@ -44,7 +44,7 @@ public class SequentialLoadingStore {
 		try {
 			allObservationsTemp = new RandomAccessFile(OBS_TEMP_FILENAME, "rw");
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 	}
 	
@@ -66,7 +66,7 @@ public class SequentialLoadingStore {
 							columnMeta.setAllObservationsLength(allObservationsTemp.getFilePointer());
 							metadataMap.put(columnMeta.getName(), columnMeta);
 						} catch (IOException e1) {
-							e1.printStackTrace();
+							throw new UncheckedIOException(e1);
 						}
 					}
 				}
@@ -131,7 +131,7 @@ public class SequentialLoadingStore {
 			out.writeObject(cube); out.flush();
 			allObservationsStore.write(Crypto.encryptData(byteStream.toByteArray()));
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 		columnMeta.setAllObservationsLength(allObservationsStore.getFilePointer());
 	}
@@ -220,7 +220,6 @@ public class SequentialLoadingStore {
 			log.info("Total Number of Observations : " + totalNumberOfObservations);
 			
 		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
 			throw new RuntimeException("Could not load metastore");
 		}
 	}

@@ -124,54 +124,46 @@ public class CountProcessor implements HpdsProcessor {
 		TreeSet<Integer> baseQueryPatientSet = abstractProcessor.getPatientSubsetForQuery(query);
 		query.getRequiredFields().parallelStream().forEach(concept -> {
 			Map<String, Integer> varCount = new TreeMap<>();;
-			try {
-				TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(concept).getCategoryMap();
-				//We do not have all the categories (aka variables) for required fields, so we need to get them and
-				// then ensure that our base patient set, which is filtered down by our filters. Which may include
-				// not only other required filters, but categorical filters, numerical filters, or genomic filters.
-				// We then need to get the amount a patients for each category and map that to the concept path.
-				categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
-					//If all the patients are in the base then no need to loop, this would always be true for single
-					// filter queries.
-					if (baseQueryPatientSet.containsAll(patientSet)) {
-						varCount.put(category, patientSet.size());
-					} else {
-						for (Integer patient : patientSet) {
-							if (baseQueryPatientSet.contains(patient)) {
-								// If we have a patient in the base set, we add 1 to the count.
-								// We are only worried about patients in the base set
-								varCount.put(category, varCount.getOrDefault(category, 1) + 1);
-							} else {
-								// If we don't have a patient in the base set, we add 0 to the count.
-								// This is necessary because we need to ensure that all categories are included in the
-								// map, even if they have a count of 0. This is because we are displaying the counts
-								// in a table (or other form).
-								varCount.put(category, varCount.getOrDefault(category, 0));
-							}
+			TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(concept).getCategoryMap();
+			//We do not have all the categories (aka variables) for required fields, so we need to get them and
+			// then ensure that our base patient set, which is filtered down by our filters. Which may include
+			// not only other required filters, but categorical filters, numerical filters, or genomic filters.
+			// We then need to get the amount a patients for each category and map that to the concept path.
+			categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
+				//If all the patients are in the base then no need to loop, this would always be true for single
+				// filter queries.
+				if (baseQueryPatientSet.containsAll(patientSet)) {
+					varCount.put(category, patientSet.size());
+				} else {
+					for (Integer patient : patientSet) {
+						if (baseQueryPatientSet.contains(patient)) {
+							// If we have a patient in the base set, we add 1 to the count.
+							// We are only worried about patients in the base set
+							varCount.put(category, varCount.getOrDefault(category, 1) + 1);
+						} else {
+							// If we don't have a patient in the base set, we add 0 to the count.
+							// This is necessary because we need to ensure that all categories are included in the
+							// map, even if they have a count of 0. This is because we are displaying the counts
+							// in a table (or other form).
+							varCount.put(category, varCount.getOrDefault(category, 0));
 						}
 					}
-				});
-				categoryCounts.put(concept, varCount);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+				}
+			});
+			categoryCounts.put(concept, varCount);
 		});
 		//For categoryFilters we need to ensure the variables included in the filter are the ones included in our count
 		//map. Then we make sure that the patients who have that variable are also in our base set.
 		query.getCategoryFilters().entrySet().parallelStream().forEach(categoryFilterEntry-> {
 			Map<String, Integer> varCount;
-			try {
-				TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(categoryFilterEntry.getKey()).getCategoryMap();
-				varCount = new TreeMap<>();
-				categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
-					if (Arrays.asList(categoryFilterEntry.getValue()).contains(category)) {
-						varCount.put(category, Sets.intersection(patientSet, baseQueryPatientSet).size());
-					}
-				});
-				categoryCounts.put(categoryFilterEntry.getKey(), varCount);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(categoryFilterEntry.getKey()).getCategoryMap();
+			varCount = new TreeMap<>();
+			categoryMap.forEach((String category, TreeSet<Integer> patientSet)->{
+				if (Arrays.asList(categoryFilterEntry.getValue()).contains(category)) {
+					varCount.put(category, Sets.intersection(patientSet, baseQueryPatientSet).size());
+				}
+			});
+			categoryCounts.put(categoryFilterEntry.getKey(), varCount);
 		});
 		return categoryCounts;
 	}
@@ -226,7 +218,7 @@ public class CountProcessor implements HpdsProcessor {
 			try {
 				response.put("count", abstractProcessor.getVariantList(query).size());
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.error("Error processing query", e);
 				response.put("count", "0");
 				response.put("message", "An unexpected error occurred while processing the query, please contact us to let us know using the Contact Us option in the Help menu.");
 			}

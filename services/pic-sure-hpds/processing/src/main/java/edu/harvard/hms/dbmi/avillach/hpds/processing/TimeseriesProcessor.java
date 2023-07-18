@@ -66,7 +66,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 			try {
 				exportTimeData(query, result, idList);
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.error("Exception exporting time data", e);
 			}
 		} else {
 			throw new NotAuthorizedException("Data Export is not authorized for this system");

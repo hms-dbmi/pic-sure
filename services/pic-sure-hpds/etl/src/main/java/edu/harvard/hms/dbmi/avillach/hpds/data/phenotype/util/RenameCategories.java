@@ -49,8 +49,7 @@ public class RenameCategories {
 			try {
 				loadingStoreTarget.store.put(key, store.get(key));
 			} catch (ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+				throw new RuntimeException(e);
 			}
 		});
 	}
@@ -67,7 +66,6 @@ public class RenameCategories {
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
 			return new Object[] {metastoreScrubbed, allIds};
 		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
 			throw new RuntimeException("Could not load metastore");
 		} 
 	}

@@ -1,13 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
@@ -140,7 +133,7 @@ public class ResultStoreStream extends InputStream {
 		try {
 			in.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 	}
 
@@ -162,8 +155,7 @@ public class ResultStoreStream extends InputStream {
 							writer.printRecord(header);
 							firstRow[0] = false;
 						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
+							throw new UncheckedIOException(e);
 						}
 					}else {
 						ArrayList<String> records = new ArrayList<String>();
@@ -192,8 +184,7 @@ public class ResultStoreStream extends InputStream {
 						try {
 							writer.printRecord(records);
 						} catch (IOException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
+							throw new UncheckedIOException(e);
 						}					
 					}
 				});
@@ -207,8 +198,7 @@ public class ResultStoreStream extends InputStream {
 		} catch (FileNotFoundException e) {
 			throw new RuntimeException("temp file for result not found : " + tempFile.getAbsolutePath());
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 	}
 

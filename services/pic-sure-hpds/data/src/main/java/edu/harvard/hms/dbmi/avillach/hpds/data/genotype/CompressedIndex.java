@@ -1,10 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +18,8 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CompressedIndex implements Serializable {
 
@@ -29,6 +27,7 @@ public class CompressedIndex implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 5089713203903957829L;
+	private static final Logger log = LoggerFactory.getLogger(CompressedIndex.class);
 	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
 	private HashMap<Range<Float>, byte[]> compressedRangeMap;
 	private int valueCount;
@@ -61,7 +60,7 @@ public class CompressedIndex implements Serializable {
 							continuousValueMap.put(DoubleValue, currentValues);
 							setMinAndMax(DoubleValue);
 						}catch(NumberFormatException e3) {
-							System.out.println("Unable to parse value : " + value.trim());
+							log.info("Unable to parse value : " + value.trim());
 						}
 					}
 				}
@@ -114,8 +113,7 @@ public class CompressedIndex implements Serializable {
 								gzos.close();
 								compressed = baos.toByteArray();
 							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
+								throw new UncheckedIOException(e);
 							}
 							return compressed;
 						})
@@ -174,11 +172,9 @@ public class CompressedIndex implements Serializable {
 				){
 			continousValueMap = (TreeMap<Double, TreeSet<String>>)ois.readObject();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			throw new RuntimeException(e);
 		}
 		return continousValueMap;
 	}

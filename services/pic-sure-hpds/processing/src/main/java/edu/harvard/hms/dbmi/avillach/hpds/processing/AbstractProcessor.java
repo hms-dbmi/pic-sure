@@ -128,8 +128,10 @@ public class AbstractProcessor {
 							FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
 							infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);
 							ois.close();
-						} catch (IOException | ClassNotFoundException e) {
-							e.printStackTrace();
+						} catch (IOException e) {
+							throw new UncheckedIOException(e);
+						} catch (ClassNotFoundException e) {
+							throw new RuntimeException(e);
 						}
 					});
 		}

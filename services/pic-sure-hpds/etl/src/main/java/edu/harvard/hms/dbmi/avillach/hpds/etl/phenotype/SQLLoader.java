@@ -20,11 +20,15 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
 import org.apache.commons.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 public class SQLLoader {
+
+	private static final Logger log = LoggerFactory.getLogger(SQLLoader.class);
 
 	private static final SimpleDateFormat ORACLE_DATE_FORMAT = new SimpleDateFormat("dd-MMM-yy");
 
@@ -157,8 +161,7 @@ public class SQLLoader {
 		try {
 			Thread.sleep(5000);
 		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+			log.error("Thread interrupted", e);
 		}
 //		stillProcessingRecords[0] = false;
 //		chunkWriteEx.shutdown();
@@ -223,11 +226,9 @@ public class SQLLoader {
 				currentConcept[0].add(patientId, isAlpha ? value : Double.parseDouble(value), arg0.getDate(DATETIME));
 				store.allIds.add(patientId);
 			}
-		} catch (ExecutionException e) {
-			e.printStackTrace();
-		} catch (SQLException e2) {
-			// TODO Auto-generated catch block
-			e2.printStackTrace();
+		} catch (ExecutionException | SQLException e) {
+			// todo: do we really want to ignore these?
+			log.error("Exception processing record", e);
 		}
 	}
 }

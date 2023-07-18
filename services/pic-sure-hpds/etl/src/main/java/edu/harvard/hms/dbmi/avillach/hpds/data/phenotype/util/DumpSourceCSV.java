@@ -1,12 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.util;
 
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.TreeMap;
@@ -68,10 +62,10 @@ public class DumpSourceCSV {
 					cubeLines.add(line);
 				}
 				writer.printRecords(cubeLines);
-			}catch(ExecutionException e) {
-				e.printStackTrace();
+			} catch(ExecutionException e) {
+				throw new RuntimeException(e);
 			} catch (IOException e) {
-				e.printStackTrace();
+				throw new UncheckedIOException(e);
 			}
 		});
 		writer.flush();
@@ -90,7 +84,6 @@ public class DumpSourceCSV {
 			Set<Integer> allIds = (TreeSet<Integer>) objectInputStream.readObject();
 			return new Object[] {metastoreScrubbed, allIds};
 		} catch (IOException | ClassNotFoundException e) {
-			e.printStackTrace();
 			throw new RuntimeException("Could not load metastore");
 		} 
 	}

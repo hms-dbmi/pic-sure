@@ -45,7 +45,7 @@ public class SequentialLoader {
 	
 	private static long processedRecords = 0;
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, ClassNotFoundException {
 		
 		Crypto.loadDefaultKey();
 		
@@ -75,26 +75,17 @@ public class SequentialLoader {
 		//load each into observation store
 		for(String filename : inputFiles) {
 			log.info("Loading file " + filename);
-			try {
-				if(filename.toLowerCase().endsWith("sql")) {
-					loadSqlFile(filename);
-				} else if(filename.toLowerCase().endsWith("csv")){
-					loadCsvFile(filename);
-				}
-			}catch (Exception e) {
-				log.warn("Exception loading " + filename + " ", e);
+			if(filename.toLowerCase().endsWith("sql")) {
+				loadSqlFile(filename);
+			} else if(filename.toLowerCase().endsWith("csv")){
+				loadCsvFile(filename);
 			}
 		}
 		
 		//then complete, which will compact, sort, and write out the data in the final place
-		try {
-			log.info("found a total of " + processedRecords + " entries");
-			store.saveStore();
-			store.dumpStats();
-		} catch (ClassNotFoundException e) {
-			System.out.println("Class error: " + e.getLocalizedMessage());
-			e.printStackTrace();
-		}
+		log.info("found a total of " + processedRecords + " entries");
+		store.saveStore();
+		store.dumpStats();
 	}
 
 	private static List<? extends String> readFileList() throws IOException {
@@ -201,7 +192,8 @@ public class SequentialLoader {
 				log.info("Loaded " + processedRecords + " records");
 			}
 		} catch (ExecutionException e) {
-			e.printStackTrace();
+			// todo: do we really want to ignore this?
+			log.error("Error processing record", e);
 		}
 	}
 }
