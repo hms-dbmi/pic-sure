@@ -42,7 +42,7 @@ public class FormatService {
         }
 
         String requestSourceFromHeader = Utilities.getRequestSourceFromHeader(headers);
-        logger.info("path=/info/{resourceId}, resourceId={}, requestSource={}, credentialsQueryRequest={}",
+        logger.info("path=/bin/continuous, resourceId={}, requestSource={}, credentialsQueryRequest={}",
                 credentialsQueryRequest.getResourceUUID().toString(),
                 requestSourceFromHeader,
                 Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
