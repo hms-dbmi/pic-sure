@@ -21,6 +21,8 @@ import javax.ws.rs.core.Response;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -46,6 +48,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	@Inject
 	private ApplicationProperties properties;
+
+	@Inject
+	private ResourceRepository resourceRepository;
 
 	private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -242,7 +247,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			HttpResponse response = getHttpResponse(queryRequest, resourceUUID, "/query/sync");
+			HttpResponse response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
@@ -267,10 +272,20 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 	}
 
-	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName) throws JsonProcessingException {
-		String targetPicsureUrl = properties.getTargetPicsureUrl();
+	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl) throws JsonProcessingException {
 		String queryString = objectMapper.writeValueAsString(queryRequest);
-		return doHttpRequest(resourceUUID, targetPicsureUrl, queryString, pathName);
+		String composedURL = composeURL(targetPicsureUrl, pathName);
+
+		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
+		HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error("Not 200 status!");
+			logger.error(
+					composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetPicsureUrl);
+		}
+		return response;
 	}
 
 	private HttpResponse doHttpRequest(UUID resourceUUID, String targetPicsureUrl, String queryString, String pathName) {
@@ -336,7 +351,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
 		logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
 
-		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync");
+		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync", properties.getTargetPicsureUrl());
 		HttpEntity entity = response.getEntity();
 		return EntityUtils.toString(entity, "UTF-8");
 	}
@@ -527,8 +542,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		visualizationBinRequest.setQuery(continuousCrossCounts);
 		visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 
+		Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
+		if (visResource == null) {
+			throw new ApplicationException("Visualization resource not found");
+		}
+
 		// call the binning endpoint
-		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/bin/continuous");
+		HttpResponse httpResponse = getHttpResponse(queryRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
 		HttpEntity entity = httpResponse.getEntity();
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
@@ -546,7 +566,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 		}
 
-		// TODO: We can refactor this code as it is duplicated in the categorical cross count obfuscation
 		binnedContinuousCrossCounts.forEach((key, value) -> {
 			value.forEach((innerKey, innerValue) -> {
 				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
