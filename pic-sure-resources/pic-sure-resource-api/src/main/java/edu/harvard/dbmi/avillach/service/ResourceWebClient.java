@@ -312,6 +312,7 @@ public class ResourceWebClient {
                 headers = newHeaders;
             }
 
+            logger.debug("Calling ResourceWebClient queryContinuous() with body: " + body + " and headers: " + queryRequest);
             HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);

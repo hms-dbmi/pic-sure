@@ -14,7 +14,6 @@ import javax.inject.Inject;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.util.HashMap;
-import java.util.UUID;
 
 public class FormatService {
 
@@ -36,9 +35,6 @@ public class FormatService {
 
         if (resource.getResourceRSPath() == null){
             throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-        }
-        if (credentialsQueryRequest == null){
-            credentialsQueryRequest = new QueryRequest();
         }
 
         if (credentialsQueryRequest.getResourceCredentials() == null) {
