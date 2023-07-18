@@ -270,7 +270,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	@Test
 	public void testProcessContinuousCrossCounts() throws IOException {
-		assertNull(objectUnderTest.processContinuousCrossCounts(null, null));
+		assertNull(objectUnderTest.processContinuousCrossCounts(null, null, null));
 	}
 
 	@Test

@@ -74,6 +74,7 @@ public interface IResourceRS
 
 	@POST
 	@Path("/bin/continuous")
+	@Operation(hidden = true)
 	default Response generateContinuousBin(QueryRequest continuousData) {
 		throw new NotSupportedException();
 	}

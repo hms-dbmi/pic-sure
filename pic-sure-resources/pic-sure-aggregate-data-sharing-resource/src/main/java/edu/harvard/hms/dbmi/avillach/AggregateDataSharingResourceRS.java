@@ -319,7 +319,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				break;
 			case "CONTINUOUS_CROSS_COUNT":
 				crossCountResponse = getCrossCountForQuery(queryRequest);
-				responseString = processContinuousCrossCounts(entityString, crossCountResponse);
+				responseString = processContinuousCrossCounts(entityString, crossCountResponse, queryRequest);
 
 				break;
 		}
@@ -511,10 +511,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return generateRequestVariance(crossCountsString.toString());
 	}
 
-	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountEntityString) throws IOException {
+	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountEntityString, QueryRequest queryRequest) throws IOException {
 		logger.info("Processing continuous cross counts");
-		logger.info("Cross count response: {} ", crossCountEntityString);
-		logger.info("Continuous count response: {}", continuousCrossCountResponse);
 
 		if (continuousCrossCountResponse == null || crossCountEntityString == null) {
 			return null;
@@ -524,9 +522,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
 
 		// I want to call the binning endpoint from the visualization service
-		QueryRequest queryRequest = new QueryRequest();
-		queryRequest.setResourceUUID(properties.getVisualizationResourceId());
-		queryRequest.setQuery(continuousCrossCounts);
+		QueryRequest visualizationBinRequest = new QueryRequest();
+		visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
+		visualizationBinRequest.setQuery(continuousCrossCounts);
+		visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 
 		// call the binning endpoint
 		HttpResponse httpResponse = getHttpResponse(queryRequest, properties.getVisualizationResourceId(), "/bin/continuous");
@@ -535,6 +534,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		logger.info("Response from binning endpoint: {}", responseString);
 		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<Map<String, Map<String, Object>>>() {});
+		logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
@@ -574,7 +574,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	 */
 	protected String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString) throws JsonProcessingException {
 		logger.info("Processing categorical cross counts");
-		logger.info("Entity string: {}", categoricalEntityString);
 
 		if (categoricalEntityString == null || crossCountEntityString == null) {
 			return null;

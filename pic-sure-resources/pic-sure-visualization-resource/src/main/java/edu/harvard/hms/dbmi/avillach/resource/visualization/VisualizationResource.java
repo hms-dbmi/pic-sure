@@ -106,6 +106,7 @@ public class VisualizationResource implements IResourceRS {
     @POST
     @Path("/bin/continuous")
     public Response generateContinuousBin(QueryRequest continuousData) {
+        logger.info("resource=visualization /bin/continuous query=" + continuousData.getQuery().toString());
     	return visualizationService.generateContinuousBin(continuousData);
     }
 }
