@@ -76,21 +76,10 @@ public class DataProcessingService {
     }
 
     private static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
-        if (entry.getKey().equals(CONSENTS_KEY) ||
+        return entry.getKey().equals(CONSENTS_KEY) ||
                 entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
                 entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
-                entry.getKey().equals(PARENT_CONSENTS_KEY)){
-            return true;
-        }
-        return false;
-    }
-
-    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
-        return handleGetContinuousData(crossCountsMap, false);
-    }
-
-    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
-        return handleGetContinuousData(crossCountsMap, isObfuscated);
+                entry.getKey().equals(PARENT_CONSENTS_KEY);
     }
 
     /**
@@ -98,7 +87,7 @@ public class DataProcessingService {
      *
      * @return List<CategoricalData> - result of query
      */
-    private List<ContinuousData> handleGetContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
         // If it's not obfuscated we need to bin the data
