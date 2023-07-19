@@ -549,7 +549,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		// convert continuousCrossCountResponse to a map
 		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
 
-		// I want to call the binning endpoint from the visualization service
+		// Create Query for Visualization /bin/continuous
 		QueryRequest visualizationBinRequest = new QueryRequest();
 		visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
 		visualizationBinRequest.setQuery(continuousCrossCounts);
@@ -557,24 +557,20 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
 		if (visResource == null) {
-			throw new ApplicationException("Visualization resource not found");
+			throw new ApplicationException("Visualization resource could not be found");
 		}
 
 		// call the binning endpoint
 		HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
 		HttpEntity entity = httpResponse.getEntity();
-		String responseString = EntityUtils.toString(entity, "UTF-8");
+		String binResponse = EntityUtils.toString(entity, "UTF-8");
 
-		logger.info("Response from binning endpoint: {}", responseString);
-		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<Map<String, Map<String, Object>>>() {});
-		logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
+		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {});
 
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-		String lessThanThresholdStr = "< " + this.threshold;
-		String varianceStr = " \u00B1" + variance;
-		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance, lessThanThresholdStr, varianceStr);
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 		if (!mustObfuscate) {
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 		}
@@ -605,13 +601,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-		String lessThanThresholdStr = "< " + this.threshold;
-		String varianceStr = " \u00B1" + variance;
-
-		// Based on the results of the cross counts, we need to determine if we need to obfuscate our categoricalCrossCount
-		// If any of the cross counts are less than the threshold or have a variance, we need to obfuscate.
-		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance, lessThanThresholdStr, varianceStr);
-
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 		if (!mustObfuscate) {
 			return categoricalEntityString;
 		}
@@ -646,7 +636,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		});
 	}
 
-	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance, String lessThanThresholdStr, String varianceStr) {
+	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
+		String lessThanThresholdStr = "< " + this.threshold;
+		String varianceStr = " \u00B1" + variance;
+
 		boolean mustObfuscate = false;
 		Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
 		for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
