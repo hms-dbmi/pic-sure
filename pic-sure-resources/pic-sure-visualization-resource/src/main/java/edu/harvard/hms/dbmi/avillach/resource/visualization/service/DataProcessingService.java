@@ -87,7 +87,7 @@ public class DataProcessingService {
      *
      * @return List<CategoricalData> - result of query
      */
-    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated, boolean isOpenAccess) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
         // If it's not obfuscated we need to bin the data
@@ -95,7 +95,7 @@ public class DataProcessingService {
             String title = getChartTitle(entry.getKey());
 
             LinkedHashMap<String, Integer> binnedData;
-            if (!isObfuscated) {
+            if (!isOpenAccess) { // just because it's not obfuscated doesn't mean we need to bin it
                 binnedData = new LinkedHashMap<>(bucketData(entry.getValue()));
             } else {
                 // If it is obfuscated the data is already binned
@@ -106,7 +106,8 @@ public class DataProcessingService {
                     title,
                     binnedData,
                     createXAxisLabel(title),
-                    "Number of Participants"
+                    "Number of Participants",
+                    isObfuscated
             ));
         }
 

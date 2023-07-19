@@ -82,7 +82,7 @@ public class VisualizationService {
     private Response getProcessedCrossCountResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
         if ((categoryCrossCountsMap == null || categoryCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty()))
             return Response.ok().build();
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false);
+        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false, false);
         return Response.ok(response).build();
     }
 
@@ -97,16 +97,21 @@ public class VisualizationService {
      */
     private Response getOpenProcessedCrossCountResponse(Map<String, Map<String, String>> categoryCrossCountsMap,
                                                         Map<String, Map<String, String>> continuousCrossCountsMap) {
-        if ((categoryCrossCountsMap == null || categoryCrossCountsMap.isEmpty()))
-            return Response.ok().build();
+        Map<String, Map<String, Integer>> cleanedCategoricalData = new HashMap<>();
+        boolean isCategoricalObfuscated = false;
+        if (categoryCrossCountsMap != null && !categoryCrossCountsMap.isEmpty()) {
+            isCategoricalObfuscated = isObfuscated(categoryCrossCountsMap);
+            cleanedCategoricalData = cleanCategoricalData(categoryCrossCountsMap);
+        }
 
-        boolean isCategoricalObfuscated = isObfuscated(categoryCrossCountsMap);
-        Map<String, Map<String, Integer>> cleanedCategoricalData = cleanCategoricalData(categoryCrossCountsMap);
+        boolean isContinuousObfuscated = false;
+        Map<String, Map<String, Integer>> cleanedContinuousData = new HashMap<>();
+        if (continuousCrossCountsMap != null && !continuousCrossCountsMap.isEmpty()) {
+            isContinuousObfuscated = isObfuscated(continuousCrossCountsMap);
+            cleanedContinuousData = cleanCategoricalData(continuousCrossCountsMap);
+        }
 
-        boolean isContinuousObfuscated = isObfuscated(continuousCrossCountsMap);
-        Map<String, Map<String, Integer>> cleanedContinuousData = cleanCategoricalData(continuousCrossCountsMap);
-
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, (isCategoricalObfuscated || isContinuousObfuscated));
+        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, (isCategoricalObfuscated || isContinuousObfuscated), true);
         return Response.ok(response).build();
     }
 
@@ -159,11 +164,11 @@ public class VisualizationService {
 
     private ProcessedCrossCountsResponse buildProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap,
                                                                                Map<String, Map<String, Integer>> continuousCrossCountsMap,
-                                                                               boolean isObfuscated) {
+                                                                               boolean isObfuscated, boolean isOpenAccess) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
         response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isObfuscated));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isObfuscated));
+        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isObfuscated, isOpenAccess));
         return response;
     }
 
