@@ -579,17 +579,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 		}
 
-		binnedContinuousCrossCounts.forEach((key, value) -> {
-			value.forEach((innerKey, innerValue) -> {
-				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
-				if (aggregateCount.isPresent()) {
-					value.put(innerKey, aggregateCount.get());
-				} else {
-					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
-				}
-			});
-		});
-
+		obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
 
 		return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 	}
@@ -632,7 +622,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 
 		// Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
-		categoricalCrossCount.forEach((key, value) -> {
+		obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
+		return objectMapper.writeValueAsString(categoricalCrossCount);
+	}
+
+	/**
+	 * This method will obfuscate the cross counts based on the generated variance. We do not have a return because
+	 * we are modifying the passed crossCount object. Java passes objects by reference value, so we do not need to return.
+	 *
+	 * @param generatedVariance The variance for the request
+	 * @param crossCount The cross count that will be obfuscated
+	 */
+	private void obfuscatedCrossCount(int generatedVariance, Map<String, Map<String, Object>> crossCount) {
+		crossCount.forEach((key, value) -> {
 			value.forEach((innerKey, innerValue) -> {
 				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
 				if (aggregateCount.isPresent()) {
@@ -642,8 +644,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				}
 			});
 		});
-
-		return objectMapper.writeValueAsString(categoricalCrossCount);
 	}
 
 	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance, String lessThanThresholdStr, String varianceStr) {
