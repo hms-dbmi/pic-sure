@@ -79,14 +79,6 @@ public class VisualizationResource implements IResourceRS {
             requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
         }
 
-        String queryRequest = "";
-        try {
-            queryRequest = mapper.writeValueAsString(query);
-        } catch (JsonProcessingException e) {
-            logger.error("Unable to serialize query request", e);
-        }
-
-        logger.info("resource=visualization /query/sync requestSource=" + requestSource + " query=" + queryRequest);
         return visualizationService.handleQuerySync(query, requestSource);
     }
 

@@ -526,10 +526,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return generateRequestVariance(crossCountsString.toString());
 	}
 
-	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountEntityString, QueryRequest queryRequest) throws IOException {
+	/**
+	 *	This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous
+	 *	cross count, we are unable to directly obfuscate it in its original form. Initially, we send the continuous
+	 *	cross count data to the visualization resource to group it into bins. Once the data is binned, we assess whether
+	 *	obfuscation is necessary for this particular continuous cross count. If obfuscation is not required, we return
+	 *	the data in string format. However, if obfuscation is needed, we first obfuscate the data and then return it.
+	 *
+	 * @param continuousCrossCountResponse The continuous cross count response
+	 * @param crossCountResponse The cross count response
+	 * @param queryRequest The original query request
+	 * @return String The obfuscated binned continuous cross count
+	 * @throws IOException If there is an error processing the JSON
+	 */
+	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest) throws IOException {
 		logger.info("Processing continuous cross counts");
 
-		if (continuousCrossCountResponse == null || crossCountEntityString == null) {
+		if (continuousCrossCountResponse == null || crossCountResponse == null) {
 			return null;
 		}
 
@@ -556,7 +569,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.convertValue(responseString, new TypeReference<Map<String, Map<String, Object>>>() {});
 		logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
-		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
+		Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
 		String lessThanThresholdStr = "< " + this.threshold;
@@ -582,9 +595,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	}
 
 	/**
-	 * This method will process the categorical cross counts. It will first determine if the cross counts need to be
-	 * obfuscated. This is done by checking if any of the cross_counts were obfuscated. If they were we need to obfuscate
-	 * the categorical cross counts. If not we can just return the categorical entity string.
+	 *	This method handles the processing of categorical cross counts. It begins by determining whether the cross
+	 *	counts require obfuscation. This is accomplished by checking if any of the cross counts have already been
+	 *	obfuscated. If obfuscation is required, the categorical cross counts will be obfuscated accordingly. Otherwise,
+	 *	if no obfuscation is needed, the method can simply return the categorical entity string.
 	 *
 	 * @param categoricalEntityString The categorical entity string
 	 * @param crossCountEntityString The cross count entity string
