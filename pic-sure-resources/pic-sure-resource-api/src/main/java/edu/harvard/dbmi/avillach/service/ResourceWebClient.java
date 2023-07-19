@@ -284,7 +284,15 @@ public class ResourceWebClient {
 		}
 	}
 
-    // Write a query to the visualization service to the new /bin/continuous endpoint and return the response.
+    /**
+     * This method is used to call the /bin/continuous endpoint on the ResourceRS. The /bin/continuous endpoint is used
+     * to retrieve binned continuous data from the visualization resource.
+     *
+     * @param rsURL The URL of the ResourceRS
+     * @param queryRequest The query request object
+     * @param requestSource The request source
+     * @return The response from the ResourceRS
+     */
     public Response queryContinuous(String rsURL, QueryRequest queryRequest, String requestSource) {
         logger.debug("Calling ResourceWebClient queryContinuous()");
         try {

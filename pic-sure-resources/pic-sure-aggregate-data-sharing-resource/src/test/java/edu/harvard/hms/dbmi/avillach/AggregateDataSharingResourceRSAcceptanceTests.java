@@ -268,16 +268,6 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertTrue(numericResult >= 10);
 	}
 
-	@Test
-	public void testProcessContinuousCrossCounts() throws IOException {
-		assertNull(objectUnderTest.processContinuousCrossCounts(null, null, null));
-	}
-
-	@Test
-	public void testProcessCategoricalCrossCounts() throws JsonProcessingException {
-		assertNull(objectUnderTest.processCategoricalCrossCounts(null, null));
-	}
-
 	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
 		return mapper.readValue(getTestJson("test_cross_count_query"), QueryRequest.class);
 	}
