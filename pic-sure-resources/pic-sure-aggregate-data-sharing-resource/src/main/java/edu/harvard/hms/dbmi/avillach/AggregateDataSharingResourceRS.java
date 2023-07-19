@@ -548,7 +548,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		}
 
 		// call the binning endpoint
-		HttpResponse httpResponse = getHttpResponse(queryRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+		HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
 		HttpEntity entity = httpResponse.getEntity();
 		String responseString = EntityUtils.toString(entity, "UTF-8");
 
