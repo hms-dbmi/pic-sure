@@ -95,7 +95,7 @@ public class DataProcessingService {
             String title = getChartTitle(entry.getKey());
 
             LinkedHashMap<String, Integer> binnedData;
-            if (!isOpenAccess) { // just because it's not obfuscated doesn't mean we need to bin it
+            if (!isOpenAccess) { // If not open access we need to bin the data
                 binnedData = new LinkedHashMap<>(bucketData(entry.getValue()));
             } else {
                 // If it is obfuscated the data is already binned

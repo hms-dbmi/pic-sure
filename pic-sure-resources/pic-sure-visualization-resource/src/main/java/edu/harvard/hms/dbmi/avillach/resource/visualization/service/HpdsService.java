@@ -77,8 +77,12 @@ public class HpdsService {
        return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
     }
 
-    public Map<String, Map<String, String>> getOpenCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-        return getCrossCountsMap(queryRequest, resultType, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+    public Map<String, Map<String, String>> getOpenCategoricalCrossCountsMap(QueryRequest queryRequest) {
+        return getCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+    }
+
+    public Map<String, Map<String, String>> getOpenContinuousCrossCountsMap(QueryRequest queryRequest) {
+        return getCrossCountsMap(queryRequest, ResultType.CONTINUOUS_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
     }
 
     /**
@@ -107,9 +111,9 @@ public class HpdsService {
     }
 
     private UUID getAppropriateResourceUUID(String accessType) {
-        if (accessType.equals("Open")) {
+        if (accessType.equals(OPEN_ACCESS)) {
             return applicationProperties.getOpenHpdsResourceId();
-        } else if (accessType.equals("Authorized")) {
+        } else if (accessType.equals(AUTHORIZED_ACCESS)) {
             return applicationProperties.getAuthHpdsResourceId();
         } else {
             // Use OpenHpds as the default. This is to ensure that the resource is always available and that

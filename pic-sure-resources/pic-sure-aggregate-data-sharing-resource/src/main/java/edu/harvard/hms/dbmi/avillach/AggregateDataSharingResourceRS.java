@@ -514,7 +514,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	/**
 	 *	This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous
-	 *	cross count, we are unable to directly obfuscate it in its original form. Initially, we send the continuous
+	 *	cross count, we are unable to directly obfuscate it in its original form. First, we send the continuous
 	 *	cross count data to the visualization resource to group it into bins. Once the data is binned, we assess whether
 	 *	obfuscation is necessary for this particular continuous cross count. If obfuscation is not required, we return
 	 *	the data in string format. However, if obfuscation is needed, we first obfuscate the data and then return it.
@@ -558,6 +558,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 		if (!mustObfuscate) {
+			// Convert the binnedContinuousCrossCounts to Map<String, Map<String, String>>. This is necessary because
+			// the visualization resource returns the binned data as Map<String, Map<String, Object>>. We need to
+			// convert it to because the obfuscatedCrossCount method only accepts Map<String, Map<String, String>>.
+			binnedContinuousCrossCounts.forEach(
+					(key, value) -> value.forEach(
+							(innerKey, innerValue) -> value.put(innerKey, innerValue.toString())
+					)
+			);
+
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 		}
 
@@ -568,8 +577,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	/**
 	 *	This method handles the processing of categorical cross counts. It begins by determining whether the cross
-	 *	counts require obfuscation. This is accomplished by checking if any of the cross counts have already been
-	 *	obfuscated. If obfuscation is required, the categorical cross counts will be obfuscated accordingly. Otherwise,
+	 *	counts require obfuscation. This is accomplished by checking if any of the CROSS_COUNTS must be obfuscated.
+	 *	If obfuscation is required, the categorical cross counts will be obfuscated accordingly. Otherwise,
 	 *	if no obfuscation is needed, the method can simply return the categorical entity string.
 	 *
 	 * @param categoricalEntityString The categorical entity string

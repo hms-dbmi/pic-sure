@@ -72,8 +72,8 @@ public class VisualizationService {
 
             return getProcessedCrossCountResponse(categoryCrossCountsMap, continuousCrossCountsMap);
         } else {
-            Map<String, Map<String, String>> openCategoricalCrossCounts = getOpenCrossCounts(query, queryJson, ResultType.CATEGORICAL_CROSS_COUNT);
-            Map<String, Map<String, String>> openContinuousCrossCounts = getOpenCrossCounts(query, queryJson, ResultType.CONTINUOUS_CROSS_COUNT);
+            Map<String, Map<String, String>> openCategoricalCrossCounts = getOpenCategoricalCrossCounts(query, queryJson);
+            Map<String, Map<String, String>> openContinuousCrossCounts = getOpenContinuousCrossCounts(query, queryJson);
 
             return getOpenProcessedCrossCountResponse(openCategoricalCrossCounts, openContinuousCrossCounts);
         }
@@ -101,14 +101,14 @@ public class VisualizationService {
         boolean isCategoricalObfuscated = false;
         if (categoryCrossCountsMap != null && !categoryCrossCountsMap.isEmpty()) {
             isCategoricalObfuscated = isObfuscated(categoryCrossCountsMap);
-            cleanedCategoricalData = cleanCategoricalData(categoryCrossCountsMap);
+            cleanedCategoricalData = cleanCrossCountData(categoryCrossCountsMap);
         }
 
         boolean isContinuousObfuscated = false;
         Map<String, Map<String, Integer>> cleanedContinuousData = new HashMap<>();
         if (continuousCrossCountsMap != null && !continuousCrossCountsMap.isEmpty()) {
             isContinuousObfuscated = isObfuscated(continuousCrossCountsMap);
-            cleanedContinuousData = cleanCategoricalData(continuousCrossCountsMap);
+            cleanedContinuousData = cleanCrossCountData(continuousCrossCountsMap);
         }
 
         ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, (isCategoricalObfuscated || isContinuousObfuscated), true);
@@ -122,21 +122,23 @@ public class VisualizationService {
      * @param crossCounts - the categorical cross counts
      * @return Map<String, Map<String, Integer>> - the cleaned categorical data
      */
-    private Map<String, Map<String, Integer>> cleanCategoricalData(Map<String, Map<String, String>> crossCounts) {
+    private Map<String, Map<String, Integer>> cleanCrossCountData(Map<String, Map<String, String>> crossCounts) {
         // remove the obfuscation types from the categorical data
         Map<String, Map<String, Integer>> cleanedCrossCounts = new HashMap<>();
 
         crossCounts.forEach((key, value) -> {
             Map<String, Integer> temp = new HashMap<>();
-            value.forEach((subKey, subValue) -> {
-                if (subValue.contains(threshold)) {
-                    subValue = subValue.replace(threshold, "9");
-                } else if (subValue.contains(variance)) {
-                    subValue = subValue.replace(variance, "");
-                }
+            if (!key.equals("\\_harmonized_consent\\")) {
+                value.forEach((subKey, subValue) -> {
+                    if (subValue.contains(threshold)) {
+                        subValue = subValue.replace(threshold, "9");
+                    } else if (subValue.contains(variance)) {
+                        subValue = subValue.replace(variance, "");
+                    }
 
-                temp.put(subKey, Integer.parseInt(subValue.trim()));
-            });
+                    temp.put(subKey, Integer.parseInt(subValue.trim()));
+                });
+            }
 
             cleanedCrossCounts.put(key, temp);
         });
@@ -202,12 +204,22 @@ public class VisualizationService {
         return continuousCrossCountsMap;
     }
 
-    private Map<String, Map<String, String>> getOpenCrossCounts(QueryRequest query, Query queryJson, ResultType resultType) {
+    private Map<String, Map<String, String>> getOpenCategoricalCrossCounts(QueryRequest query, Query queryJson) {
         Map<String, Map<String, String>> crossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)
-                || (queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0)
-                || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
-            crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, resultType);
+        if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) ||
+                (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+            crossCountsMap = hpdsServices.getOpenCategoricalCrossCountsMap(query);
+        } else {
+            crossCountsMap = new HashMap<>();
+        }
+
+        return crossCountsMap;
+    }
+
+    private Map<String, Map<String, String>> getOpenContinuousCrossCounts(QueryRequest query, Query queryJson) {
+        Map<String, Map<String, String>> crossCountsMap;
+        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
+            crossCountsMap = hpdsServices.getOpenContinuousCrossCountsMap(query);
         } else {
             crossCountsMap = new HashMap<>();
         }
