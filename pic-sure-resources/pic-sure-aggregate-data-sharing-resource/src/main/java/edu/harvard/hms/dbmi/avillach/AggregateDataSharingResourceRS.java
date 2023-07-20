@@ -288,20 +288,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return response;
 	}
 
-	private HttpResponse doHttpRequest(UUID resourceUUID, String targetPicsureUrl, String queryString, String pathName) {
-		String composedURL = composeURL(targetPicsureUrl, pathName);
-		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-		HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
-		if (response.getStatusLine().getStatusCode() != 200) {
-			logger.error("Not 200 status!");
-			logger.error(
-					composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
-					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-			throwResponseError(response, targetPicsureUrl);
-		}
-		return response;
-	}
-
 	/**
 	 * This method will process the response from the backend and return the
 	 * expected response based on the expected result type.
@@ -636,6 +622,14 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		});
 	}
 
+	/**
+	 * This method will determine if the cross count needs to be obfuscated. It will return true if any of the
+	 * cross counts are less than the threshold or if any of the cross counts have a variance.
+	 *
+	 * @param crossCounts
+	 * @param generatedVariance
+	 * @return
+	 */
 	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
 		String lessThanThresholdStr = "< " + this.threshold;
 		String varianceStr = " \u00B1" + variance;
