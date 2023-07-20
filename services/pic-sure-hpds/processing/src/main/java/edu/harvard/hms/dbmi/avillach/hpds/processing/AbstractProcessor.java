@@ -627,7 +627,7 @@ public class AbstractProcessor {
 										inStream.close();
 										return ret;
 									}else {
-										System.out.println("ColumnMeta not found for : [" + key + "]");
+										log.warn("ColumnMeta not found for : [{}]", key);
 										return null;
 									}
 								}

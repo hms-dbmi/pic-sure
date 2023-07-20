@@ -56,20 +56,22 @@ public class QueryProcessor implements HpdsProcessor {
 	public void runQuery(Query query, AsyncResult result) {
 		TreeSet<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
 		log.info("Processing " + idList.size() + " rows for result " + result.id);
-		for(List<Integer> list : Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE)){
-			result.stream.appendResultStore(buildResult(result, query, new TreeSet<Integer>(list)));			
-		};
+		Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE).parallelStream()
+			.map(list -> buildResult(result, query, new TreeSet<>(list)))
+			.sequential()
+			.forEach(result.stream::appendResultStore);
 	}
 
 	
 	private ResultStore buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) {
-		List<String> paths = query.getFields();
-		int columnCount = paths.size() + 1;
-
-		List<ColumnMeta> columns = paths.stream()
+		List<ColumnMeta> columns = query.getFields().stream()
 			.map(abstractProcessor.getDictionary()::get)
 			.filter(Objects::nonNull)
 			.collect(Collectors.toList());
+		List<String> paths = columns.stream()
+			.map(ColumnMeta::getName)
+			.collect(Collectors.toList());
+		int columnCount = paths.size() + 1;
 
 		ArrayList<Integer> columnIndex = abstractProcessor.useResidentCubesFirst(paths, columnCount);
 		ResultStore results = new ResultStore(result.id, columns, ids);

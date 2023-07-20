@@ -4,8 +4,12 @@ import java.util.*;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.DoubleFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Query {
+
+	private static final Logger log = LoggerFactory.getLogger(Query.class);
 
 	public Query() {
 
@@ -180,7 +184,7 @@ public class Query {
 			break;
 		default:
 			//no logic here; all enum values should be present above
-			System.out.println("Formatting not supported for type " + expectedResultType);
+			log.warn("Formatting not supported for type {}", expectedResultType);
 		}
 
 		writePartFormat("Required Fields", requiredFields, builder, false);
