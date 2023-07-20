@@ -186,9 +186,6 @@ public class VisualizationService {
     }
 
     /**
-     * This method and getOpenCrossCounts are very similar. The difference is that this method returns the cross counts
-     * as integers and getOpenCrossCounts returns the cross counts as strings. This method is used for authorized
-     * requests and getOpenCrossCounts is used for open requests. The return
      *
      * @param query QueryRequest
      * @param queryJson Query
