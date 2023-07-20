@@ -72,14 +72,22 @@ public class ResourceWebClient {
 
     public PaginatedSearchResult<?> searchConceptValues(String rsURL, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size) {
         try {
-            logger.debug("Calling /info/values at ResourceURL: {}");
+            logger.info("Calling /info/values at ResourceURL: {}");
+            logger.info("conceptPath: " + conceptPath);
+            logger.info("query: " + query);
+            logger.info("page: " + page);
+            logger.info("size: " + size);
             String pathName = "/search/values/";
             URIBuilder uriBuilder = new URIBuilder(rsURL);
             uriBuilder.setPath(pathName);
             uriBuilder.addParameter("conceptPath", conceptPath);
             uriBuilder.addParameter("query", query);
-            uriBuilder.addParameter("page", page.toString());
-            uriBuilder.addParameter("size", size.toString());
+            if (page != null) {
+                uriBuilder.addParameter("page", page.toString());
+            }
+            if (size != null) {
+                uriBuilder.addParameter("size", size.toString());
+            }
             HttpResponse resourcesResponse = retrieveGetResponse(uriBuilder.build().toString(), createHeaders(queryRequest.getResourceCredentials()));
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
