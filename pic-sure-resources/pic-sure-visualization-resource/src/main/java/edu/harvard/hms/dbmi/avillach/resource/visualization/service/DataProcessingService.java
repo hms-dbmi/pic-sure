@@ -48,15 +48,18 @@ public class DataProcessingService {
      * @return List<CategoricalData> - result of query
      */
     public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
+        return handleGetCategoricalData(crossCountsMap, false);
+    }
+
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+        return handleGetCategoricalData(crossCountsMap, isObfuscated);
+    }
+
+    private List<CategoricalData> handleGetCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            if (entry.getKey().equals(CONSENTS_KEY) ||
-                    entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
-                    entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
-                    entry.getKey().equals(PARENT_CONSENTS_KEY)){
-                continue;
-            }
+            if (skipKey(entry)) continue;
             Map<String, Integer> axisMap = processResults(entry.getValue());
 
             String title = getChartTitle(entry.getKey());
@@ -64,11 +67,19 @@ public class DataProcessingService {
                     title,
                     new LinkedHashMap<>(axisMap),
                     createXAxisLabel(title),
-                    "Number of Participants"
+                    "Number of Participants",
+                    isObfuscated
             ));
         }
         logger.debug("Finished Categorical Data with " + categoricalDataList.size() + " results");
         return categoricalDataList;
+    }
+
+    private static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
+        return entry.getKey().equals(CONSENTS_KEY) ||
+                entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
+                entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
+                entry.getKey().equals(PARENT_CONSENTS_KEY);
     }
 
     /**
@@ -76,21 +87,30 @@ public class DataProcessingService {
      *
      * @return List<CategoricalData> - result of query
      */
-    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap) {
+    public List<ContinuousData> getContinuousData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated, boolean isOpenAccess) {
         List<ContinuousData> continuousDataList = new ArrayList<>();
 
+        // If it's not obfuscated we need to bin the data
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             String title = getChartTitle(entry.getKey());
 
+            LinkedHashMap<String, Integer> binnedData;
+            if (!isOpenAccess) { // If not open access we need to bin the data
+                binnedData = new LinkedHashMap<>(bucketData(entry.getValue()));
+            } else {
+                // If it is obfuscated the data is already binned
+                binnedData = new LinkedHashMap<>(entry.getValue());
+            }
+
             continuousDataList.add(new ContinuousData(
                     title,
-                    new LinkedHashMap<>(
-                            bucketData(entry.getValue())
-                    ),
+                    binnedData,
                     createXAxisLabel(title),
-                    "Number of Participants"
+                    "Number of Participants",
+                    isObfuscated
             ));
         }
+
         logger.debug("Finished Categorical Data with " + continuousDataList.size() + " results");
         return continuousDataList;
     }
@@ -325,5 +345,14 @@ public class DataProcessingService {
             e.printStackTrace();
             return title;
         }
+    }
+
+    public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousDataMap) {
+        Map<String, Map<String, Integer>> continuousBucketedData = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Integer>> entry : continuousDataMap.entrySet()) {
+              continuousBucketedData.put(entry.getKey(), bucketData(entry.getValue()));
+        }
+
+        return continuousBucketedData;
     }
 }

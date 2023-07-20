@@ -19,7 +19,6 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 
@@ -246,7 +245,7 @@ public class ResourceWebClient {
         }
     }
 
-	public Response querySync(String rsURL, QueryRequest queryRequest) {
+	public Response querySync(String rsURL, QueryRequest queryRequest, String requestSource) {
 		logger.debug("Calling ResourceWebClient querySync()");
 		try {
 			if (queryRequest == null) {
@@ -261,7 +260,20 @@ public class ResourceWebClient {
 
 			String pathName = "/query/sync";
 			String body = json.writeValueAsString(queryRequest);
-			HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+
+
+            Header[] headers = createHeaders(queryRequest.getResourceCredentials());
+            if (requestSource != null) {
+                Header sourceHeader = new BasicHeader("request-source", requestSource);
+
+                // Add the source header to the headers array.
+                Header[] newHeaders = new Header[headers.length + 1];
+                System.arraycopy(headers, 0, newHeaders, 0, headers.length);
+                newHeaders[headers.length] = sourceHeader;
+                headers = newHeaders;
+            }
+
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
 			if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
 				throwError(resourcesResponse, rsURL);
 			}
@@ -279,6 +291,56 @@ public class ResourceWebClient {
 			throw new ResourceInterfaceException("Error getting results", e);
 		}
 	}
+
+    /**
+     * This method is used to call the /bin/continuous endpoint on the ResourceRS. The /bin/continuous endpoint is used
+     * to retrieve binned continuous data from the visualization resource.
+     *
+     * @param rsURL The URL of the ResourceRS
+     * @param queryRequest The query request object
+     * @param requestSource The request source
+     * @return The response from the ResourceRS
+     */
+    public Response queryContinuous(String rsURL, QueryRequest queryRequest, String requestSource) {
+        logger.debug("Calling ResourceWebClient queryContinuous()");
+        try {
+            if (queryRequest == null) {
+                throw new ProtocolException("Missing query data");
+            }
+            if (queryRequest.getResourceCredentials() == null) {
+                throw new NotAuthorizedException("Missing credentials");
+            }
+            if (rsURL == null) {
+                throw new ApplicationException("Missing resource URL");
+            }
+
+            String pathName = "/bin/continuous";
+            String body = json.writeValueAsString(queryRequest);
+
+            Header[] headers = createHeaders(queryRequest.getResourceCredentials());
+            if (requestSource != null) {
+                Header sourceHeader = new BasicHeader("request-source", requestSource);
+
+                // Add the source header to the headers array.
+                Header[] newHeaders = new Header[headers.length + 1];
+                System.arraycopy(headers, 0, newHeaders, 0, headers.length);
+                newHeaders[headers.length] = sourceHeader;
+                headers = newHeaders;
+            }
+
+            logger.debug("Calling ResourceWebClient queryContinuous() with body: " + body + " and headers: " + queryRequest);
+            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                throwError(resourcesResponse, rsURL);
+            }
+
+        return Response.ok(resourcesResponse.getEntity().getContent()).build();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new ResourceInterfaceException("Error getting results", e);
+        }
+    }
 
     private void throwError(HttpResponse response, String baseURL){
         logger.error("ResourceRS did not return a 200");

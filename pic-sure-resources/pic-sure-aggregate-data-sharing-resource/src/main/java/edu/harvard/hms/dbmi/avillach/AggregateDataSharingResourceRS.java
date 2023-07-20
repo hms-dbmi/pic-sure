@@ -18,6 +18,11 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.dbmi.avillach.data.entity.Resource;
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -44,13 +49,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@Inject
 	private ApplicationProperties properties;
 
+	@Inject
+	private ResourceRepository resourceRepository;
+
 	private static final ObjectMapper objectMapper = new ObjectMapper();
 
 	private Header[] headers;
 
 	private static final String BEARER_STRING = "Bearer ";
 
-	private final static ObjectMapper json = new ObjectMapper();
 	private Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	private final int threshold;
@@ -59,7 +66,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	private final String randomSalt;
 
 	public static final List<String> ALLOWED_RESULT_TYPES = Arrays.asList(new String [] {
-		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT"
+		"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
+			"OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"
 	});
 
 	public AggregateDataSharingResourceRS() {
@@ -228,50 +236,31 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			Object query = queryRequest.getQuery();
 			UUID resourceUUID = queryRequest.getResourceUUID();
 
-			JsonNode jsonNode = json.valueToTree(query);
+			JsonNode jsonNode = objectMapper.valueToTree(query);
 			if (!jsonNode.has("expectedResultType")) {
 				throw new ProtocolException(ProtocolException.MISSING_DATA);
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
 
-			if (! ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
+			if (!ALLOWED_RESULT_TYPES.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
 				return Response.status(Response.Status.BAD_REQUEST).build();
 			}
 
-			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String queryString = json.writeValueAsString(queryRequest);
-			String pathName = "/query/sync";
-			String composedURL = composeURL(targetPicsureUrl, pathName);
-			logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-			HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("Not 200 status!");
-				logger.error(
-						composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				throwResponseError(response, targetPicsureUrl);
-			}
-
+			HttpResponse response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
 			HttpEntity entity = response.getEntity();
 			String entityString = EntityUtils.toString(entity, "UTF-8");
 			String responseString = entityString;
 
-			if(expectedResultType.equals("COUNT")) {
-				responseString = aggregateCount(entityString).orElse(entityString);
-			} else if(expectedResultType.equals("CROSS_COUNT")) {
-				Map<String, String> crossCounts = processCrossCounts(entityString);
+			responseString = getExpectedResponse(expectedResultType, entityString, responseString, queryRequest);
 
-				responseString = objectMapper.writeValueAsString(crossCounts);
-			}
-			
 			//propagate any metadata from the back end (e.g., resultId)
-			if(response.containsHeader(QUERY_METADATA_FIELD)) {
-            	Header metadataHeader = ((Header[])response.getHeaders(QUERY_METADATA_FIELD))[0];
-            	return Response.ok(responseString).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
-            }
-			
+			if (response.containsHeader(QUERY_METADATA_FIELD)) {
+				Header metadataHeader = ((Header[]) response.getHeaders(QUERY_METADATA_FIELD))[0];
+				return Response.ok(responseString).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+			}
+
 			return Response.ok(responseString).build();
 		} catch (IOException e) {
 			logger.error(e.getMessage(), e);
@@ -281,6 +270,143 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			logger.error(e.getMessage());
 			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 		}
+	}
+
+	private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl) throws JsonProcessingException {
+		String queryString = objectMapper.writeValueAsString(queryRequest);
+		String composedURL = composeURL(targetPicsureUrl, pathName);
+
+		logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
+		HttpResponse response = retrievePostResponse(composedURL, headers, queryString);
+		if (response.getStatusLine().getStatusCode() != 200) {
+			logger.error("Not 200 status!");
+			logger.error(
+					composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+					response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+			throwResponseError(response, targetPicsureUrl);
+		}
+		return response;
+	}
+
+	/**
+	 * This method will process the response from the backend and return the
+	 * expected response based on the expected result type.
+	 * Currently, the only types that are handled are:
+	 * COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT
+	 *
+	 * @param expectedResultType The expected result type
+	 * @param entityString The response from the backend that will be processed
+	 * @param responseString The response that will be returned. Will return the passed entityString if
+	 *                       no cases are matched.
+	 * @return String The response that will be returned
+	 * @throws JsonProcessingException If there is an error processing the response
+	 */
+	private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest) throws IOException, JsonProcessingException {
+		String crossCountResponse;
+		switch (expectedResultType) {
+			case "COUNT":
+				responseString = aggregateCount(entityString).orElse(entityString);
+
+				break;
+			case "CROSS_COUNT":
+				Map<String, String> crossCounts = processCrossCounts(entityString);
+				responseString = objectMapper.writeValueAsString(crossCounts);
+
+				break;
+			case "CATEGORICAL_CROSS_COUNT":
+				crossCountResponse = getCrossCountForQuery(queryRequest);
+				responseString = processCategoricalCrossCounts(entityString, crossCountResponse);
+
+				break;
+			case "CONTINUOUS_CROSS_COUNT":
+				crossCountResponse = getCrossCountForQuery(queryRequest);
+				responseString = processContinuousCrossCounts(entityString, crossCountResponse, queryRequest);
+
+				break;
+		}
+		return responseString;
+	}
+
+	/**
+	 * No matter what the expected result type is we will get the cross count instead. Additionally,
+	 * it will include ALL study consents in the query.
+	 *
+	 * @param queryRequest The query request
+	 * @return String The cross count for the query
+	 */
+	private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
+		logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
+
+		HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync", properties.getTargetPicsureUrl());
+		HttpEntity entity = response.getEntity();
+		return EntityUtils.toString(entity, "UTF-8");
+	}
+
+	/**
+	 * This method will add the study consents to the query. It will also set the expected result type to cross count.
+	 *
+	 * @param queryRequest The query request
+	 * @return QueryRequest The query request with the study consents added and the expected result type set to cross count
+	 */
+	private QueryRequest changeQueryToOpenCrossCount(QueryRequest queryRequest) {
+		logger.debug("Calling Aggregate Data Sharing Resource handleAlterQueryToOpenCrossCount()");
+
+		Object query = queryRequest.getQuery();
+		JsonNode jsonNode = objectMapper.valueToTree(query);
+
+		JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
+		JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
+
+		LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>(){});
+		queryRequest.setQuery(rebuiltQuery);
+		return queryRequest;
+	}
+
+	private JsonNode setExpectedResultTypeToCrossCount(JsonNode jsonNode) {
+		logger.debug("Calling Aggregate Data Sharing Resource setExpectedResultTypeToCrossCount()");
+
+		List<JsonNode> expectedResultTypeParents = jsonNode.findParents("expectedResultType");
+
+		// The reason we need to do this is that expected result type is a TextNode that is immutable.
+		// This is a jackson work around to replace the expectedResultType field with a new value.
+		for (JsonNode node : expectedResultTypeParents) {
+			((ObjectNode) node).put("expectedResultType", "CROSS_COUNT");
+		}
+
+		return jsonNode;
+	}
+
+	private JsonNode addStudyConsentsToQuery(JsonNode jsonNode) {
+		logger.debug("Calling Aggregate Data Sharing Resource addStudyConsentsToQuery()");
+
+		SearchResults consentResults = getAllStudyConsents();
+		LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
+		Object phenotypes = linkedHashMap.get("phenotypes");
+		LinkedHashMap<String, Object> phenotypesLinkedHashMap = objectMapper.convertValue(phenotypes, new TypeReference<>() {});
+
+		// get all the keys from phenotypes
+		Set<String> keys = phenotypesLinkedHashMap.keySet();
+
+		// create an ArrayNode to hold the keys
+		ArrayNode arrayNode = objectMapper.createArrayNode();
+
+		// add the keys to the ArrayNode
+		for (String key : keys) {
+			arrayNode.add(key);
+		}
+
+		// add the ArrayNode to the query
+		((ObjectNode) jsonNode).set("crossCountFields", arrayNode);
+
+		return jsonNode;
+	}
+
+	private SearchResults getAllStudyConsents() {
+		logger.debug("Calling Aggregate Data Sharing Resource getAllStudyConsents()");
+
+		QueryRequest studiesConsents = new QueryRequest();
+		studiesConsents.setQuery("\\_studies_consents\\");
+		return this.search(studiesConsents);
 	}
 
 	@Override
@@ -300,7 +426,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		try {
 			String targetPicsureUrl = properties.getTargetPicsureUrl();
-			String queryString = json.writeValueAsString(queryRequest);
+			String queryString = objectMapper.writeValueAsString(queryRequest);
 			String composedURL = composeURL(targetPicsureUrl, pathName);
 			HttpResponse response = retrievePostResponse(composeURL(properties.getTargetPicsureUrl(), pathName), headers, queryString);
 			if (response.getStatusLine().getStatusCode() != 200) {
@@ -323,11 +449,20 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 	private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
 		Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>(){});
-		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
-		entryList.sort(Map.Entry.comparingByKey());
-		final StringBuffer crossCountsString = new StringBuffer();
-		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
-		int requestVariance = generateRequestVariance(crossCountsString.toString());
+		int requestVariance = generateVarianceWithCrossCounts(crossCounts);
+		crossCounts = obfuscateCrossCounts(crossCounts, requestVariance);
+
+		return crossCounts;
+	}
+
+	/**
+	 * This method will appropriately process the obfuscation of the cross counts.
+	 *
+	 * @param crossCounts The cross counts
+	 * @param requestVariance The variance for the request
+	 * @return Map<String, String> The obfuscated cross counts
+	 */
+	private Map<String, String> obfuscateCrossCounts(Map<String, String> crossCounts, int requestVariance) {
 		Set<String> obfuscatedKeys = new HashSet<>();
 		if(crossCounts != null) {
 			crossCounts.keySet().forEach(key -> {
@@ -336,9 +471,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 				aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
 				crossCounts.put(key, aggregatedCount.orElse(crossCount));
 			});
+
 			Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
 				return generateParents(key);
 			}).collect(Collectors.toSet());
+
 			crossCounts.keySet().forEach(key -> {
 				String crossCount = crossCounts.get(key);
 				if (!obfuscatedKeys.contains(key) && obfuscatedParents.contains(key)) {
@@ -350,6 +487,184 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		return crossCounts;
 	}
 
+	/**
+	 * This method is used to generate a variance for Cross Count queries.
+	 * The variance is generated by taking the cross counts and sorting them by key.
+	 * Then we generate a string with lines like consent:1\n consent:2\ consent:3\n etc.
+	 * Then we generate a variance using the string. This is to give us a random variance that is deterministic for each
+	 * query.
+	 *
+	 * @param crossCounts A map of cross counts
+	 * @return int The variance
+	 */
+	private int generateVarianceWithCrossCounts(Map<String, String> crossCounts) {
+		final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+
+		// sort the entry set. By sorting the entry set first we can ensure that the variance is the same for each run.
+		// This is to give us a random variance that is deterministic.
+		entryList.sort(Map.Entry.comparingByKey());
+
+		final StringBuffer crossCountsString = new StringBuffer();
+
+		// build a string with lines like consent:1\n consent:2\n consent:3\n etc.
+		entryList.forEach(entry -> crossCountsString.append(entry.getKey()).append(":").append(entry.getValue()).append("\n"));
+
+		return generateRequestVariance(crossCountsString.toString());
+	}
+
+	/**
+	 *	This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous
+	 *	cross count, we are unable to directly obfuscate it in its original form. First, we send the continuous
+	 *	cross count data to the visualization resource to group it into bins. Once the data is binned, we assess whether
+	 *	obfuscation is necessary for this particular continuous cross count. If obfuscation is not required, we return
+	 *	the data in string format. However, if obfuscation is needed, we first obfuscate the data and then return it.
+	 *
+	 * @param continuousCrossCountResponse The continuous cross count response
+	 * @param crossCountResponse The cross count response
+	 * @param queryRequest The original query request
+	 * @return String The obfuscated binned continuous cross count
+	 * @throws IOException If there is an error processing the JSON
+	 */
+	protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest) throws IOException {
+		logger.info("Processing continuous cross counts");
+
+		if (continuousCrossCountResponse == null || crossCountResponse == null) {
+			return null;
+		}
+
+		// convert continuousCrossCountResponse to a map
+		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
+
+		// Create Query for Visualization /bin/continuous
+		QueryRequest visualizationBinRequest = new QueryRequest();
+		visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
+		visualizationBinRequest.setQuery(continuousCrossCounts);
+		visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+
+		Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
+		if (visResource == null) {
+			throw new ApplicationException("Visualization resource could not be found");
+		}
+
+		// call the binning endpoint
+		HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+		HttpEntity entity = httpResponse.getEntity();
+		String binResponse = EntityUtils.toString(entity, "UTF-8");
+
+		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {});
+
+		Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>(){});
+		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
+
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
+		if (!mustObfuscate) {
+			// Convert the binnedContinuousCrossCounts to Map<String, Map<String, String>>. This is necessary because
+			// the visualization resource returns the binned data as Map<String, Map<String, Object>>. We need to
+			// convert it to because the obfuscatedCrossCount method only accepts Map<String, Map<String, String>>.
+			binnedContinuousCrossCounts.forEach(
+					(key, value) -> value.forEach(
+							(innerKey, innerValue) -> value.put(innerKey, innerValue.toString())
+					)
+			);
+
+			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+		}
+
+		obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
+
+		return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+	}
+
+	/**
+	 *	This method handles the processing of categorical cross counts. It begins by determining whether the cross
+	 *	counts require obfuscation. This is accomplished by checking if any of the CROSS_COUNTS must be obfuscated.
+	 *	If obfuscation is required, the categorical cross counts will be obfuscated accordingly. Otherwise,
+	 *	if no obfuscation is needed, the method can simply return the categorical entity string.
+	 *
+	 * @param categoricalEntityString The categorical entity string
+	 * @param crossCountEntityString The cross count entity string
+	 * @return String The processed categorical entity string
+	 * @throws JsonProcessingException If there is an error processing the JSON
+	 */
+	protected String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString) throws JsonProcessingException {
+		logger.info("Processing categorical cross counts");
+
+		if (categoricalEntityString == null || crossCountEntityString == null) {
+			return null;
+		}
+
+		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
+		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
+
+		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
+		if (!mustObfuscate) {
+			return categoricalEntityString;
+		}
+
+		Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>(){});
+		if (categoricalCrossCount == null) {
+			return categoricalEntityString;
+		}
+
+		// Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
+		obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
+		return objectMapper.writeValueAsString(categoricalCrossCount);
+	}
+
+	/**
+	 * This method will obfuscate the cross counts based on the generated variance. We do not have a return because
+	 * we are modifying the passed crossCount object. Java passes objects by reference value, so we do not need to return.
+	 *
+	 * @param generatedVariance The variance for the request
+	 * @param crossCount The cross count that will be obfuscated
+	 */
+	private void obfuscatedCrossCount(int generatedVariance, Map<String, Map<String, Object>> crossCount) {
+		crossCount.forEach((key, value) -> {
+			value.forEach((innerKey, innerValue) -> {
+				Optional<String> aggregateCount = aggregateCountHelper(innerValue);
+				if (aggregateCount.isPresent()) {
+					value.put(innerKey, aggregateCount.get());
+				} else {
+					value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
+				}
+			});
+		});
+	}
+
+	/**
+	 * This method will determine if the cross count needs to be obfuscated. It will return true if any of the
+	 * cross counts are less than the threshold or if any of the cross counts have a variance.
+	 *
+	 * @param crossCounts
+	 * @param generatedVariance
+	 * @return
+	 */
+	private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
+		String lessThanThresholdStr = "< " + this.threshold;
+		String varianceStr = " \u00B1" + variance;
+
+		boolean mustObfuscate = false;
+		Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
+		for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
+			String v = entry.getValue();
+			if (v.contains(lessThanThresholdStr) || v.contains(varianceStr)) {
+				mustObfuscate = true;
+				break;
+			}
+		}
+
+		return mustObfuscate;
+	}
+
+	/**
+	 * This method will generate a random variance for the request based on the passed entityString. The variance
+	 * will be between -variance and +variance. The variance will be generated by adding a random salt to the
+	 * entityString and then taking the hashcode of the result. The variance will be the hashcode mod the
+	 * variance * 2 + 1 - variance.
+	 *
+	 * @param entityString The entityString that will be used to generate the variance
+	 * @return int The variance for the request
+	 */
 	private int generateRequestVariance(String entityString) {
 		return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
 	}
@@ -383,6 +698,21 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 		} catch (NumberFormatException nfe) {
 			logger.warn("Count was not a number! " + actualCount);
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Helper method to handle the fact that the actualCount could be an Integer or a String.
+	 *
+	 * @param actualCount
+	 * @return
+	 */
+	private Optional<String> aggregateCountHelper(Object actualCount) {
+		if (actualCount instanceof Integer) {
+			return aggregateCount(actualCount.toString());
+		} else if (actualCount instanceof String) {
+			return aggregateCount((String) actualCount);
 		}
 		return Optional.empty();
 	}

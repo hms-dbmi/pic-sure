@@ -7,7 +7,6 @@ import javax.servlet.ServletContextListener;
 import javax.servlet.annotation.WebListener;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;
-
 @ApplicationPath("pic-sure")
 @WebListener
 public class JAXRSConfiguration extends Application implements ServletContextListener {

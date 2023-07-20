@@ -10,12 +10,16 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class HpdsServiceTests {
 
     static HpdsService service;
     static ApplicationProperties properties;
+
+    static String OPEN_REQUEST_SOURCE = "Open";
+    static String AUTH_REQUEST_SOURCE = "Authorized";
 
     @BeforeAll
     static void setUp() {
@@ -29,7 +33,7 @@ public class HpdsServiceTests {
         QueryRequest queryRequest = new QueryRequest();
         queryRequest.getResourceCredentials().put("Authorization", null);
         queryRequest.setQuery(new Query());
-        Map<String, Map<String, Integer>> crossCountsMap = service.getCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
+        Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
         assertNotNull(crossCountsMap);
         assertEquals(0, crossCountsMap.size());
     }
@@ -39,7 +43,7 @@ public class HpdsServiceTests {
     void TestNoAuthHeader() {
         QueryRequest queryRequest = new QueryRequest();
         queryRequest.setQuery(new Query());
-        Map<String, Map<String, Integer>> crossCountsMap = service.getCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
+        Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
         assertNotNull(crossCountsMap);
         assertEquals(0, crossCountsMap.size());
     }
@@ -49,7 +53,7 @@ public class HpdsServiceTests {
     void TestNullResultType() {
         QueryRequest queryRequest = new QueryRequest();
         queryRequest.setQuery(new Query());
-        Map<String, Map<String, Integer>> crossCountsMap = service.getCrossCountsMap(queryRequest, null);
+        Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, null);
         assertNotNull(crossCountsMap);
         assertEquals(0, crossCountsMap.size());
     }
@@ -59,7 +63,7 @@ public class HpdsServiceTests {
     void TestWrongResultType() {
         QueryRequest queryRequest = new QueryRequest();
         queryRequest.setQuery(new Query());
-        Map<String, Map<String, Integer>> crossCountsMap = service.getCrossCountsMap(queryRequest, ResultType.CROSS_COUNT);
+        Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CROSS_COUNT);
         assertNotNull(crossCountsMap);
         assertEquals(0, crossCountsMap.size());
     }

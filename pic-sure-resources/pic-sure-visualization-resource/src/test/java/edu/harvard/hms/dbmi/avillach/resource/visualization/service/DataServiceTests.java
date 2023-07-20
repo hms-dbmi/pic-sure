@@ -296,7 +296,7 @@ class DataServiceTests {
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\platelet_ncnc_bld_1\\", variableMap2);
             crossCountsMap.put("\\DCC Harmonized data set\\lipids\\hdl_1\\", variableMap3);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals("Variable distribution of blood_cell_count: hemoglobin_mcnc_bld_1", list.get(0).getTitle());
             assertEquals("Variable distribution of blood_cell_count: platelet_ncnc_bld_1", list.get(1).getTitle());
@@ -354,7 +354,7 @@ class DataServiceTests {
             expectedOutputMap.put("23.0 +", 434);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap.size(), list.get(0).getContinuousMap().size());
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
@@ -468,7 +468,7 @@ class DataServiceTests {
             expectedOutputMap.put("23.0 +", 434);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             List<Map.Entry<String,Integer>> entryList =
                     new ArrayList<>(list.get(0).getContinuousMap().entrySet());
@@ -578,7 +578,7 @@ class DataServiceTests {
             expectedOutputMap.put("91.0 +", 7350);
 
             crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
         }
@@ -626,7 +626,7 @@ class DataServiceTests {
                 n -= 1;
             }
             crossCountsMap.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", variableMap1);
-            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap);
+            List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(1, list.size());
             assertTrue(1 < list.get(0).getContinuousMap().size());
         }

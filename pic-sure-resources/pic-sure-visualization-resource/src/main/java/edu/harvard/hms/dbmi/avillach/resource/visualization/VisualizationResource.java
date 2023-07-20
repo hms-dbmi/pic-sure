@@ -1,17 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.model.*;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.*;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.DataProcessingService;
-import edu.harvard.hms.dbmi.avillach.resource.visualization.service.HpdsService;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.RequestScopedHeader;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
+import edu.harvard.hms.dbmi.avillach.resource.visualization.service.VisualizationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +20,7 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Response;
-import java.util.*;
+import java.util.Map;
 
 @Path("/visualization")
 @Produces({"application/json"})
@@ -34,13 +32,13 @@ public class VisualizationResource implements IResourceRS {
     private final Logger logger = LoggerFactory.getLogger(VisualizationResource.class);
 
     @Inject
-    DataProcessingService dataProcessingServices;
-
-    @Inject
-    HpdsService hpdsServices;
+    VisualizationService visualizationService;
 
     @Inject
     ApplicationProperties properties;
+
+    @Inject
+    RequestScopedHeader requestScopedHeader;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -68,6 +66,7 @@ public class VisualizationResource implements IResourceRS {
                 "requiredFields", "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie and Bar Charts.",
                 "categoryFilters", "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie and Bar Charts."
         ));
+
         return info;
     }
 
@@ -75,31 +74,12 @@ public class VisualizationResource implements IResourceRS {
     @POST
     @Path("/query/sync")
     public Response querySync(QueryRequest query) {
-        logger.debug("Received query:  \n" + query);
-        Query queryJson;
-        try {
-            queryJson = mapper.readValue(mapper.writeValueAsString(query.getQuery()), Query.class);
-        } catch (Exception e) {
-            logger.error("Error parsing query:  \n" + query, e);
-            return Response.status(Response.Status.BAD_REQUEST).entity("Error parsing query:  \n" + query).build();
+        String requestSource = null;
+        if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
+            requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
         }
-        Map<String, Map<String, Integer>> categroyCrossCountsMap;
-        if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) || (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
-            categroyCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
-        } else {
-            categroyCrossCountsMap = new HashMap<>();
-        }
-        Map<String, Map<String, Integer>> continuousCrossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
-            continuousCrossCountsMap = hpdsServices.getCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
-        } else {
-            continuousCrossCountsMap = new HashMap<>();
-        }
-        if ((categroyCrossCountsMap == null || categroyCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty())) return Response.ok().build();
-        ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categroyCrossCountsMap));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap));
-        return Response.ok(response).build();
+
+        return visualizationService.handleQuerySync(query, requestSource);
     }
 
     @Override
@@ -112,5 +92,13 @@ public class VisualizationResource implements IResourceRS {
         } catch (JsonProcessingException e) {
             return Response.serverError().entity("An error occurred formatting the query for display: " + e.getLocalizedMessage()).build();
         }
+    }
+
+    @Override
+    @POST
+    @Path("/bin/continuous")
+    public Response generateContinuousBin(QueryRequest continuousData) {
+        logger.info("resource=visualization /bin/continuous query=" + continuousData.getQuery().toString());
+    	return visualizationService.generateContinuousBin(continuousData);
     }
 }

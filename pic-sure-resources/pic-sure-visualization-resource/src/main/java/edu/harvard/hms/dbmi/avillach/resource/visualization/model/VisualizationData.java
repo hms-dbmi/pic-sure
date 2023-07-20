@@ -17,6 +17,7 @@ public class VisualizationData {
     private String yAxisName;
     Integer chartWidth;
     Integer chartHeight;
+    boolean isObfuscated;
 
     public int getChartHeight() {
         if (this.chartHeight == null) {

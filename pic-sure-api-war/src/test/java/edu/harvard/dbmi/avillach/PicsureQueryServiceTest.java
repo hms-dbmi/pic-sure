@@ -388,7 +388,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 		// Return mocks when needed
 		Response resp = mock(Response.class);
-		when(webClient.querySync(any(), any())).thenReturn(resp);
+		when(webClient.querySync(any(), any(), any())).thenReturn(resp);
 
 		// Mock persisting the queryentity, so that it has an ID and we can test that
 		// the correct information is stored in it
@@ -467,7 +467,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		MultivaluedMap<String, Object> headerMap= new MultivaluedHashMap<String, Object>();
 		headerMap.add(ResourceWebClient.QUERY_METADATA_FIELD, resultId);
 		when(resp.getHeaders()).thenReturn(headerMap);
-		when(webClient.querySync(any(), any())).thenReturn(resp);
+		when(webClient.querySync(any(), any(), any())).thenReturn(resp);
 
 		// Mock persisting the queryentity, so that it has an ID and we can test that
 		// the correct information is stored in it

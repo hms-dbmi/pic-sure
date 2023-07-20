@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -16,6 +17,7 @@ import javax.ejb.Stateless;
 import javax.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Stateless
 public class HpdsService {
@@ -24,6 +26,10 @@ public class HpdsService {
 
     private static final String AUTH_HEADER_NAME = "Authorization";
 
+    private static final String ACCESS_TYPE = "request-source";
+
+    private static final String OPEN_ACCESS = "Open";
+    private static final String AUTHORIZED_ACCESS = "Authorized";
     private RestTemplate restTemplate;
 
     @Inject
@@ -48,18 +54,35 @@ public class HpdsService {
      * @return List<ContinuousData> - A LinkedHashMap of the cross counts for category or continuous
      * date range and their respective counts
      */
-    public Map<String, Map<String, Integer>> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+    private <T> Map<String, T> getCrossCountsMap(QueryRequest queryRequest, ResultType resultType, String type, ParameterizedTypeReference<Map<String, T>> typeRef) {
+        if (queryRequest == null) {
+            logger.error("QueryRequest is null");
+            return new LinkedHashMap<>();
+        }
+        
         try {
-            logger.debug("Getting cross counts map from query:", queryRequest);
-            sanityCheck(queryRequest, resultType);
-            HttpHeaders headers = prepareQueryRequest(queryRequest, resultType);
+            logger.debug("Getting {} cross counts map from query:", type, queryRequest);
+            sanityCheck(queryRequest, resultType, type);
+            HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, type);
             String url = applicationProperties.getOrigin() + "/query/sync/";
             queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
-            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, headers), LinkedHashMap.class).getBody();
+            return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), typeRef).getBody();
         } catch (Exception e) {
             logger.error("Error getting cross counts: " + e.getMessage());
             return new LinkedHashMap<>();
         }
+    }
+
+    public Map<String, Map<String, Integer>> getAuthCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+       return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
+    }
+
+    public Map<String, Map<String, String>> getOpenCategoricalCrossCountsMap(QueryRequest queryRequest) {
+        return getCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+    }
+
+    public Map<String, Map<String, String>> getOpenContinuousCrossCountsMap(QueryRequest queryRequest) {
+        return getCrossCountsMap(queryRequest, ResultType.CONTINUOUS_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
     }
 
     /**
@@ -70,7 +93,7 @@ public class HpdsService {
      * @param resultType - {@link ResultType} - determines the type of query to be sent to HPDS
      * @return HttpHeaders - the headers to be sent to HPDS
      */
-    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType) {
+    private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType, String accessType) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(AUTH_HEADER_NAME,
                 queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
@@ -83,11 +106,25 @@ public class HpdsService {
         } catch (Exception e) {
             throw new IllegalArgumentException("QueryRequest must contain a Query object");
         }
-        queryRequest.setResourceUUID(applicationProperties.getAuthHpdsResourceId());
+        queryRequest.setResourceUUID(getAppropriateResourceUUID(accessType));
         return headers;
     }
 
-    private void sanityCheck(QueryRequest queryRequest, ResultType requestType) {
+    private UUID getAppropriateResourceUUID(String accessType) {
+        if (accessType.equals(OPEN_ACCESS)) {
+            return applicationProperties.getOpenHpdsResourceId();
+        } else if (accessType.equals(AUTHORIZED_ACCESS)) {
+            return applicationProperties.getAuthHpdsResourceId();
+        } else {
+            // Use OpenHpds as the default. This is to ensure that the resource is always available and that
+            // we don't return Authorized data to an Open user.
+            return applicationProperties.getOpenHpdsResourceId();
+        }
+    }
+
+    private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
+        if (accessType == null || accessType.trim().equals("")) throw new IllegalArgumentException("request-source header is required");
+        if (!(accessType.equals(AUTHORIZED_ACCESS) || accessType.equals(OPEN_ACCESS))) throw new IllegalArgumentException("accessType must be either Open or Authorized");
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
         if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)

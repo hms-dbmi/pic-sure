@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -23,6 +24,36 @@ public class ApplicationProperties implements Serializable {
     private UUID authHpdsResourceId;
     private UUID openHpdsResourceId;
     private String origin;
+    private int targetPicsureObfuscationThreshold;
+    private int targetPicsureObfuscationVariance;
+    private String targetPicsureObfuscationSalt;
+
+    public static final int DEFAULT_OBFUSCATION_THRESHOLD = 10;
+    public static final int DEFAULT_OBFUSCATION_VARIANCE = 3;
+
+    public int getTargetPicsureObfuscationThreshold() {
+        return targetPicsureObfuscationThreshold;
+    }
+
+    public void setTargetPicsureObfuscationThreshold(int targetPicsureObfuscationThreshold) {
+        this.targetPicsureObfuscationThreshold = targetPicsureObfuscationThreshold;
+    }
+
+    public int getTargetPicsureObfuscationVariance() {
+        return targetPicsureObfuscationVariance;
+    }
+
+    public void setTargetPicsureObfuscationVariance(int targetPicsureObfuscationVariance) {
+        this.targetPicsureObfuscationVariance = targetPicsureObfuscationVariance;
+    }
+
+    public String getTargetPicsureObfuscationSalt() {
+        return targetPicsureObfuscationSalt;
+    }
+
+    public void setTargetPicsureObfuscationSalt(String targetPicsureObfuscationSalt) {
+        this.targetPicsureObfuscationSalt = targetPicsureObfuscationSalt;
+    }
 
     public String getContextPath() {
         return contextPath;
@@ -73,5 +104,16 @@ public class ApplicationProperties implements Serializable {
         openHpdsResourceId = UUID.fromString(properties.getProperty("open.hpds.resource.id"));
         if (openHpdsResourceId == null)
             throw new PicsureQueryException("open.hpds.resource.id property must be set.");
+
+        targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
+                .map(Integer::parseInt)
+                .orElse(DEFAULT_OBFUSCATION_THRESHOLD);
+
+        targetPicsureObfuscationVariance = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_variance"))
+                .map(Integer::parseInt)
+                .orElse(DEFAULT_OBFUSCATION_VARIANCE);
+
+        targetPicsureObfuscationSalt = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_salt"))
+                .orElseGet(() -> UUID.randomUUID().toString());
     }
 }
