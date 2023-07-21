@@ -125,13 +125,13 @@ public class VisualizationService {
     private Map<String, Map<String, Integer>> cleanCrossCountData(Map<String, Map<String, String>> crossCounts) {
         // remove the obfuscation types from the categorical data
         Map<String, Map<String, Integer>> cleanedCrossCounts = new HashMap<>();
-
+        String thresholdReplacement = String.valueOf((properties.getTargetPicsureObfuscationThreshold() - 1));
         crossCounts.forEach((key, value) -> {
             Map<String, Integer> temp = new HashMap<>();
             if (!key.equals("\\_harmonized_consent\\")) {
                 value.forEach((subKey, subValue) -> {
                     if (subValue.contains(threshold)) {
-                        subValue = subValue.replace(threshold, "9");
+                        subValue = subValue.replace(threshold, thresholdReplacement);
                     } else if (subValue.contains(variance)) {
                         subValue = subValue.replace(variance, "");
                     }
@@ -205,7 +205,7 @@ public class VisualizationService {
         Map<String, Map<String, String>> crossCountsMap;
         if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) ||
                 (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
-            crossCountsMap = hpdsServices.getOpenCategoricalCrossCountsMap(query);
+            crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
         } else {
             crossCountsMap = new HashMap<>();
         }
@@ -216,7 +216,7 @@ public class VisualizationService {
     private Map<String, Map<String, String>> getOpenContinuousCrossCounts(QueryRequest query, Query queryJson) {
         Map<String, Map<String, String>> crossCountsMap;
         if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
-            crossCountsMap = hpdsServices.getOpenContinuousCrossCountsMap(query);
+            crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
         } else {
             crossCountsMap = new HashMap<>();
         }

@@ -558,9 +558,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
 		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 		if (!mustObfuscate) {
-			// Convert the binnedContinuousCrossCounts to Map<String, Map<String, String>>. This is necessary because
-			// the visualization resource returns the binned data as Map<String, Map<String, Object>>. We need to
-			// convert it to because the obfuscatedCrossCount method only accepts Map<String, Map<String, String>>.
+			// Ensure all inner values are Strings to be consistent in our returned data.
 			binnedContinuousCrossCounts.forEach(
 					(key, value) -> value.forEach(
 							(innerKey, innerValue) -> value.put(innerKey, innerValue.toString())

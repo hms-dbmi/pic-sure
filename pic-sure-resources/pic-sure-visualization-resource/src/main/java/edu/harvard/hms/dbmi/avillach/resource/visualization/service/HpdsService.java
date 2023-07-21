@@ -19,17 +19,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.AccessType.AUTHORIZED_ACCESS;
+import static edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.AccessType.OPEN_ACCESS;
+
 @Stateless
 public class HpdsService {
 
     private Logger logger = LoggerFactory.getLogger(HpdsService.class);
 
     private static final String AUTH_HEADER_NAME = "Authorization";
-
-    private static final String ACCESS_TYPE = "request-source";
-
-    private static final String OPEN_ACCESS = "Open";
-    private static final String AUTHORIZED_ACCESS = "Authorized";
     private RestTemplate restTemplate;
 
     @Inject
@@ -74,15 +72,11 @@ public class HpdsService {
     }
 
     public Map<String, Map<String, Integer>> getAuthCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-       return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
+       return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
     }
 
-    public Map<String, Map<String, String>> getOpenCategoricalCrossCountsMap(QueryRequest queryRequest) {
-        return getCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
-    }
-
-    public Map<String, Map<String, String>> getOpenContinuousCrossCountsMap(QueryRequest queryRequest) {
-        return getCrossCountsMap(queryRequest, ResultType.CONTINUOUS_CROSS_COUNT, OPEN_ACCESS, new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+    public Map<String, Map<String, String>> getOpenCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
+        return getCrossCountsMap(queryRequest, resultType, OPEN_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
     }
 
     /**
@@ -111,9 +105,7 @@ public class HpdsService {
     }
 
     private UUID getAppropriateResourceUUID(String accessType) {
-        if (accessType.equals(OPEN_ACCESS)) {
-            return applicationProperties.getOpenHpdsResourceId();
-        } else if (accessType.equals(AUTHORIZED_ACCESS)) {
+        if (AUTHORIZED_ACCESS.getValue().equals(accessType)) {
             return applicationProperties.getAuthHpdsResourceId();
         } else {
             // Use OpenHpds as the default. This is to ensure that the resource is always available and that
@@ -124,7 +116,7 @@ public class HpdsService {
 
     private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
         if (accessType == null || accessType.trim().equals("")) throw new IllegalArgumentException("request-source header is required");
-        if (!(accessType.equals(AUTHORIZED_ACCESS) || accessType.equals(OPEN_ACCESS))) throw new IllegalArgumentException("accessType must be either Open or Authorized");
+        if (!(AUTHORIZED_ACCESS.getValue().equals(accessType) || OPEN_ACCESS.getValue().equals(accessType))) throw new IllegalArgumentException("accessType must be either Open or Authorized");
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
         if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
