@@ -96,7 +96,7 @@ public class ApplicationProperties implements Serializable {
 
 	String visualizationResourceUUID = properties.getProperty("visualization.resource.id");
 	if (visualizationResourceUUID != null && !visualizationResourceUUID.trim().isEmpty()) {
-		visualizationResourceId = UUID.fromString();
+		visualizationResourceId = UUID.fromString(visualizationResourceUUID);
         	logger.debug("visualizationResourceId: " + visualizationResourceId);
         	if (visualizationResourceId == null)
 			throw new PicsureQueryException("visualization.resource.id property must be set.");
