@@ -94,10 +94,13 @@ public class ApplicationProperties implements Serializable {
             throw new PicsureQueryException("target.picsure.token property must be set.");
         }
 
-        visualizationResourceId = UUID.fromString(properties.getProperty("visualization.resource.id"));
-        logger.debug("visualizationResourceId: " + visualizationResourceId);
-        if (visualizationResourceId == null)
-            throw new PicsureQueryException("visualization.resource.id property must be set.");
+	String visualizationResourceUUID = properties.getProperty("visualization.resource.id");
+	if (visualizationResourceUUID != null && !visualizationResourceUUID.trim().isEmpty()) {
+		visualizationResourceId = UUID.fromString();
+        	logger.debug("visualizationResourceId: " + visualizationResourceId);
+        	if (visualizationResourceId == null)
+			throw new PicsureQueryException("visualization.resource.id property must be set.");
+	}
 
         targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
                 .map(Integer::parseInt)
