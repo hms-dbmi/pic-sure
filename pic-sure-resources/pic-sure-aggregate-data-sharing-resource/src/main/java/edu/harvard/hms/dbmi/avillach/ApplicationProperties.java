@@ -100,6 +100,8 @@ public class ApplicationProperties implements Serializable {
         	logger.debug("visualizationResourceId: " + visualizationResourceId);
         	if (visualizationResourceId == null)
 			throw new PicsureQueryException("visualization.resource.id property must be set.");
+	} else {
+		visualizationResourceId = "";
 	}
 
         targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
