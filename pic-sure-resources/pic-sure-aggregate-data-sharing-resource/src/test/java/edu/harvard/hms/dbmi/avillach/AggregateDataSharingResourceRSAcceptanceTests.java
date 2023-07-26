@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
+import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
+import org.glassfish.jersey.message.internal.OutboundJaxrsResponse;
+import org.glassfish.jersey.message.internal.OutboundMessageContext;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -18,8 +20,8 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,11 +43,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	private ApplicationProperties mockProperties;
 
-	private AggregateDataSharingResourceRS objectUnderTest;
+	private AggregateDataSharingResourceRS subject;
 
 	// Pick a random port between 20k and 52k 
-	private final static int port = (int) ((Math.random()*32000)+20000);
-	private final static String testURL = "http://localhost:"+port+"/";
+	private final static int port = 40000;
+	private final static String testURL = "http://localhost:40000/";
 
 	@Rule
 	public WireMockClassRule wireMockRule = new WireMockClassRule(port);
@@ -59,7 +61,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		when(mockProperties.getTargetPicsureObfuscationSalt()).thenReturn("abc123");
 		when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
 		when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
-		objectUnderTest = new AggregateDataSharingResourceRS(mockProperties);
+		subject = new AggregateDataSharingResourceRS(mockProperties);
 
 		// Whenever the ADSRRS submits a search for "any" we return the contents of open_access_search_result.json
 		wireMockRule.stubFor(post(urlEqualTo("/search"))
@@ -272,14 +274,6 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		return mapper.readValue(getTestJson("test_cross_count_query"), QueryRequest.class);
 	}
 
-	private String getObfuscatedTestQueryJson() throws JsonProcessingException, JsonMappingException, IOException {
-		return getTestJson("obfuscated_cross_count_query");
-	}
-
-	private String getObfuscatedTestQueryJson2() throws JsonProcessingException, JsonMappingException, IOException {
-		return getTestJson("obfuscated_cross_count_query2");
-	}
-
 	private String getTestJson(String json_file_name) throws IOException {
 		return IOUtils.toString(this.getClass().getClassLoader().getResourceAsStream(json_file_name + ".json"), Charsets.UTF_8);
 	}
@@ -308,12 +302,122 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 						.withStatus(200)
 						.withBody(getTestJson(originalResult))));
 
-		Response response = objectUnderTest.querySync(getTestQuery());
+		Response response = subject.querySync(getTestQuery());
 		// TODO: This is what should be sent
 //		Response response = objectUnderTest.querySync(mapper.readValue(getObfuscatedTestQueryJson(), QueryRequest.class));
 
 		String responseJson = (String) response.getEntity();
 		return responseJson;
+	}
+
+	@Test
+	public void shouldPostQuery() {
+		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
+		QueryRequest originalRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
+		QueryRequest postedRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
+
+		QueryStatus expectedResponse = new QueryStatus();
+		expectedResponse.setResourceID(targetResourceId);
+
+		ProxyPostEndpointMocker.start(wireMockRule)
+			.withPath("/query")
+			.withRequestBody(postedRequest)
+			.withResponseBody(expectedResponse)
+			.withStatusCode(201)
+			.commit();
+
+		QueryStatus actual = subject.query(originalRequest);
+
+		// equality isn't defined for QueryRequest, and I'm scared to define it, so let's
+		// just compare resource IDs
+		assertEquals(expectedResponse.getResourceID(), actual.getResourceID());
+	}
+
+	@Test
+	public void shouldPostQueryStatus() {
+		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
+		QueryRequest originalRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
+		QueryRequest postedRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
+
+		QueryStatus expectedResponse = new QueryStatus();
+		expectedResponse.setResourceID(targetResourceId);
+
+		ProxyPostEndpointMocker.start(wireMockRule)
+			.withPath("/query/aaaaaaaaaaaaaah/status")
+			.withRequestBody(postedRequest)
+			.withResponseBody(expectedResponse)
+			.withStatusCode(200)
+			.commit();
+
+		QueryStatus actual = subject.queryStatus("aaaaaaaaaaaaaah", originalRequest);
+
+		// equality isn't defined for QueryRequest, and I'm scared to define it, so let's
+		// just compare resource IDs
+		assertEquals(expectedResponse.getResourceID(), actual.getResourceID());
+	}
+
+	@Test
+	public void shouldPostQueryResult() {
+		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
+		QueryRequest originalRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
+		QueryRequest postedRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
+
+		Response expectedResponse = new OutboundJaxrsResponse(Response.Status.OK, new OutboundMessageContext());
+
+		ProxyPostEndpointMocker.start(wireMockRule)
+			.withPath("/query/aaaaaaaaaaaaaah/result")
+			.withRequestBody(postedRequest)
+			.withResponseBody(expectedResponse)
+			.withStatusCode(200)
+			.commit();
+
+		Response actual = subject.queryResult("aaaaaaaaaaaaaah", originalRequest);
+
+		assertEquals(expectedResponse.getStatus(), actual.getStatus());
+	}
+
+	@Test
+	public void shouldHandleErrorResponse() {
+		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
+		QueryRequest originalRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
+		QueryRequest postedRequest =
+			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
+
+		QueryStatus expectedResponse = new QueryStatus();
+		expectedResponse.setResourceID(targetResourceId);
+
+		ProxyPostEndpointMocker.start(wireMockRule)
+			.withPath("/query")
+			.withRequestBody(postedRequest)
+			.withResponseBody(expectedResponse)
+			.withStatusCode(500)
+			.commit();
+
+
+		ResourceInterfaceException exception = null;
+
+		try {
+			subject.query(originalRequest);
+		} catch (ResourceInterfaceException ex) {
+			exception = ex;
+		}
+
+		assertNotNull(exception);
+	}
+
+	private static QueryRequest createRequest(String query, Map<String, String> credentials, UUID resourceUUID) {
+		QueryRequest originalRequest = new QueryRequest();
+		originalRequest.setQuery(query);
+		originalRequest.setResourceCredentials(credentials);
+		originalRequest.setResourceUUID(resourceUUID);
+		return originalRequest;
 	}
 
 }
