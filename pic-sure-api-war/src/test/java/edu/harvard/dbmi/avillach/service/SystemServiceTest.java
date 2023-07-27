@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.service;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.*;
@@ -21,8 +20,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 public class SystemServiceTest {
 
 	@Rule
-	public WireMockRule wireMockRule = new WireMockRule(
-			wireMockConfig().dynamicPort().dynamicHttpsPort());
+	public WireMockRule wireMockRule = new WireMockRule(0);
 
 	private int port;
 	
