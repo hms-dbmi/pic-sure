@@ -6,6 +6,7 @@
 		<class>edu.harvard.dbmi.avillach.data.entity.AuthUser</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.Resource</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.Query</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.NamedDataset</class>
 		<properties>
 			<property name="hibernate.archive.autodetection" value="class" />
             <property name="hibernate.show_sql" value="false" />

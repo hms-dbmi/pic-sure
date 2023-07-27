@@ -6,11 +6,7 @@ import javax.json.Json;
 import javax.ws.rs.core.SecurityContext;
 import java.security.Principal;
 
-/**
- * <p>Implements the SecurityContext interface for JWTFilter to use.</p>
- */
 public class AuthSecurityContext implements SecurityContext {
-
     private AuthUser user;
     private String scheme;
 

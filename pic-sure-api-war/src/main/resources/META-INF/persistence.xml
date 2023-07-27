@@ -6,6 +6,7 @@
 		<jta-data-source>java:jboss/datasources/PicsureDS</jta-data-source>
 		<class>edu.harvard.dbmi.avillach.data.entity.Query</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.Resource</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.NamedDataset</class>
 
 		<properties>
 			<property name="hibernate.archive.autodetection" value="class" />
