@@ -532,45 +532,66 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			return null;
 		}
 
-		// convert continuousCrossCountResponse to a map
-		Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
-
-		// Create Query for Visualization /bin/continuous
-		QueryRequest visualizationBinRequest = new QueryRequest();
-		visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
-		visualizationBinRequest.setQuery(continuousCrossCounts);
-		visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
-
-		Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
-		if (visResource == null) {
-			throw new ApplicationException("Visualization resource could not be found");
-		}
-
-		// call the binning endpoint
-		HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
-		HttpEntity entity = httpResponse.getEntity();
-		String binResponse = EntityUtils.toString(entity, "UTF-8");
-
-		Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {});
-
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
 		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
-		if (!mustObfuscate) {
-			// Ensure all inner values are Strings to be consistent in our returned data.
-			binnedContinuousCrossCounts.forEach(
-					(key, value) -> value.forEach(
-							(innerKey, innerValue) -> value.put(innerKey, innerValue.toString())
-					)
-			);
 
+		// Handle the case where there is no visualization service UUID
+		if (properties.getVisualizationResourceId() != null) {
+			// convert continuousCrossCountResponse to a map
+			Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
+
+			// Create Query for Visualization /bin/continuous
+			QueryRequest visualizationBinRequest = new QueryRequest();
+			visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
+			visualizationBinRequest.setQuery(continuousCrossCounts);
+			visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+
+			Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
+			if (visResource == null) {
+				throw new ApplicationException("Visualization resource could not be found");
+			}
+
+			// call the binning endpoint
+			HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+			HttpEntity entity = httpResponse.getEntity();
+			String binResponse = EntityUtils.toString(entity, "UTF-8");
+
+			Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {});
+
+			if (!mustObfuscate) {
+				// Ensure all inner values are Strings to be consistent in our returned data.
+				binnedContinuousCrossCounts.forEach(
+						(key, value) -> value.forEach(
+								(innerKey, innerValue) -> value.put(innerKey, innerValue.toString())
+						)
+				);
+
+				return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+			}
+
+			obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
 			return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+		} else {
+			// If there is no visualization service resource id, we will simply return the continuous cross count response.
+
+			if(!mustObfuscate) {
+				return continuousCrossCountResponse;
+			}
+
+			Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>(){});
+
+			// Convert continuousCrossCounts Map to a map<String, Map<String, Object>>
+			Map<String, Map<String, Object>> convertedContinuousCrossCount = new HashMap<>();
+			continuousCrossCounts.forEach((key, value) -> {
+				Map<String, Object> innerMap = new HashMap<>(value);
+				convertedContinuousCrossCount.put(key, innerMap);
+			});
+
+			obfuscatedCrossCount(generatedVariance, convertedContinuousCrossCount);
+			return objectMapper.writeValueAsString(convertedContinuousCrossCount);
 		}
-
-		obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
-
-		return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
 	}
 
 	/**
