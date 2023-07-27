@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.security;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.*;
 
@@ -40,8 +39,7 @@ public class JWTFilterTest {
 	private static final UUID RESOURCE_UUID = UUID.fromString("30ef4941-9656-4b47-af80-528f2b98cf17");
 
 	@Rule
-	public WireMockRule wireMockRule = new WireMockRule(
-			wireMockConfig().dynamicPort().dynamicHttpsPort());
+	public WireMockRule wireMockRule = new WireMockRule(0);
 
 	private int port;
 
@@ -98,12 +96,21 @@ public class JWTFilterTest {
 		return resource;
 	}
 
-	private void tokenIntrospectionStub(String tokenIntrospectionResult) {
+	private void tokenIntrospectionStub() {
+		tokenIntrospectionStub(true);
+	}
+
+	private void tokenIntrospectionStub(Boolean active) {
 		stubFor(post(urlEqualTo("/introspection_endpoint"))
-				.willReturn(aResponse()
-						.withStatus(200)
-						.withHeader("Content-Type", "application/json")
-						.withBody("{\"active\":" + tokenIntrospectionResult + ",\"sub\":\"TEST_USER\"}")));
+			.willReturn(aResponse()
+				.withStatus(200)
+				.withHeader("Content-Type", "application/json")
+				.withBody("{"
+					+ "\"active\":" + Boolean.toString(active) + ","
+					+ "\"sub\":\"TEST_USER\","
+					+ "\"email\":\"some@email.com\","
+					+ "\"roles\":\"PIC_SURE_ANY_QUERY\""
+				+ "}")));
 	}
 
 	@Test
@@ -118,7 +125,7 @@ public class JWTFilterTest {
 	@Test
 	public void testFilterCallsTokenIntrospectionAppropriatelyForQuerySync() throws IOException {
 
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		ContainerRequestContext ctx = createRequestContext();
 		when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
@@ -141,7 +148,7 @@ public class JWTFilterTest {
 	@Test
 	public void testFilterCallsTokenIntrospectionAppropriatelyForQuery() throws IOException {
 
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		ContainerRequestContext ctx = createRequestContext();
 		when(ctx.getUriInfo().getPath()).thenReturn("/query");
@@ -164,7 +171,7 @@ public class JWTFilterTest {
 	@Test
 	public void testFilterCallsTokenIntrospectionAppropriatelyForResultWithoutTrailingSlash() throws IOException {
 
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		queryFormatStub();
 
@@ -193,7 +200,7 @@ public class JWTFilterTest {
 	@Test
 	public void testFilterCallsTokenIntrospectionAppropriatelyForResultWithTrailingSlash() throws IOException {
 
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		queryFormatStub();
 
@@ -229,8 +236,7 @@ public class JWTFilterTest {
 
 	@Test
 	public void testFilterAbortsRequestIfTokenIntrospectionReturnsFalse() throws IOException {
-		String tokenIntrospectionResult = "false";
-		tokenIntrospectionStub(tokenIntrospectionResult);
+		tokenIntrospectionStub(false);
 
 		ContainerRequestContext ctx = createRequestContext();
 		when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
@@ -248,7 +254,7 @@ public class JWTFilterTest {
 
 	@Test
 	public void testFilterSetsUsernameIfTokenIntrospectionReturnsTrue() throws IOException {
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		ContainerRequestContext ctx = createRequestContext();
 		when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
@@ -264,7 +270,7 @@ public class JWTFilterTest {
 	@Test
 	public void testFilterRemovesResourceCredentialsBeforeSendingToTokenIntrospectionOrFormatter() throws IOException {
 
-		tokenIntrospectionStub("true");
+		tokenIntrospectionStub();
 
 		ContainerRequestContext ctx = createRequestContext();
 		when(ctx.getUriInfo().getPath()).thenReturn("/query");
