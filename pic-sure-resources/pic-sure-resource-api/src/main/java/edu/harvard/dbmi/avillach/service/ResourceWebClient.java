@@ -83,7 +83,8 @@ public class ResourceWebClient {
             if (size != null) {
                 uriBuilder.addParameter("size", size.toString());
             }
-            HttpResponse resourcesResponse = retrieveGetResponse(uriBuilder.build().toString(), createHeaders(queryRequest.getResourceCredentials()));
+            Map<String, String> resourceCredentials = queryRequest != null ? queryRequest.getResourceCredentials() : Map.of();
+            HttpResponse resourcesResponse = retrieveGetResponse(uriBuilder.build().toString(), createHeaders(resourceCredentials));
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 throwResponseError(resourcesResponse, rsURL);
