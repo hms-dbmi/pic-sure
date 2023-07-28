@@ -94,9 +94,9 @@ public class ApplicationProperties implements Serializable {
             throw new PicsureQueryException("target.picsure.token property must be set.");
         }
 
-        String visualizationResourceUUID = properties.getProperty("visualization.resource.id");
-        if (visualizationResourceUUID != null && !visualizationResourceUUID.trim().isEmpty()) {
-            visualizationResourceId = UUID.fromString(visualizationResourceUUID);
+        String visualizationResourceUUIDAsString = properties.getProperty("visualization.resource.id");
+        if (visualizationResourceUUIDAsString != null && !visualizationResourceUUIDAsString.trim().isEmpty()) {
+            visualizationResourceId = UUID.fromString(visualizationResourceUUIDAsString);
                 logger.debug("visualizationResourceId: " + visualizationResourceId);
                 if (visualizationResourceId == null)
                 throw new PicsureQueryException("visualization.resource.id property must be set.");
