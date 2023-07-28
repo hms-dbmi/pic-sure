@@ -48,6 +48,10 @@ public class HttpClientUtil {
 
 	private static final Logger logger = LoggerFactory.getLogger(HttpClientUtil.class);
 
+	public static boolean is2xx(HttpResponse response) {
+		return response.getStatusLine().getStatusCode() / 100 == 2;
+	}
+
 	public static HttpResponse retrieveGetResponse(String uri, List<Header> headers) {
 		return retrieveGetResponse(uri, headers.toArray(new Header[headers.size()]));
 	}
