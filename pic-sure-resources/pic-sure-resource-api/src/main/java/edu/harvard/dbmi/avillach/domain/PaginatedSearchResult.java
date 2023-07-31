@@ -1,5 +1,8 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -8,7 +11,8 @@ public class PaginatedSearchResult<T> {
     private final int page;
     private final int total;
 
-    public PaginatedSearchResult(List<T> results, int page, int total) {
+    @JsonCreator
+    public PaginatedSearchResult(@JsonProperty("results") List<T> results, @JsonProperty("page") int page, @JsonProperty("total") int total) {
         this.results = results;
         this.page = page;
         this.total = total;
