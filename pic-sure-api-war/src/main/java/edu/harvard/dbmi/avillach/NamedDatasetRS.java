@@ -63,8 +63,8 @@ public class NamedDatasetRS {
     ) {
         String user = context.getUserPrincipal().getName();
         return namedDatasetService.getNamedDatasets(user)
-            .map(datasets -> PICSUREResponse.success(datasets))
-            .orElseGet(() -> PICSUREResponse.error("Could not retrieve named datasets"));
+            .map(PICSUREResponse::success)
+            .orElse(PICSUREResponse.error("Could not retrieve named datasets"));
     }
 
     @POST
@@ -101,8 +101,8 @@ public class NamedDatasetRS {
     ) {
         String user = context.getUserPrincipal().getName();
         return namedDatasetService.addNamedDataset(user, request)
-            .map(dataset -> PICSUREResponse.success(dataset))
-            .orElseGet(() -> PICSUREResponse.error("Could not save named dataset"));
+            .map(PICSUREResponse::success)
+            .orElse(PICSUREResponse.error("Could not save named dataset"));
     }
 
     @GET
@@ -139,8 +139,8 @@ public class NamedDatasetRS {
     ){
         String user = context.getUserPrincipal().getName();
         return namedDatasetService.getNamedDatasetById(user, datasetId)
-            .map(dataset -> PICSUREResponse.success(dataset))
-            .orElseGet(() -> PICSUREResponse.error("Could not retrieve named dataset"));
+            .map(PICSUREResponse::success)
+            .orElse(PICSUREResponse.error("Could not retrieve named dataset"));
     }
 
     @PUT
@@ -178,7 +178,7 @@ public class NamedDatasetRS {
     ){
         String user = context.getUserPrincipal().getName();
         return namedDatasetService.updateNamedDataset(user, datasetId, request)
-            .map(dataset -> PICSUREResponse.success(dataset))
-            .orElseGet(() -> PICSUREResponse.error("Could not update named dataset"));
+            .map(PICSUREResponse::success)
+            .orElse(PICSUREResponse.error("Could not update named dataset"));
     }
 }

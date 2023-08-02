@@ -63,7 +63,7 @@ public class NamedDatasetService {
             namedDatasetRepo.persist(dataset);
             logger.debug("persisted named dataset with query id " + queryId.toString());
         } catch (Exception exception){
-            logger.error(exception.getMessage());
+            logger.error("Error persisting named dataset with query id " + queryId.toString(), exception);
             return Optional.empty();
         }
 
@@ -77,7 +77,7 @@ public class NamedDatasetService {
             return Optional.empty();
         }
 
-        if (!dataset.getUser().toString().equals(user)){
+        if (!dataset.getUser().equals(user)){
             logger.error("named dataset with id " + datasetId.toString() + " not able to be updated by user " + user);
             return Optional.empty();
         }
@@ -97,9 +97,9 @@ public class NamedDatasetService {
 
         try {
             namedDatasetRepo.merge(dataset);
-            logger.debug("updated named dataset with id " + datasetId.toString() + " with query id " + queryId.toString());
+            logger.debug("updated named dataset with id " + datasetId.toString() + " and query id " + queryId.toString());
         } catch (Exception exception){
-            logger.error(exception.getMessage());
+            logger.error("Error updating named dataset with id " + datasetId.toString() + " and query id " + queryId.toString(), exception);
             return Optional.empty();
         }
 
