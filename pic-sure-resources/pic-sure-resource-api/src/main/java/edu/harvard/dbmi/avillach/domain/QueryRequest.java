@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Schema(name = "QueryRequest", description = "Object containing credentials map under 'resourceCredentials' and query" +
@@ -38,6 +40,8 @@ import java.util.UUID;
 				"        \"fields\": []\n" +
 				"    }\n" +
 				"}")
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class QueryRequest {
 
 	@Schema(hidden = true)
@@ -48,6 +52,9 @@ public class QueryRequest {
 
 	@Schema(hidden = true)
 	private UUID resourceUUID;
+
+	@Schema(hidden = true)
+	private UUID commonAreaUUID;
 
 	public Map<String, String> getResourceCredentials() {
 		return resourceCredentials;
@@ -71,5 +78,13 @@ public class QueryRequest {
 
 	public void setResourceUUID(UUID resourceUUID) {
 		this.resourceUUID = resourceUUID;
+	}
+
+	public UUID getCommonAreaUUID() {
+		return commonAreaUUID;
+	}
+
+	public void setCommonAreaUUID(UUID commonAreaUUID) {
+		this.commonAreaUUID = commonAreaUUID;
 	}
 }

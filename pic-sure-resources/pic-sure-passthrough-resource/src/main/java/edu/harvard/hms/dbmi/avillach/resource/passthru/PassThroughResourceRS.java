@@ -101,6 +101,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			chainRequest.setQuery(queryRequest.getQuery());
 			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			chainRequest.setCommonAreaUUID(queryRequest.getCommonAreaUUID());
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			HttpResponse response = httpClient.retrievePostResponse(
