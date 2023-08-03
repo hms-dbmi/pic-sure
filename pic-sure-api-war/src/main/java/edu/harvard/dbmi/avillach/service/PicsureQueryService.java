@@ -308,11 +308,17 @@ public class PicsureQueryService {
 			}
 		}
 
+		Map<String, Object> metaData = response.getResultMetadata();
+		metaData = metaData == null ? new HashMap<>() : metaData;
+		if (dataQueryRequest.getCommonAreaUUID() != null) {
+			metaData.put("commonAreaUUID", dataQueryRequest.getCommonAreaUUID());
+		}
+
 		queryEntity.setQuery(queryJson);
 
-		if (response.getResultMetadata() != null) {
+		if (!metaData.isEmpty()) {
 			try {
-				queryEntity.setMetadata(mapper.writeValueAsString(response.getResultMetadata()).getBytes());
+				queryEntity.setMetadata(mapper.writeValueAsString(metaData).getBytes());
 			} catch (JsonProcessingException e) {
 				logger.warn("Unable to parse metadata ", e);
 			}
