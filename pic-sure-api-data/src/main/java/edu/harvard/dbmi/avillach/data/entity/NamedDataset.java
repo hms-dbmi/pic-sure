@@ -1,8 +1,10 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
-import javax.json.Json;
+import java.util.Map;
 
+import javax.json.Json;
 import javax.persistence.Column;
+import javax.persistence.Convert;
 import javax.persistence.Entity;
 import javax.persistence.JoinColumn;
 import javax.persistence.OneToOne;
@@ -10,6 +12,8 @@ import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+
+import edu.harvard.dbmi.avillach.data.entity.convert.JsonConverter;
 
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
@@ -32,6 +36,11 @@ public class NamedDataset extends BaseEntity {
 
     @Schema(description = "The archived state")
     private Boolean archived = false;
+
+    @Schema(description = "A json string object containing override specific values")
+    @Column(length = 8192)
+    @Convert(converter = JsonConverter.class)
+    private Map<String, Object> metadata;
 
     public NamedDataset setName(String name) {
         this.name = name;
@@ -68,6 +77,15 @@ public class NamedDataset extends BaseEntity {
     public String getUser(){
         return user;
     }
+
+    public Map<String, Object> getMetadata(){
+        return metadata;
+    }
+
+    public NamedDataset setMetadata(Map<String, Object> metadata){
+        this.metadata = metadata;
+        return this;
+    }
     
     @Override
     public String toString() {
@@ -77,6 +95,7 @@ public class NamedDataset extends BaseEntity {
             .add("archived", archived)
             .add("queryId", query.getUuid().toString())
             .add("user", user)
+            .add("metadata", metadata.toString())
             .build().toString();
     }
 }

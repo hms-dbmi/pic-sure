@@ -57,7 +57,8 @@ public class NamedDatasetService {
             .setName(request.getName())
             .setQuery(query)
             .setUser(user)
-            .setArchived(request.getArchived());
+            .setArchived(request.getArchived())
+            .setMetadata(request.getMetadata());
 
         try {
             namedDatasetRepo.persist(dataset);
@@ -93,7 +94,8 @@ public class NamedDatasetService {
         }
 
         dataset.setName(request.getName())
-            .setArchived(request.getArchived());
+            .setArchived(request.getArchived())
+            .setMetadata(request.getMetadata());
 
         try {
             namedDatasetRepo.merge(dataset);
