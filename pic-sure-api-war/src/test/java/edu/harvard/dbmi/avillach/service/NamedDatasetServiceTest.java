@@ -14,6 +14,7 @@ import static org.mockito.Mockito.doThrow;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.HashMap;
 import java.util.Optional;
 
 import org.junit.Test;
@@ -157,6 +158,27 @@ public class NamedDatasetServiceTest {
     }
 
     @Test
+    public void addNamedDataset_metadataSet_success() {
+        // Given there is a query in the database
+        UUID queryId = UUID.randomUUID();
+        Query query = makeQuery(queryId);
+        when(queryRepo.getById(queryId)).thenReturn(query);
+        String testKey = "test";
+        String testValue = "value";
+
+        // When the request is recieved
+        NamedDatasetRequest request = makeNamedDatasetRequest(queryId);
+        HashMap<String, Object> metadata = new HashMap<String, Object>();
+        metadata.put(testKey, testValue);
+        request.setMetadata(metadata);
+        Optional<NamedDataset> response = namedDatasetService.addNamedDataset(user, request);
+
+        // Then return a non-empty optional
+        assertTrue(response.isPresent());
+        assertEquals("related metadata is saved", testValue, response.get().getMetadata().get(testKey));
+    }
+
+    @Test
     public void addNamedDataset_noQueryWithID() {
         // Given there is no query in the database with this id
         UUID queryId = UUID.randomUUID();
@@ -223,6 +245,32 @@ public class NamedDatasetServiceTest {
         // Then return a non-empty optional
         assertTrue(response.isPresent());
         assertEquals("new archive state is retained", true, response.get().getArchived());
+    }
+
+    @Test
+    public void updateNamedDataset_changeMetadata_success() {
+        // Given there is a named dataset saved in the database with this id
+        UUID queryId = UUID.randomUUID();
+        UUID namedDatasetId = UUID.randomUUID();
+        Query query = makeQuery(queryId);
+        NamedDataset dataset = makeNamedDataset(namedDatasetId, query);
+        HashMap<String, Object> oldMetadata = new HashMap<String, Object>();
+        oldMetadata.put("whatever", "something");
+        dataset.setMetadata(oldMetadata);
+        when(datasetRepo.getById(namedDatasetId)).thenReturn(dataset);
+        String testKey = "test";
+        String testValue = "value";
+
+        // When the request is recieved
+        NamedDatasetRequest request = makeNamedDatasetRequest(queryId);
+        HashMap<String, Object> newMetadata = new HashMap<String, Object>();
+        newMetadata.put(testKey, testValue);
+        request.setMetadata(newMetadata);
+        Optional<NamedDataset> response = namedDatasetService.updateNamedDataset(user, namedDatasetId, request);
+
+        // Then return a non-empty optional
+        assertTrue(response.isPresent());
+        assertEquals("new metadata is retained", testValue, response.get().getMetadata().get(testKey));
     }
 
     @Test
