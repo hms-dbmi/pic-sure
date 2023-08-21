@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.data.request;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.validation.constraints.NotNull;
@@ -13,6 +15,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
         "    \"queryId\": \"ec780aeb-d981-432a-b72b-51d4ecb3fd53\",\n" + //
         "    \"name\": \"My first Query\",\n" + //
         "    \"archived\": false\n" + //
+        "    \"metadata\": {}\n" + //
         "}"
 )
 public class NamedDatasetRequest {
@@ -24,6 +27,8 @@ public class NamedDatasetRequest {
     private String name;
 
     private Boolean archived = false;
+
+    private Map<String, Object> metadata = new HashMap<String, Object>();
 
     public UUID getQueryId() {
         return queryId;
@@ -47,5 +52,13 @@ public class NamedDatasetRequest {
     
     public void setArchived(Boolean archived) {
         this.archived = archived;
+    }
+
+    public Map<String, Object> getMetadata(){
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata){
+        this.metadata = metadata;
     }
 }
