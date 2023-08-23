@@ -75,12 +75,8 @@ public class BucketIndexBySampleTest {
 	public static void initializeBinfile() throws Exception {
 		//load variant data
 		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR, MERGED_DIR});	
-				
-		//read in variantStore object created by VCFLoader
-		ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(STORAGE_DIR + "variantStore.javabin")));
-		variantStore = (VariantStore) ois.readObject();
-		ois.close();
-		variantStore.open();	
+
+		VariantStore variantStore = VariantStore.readInstance(STORAGE_DIR);
 		
 		//now use that object to initialize the BucketIndexBySample object
 		bucketIndexBySample = new BucketIndexBySample(variantStore, STORAGE_DIR);

@@ -1,8 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
@@ -10,8 +8,11 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.storage.FileBackedStorageVariantIndexImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
 
 public class FileBackedByteIndexedInfoStore implements Serializable {
 
@@ -21,12 +22,12 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	public boolean isContinuous;
 	public Float min = Float.MAX_VALUE, max = Float.MIN_VALUE;
 
-	private FileBackedByteIndexedStorage<String, String[]> allValues;
+	private FileBackedByteIndexedStorage<String, Integer[]> allValues;
 	public TreeMap<Double, TreeSet<String>> continuousValueMap;
 
 	public CompressedIndex continuousValueIndex;
 
-	public FileBackedByteIndexedStorage<String, String[]> getAllValues() {
+	public FileBackedByteIndexedStorage<String, Integer[]> getAllValues() {
 		return allValues;
 	}
 
@@ -41,8 +42,8 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		}
 	}
 
-	public void addEntry(String value, String[] variantSpecs) throws IOException {
-		allValues.put(value, variantSpecs);
+	public void addEntry(String value, Integer[] variantIds) throws IOException {
+		allValues.put(value, variantIds);
 	}
 
 
@@ -51,8 +52,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	}
 
 	public FileBackedByteIndexedInfoStore(File storageFolder, InfoStore infoStore) throws IOException {
-		this.allValues = new FileBackedByteIndexedStorage(String.class, String[].class, 
-				new File(storageFolder, infoStore.column_key + "_infoStoreStorage.javabin"));
+		this.allValues = new FileBackedStorageVariantIndexImpl(new File(storageFolder, infoStore.column_key + "_infoStoreStorage.javabin"));
 		this.description = infoStore.description;
 		this.column_key = infoStore.column_key;
 		this.isContinuous = infoStore.isNumeric();
@@ -71,8 +71,8 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 				if(x%10000 == 0) {
 					System.out.println(infoStore.column_key + " " + ((((double)x) / sortedKeys.size()) * 100) + "% done");
 				}
-				ConcurrentSkipListSet<String> variantSpecs = infoStore.allValues.get(key);
-				addEntry(key, variantSpecs.toArray(new String[variantSpecs.size()]));
+				ConcurrentSkipListSet<Integer> variantIds = infoStore.allValues.get(key);
+				addEntry(key, variantIds.toArray(new Integer[variantIds.size()]));
 				x++;				
 			}
 		}
@@ -89,10 +89,10 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 	private static void normalizeNumericStore(InfoStore store) {
 		TreeSet<String> allKeys = new TreeSet<String>(store.allValues.keySet());
 
-		ConcurrentHashMap<String, ConcurrentSkipListSet<String>> normalizedValues = new ConcurrentHashMap<>();
+		ConcurrentHashMap<String, ConcurrentSkipListSet<Integer>> normalizedValues = new ConcurrentHashMap<>();
 		for(String key : allKeys) {
 			String[] keys = key.split(",");
-			ConcurrentSkipListSet<String> variantSpecs = store.allValues.get(key);
+			ConcurrentSkipListSet<Integer> variantIds = store.allValues.get(key);
 			if(key.contentEquals(".")) {
 				//don't add it
 			}else if(keyHasMultipleValues(keys)) {
@@ -100,26 +100,26 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 					if(value.contentEquals(".")) {
 
 					}else {
-						ConcurrentSkipListSet<String> normalizedSpecs = normalizedValues.get(value);
-						if(normalizedSpecs == null) {
-							normalizedSpecs = variantSpecs;
+						ConcurrentSkipListSet<Integer> normalizedVariantIds = normalizedValues.get(value);
+						if(normalizedVariantIds == null) {
+							normalizedVariantIds = variantIds;
 						}else {
-							normalizedSpecs.addAll(variantSpecs);
+							normalizedVariantIds.addAll(variantIds);
 						}
-						normalizedValues.put(value, normalizedSpecs);					
+						normalizedValues.put(value, normalizedVariantIds);
 					}
 				}
 			}else {
 				if(key.contentEquals(".")) {
 
 				}else {
-					ConcurrentSkipListSet<String> normalizedSpecs = normalizedValues.get(key);
-					if(normalizedSpecs == null) {
-						normalizedSpecs = variantSpecs;
+					ConcurrentSkipListSet<Integer> normalizedVariantIds = normalizedValues.get(key);
+					if(normalizedVariantIds == null) {
+						normalizedVariantIds = variantIds;
 					}else {
-						normalizedSpecs.addAll(variantSpecs);
+						normalizedVariantIds.addAll(variantIds);
 					}
-					normalizedValues.put(key, normalizedSpecs);					
+					normalizedValues.put(key, normalizedVariantIds);
 				}
 			}
 
@@ -139,5 +139,19 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		return x>1;
 	}
 
+	public void updateStorageDirectory(File storageDirectory) {
+		allValues.updateStorageDirectory(storageDirectory);
+	}
+
+	public void write(File outputFile) {
+		try(
+				FileOutputStream fos = new FileOutputStream(outputFile);
+				GZIPOutputStream gzos = new GZIPOutputStream(fos);
+				ObjectOutputStream oos = new ObjectOutputStream(gzos);) {
+			oos.writeObject(this);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
 }
 

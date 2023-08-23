@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +40,7 @@ public class VCFPerPatientInfoStoreToFBBIISConverter {
 			if (store.allValues.size() > 0) {
 				FileBackedByteIndexedInfoStore fbbiis = new FileBackedByteIndexedInfoStore(outputFolder, store);
 
-				writeStore(new File(outputFolder, file.getName()), fbbiis);
+				fbbiis.write(new File(outputFolder, file.getName()));
 				logger.info("Completed converting InfoStore file: " + file.getAbsolutePath());
 			} else {
 				logger.info("Skipping empty InfoStore file: " + file.getAbsolutePath() + "");
@@ -53,20 +52,6 @@ public class VCFPerPatientInfoStoreToFBBIISConverter {
 		} catch (ClassNotFoundException e) {
 			logger.error("Error converting InfoStore file: " + file.getAbsolutePath());
 		}
-	}
-
-	private static synchronized void writeStore(File outputFile, FileBackedByteIndexedInfoStore fbbiis)
-			throws FileNotFoundException, IOException {
-		FileOutputStream fos = new FileOutputStream(outputFile);
-		GZIPOutputStream gzos = new GZIPOutputStream(fos);
-		ObjectOutputStream oos = new ObjectOutputStream(gzos);
-		oos.writeObject(fbbiis);
-		oos.flush();
-		oos.close();
-		gzos.flush();
-		gzos.close();
-		fos.flush();
-		fos.close();
 	}
 
 }

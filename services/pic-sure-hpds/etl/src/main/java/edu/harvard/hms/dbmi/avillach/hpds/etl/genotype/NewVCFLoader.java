@@ -8,9 +8,13 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.storage.FileBackedStorageVariantMasksImpl;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJsonIndexStorage;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.codehaus.jackson.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +30,8 @@ public class NewVCFLoader {
 	private static File storageDir = null;
 	private static String storageDirStr = "/opt/local/hpds/all";
 	private static String mergedDirStr = "/opt/local/hpds/merged";
+
+	private static VariantIndexBuilder variantIndexBuilder = new VariantIndexBuilder();
 	
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
 	private static int CHUNK_SIZE = 1000;
@@ -56,7 +62,7 @@ public class NewVCFLoader {
 
 	private static HashMap<String, char[][]> zygosityMaskStrings;
 
-	private static TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage = new TreeMap<>();
+	private static TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage = new TreeMap<>();
 
 	private static long startTime;
 
@@ -152,7 +158,7 @@ public class NewVCFLoader {
 				try {
 					walker.nextLine();
 				} catch (IOException e) {
-					logger.error("Error reading nextline of VCF file [" + walker.vcfIndexLine.vcfPath + "]", e);
+					throw new UncheckedIOException(e);
 				}
 			});
 			zygosityMaskStrings.put(currentSpecNotation, maskStringsForVariantSpec[0]);
@@ -164,8 +170,6 @@ public class NewVCFLoader {
 		flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], true, null);
 
 		shutdownChunkWriteExecutor();
-
-		saveVariantStore(store, variantMaskStorage);
 
 		saveInfoStores();
 
@@ -185,22 +189,18 @@ public class NewVCFLoader {
 					chunkIds.addAll(chromosomeStorage.keys());
 					for (Integer chunkId : chunkIds) {
 						for (String variantSpec : chromosomeStorage.get(chunkId).keySet()) {
-							try {
-								count[0]++;
-								VariantMasks variantMasks = chromosomeStorage.get(chunkId).get(variantSpec);
-								if (variantMasks != null) {
-									BigInteger heterozygousMask = variantMasks.heterozygousMask;
-									String heteroIdList = sampleIdsForMask(allSampleIds, heterozygousMask);
-									BigInteger homozygousMask = variantMasks.homozygousMask;
-									String homoIdList = sampleIdsForMask(allSampleIds, homozygousMask);
+							count[0]++;
+							VariantMasks variantMasks = chromosomeStorage.get(chunkId).get(variantSpec);
+							if (variantMasks != null) {
+								BigInteger heterozygousMask = variantMasks.heterozygousMask;
+								String heteroIdList = sampleIdsForMask(allSampleIds, heterozygousMask);
+								BigInteger homozygousMask = variantMasks.homozygousMask;
+								String homoIdList = sampleIdsForMask(allSampleIds, homozygousMask);
 
-									if (!heteroIdList.isEmpty() && heteroIdList.length() < 1000)
-										logger.debug(variantSpec + " : heterozygous : " + heteroIdList);
-									if (!homoIdList.isEmpty() && homoIdList.length() < 1000)
-										logger.debug(variantSpec + " : homozygous : " + homoIdList);
-								}
-							} catch (IOException e) {
-								logger.error("an error occurred", e);
+								if (!heteroIdList.isEmpty() && heteroIdList.length() < 1000)
+									logger.debug(variantSpec + " : heterozygous : " + heteroIdList);
+								if (!homoIdList.isEmpty() && homoIdList.length() < 1000)
+									logger.debug(variantSpec + " : homozygous : " + homoIdList);
 							}
 						}
 						if (count[0] > 50)
@@ -211,22 +211,18 @@ public class NewVCFLoader {
 					for (int x = chunkIds.size() - 1; x > 0; x--) {
 						int chunkId = chunkIds.get(x);
 						chromosomeStorage.get(chunkId).keySet().forEach((variantSpec) -> {
-							try {
-								count[0]++;
-								VariantMasks variantMasks = chromosomeStorage.get(chunkId).get(variantSpec);
-								if (variantMasks != null) {
-									BigInteger heterozygousMask = variantMasks.heterozygousMask;
-									String heteroIdList = sampleIdsForMask(allSampleIds, heterozygousMask);
-									BigInteger homozygousMask = variantMasks.homozygousMask;
-									String homoIdList = sampleIdsForMask(allSampleIds, homozygousMask);
+							count[0]++;
+							VariantMasks variantMasks = chromosomeStorage.get(chunkId).get(variantSpec);
+							if (variantMasks != null) {
+								BigInteger heterozygousMask = variantMasks.heterozygousMask;
+								String heteroIdList = sampleIdsForMask(allSampleIds, heterozygousMask);
+								BigInteger homozygousMask = variantMasks.homozygousMask;
+								String homoIdList = sampleIdsForMask(allSampleIds, homozygousMask);
 
-									if (!heteroIdList.isEmpty() && heteroIdList.length() < 1000)
-										logger.debug(variantSpec + " : heterozygous : " + heteroIdList);
-									if (!homoIdList.isEmpty() && homoIdList.length() < 1000)
-										logger.debug(variantSpec + " : homozygous : " + homoIdList);
-								}
-							} catch (IOException e) {
-								logger.error("an error occurred", e);
+								if (!heteroIdList.isEmpty() && heteroIdList.length() < 1000)
+									logger.debug(variantSpec + " : heterozygous : " + heteroIdList);
+								if (!homoIdList.isEmpty() && homoIdList.length() < 1000)
+									logger.debug(variantSpec + " : homozygous : " + homoIdList);
 							}
 						});
 						if (count[0] > 50)
@@ -235,6 +231,9 @@ public class NewVCFLoader {
 				}
 			}
 		}
+
+		store.setVariantSpecIndex(variantIndexBuilder.getVariantSpecIndex().toArray(new String[0]));
+		saveVariantStore(store, variantMaskStorage);
 	}
 
 	private static String sampleIdsForMask(String[] sampleIds, BigInteger heterozygousMask) {
@@ -279,7 +278,7 @@ public class NewVCFLoader {
 		}
 		if (!currentContig.contentEquals(lastContigProcessed) || currentChunk > lastChunkProcessed || isLastChunk) {
 			// flip chunk
-			TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage_f = variantMaskStorage;
+			TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage_f = variantMaskStorage;
 			HashMap<String, char[][]> zygosityMaskStrings_f = zygosityMaskStrings;
 			String lastContigProcessed_f = lastContigProcessed;
 			int lastChunkProcessed_f = lastChunkProcessed;
@@ -287,17 +286,17 @@ public class NewVCFLoader {
 				try {
 					if (variantMaskStorage_f.get(lastContigProcessed_f) == null) {
 						String fileName = lastContigProcessed_f + "masks.bin";
-						if ("chr".startsWith(fileName)) {
+						if (!fileName.startsWith("chr")) {
 							fileName = "chr" + fileName;
 						}
+
 						variantMaskStorage_f.put(lastContigProcessed_f,
-								new FileBackedByteIndexedStorage(Integer.class, ConcurrentHashMap.class,
-										new File(storageDir, fileName)));
+								new FileBackedStorageVariantMasksImpl(new File(storageDir, fileName)));
 					}
 					variantMaskStorage_f.get(lastContigProcessed_f).put(lastChunkProcessed_f,
 							convertLoadingMapToMaskMap(zygosityMaskStrings_f));
 				} catch (IOException e) {
-					logger.error("an error occurred", e);
+					throw new UncheckedIOException(e);
 				}
 			});
 			if (lastChunkProcessed % 100 == 0) {
@@ -309,7 +308,7 @@ public class NewVCFLoader {
 	}
 
 	private static void saveVariantStore(VariantStore store,
-			TreeMap<String, FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage)
+			TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage)
 			throws IOException, FileNotFoundException {
 		store.setVariantMaskStorage(variantMaskStorage);
 		for (FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage : variantMaskStorage
@@ -317,11 +316,7 @@ public class NewVCFLoader {
 			if (storage != null)
 				storage.complete();
 		}
-		try (FileOutputStream fos = new FileOutputStream(new File(storageDir, "variantStore.javabin"));
-				GZIPOutputStream gzos = new GZIPOutputStream(fos);
-				ObjectOutputStream oos = new ObjectOutputStream(gzos);) {
-			oos.writeObject(store);
-		}
+		store.writeInstance(storageDirStr);
 		logger.debug("Done saving variant masks.");
 	}
 
@@ -340,8 +335,8 @@ public class NewVCFLoader {
 		logger.debug("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreSplitter.splitAll(storageDir,  new File(mergedDirStr));
-		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
-			logger.error("Error splitting infostore's by column", e);
+		} catch (ClassNotFoundException | ExecutionException | InterruptedException e) {
+			throw new RuntimeException(e);
 		}
 		logger.debug("Split" + (System.currentTimeMillis() - startTime) + " seconds");
 	}
@@ -350,8 +345,8 @@ public class NewVCFLoader {
 		logger.debug("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreToFBBIISConverter.convertAll(mergedDirStr, storageDirStr);
-		} catch (ClassNotFoundException | InterruptedException | ExecutionException e) {
-			logger.error("Error converting infostore to byteindexed", e);
+		} catch (ClassNotFoundException | ExecutionException | InterruptedException e) {
+			throw new RuntimeException(e);
 		}
 		logger.debug("Converted " + ((System.currentTimeMillis() - startTime) / 1000) + " seconds");
 	}
@@ -370,7 +365,7 @@ public class NewVCFLoader {
 
 	private static ConcurrentHashMap<String, VariantMasks> convertLoadingMapToMaskMap(
 			HashMap<String, char[][]> zygosityMaskStrings_f) {
-		ConcurrentHashMap<String, VariantMasks> maskMap = new ConcurrentHashMap<>();
+		ConcurrentHashMap<String, VariantMasks> maskMap = new ConcurrentHashMap<>(zygosityMaskStrings_f.size());
 		zygosityMaskStrings_f.entrySet().parallelStream().forEach((entry) -> {
 			maskMap.put(entry.getKey(), new VariantMasks(entry.getValue()));
 		});
@@ -449,7 +444,7 @@ public class NewVCFLoader {
 					}
 
 				} catch (IndexOutOfBoundsException e) {
-					logger.warn("INDEX out of bounds " + currentLine.substring(0, Math.min(50, currentLine.length())),
+					throw new RuntimeException("INDEX out of bounds " + currentLine.substring(0, Math.min(50, currentLine.length())),
 							e);
 				}
 			} else {
@@ -459,8 +454,9 @@ public class NewVCFLoader {
 			}
 			String[] infoColumns = currentLineSplit[7].split("[;&]");
 			String currentSpecNotation = currentSpecNotation();
+			int variantIndex = variantIndexBuilder.getIndex(currentSpecNotation);
 			infoStores.values().parallelStream().forEach(infoStore -> {
-				infoStore.processRecord(currentSpecNotation, infoColumns);
+				infoStore.processRecord(variantIndex, infoColumns);
 			});
 		}
 
@@ -650,7 +646,7 @@ public class NewVCFLoader {
 				}
 			});
 		} catch (IOException e) {
-			throw new RuntimeException("IOException caught parsing vcfIndexFile", e);
+			throw new UncheckedIOException("IOException caught parsing vcfIndexFile", e);
 		}
 		return new ArrayList<>(vcfSet);
 	}

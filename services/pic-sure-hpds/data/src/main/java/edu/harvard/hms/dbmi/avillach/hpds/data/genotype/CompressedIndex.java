@@ -32,7 +32,7 @@ public class CompressedIndex implements Serializable {
 	private HashMap<Range<Float>, byte[]> compressedRangeMap;
 	private int valueCount;
 
-	public TreeMap<Float, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, String[]> allValues) {
+	public TreeMap<Float, TreeSet<String>> buildContinuousValuesMap(FileBackedByteIndexedStorage<String, Integer[]> allValues) {
 		TreeMap<Float, TreeSet<String>> continuousValueMap = new TreeMap<>();
 		for(String key : allValues.keys()) {
 			try{
