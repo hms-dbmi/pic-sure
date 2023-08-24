@@ -178,7 +178,7 @@ public class VariantListProcessor implements HpdsProcessor {
 		}
 
 		//patient count columns
-		builder.append("\tPatients with this variant in subset\tPatients With this variant NOT in subset");
+		builder.append("\tPatients with this variant in subset\tPatients with this variant NOT in subset");
 
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
