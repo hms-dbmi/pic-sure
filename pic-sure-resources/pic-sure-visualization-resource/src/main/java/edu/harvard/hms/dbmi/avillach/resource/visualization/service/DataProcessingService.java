@@ -126,6 +126,7 @@ public class DataProcessingService {
         DescriptiveStatistics da = new DescriptiveStatistics(keys);
         double smallestKey = da.getMin();
         double largestKey = da.getMax();
+        if (smallestKey == largestKey)  return 1;
         double binWidth = (3.5 * da.getStandardDeviation()) / Math.pow(countMap.size(),THIRD);
         return (int)Math.round((largestKey - smallestKey) / binWidth);
     }
