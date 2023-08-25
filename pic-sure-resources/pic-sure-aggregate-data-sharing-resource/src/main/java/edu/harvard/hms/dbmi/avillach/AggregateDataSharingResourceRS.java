@@ -513,7 +513,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
+		boolean mustObfuscate = true;
 
 		// Handle the case where there is no visualization service UUID
 		if (properties.getVisualizationResourceId() != null) {
@@ -593,7 +593,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 		Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>(){});
 		int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-		boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
+		boolean mustObfuscate = true;
 		if (!mustObfuscate) {
 			return categoricalEntityString;
 		}
