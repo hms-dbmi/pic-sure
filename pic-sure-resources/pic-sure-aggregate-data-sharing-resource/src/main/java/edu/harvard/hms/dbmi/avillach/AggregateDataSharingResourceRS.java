@@ -224,9 +224,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 			}
 			String expectedResultType = jsonNode.get("expectedResultType").asText();
 
+			// TODO: This is authorization logic. We have an app for this.
+			//  This splintering makes our code even harder to read
 			Set<String> allowedResultTypes = Set.of(
 				"COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
-				"OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"
+				"OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT",
+				"VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT"
 			);
 			if (!allowedResultTypes.contains(expectedResultType)) {
 				logger.warn("Incorrect Result Type: " + expectedResultType);
