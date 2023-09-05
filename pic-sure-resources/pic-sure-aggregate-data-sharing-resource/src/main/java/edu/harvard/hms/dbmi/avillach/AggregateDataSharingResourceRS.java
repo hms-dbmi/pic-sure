@@ -437,8 +437,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
-        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {
-        });
+        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {});
+
         int requestVariance = generateVarianceWithCrossCounts(crossCounts);
         crossCounts = obfuscateCrossCounts(crossCounts, requestVariance);
 
@@ -462,9 +462,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 crossCounts.put(key, aggregatedCount.orElse(crossCount));
             });
 
-            Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(key -> {
-                return generateParents(key);
-            }).collect(Collectors.toSet());
+            Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(this::generateParents).collect(Collectors.toSet());
 
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
@@ -606,7 +604,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             return null;
         }
 
-        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {
+        });
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
         boolean mustObfuscate = true;
@@ -615,7 +614,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         }
 
         // This might break in the object mapper. We need to test this.
-        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {});
+        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
+        });
 
         if (categoricalCrossCount == null) {
             return categoricalEntityString;
