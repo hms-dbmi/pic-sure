@@ -6,6 +6,7 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 import com.google.common.util.concurrent.UncheckedExecutionException;
@@ -138,7 +139,6 @@ public class AbstractProcessor {
 		infoStoreColumns = new ArrayList<>(infoStores.keySet());
 
 		variantIndexCache = new VariantIndexCache(variantService.getVariantIndex(), infoStores);
-		warmCaches();
 	}
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
@@ -164,12 +164,6 @@ public class AbstractProcessor {
 		return infoStoreColumns;
 	}
 
-	private void warmCaches() {
-		//infoCache.refresh("Variant_frequency_as_text_____Rare");
-		//infoCache.refresh("Variant_frequency_as_text_____Common");
-		//infoCache.refresh("Variant_frequency_as_text_____Novel");
-	}
-
 
 	/**
 	 * Merges a list of sets of patient ids by intersection. If we implemented OR semantics
@@ -181,6 +175,10 @@ public class AbstractProcessor {
 	protected Set<Integer> applyBooleanLogic(List<Set<Integer>> filteredIdSets) {
 		Set<Integer>[] ids = new Set[] {filteredIdSets.get(0)};
 		filteredIdSets.forEach((keySet)->{
+			// I believe this is not ideal for large numbers of sets. Sets.intersection creates a view of the 2 sets, so
+			// doing this repeatedly would create views on views on views of the backing sets. retainAll() returns a new
+			// set with only the common elements, and if we sort by set size and start with the smallest I believe that
+			// will be more efficient
 			ids[0] = Sets.intersection(ids[0], keySet);
 		});
 		return ids[0];
@@ -195,24 +193,31 @@ public class AbstractProcessor {
 	 * @return
 	 */
 	protected List<Set<Integer>> idSetsForEachFilter(Query query) {
-		ArrayList<Set<Integer>> filteredIdSets = new ArrayList<Set<Integer>>();
+		DistributableQuery distributableQuery = new DistributableQuery();
 
 		try {
-			addIdSetsForAnyRecordOf(query, filteredIdSets);
-			addIdSetsForRequiredFields(query, filteredIdSets);
-			addIdSetsForNumericFilters(query, filteredIdSets);
-			addIdSetsForCategoryFilters(query, filteredIdSets);
+			addIdSetsForAnyRecordOf(query, distributableQuery);
+			addIdSetsForRequiredFields(query, distributableQuery);
+			addIdSetsForNumericFilters(query, distributableQuery);
+			addIdSetsForCategoryFilters(query, distributableQuery);
 		} catch (InvalidCacheLoadException e) {
 			log.warn("Invalid query supplied: " + e.getLocalizedMessage());
-			filteredIdSets.add(new HashSet<Integer>()); // if an invalid path is supplied, no patients should match.
+			distributableQuery.addAndClausePatients(new HashSet<>()); // if an invalid path is supplied, no patients should match.
 		}
 
+		Set<Integer> phenotypicPatientSet;
 		//AND logic to make sure all patients match each filter
-		if(filteredIdSets.size()>1) {
-			filteredIdSets = new ArrayList<Set<Integer>>(List.of(applyBooleanLogic(filteredIdSets)));
+		if(distributableQuery.getPhenotypicQueryPatientSets().size()>0) {
+			phenotypicPatientSet = applyBooleanLogic(distributableQuery.getPhenotypicQueryPatientSets());
+		} else {
+			phenotypicPatientSet = Arrays.stream(variantService.getPatientIds())
+					.map(String::trim)
+					.map(Integer::parseInt)
+					.collect(Collectors.toSet());
 		}
+		// todo: use this patient id set going forward
 
-		return addIdSetsForVariantInfoFilters(query, filteredIdSets);
+		return addIdSetsForVariantInfoFilters(query, distributableQuery);
 	}
 
 	/**
@@ -245,64 +250,61 @@ public class AbstractProcessor {
 		return idList;
 	}
 
-	private void addIdSetsForRequiredFields(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+	private void addIdSetsForRequiredFields(Query query, DistributableQuery distributableQuery) {
 		if(!query.getRequiredFields().isEmpty()) {
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
-			filteredIdSets.addAll(query.getRequiredFields().parallelStream().map(path->{
-				if(VariantUtils.pathIsVariantSpec(path)) {
-					TreeSet<Integer> patientsInScope = new TreeSet<>();
-					addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope, bucketCache);
-					return patientsInScope;
+			query.getRequiredFields().forEach(path -> {
+				if (VariantUtils.pathIsVariantSpec(path)) {
+					// todo: implement this logic in the genomic nodes
+					//VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
+					//TreeSet<Integer> patientsInScope = new TreeSet<>();
+					//addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1", "1/1"}, path, patientsInScope, bucketCache);
+					//return patientsInScope;
+					distributableQuery.addRequiredVariantField(path);
 				} else {
-					return new TreeSet<Integer>(getCube(path).keyBasedIndex());
-				}
-			}).collect(Collectors.toSet()));
-		}
-	}
-
-	private void addIdSetsForAnyRecordOf(Query query, ArrayList<Set<Integer>> filteredIdSets) {
-		if(!query.getAnyRecordOf().isEmpty()) {
-			Set<Integer> patientsInScope = new ConcurrentSkipListSet<Integer>();
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-			query.getAnyRecordOf().parallelStream().forEach(path->{
-				if(patientsInScope.size()<Math.max(
-						phenotypeMetaStore.getPatientIds().size(),
-						variantService.getPatientIds().length)) {
-					if(VariantUtils.pathIsVariantSpec(path)) {
-						addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1","1/1"}, path, patientsInScope, bucketCache);
-					} else {
-						patientsInScope.addAll(getCube(path).keyBasedIndex());
-					}
+					distributableQuery.addAndClausePatients(new HashSet<Integer>(getCube(path).keyBasedIndex()));
 				}
 			});
-			filteredIdSets.add(patientsInScope);
 		}
 	}
 
-	private void addIdSetsForNumericFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+	private void addIdSetsForAnyRecordOf(Query query, DistributableQuery distributableQuery) {
+		if(!query.getAnyRecordOf().isEmpty()) {
+			// This is an OR aggregation of anyRecordOf filters
+			Set<Integer> anyRecordOfPatientSet = query.getAnyRecordOf().parallelStream().flatMap(path -> {
+				if (VariantUtils.pathIsVariantSpec(path)) {
+					throw new IllegalArgumentException("Variant paths not allowed for anyRecordOf queries");
+				}
+				return (Stream<Integer>) getCube(path).keyBasedIndex().stream();
+			}).collect(Collectors.toSet());
+			distributableQuery.addAndClausePatients(anyRecordOfPatientSet);
+		}
+	}
+
+	private void addIdSetsForNumericFilters(Query query, DistributableQuery distributableQuery) {
 		if(!query.getNumericFilters().isEmpty()) {
-			filteredIdSets.addAll((Set<TreeSet<Integer>>)(query.getNumericFilters().entrySet().parallelStream().map(entry->{
-				return (TreeSet<Integer>)(getCube(entry.getKey()).getKeysForRange(entry.getValue().getMin(), entry.getValue().getMax()));
-			}).collect(Collectors.toSet())));
+			query.getNumericFilters().forEach((key, value) -> {
+				Set<Integer> keysForRange = getCube(key).getKeysForRange(value.getMin(), value.getMax());
+				distributableQuery.addAndClausePatients(keysForRange);
+			});
 		}
 	}
 
-	private void addIdSetsForCategoryFilters(Query query, ArrayList<Set<Integer>> filteredIdSets) {
+	private void addIdSetsForCategoryFilters(Query query, DistributableQuery distributableQuery) {
 		if(!query.getCategoryFilters().isEmpty()) {
-			VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-			Set<Set<Integer>> idsThatMatchFilters = (Set<Set<Integer>>)query.getCategoryFilters().entrySet().parallelStream().map(entry->{
-				Set<Integer> ids = new TreeSet<Integer>();
-				if(VariantUtils.pathIsVariantSpec(entry.getKey())) {
-					addIdSetsForVariantSpecCategoryFilters(entry.getValue(), entry.getKey(), ids, bucketCache);
+			query.getCategoryFilters().forEach((key, categoryFilters) -> {
+				Set<Integer> ids = new TreeSet<>();
+				if (VariantUtils.pathIsVariantSpec(key)) {
+					// todo: implement this logic in the genomic nodes
+					//VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
+					//addIdSetsForVariantSpecCategoryFilters(categoryFilters, key, ids, bucketCache);
+					distributableQuery.addVariantSpecCategoryFilter(key, categoryFilters);
 				} else {
-					String[] categoryFilter = entry.getValue();
-					for(String category : categoryFilter) {
-							ids.addAll(getCube(entry.getKey()).getKeysForValue(category));
+					for (String category : categoryFilters) {
+						ids.addAll(getCube(key).getKeysForValue(category));
 					}
 				}
-				return ids;
-			}).collect(Collectors.toSet());
-			filteredIdSets.addAll(idsThatMatchFilters);
+				distributableQuery.addAndClausePatients(ids);
+			});
 		}
 	}
 
@@ -379,7 +381,7 @@ public class AbstractProcessor {
 		return indiscriminateVariantBitmask;
 	}
 
-	protected List<Set<Integer>> addIdSetsForVariantInfoFilters(Query query, List<Set<Integer>> filteredIdSets) {
+	protected List<Set<Integer>> addIdSetsForVariantInfoFilters(Query query, DistributableQuery distributableQuery) {
 //		log.debug("filterdIDSets START size: " + filteredIdSets.size());
 		/* VARIANT INFO FILTER HANDLING IS MESSY */
 		if(!query.getVariantInfoFilters().isEmpty()) {

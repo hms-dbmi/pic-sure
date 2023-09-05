@@ -67,9 +67,9 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 		
 	}
 
-	public TreeSet<Integer> getKeysForRange(V min, V max) {
+	public Set<Integer> getKeysForRange(V min, V max) {
 		KeyAndValue<V>[] entries = getEntriesForValueRange(min, max);
-		TreeSet<Integer> keys = new TreeSet<>();
+		Set<Integer> keys = new HashSet<>();
 		for(KeyAndValue<V> entry : entries) {
 			keys.add(entry.key);
 		}
