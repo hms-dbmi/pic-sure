@@ -604,8 +604,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             return null;
         }
 
-        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {
-        });
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
         boolean mustObfuscate = true;
@@ -614,14 +613,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         }
 
         // This might break in the object mapper. We need to test this.
-        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
-        });
+        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {});
 
         if (categoricalCrossCount == null) {
             return categoricalEntityString;
         }
 
-        // Convert categoricalCrossCount Map to a map<String, Map<String, Object>>
         for (Map.Entry<String, Map<String, Integer>> entry : categoricalCrossCount.entrySet()) {
             // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
             if (skipKey(entry)) continue;
@@ -640,7 +637,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
         obfuscatedCrossCount(generatedVariance, convertedCategoricalCrossCount);
 
-        return objectMapper.writeValueAsString(categoricalCrossCount);
+        return objectMapper.writeValueAsString(convertedCategoricalCrossCount);
     }
 
     public static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
