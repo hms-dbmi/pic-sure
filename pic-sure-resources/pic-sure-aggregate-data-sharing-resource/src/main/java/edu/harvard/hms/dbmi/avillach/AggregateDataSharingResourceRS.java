@@ -640,7 +640,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         return objectMapper.writeValueAsString(convertedCategoricalCrossCount);
     }
 
-    public static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
+    private static boolean skipKey(Map.Entry<String, Map<String, Integer>> entry) {
         return entry.getKey().equals(CONSENTS_KEY) ||
                 entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
                 entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
@@ -654,7 +654,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @param axisMap - Map of the categories and their counts
      * @return Map<String, Integer> - sorted map of the categories and their counts with the "other" category added if necessary
      */
-    public Map<String, Integer> processResults(Map<String, Integer> axisMap) {
+    private Map<String, Integer> processResults(Map<String, Integer> axisMap) {
         Map<String, Integer> finalAxisMap = axisMap;
         if (LIMITED && axisMap.size() > (LIMIT_SIZE + 1)) {
             //Create Other bar and sort
