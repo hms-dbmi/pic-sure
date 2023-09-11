@@ -165,6 +165,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@Path("/query/{resourceQueryId}/status")
 	@Override
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
+		// Validate the queryId
+		try {
+			UUID.fromString(queryId);
+		} catch (IllegalArgumentException e) {
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
+
 		logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
 		checkQuery(statusRequest);
 		HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
@@ -175,6 +182,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 	@Path("/query/{resourceQueryId}/result")
 	@Override
 	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
+		// Validate the queryId
+		try {
+			UUID.fromString(queryId);
+		} catch (IllegalArgumentException e) {
+			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+		}
 		logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
 		checkQuery(resultRequest);
 		HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
