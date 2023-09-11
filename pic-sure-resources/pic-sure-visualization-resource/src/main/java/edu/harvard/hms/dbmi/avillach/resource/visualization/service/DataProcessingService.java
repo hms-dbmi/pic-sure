@@ -19,14 +19,6 @@ import java.util.stream.Stream;
 public class DataProcessingService {
 
     private Logger logger = LoggerFactory.getLogger(DataProcessingService.class);
-
-    private static final String CONSENTS_KEY = "\\_consents\\";
-    private static final String HARMONIZED_CONSENT_KEY = "\\_harmonized_consent\\";
-    private static final String TOPMED_CONSENTS_KEY = "\\_topmed_consents\\";
-    private static final String PARENT_CONSENTS_KEY = "\\_parent_consents\\";
-    private static final int MAX_X_LABEL_LINE_LENGTH = 45;
-    boolean LIMITED = true;
-    int LIMIT_SIZE = 7;
     private static final double THIRD = 0.3333333333333333;
 
     private RestTemplate restTemplate;
