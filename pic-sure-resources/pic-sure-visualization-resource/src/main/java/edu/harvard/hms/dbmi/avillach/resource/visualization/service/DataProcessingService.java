@@ -53,7 +53,13 @@ public class DataProcessingService {
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             if (VisualizationUtil.skipKey(entry)) continue;
-            Map<String, Integer> axisMap = VisualizationUtil.processResults(entry.getValue());
+
+            Map<String, Integer> axisMap = null;
+            if (isObfuscated) {
+                axisMap = VisualizationUtil.processResults(entry.getValue());
+            } else {
+                axisMap = new LinkedHashMap<>(entry.getValue());
+            }
 
             String title = getChartTitle(entry.getKey());
             categoricalDataList.add(new CategoricalData(
