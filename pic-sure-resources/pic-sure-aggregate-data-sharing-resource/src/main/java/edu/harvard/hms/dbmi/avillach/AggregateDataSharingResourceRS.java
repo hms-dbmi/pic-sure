@@ -46,6 +46,7 @@ import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromRespon
 @Singleton
 public class AggregateDataSharingResourceRS implements IResourceRS {
 
+
     @Inject
     private ApplicationProperties properties;
 
@@ -757,5 +758,4 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         }
         return Optional.empty();
     }
-
 }
