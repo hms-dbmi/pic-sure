@@ -310,6 +310,13 @@ public class GA4GHResourceRS implements IResourceRS
 	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
 		logger.debug("Getting status for for queryId {}", queryId);
 
+        // validate the queryId is a UUID
+        try {
+            UUID.fromString(queryId);
+        } catch (IllegalArgumentException e) {
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+
 		retrieveTargetUrl(statusRequest);
         Map<String, String> resourceCredentials = statusRequest.getResourceCredentials();
 		if (resourceCredentials == null) {
