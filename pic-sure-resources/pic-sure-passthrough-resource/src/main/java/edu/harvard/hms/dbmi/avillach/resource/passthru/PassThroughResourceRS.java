@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
@@ -275,6 +276,47 @@ public class PassThroughResourceRS implements IResourceRS {
 			logger.error("Error encoding search payload", e);
 			throw new ApplicationException(
 					"Error encoding search for resource with id " + searchRequest.getResourceUUID());
+		}
+	}
+
+	@GET
+	@Path("/search/{resourceId}/values/")
+	@Consumes("*/*")
+	public PaginatedSearchResult<?> searchGenomicConceptValues(
+			@PathParam("resourceId") UUID resourceId,
+			QueryRequest searchQueryRequest,
+			@QueryParam("genomicConceptPath") String genomicConceptPath,
+			@QueryParam("query") String query,
+			@QueryParam("page") Integer page,
+			@QueryParam("size") Integer size,
+			@Context HttpHeaders headers
+	) {
+		if (searchQueryRequest == null) {
+			throw new ProtocolException(ProtocolException.MISSING_DATA);
+		}
+		String pathName = "/search/" + properties.getTargetResourceId()
+				+ "/values/?genomicConceptPath="+genomicConceptPath
+				+ "&query=" + query
+				+ "&page=" + page.toString()
+				+ "&size=" + size.toString();
+
+		try {
+			QueryRequest chainRequest = new QueryRequest();
+			chainRequest.setResourceCredentials(searchQueryRequest.getResourceCredentials());
+			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+			String payload = objectMapper.writeValueAsString(chainRequest);
+			HttpResponse response = httpClient.retrievePostResponse(
+					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+			if (response.getStatusLine().getStatusCode() != 200) {
+				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+			}
+			return httpClient.readObjectFromResponse(response, PaginatedSearchResult.class);
+		} catch (IOException e) {
+			logger.error("Error encoding search payload", e);
+			throw new ApplicationException(
+					"Error encoding search for resource with id " + searchQueryRequest.getResourceUUID());
 		}
 	}
 
