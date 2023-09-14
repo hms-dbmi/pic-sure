@@ -346,7 +346,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		QueryStatus expectedResponse = new QueryStatus();
 		expectedResponse.setResourceID(targetResourceId);
 
-		String requestUUID = UUID.randomUUID().toString();
+		UUID randomUUID = UUID.randomUUID();
+		String requestUUID = randomUUID.toString();
 
 		ProxyPostEndpointMocker.start(wireMockRule)
 			.withPath("/query/" + requestUUID + "/status")
@@ -355,7 +356,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 			.withStatusCode(200)
 			.commit();
 
-		QueryStatus actual = subject.queryStatus(requestUUID, originalRequest);
+		QueryStatus actual = subject.queryStatus(randomUUID, originalRequest);
 
 		// equality isn't defined for QueryRequest, and I'm scared to define it, so let's
 		// just compare resource IDs
@@ -372,7 +373,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 		Response expectedResponse = new OutboundJaxrsResponse(Response.Status.OK, new OutboundMessageContext());
 
-		String requestUUID = UUID.randomUUID().toString();
+		UUID randomUUID = UUID.randomUUID();
+		String requestUUID = randomUUID.toString();
 
 		ProxyPostEndpointMocker.start(wireMockRule)
 			.withPath("/query/" + requestUUID + "/result")
@@ -381,7 +383,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 			.withStatusCode(200)
 			.commit();
 
-		Response actual = subject.queryResult(requestUUID, originalRequest);
+		Response actual = subject.queryResult(randomUUID, originalRequest);
 
 		assertEquals(expectedResponse.getStatus(), actual.getStatus());
 	}
