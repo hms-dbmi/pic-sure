@@ -6,6 +6,8 @@ import javax.ws.rs.core.Response;
 import edu.harvard.dbmi.avillach.domain.*;
 import io.swagger.v3.oas.annotations.Operation;
 
+import java.util.UUID;
+
 @Path("/pic-sure")
 @Produces("application/json")
 @Consumes("application/json")
@@ -36,14 +38,14 @@ public interface IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Operation(hidden = true)
-	default QueryStatus queryStatus(String queryId, QueryRequest statusRequest) {
+	default QueryStatus queryStatus(UUID queryId, QueryRequest statusRequest) {
 		throw new NotSupportedException();
 	}
 
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Operation(hidden = true)
-	default Response queryResult(String queryId, QueryRequest resultRequest) {
+	default Response queryResult(UUID queryId, QueryRequest resultRequest) {
 		throw new NotSupportedException();
 	}
 

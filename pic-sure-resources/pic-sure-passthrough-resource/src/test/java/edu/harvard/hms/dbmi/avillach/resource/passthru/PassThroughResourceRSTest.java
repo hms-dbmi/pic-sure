@@ -144,7 +144,7 @@ class PassThroughResourceRSTest {
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
-			resource.queryResult(null, null);
+			resource.queryResult("", null);
 		}, "QueryID is required");
 
 		assertThrows(ProtocolException.class, () -> {
@@ -185,7 +185,7 @@ class PassThroughResourceRSTest {
 		when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
 
 		assertThrows(ProtocolException.class, () -> {
-			resource.queryStatus(null, null);
+			resource.queryStatus("", null);
 		}, "QueryID is required");
 
 		assertThrows(ProtocolException.class, () -> {
