@@ -231,8 +231,13 @@ public class VisualizationService {
      * @return Response - the binned data
      */
     public Response generateContinuousBin(QueryRequest continuousData) {
+        // validate the continuous data
+        if (continuousData == null || continuousData.getQuery() == null) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("Continuous data is required.").build();
+        }
+
         logger.info("Continuous data: " + continuousData.getQuery());
-        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<Map<String, Map<String, Integer>>>() {});
+        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {});
         Map<String, Map<String, Integer>> continuousProcessedData = dataProcessingServices.binContinuousData(continuousDataMap);
         return Response.ok(continuousProcessedData).build();
     }

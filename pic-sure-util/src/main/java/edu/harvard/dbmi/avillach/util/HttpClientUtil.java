@@ -335,7 +335,7 @@ public class HttpClientUtil {
 	private static HttpClient getConfiguredHttpClient() {
 		try {
 			SSLConnectionSocketFactory.getSocketFactory();
-			SSLContext sslContext = SSLContext.getInstance("TLS");
+			SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
 		    sslContext.init(null, null, null);
 		    String[] defaultCiphers = sslContext.getServerSocketFactory().getDefaultCipherSuites();
 			

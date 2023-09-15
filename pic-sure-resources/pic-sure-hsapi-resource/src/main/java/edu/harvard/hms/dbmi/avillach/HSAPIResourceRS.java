@@ -138,7 +138,7 @@ public class HSAPIResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusQuery) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusQuery) {
 		logger.debug("calling HSAPI Resource queryStatus() for query {}", queryId);
 		throw new UnsupportedOperationException("Query status is not implemented in this resource.  Please use query/sync");
 
@@ -147,7 +147,7 @@ public class HSAPIResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/result")
 	@Override
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest statusQuery) {
+	public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusQuery) {
 		logger.debug("calling HSAPI Resource queryResult() for query {}", queryId);
 		throw new UnsupportedOperationException("Query result is not implemented in this resource.  Please use query/sync");
 	}

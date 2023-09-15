@@ -163,31 +163,31 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     }
 
-    @POST
-    @Path("/query/{resourceQueryId}/status")
-    @Override
-    public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
-        logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
-        checkQuery(statusRequest);
-        HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
-        return readObjectFromResponse(response, QueryStatus.class);
-    }
+	@POST
+	@Path("/query/{resourceQueryId}/status")
+	@Override
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
+		logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
+		checkQuery(statusRequest);
+		HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
+		return readObjectFromResponse(response, QueryStatus.class);
+	}
 
-    @POST
-    @Path("/query/{resourceQueryId}/result")
-    @Override
-    public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
-        logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
-        checkQuery(resultRequest);
-        HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
-        try {
-            return Response.ok(response.getEntity().getContent()).build();
-        } catch (IOException e) {
-            throw new ApplicationException(
-                    "Error encoding query for resource with id " + resultRequest.getResourceUUID()
-            );
-        }
-    }
+	@POST
+	@Path("/query/{resourceQueryId}/result")
+	@Override
+	public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
+		logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
+		checkQuery(resultRequest);
+		HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
+		try {
+			return Response.ok(response.getEntity().getContent()).build();
+		} catch (IOException e) {
+			throw new ApplicationException(
+				"Error encoding query for resource with id " + resultRequest.getResourceUUID()
+			);
+		}
+	}
 
     private HttpResponse postRequest(QueryRequest statusRequest, String pathName) {
         try {
