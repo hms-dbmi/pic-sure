@@ -307,7 +307,7 @@ public class GA4GHResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
 		logger.debug("Getting status for for queryId {}", queryId);
 
 		retrieveTargetUrl(statusRequest);
@@ -351,7 +351,7 @@ public class GA4GHResourceRS implements IResourceRS
 	@POST
 	@Path("/query/{dataObjectId}/result")
 	@Override
-	public Response queryResult(@PathParam("dataObjectId") String dataObjectId, QueryRequest statusRequest) {
+	public Response queryResult(@PathParam("dataObjectId") UUID dataObjectId, QueryRequest statusRequest) {
         logger.debug("queryResult() calling dataobject/{}", dataObjectId);
 
 		retrieveTargetUrl(statusRequest);
