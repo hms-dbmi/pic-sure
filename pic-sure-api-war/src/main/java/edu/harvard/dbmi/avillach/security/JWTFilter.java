@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.Query;
-import edu.harvard.dbmi.avillach.data.entity.User;
+import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
@@ -90,7 +90,7 @@ public class JWTFilter implements ContainerRequestFilter {
 			String userForLogging = null;
 
 			try {
-				User authenticatedUser = null;
+				AuthUser authenticatedUser = null;
 
 				authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
 
@@ -103,6 +103,7 @@ public class JWTFilter implements ContainerRequestFilter {
 
 				//The request context wants to remember who the user is
 				requestContext.setProperty("username", userForLogging);
+				requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
 
 				logger.info("User - " + userForLogging + " - has just passed all the authentication and authorization layers.");
 
@@ -127,7 +128,7 @@ public class JWTFilter implements ContainerRequestFilter {
 	 * @throws IOException
 	 */
 
-	private User callTokenIntroEndpoint(ContainerRequestContext requestContext, String token, String userIdClaim) {
+	private AuthUser callTokenIntroEndpoint(ContainerRequestContext requestContext, String token, String userIdClaim) {
 		logger.debug("TokenIntrospection - extractUserFromTokenIntrospection() starting...");
 
 		String token_introspection_url = picSureWarInit.getToken_introspection_url();
@@ -253,8 +254,11 @@ public class JWTFilter implements ContainerRequestFilter {
 				throw new NotAuthorizedException("Token invalid or expired");
 			}
 
-			String sub = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
-			User user = new User().setSubject(sub).setUserId(sub);
+			String userId = responseContent.get(userIdClaim) != null ? responseContent.get(userIdClaim).asText() : null;
+			String sub = responseContent.get("sub") != null ? responseContent.get("sub").asText() : null;
+			String email = responseContent.get("email") != null ? responseContent.get("email").asText() : null;
+			String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
+			AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles);
 			return user;
 		} catch (IOException ex){
 			logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post
