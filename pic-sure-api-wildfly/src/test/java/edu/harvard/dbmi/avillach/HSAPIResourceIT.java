@@ -33,7 +33,7 @@ public class HSAPIResourceIT extends BaseIT {
 
 	@Test
 	public void testInfo() throws UnsupportedOperationException, IOException {
-		QueryRequest request = new QueryRequest();
+		QueryRequest request = new GeneralQueryRequest();
 
 		String body = objectMapper.writeValueAsString(request);
 		HttpResponse response = retrievePostResponse(composeURL(hsapiEndpointUrl,"pic-sure/hsapi/info"), headers, body);
@@ -51,7 +51,7 @@ public class HSAPIResourceIT extends BaseIT {
 
 	@Test
 	public void testSearch() throws UnsupportedOperationException, IOException {
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 
 		String body = objectMapper.writeValueAsString(queryRequest);
 
@@ -65,7 +65,7 @@ public class HSAPIResourceIT extends BaseIT {
 
 	@Test
 	public void testQuery() throws UnsupportedOperationException, IOException {
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 
 		String body = objectMapper.writeValueAsString(queryRequest);
 
@@ -111,7 +111,7 @@ public class HSAPIResourceIT extends BaseIT {
 						.withStatus(200)
 						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 		String body = objectMapper.writeValueAsString(queryRequest);
 
 		//Should throw an error if missing query object

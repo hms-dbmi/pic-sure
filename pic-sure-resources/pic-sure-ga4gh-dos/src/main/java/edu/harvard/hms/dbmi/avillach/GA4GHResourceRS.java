@@ -2,13 +2,8 @@ package edu.harvard.hms.dbmi.avillach;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.lang.annotation.Annotation;
-import java.net.URI;
-import java.net.URLEncoder;
 import java.util.*;
 
-import javax.lang.model.type.ArrayType;
-import javax.persistence.NoResultException;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
 
@@ -21,7 +16,6 @@ import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.SerializationUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.commons.lang3.StringUtils;

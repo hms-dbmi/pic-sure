@@ -2,7 +2,7 @@ package edu.harvard.dbmi.avillach;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
@@ -60,7 +60,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
 
     @Test
     public void testInfoEndpoints() {
-        QueryRequest infoRequest = new QueryRequest();
+        GeneralQueryRequest infoRequest = new GeneralQueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         infoRequest.setResourceCredentials(clientCredentials);
 
