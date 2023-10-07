@@ -8,6 +8,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.*;
@@ -153,11 +154,16 @@ public class PicsureRS {
 
 		@Parameter
 		@QueryParam("isInstitute")
-		Boolean isInstitutionQuery
+		Boolean isInstitutionQuery,
+
+		@Context SecurityContext context
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.query(dataQueryRequest, headers) :
-			queryService.institutionalQuery(dataQueryRequest, headers);
+		if (isInstitutionQuery == null || !isInstitutionQuery) {
+			return queryService.query(dataQueryRequest, headers);
+		} else {
+			String email = context.getUserPrincipal().getName();
+			return queryService.institutionalQuery((FederatedQueryRequest) dataQueryRequest, headers, email);
+		}
 	}
 	
 	@POST
@@ -194,9 +200,11 @@ public class PicsureRS {
 		@QueryParam("isInstitute")
 		Boolean isInstitutionQuery
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.queryStatus(queryId, credentialsQueryRequest, headers) :
-			queryService.institutionQueryStatus(queryId, credentialsQueryRequest, headers);
+		if (credentialsQueryRequest instanceof GeneralQueryRequest) {
+			return queryService.queryStatus(queryId, (GeneralQueryRequest) credentialsQueryRequest, headers);
+		} else {
+			return queryService.institutionQueryStatus(queryId, (FederatedQueryRequest) credentialsQueryRequest, headers);
+		}
 	}
 	
 	@POST

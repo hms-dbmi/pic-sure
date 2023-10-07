@@ -76,7 +76,7 @@ public class IRCTResourceIT extends BaseIT {
 						.withStatus(200)
 						.withBody(objectMapper.writeValueAsString(qfs))));
 
-		QueryRequest request = new QueryRequest();
+		QueryRequest request = new GeneralQueryRequest();
 
 		//Should throw an error if credentials missing or wrong
 		Map<String, String> credentials = new HashMap<String, String>();
@@ -147,7 +147,7 @@ public class IRCTResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(emptyResult))));
 
 
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery("%antibody%");
@@ -254,7 +254,7 @@ public class IRCTResourceIT extends BaseIT {
 						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
 
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 		Map<String, String> credentials = new HashMap<String, String>();
 		queryRequest.setResourceCredentials(credentials);
 		queryRequest.setQuery(queryString);
@@ -363,7 +363,7 @@ public class IRCTResourceIT extends BaseIT {
 						.withStatus(200)
 						.withBody(objectMapper.writeValueAsString(resultResponse))));
 
-		QueryRequest queryRequest = new QueryRequest();
+		QueryRequest queryRequest = new GeneralQueryRequest();
 	    Map<String, String> credentials = new HashMap<String, String>();
 	    queryRequest.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(queryRequest);
@@ -433,7 +433,7 @@ public class IRCTResourceIT extends BaseIT {
 						.withStatus(200)
 						.withBody(objectMapper.writeValueAsString(resourceResponse))));
 
-		QueryRequest request = new QueryRequest();
+		QueryRequest request = new GeneralQueryRequest();
         Map<String, String>credentials = new HashMap<String, String>();
         request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);

@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.ApplicationProperties;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.ResultType;
@@ -30,7 +30,7 @@ public class HpdsServiceTests {
     @Test
     @DisplayName("Test Query Has Null Authorization token")
     void TestNullAuthHeader() {
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         queryRequest.getResourceCredentials().put("Authorization", null);
         queryRequest.setQuery(new Query());
         Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
@@ -41,7 +41,7 @@ public class HpdsServiceTests {
     @Test
     @DisplayName("Test Query Has No Authorization header")
     void TestNoAuthHeader() {
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         queryRequest.setQuery(new Query());
         Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CATEGORICAL_CROSS_COUNT);
         assertNotNull(crossCountsMap);
@@ -51,7 +51,7 @@ public class HpdsServiceTests {
     @Test
     @DisplayName("Test Query Null Result type")
     void TestNullResultType() {
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         queryRequest.setQuery(new Query());
         Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, null);
         assertNotNull(crossCountsMap);
@@ -61,7 +61,7 @@ public class HpdsServiceTests {
     @Test
     @DisplayName("Test Query Wrong Result type")
     void TestWrongResultType() {
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         queryRequest.setQuery(new Query());
         Map<String, Map<String, Integer>> crossCountsMap = service.getAuthCrossCountsMap(queryRequest, ResultType.CROSS_COUNT);
         assertNotNull(crossCountsMap);
