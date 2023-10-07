@@ -8,12 +8,10 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.service.FormatService;
-import edu.harvard.dbmi.avillach.service.PicsureInfoService;
-import edu.harvard.dbmi.avillach.service.PicsureQueryService;
-import edu.harvard.dbmi.avillach.service.PicsureSearchService;
+import edu.harvard.dbmi.avillach.service.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.info.Info;
@@ -153,11 +151,15 @@ public class PicsureRS {
 
 		@Parameter
 		@QueryParam("isInstitute")
-		Boolean isInstitutionQuery
+		Boolean isInstitutionQuery,
+
+		@Context SecurityContext context
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.query(dataQueryRequest, headers) :
-			queryService.institutionalQuery(dataQueryRequest, headers);
+		if (isInstitutionQuery == null || !isInstitutionQuery) {
+			return queryService.query(dataQueryRequest, headers);
+		} else {
+			return queryService.institutionalQuery(dataQueryRequest, headers, context.getUserPrincipal().getName());
+		}
 	}
 	
 	@POST

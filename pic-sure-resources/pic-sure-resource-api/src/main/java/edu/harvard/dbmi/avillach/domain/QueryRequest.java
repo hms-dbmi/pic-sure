@@ -56,6 +56,9 @@ public class QueryRequest {
 	@Schema(hidden = true)
 	private UUID commonAreaUUID;
 
+	@Schema(hidden = true)
+	private String institutionOfOrigin;
+
 	public Map<String, String> getResourceCredentials() {
 		return resourceCredentials;
 	}
@@ -86,5 +89,13 @@ public class QueryRequest {
 
 	public void setCommonAreaUUID(UUID commonAreaUUID) {
 		this.commonAreaUUID = commonAreaUUID;
+	}
+
+	public String getInstitutionOfOrigin() {
+		return institutionOfOrigin;
+	}
+
+	public void setInstitutionOfOrigin(String institutionOfOrigin) {
+		this.institutionOfOrigin = institutionOfOrigin;
 	}
 }

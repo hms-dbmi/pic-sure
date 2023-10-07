@@ -5,8 +5,10 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -102,6 +104,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 			chainRequest.setCommonAreaUUID(queryRequest.getCommonAreaUUID());
+			chainRequest.setInstitutionOfOrigin(queryRequest.getInstitutionOfOrigin());
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			HttpResponse response = httpClient.retrievePostResponse(
