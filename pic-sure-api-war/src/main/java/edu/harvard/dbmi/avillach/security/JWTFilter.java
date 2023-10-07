@@ -8,7 +8,7 @@ import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
@@ -204,7 +204,7 @@ public class JWTFilter implements ContainerRequestFilter {
 						edu.harvard.dbmi.avillach.data.entity.Resource resource = resourceRepo.getById(resourceUUID);
 						//logger.info("resource obj: " + resource + "    path: " + resource.getResourceRSPath());
 						if (resource != null && resource.getResourceRSPath() != null){
-							QueryRequest queryRequest = new QueryRequest();
+							GeneralQueryRequest queryRequest = new GeneralQueryRequest();
 							queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 							queryRequest.setResourceUUID(resourceUUID);
 							queryRequest.setQuery(((Map)queryObject).get("query"));

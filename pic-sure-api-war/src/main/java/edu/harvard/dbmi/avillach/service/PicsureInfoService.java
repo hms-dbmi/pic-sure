@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.util.Utilities;
@@ -46,7 +47,7 @@ public class PicsureInfoService {
 			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
 		}
 		if (credentialsQueryRequest == null){
-			credentialsQueryRequest = new QueryRequest();
+			credentialsQueryRequest = new GeneralQueryRequest();
 		}
 		if (credentialsQueryRequest.getResourceCredentials() == null){
 			credentialsQueryRequest.setResourceCredentials(new HashMap<String, String>());

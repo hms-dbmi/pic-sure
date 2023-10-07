@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.Assert.*;
@@ -270,8 +270,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertTrue(numericResult >= 10);
 	}
 
-	private QueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
-		return mapper.readValue(getTestJson("test_cross_count_query"), QueryRequest.class);
+	private GeneralQueryRequest getTestQuery() throws JsonProcessingException, JsonMappingException, IOException {
+		return mapper.readValue(getTestJson("test_cross_count_query"), GeneralQueryRequest.class);
 	}
 
 	private String getTestJson(String json_file_name) throws IOException {
@@ -313,9 +313,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	@Test
 	public void shouldPostQuery() {
 		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-		QueryRequest originalRequest =
+		GeneralQueryRequest originalRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
-		QueryRequest postedRequest =
+		GeneralQueryRequest postedRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
 
 		QueryStatus expectedResponse = new QueryStatus();
@@ -338,9 +338,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	@Test
 	public void shouldPostQueryStatus() {
 		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-		QueryRequest originalRequest =
+		GeneralQueryRequest originalRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
-		QueryRequest postedRequest =
+		GeneralQueryRequest postedRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
 
 		QueryStatus expectedResponse = new QueryStatus();
@@ -366,9 +366,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	@Test
 	public void shouldPostQueryResult() {
 		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-		QueryRequest originalRequest =
+		GeneralQueryRequest originalRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
-		QueryRequest postedRequest =
+		GeneralQueryRequest postedRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
 
 		Response expectedResponse = new OutboundJaxrsResponse(Response.Status.OK, new OutboundMessageContext());
@@ -391,9 +391,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 	@Test
 	public void shouldHandleErrorResponse() {
 		UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-		QueryRequest originalRequest =
+		GeneralQueryRequest originalRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
-		QueryRequest postedRequest =
+		GeneralQueryRequest postedRequest =
 			createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
 
 		QueryStatus expectedResponse = new QueryStatus();
@@ -418,8 +418,8 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 		assertNotNull(exception);
 	}
 
-	private static QueryRequest createRequest(String query, Map<String, String> credentials, UUID resourceUUID) {
-		QueryRequest originalRequest = new QueryRequest();
+	private static GeneralQueryRequest createRequest(String query, Map<String, String> credentials, UUID resourceUUID) {
+		GeneralQueryRequest originalRequest = new GeneralQueryRequest();
 		originalRequest.setQuery(query);
 		originalRequest.setResourceCredentials(credentials);
 		originalRequest.setResourceUUID(resourceUUID);

@@ -34,7 +34,7 @@ public class PicsureInfoServiceIT extends BaseIT {
         HttpResponse response = retrievePostResponse(uri, headers, "");
         assertEquals("Missing credentials should return 401", 401, response.getStatusLine().getStatusCode());
 
-        QueryRequest infoRequest = new QueryRequest();
+        QueryRequest infoRequest = new GeneralQueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         //TODO I guess we need some way to identify the token key?  Maybe V1.4_BEARER_TOKEN
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, "testToken");

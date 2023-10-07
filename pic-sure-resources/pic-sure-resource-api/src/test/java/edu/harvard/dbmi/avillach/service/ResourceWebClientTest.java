@@ -6,7 +6,6 @@ import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.apache.commons.io.IOUtils;
 import org.glassfish.jersey.internal.RuntimeDelegateImpl;
@@ -66,7 +65,7 @@ public class ResourceWebClientTest {
         } catch (ProtocolException e) {
             assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
@@ -138,7 +137,7 @@ public class ResourceWebClientTest {
             assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
 
-        QueryRequest request = new QueryRequest();
+        GeneralQueryRequest request = new GeneralQueryRequest();
         try {
             cut.search(testURL, request);
             fail();
@@ -249,7 +248,7 @@ public class ResourceWebClientTest {
         } catch (ProtocolException e) {
             assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
-        QueryRequest request = new QueryRequest();
+        GeneralQueryRequest request = new GeneralQueryRequest();
 //        request.setTargetURL("/query");
 
         try {
@@ -332,7 +331,7 @@ public class ResourceWebClientTest {
 //        } catch (ProtocolException e) {
 //            assertEquals(ProtocolException.MISSING_DATA, e.getContent());
 //        }
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
@@ -407,7 +406,7 @@ public class ResourceWebClientTest {
         } catch (ProtocolException e) {
             assertEquals(ProtocolException.MISSING_DATA, e.getContent());
         }
-        QueryRequest queryRequest = new QueryRequest();
+        GeneralQueryRequest queryRequest = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<>();
         credentials.put(ResourceWebClient.BEARER_TOKEN_KEY, token);
         queryRequest.setResourceCredentials(credentials);
