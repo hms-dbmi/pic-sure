@@ -26,17 +26,19 @@ public class PatientVariantJoinHandler {
         this.variantService = variantService;
     }
 
-    public List<Set<Integer>> getPatientIdsForIntersectionOfVariantSets(List<Set<Integer>> filteredIdSets,
+    public BigInteger getPatientIdsForIntersectionOfVariantSets(Set<Integer> patientSubset,
                                                                         VariantIndex intersectionOfInfoFilters) {
 
-        List<Set<Integer>> returnList = new ArrayList<>(filteredIdSets);
         if(!intersectionOfInfoFilters.isEmpty()) {
             Set<Integer> patientsInScope;
+            // todo: don't do this every time
             Set<Integer> patientIds = Arrays.asList(
                     variantService.getPatientIds()).stream().map((String id)->{
                 return Integer.parseInt(id);}).collect(Collectors.toSet());
-            if(!filteredIdSets.isEmpty()) {
-                patientsInScope = Sets.intersection(patientIds, filteredIdSets.get(0));
+            if(!patientSubset.isEmpty()) {
+                // for now, empty means there were no phenotypic filters and all patients are eligible. we should
+                // change this to be nullable or have a separate method, this is very counter intuitive
+                patientsInScope = Sets.intersection(patientIds, patientSubset);
             } else {
                 patientsInScope = patientIds;
             }
@@ -45,6 +47,7 @@ public class PatientVariantJoinHandler {
 
             Set<String> variantsInScope = intersectionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
 
+            // todo: use BucketIndexBySample.filterVariantSetForPatientSet here?
             Collection<List<String>> values = variantsInScope.stream()
                     .collect(Collectors.groupingByConcurrent((variantSpec) -> {
                         return new VariantSpec(variantSpec).metadata.offset / 1000;
@@ -82,7 +85,7 @@ public class PatientVariantJoinHandler {
                     });
                 });
             }
-            Set<Integer> ids = new TreeSet<Integer>();
+/*            Set<Integer> ids = new TreeSet<Integer>();
             String bitmaskString = matchingPatients[0].toString(2);
             for(int x = 2;x < bitmaskString.length()-2;x++) {
                 if('1'==bitmaskString.charAt(x)) {
@@ -90,13 +93,11 @@ public class PatientVariantJoinHandler {
                     ids.add(Integer.parseInt(patientId));
                 }
             }
-            returnList.add(ids);
-            return returnList;
-
+            return ids;*/
+            return matchingPatients[0];
         }else {
             log.error("No matches found for info filters.");
-            returnList.add(new TreeSet<>());
-            return returnList;
+            return createMaskForPatientSet(new HashSet<>());
         }
     }
 

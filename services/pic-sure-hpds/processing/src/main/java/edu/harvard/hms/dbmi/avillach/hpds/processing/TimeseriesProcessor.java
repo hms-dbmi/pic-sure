@@ -60,7 +60,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 
 	@Override
 	public void runQuery(Query query, AsyncResult result) {
-		TreeSet<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
+		Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
 
 		if (ID_BATCH_SIZE > 0) {
 			try {
@@ -82,7 +82,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 	 * @param idList
 	 * @throws IOException
 	 */
-	private void exportTimeData(Query query, AsyncResult result, TreeSet<Integer> idList) throws IOException {
+	private void exportTimeData(Query query, AsyncResult result, Set<Integer> idList) throws IOException {
 
 		Set<String> exportedConceptPaths = new HashSet<String>();
 		//get a list of all fields mentioned in the query;  export all data associated with any included field
@@ -96,7 +96,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 		addDataForConcepts(pathList, exportedConceptPaths, idList, result);
 	}
 
-	private void addDataForConcepts(Collection<String> pathList, Set<String> exportedConceptPaths, TreeSet<Integer> idList, AsyncResult result) throws IOException {
+	private void addDataForConcepts(Collection<String> pathList, Set<String> exportedConceptPaths, Set<Integer> idList, AsyncResult result) throws IOException {
 		for (String conceptPath : pathList) {
 			//skip concepts we may already have encountered
 			if(exportedConceptPaths.contains(conceptPath)) {

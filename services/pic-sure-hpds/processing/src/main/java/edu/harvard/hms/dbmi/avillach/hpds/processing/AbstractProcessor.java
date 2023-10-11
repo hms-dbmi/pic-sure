@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -15,7 +14,6 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.*;
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
-import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
@@ -23,7 +21,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter.FloatFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,7 +57,7 @@ public class AbstractProcessor {
 
 	private final VariantIndexCache variantIndexCache;
 
-	private final PatientVariantJoinHandler patientVariantJoinHandler;
+	private final GenomicProcessor genomicProcessor;
 
 	private final LoadingCache<String, List<String>> infoStoreValuesCache = CacheBuilder.newBuilder().build(new CacheLoader<>() {
 		@Override
@@ -79,10 +76,14 @@ public class AbstractProcessor {
 	});
 
 	@Autowired
-	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, VariantService variantService, PatientVariantJoinHandler patientVariantJoinHandler) throws ClassNotFoundException, IOException, InterruptedException {
+	public AbstractProcessor(
+			PhenotypeMetaStore phenotypeMetaStore,
+			VariantService variantService,
+			GenomicProcessor genomicProcessor
+	) throws ClassNotFoundException, IOException, InterruptedException {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.variantService = variantService;
-		this.patientVariantJoinHandler = patientVariantJoinHandler;
+		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
 		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
@@ -143,14 +144,14 @@ public class AbstractProcessor {
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
 							 Map<String, FileBackedByteIndexedInfoStore> infoStores, List<String> infoStoreColumns,
-							 VariantService variantService, VariantIndexCache variantIndexCache, PatientVariantJoinHandler patientVariantJoinHandler) {
+							 VariantService variantService, VariantIndexCache variantIndexCache, GenomicProcessor genomicProcessor) {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.store = store;
 		this.infoStores = infoStores;
 		this.infoStoreColumns = infoStoreColumns;
 		this.variantService = variantService;
 		this.variantIndexCache = variantIndexCache;
-		this.patientVariantJoinHandler = patientVariantJoinHandler;
+		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
 		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
@@ -185,39 +186,44 @@ public class AbstractProcessor {
 	}
 
 	/**
-	 * For each filter in the query, return a set of patient ids that match. The order of these sets in the
-	 * returned list of sets does not matter and cannot currently be tied back to the filter that generated
-	 * it.
 	 *
 	 * @param query
 	 * @return
 	 */
-	protected List<Set<Integer>> idSetsForEachFilter(Query query) {
+	protected Set<Integer> idSetsForEachFilter(Query query) {
 		DistributableQuery distributableQuery = new DistributableQuery();
+        List<Set<Integer>> patientIdSets = new ArrayList<>();
 
 		try {
-			addIdSetsForAnyRecordOf(query, distributableQuery);
-			addIdSetsForRequiredFields(query, distributableQuery);
-			addIdSetsForNumericFilters(query, distributableQuery);
-			addIdSetsForCategoryFilters(query, distributableQuery);
+            getPatientIdsForAnyRecordOf(query).map(patientIdSets::add);
+            patientIdSets.addAll(getIdSetsForNumericFilters(query));
+            patientIdSets.addAll(getIdSetsForRequiredFields(query, distributableQuery));
+            patientIdSets.addAll(getIdSetsForCategoryFilters(query, distributableQuery));
 		} catch (InvalidCacheLoadException e) {
 			log.warn("Invalid query supplied: " + e.getLocalizedMessage());
-			distributableQuery.addAndClausePatients(new HashSet<>()); // if an invalid path is supplied, no patients should match.
+			patientIdSets.add(new HashSet<>()); // if an invalid path is supplied, no patients should match.
 		}
 
 		Set<Integer> phenotypicPatientSet;
 		//AND logic to make sure all patients match each filter
-		if(distributableQuery.getPhenotypicQueryPatientSets().size()>0) {
-			phenotypicPatientSet = applyBooleanLogic(distributableQuery.getPhenotypicQueryPatientSets());
+		if(patientIdSets.size()>0) {
+			phenotypicPatientSet = applyBooleanLogic(patientIdSets);
 		} else {
+            // if there are no patient filters, use all patients.
+            // todo: we should not have to send these
 			phenotypicPatientSet = Arrays.stream(variantService.getPatientIds())
 					.map(String::trim)
 					.map(Integer::parseInt)
 					.collect(Collectors.toSet());
 		}
-		// todo: use this patient id set going forward
+		distributableQuery.setVariantInfoFilters(query.getVariantInfoFilters());
+        distributableQuery.setPatientIds(phenotypicPatientSet);
 
-		return addIdSetsForVariantInfoFilters(query, distributableQuery);
+        if (distributableQuery.hasFilters()) {
+            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMaskForVariantInfoFilters(distributableQuery);
+        }
+
+		return phenotypicPatientSet;
 	}
 
 	/**
@@ -227,13 +233,12 @@ public class AbstractProcessor {
 	 * @param query
 	 * @return
 	 */
-	public TreeSet<Integer> getPatientSubsetForQuery(Query query) {
-		List<Set<Integer>> filteredIdSets;
+	public Set<Integer> getPatientSubsetForQuery(Query query) {
+		Set<Integer> patientIdSet = idSetsForEachFilter(query);
 
-		filteredIdSets = idSetsForEachFilter(query);
-
-		TreeSet<Integer> idList;
-		if(filteredIdSets.isEmpty()) {
+        // todo: make sure this can safely be ignored
+		/*TreeSet<Integer> idList;
+		if(patientIdSet.isEmpty()) {
 			if(variantService.getPatientIds().length > 0 ) {
 				idList = new TreeSet(
 						Sets.union(phenotypeMetaStore.getPatientIds(),
@@ -245,29 +250,31 @@ public class AbstractProcessor {
 				idList = phenotypeMetaStore.getPatientIds();
 			}
 		}else {
-			idList = new TreeSet<>(applyBooleanLogic(filteredIdSets));
-		}
-		return idList;
+			idList = new TreeSet<>(applyBooleanLogic(patientIdSet));
+		}*/
+		return patientIdSet;
 	}
 
-	private void addIdSetsForRequiredFields(Query query, DistributableQuery distributableQuery) {
+	private List<Set<Integer>> getIdSetsForRequiredFields(Query query, DistributableQuery distributableQuery) {
 		if(!query.getRequiredFields().isEmpty()) {
-			query.getRequiredFields().forEach(path -> {
-				if (VariantUtils.pathIsVariantSpec(path)) {
-					// todo: implement this logic in the genomic nodes
-					//VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
-					//TreeSet<Integer> patientsInScope = new TreeSet<>();
-					//addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1", "1/1"}, path, patientsInScope, bucketCache);
-					//return patientsInScope;
-					distributableQuery.addRequiredVariantField(path);
-				} else {
-					distributableQuery.addAndClausePatients(new HashSet<Integer>(getCube(path).keyBasedIndex()));
-				}
-			});
-		}
+            return query.getRequiredFields().stream().map(path -> {
+                if (VariantUtils.pathIsVariantSpec(path)) {
+                    // todo: implement this logic in the genomic nodes
+                    //VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
+                    //TreeSet<Integer> patientsInScope = new TreeSet<>();
+                    //addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1", "1/1"}, path, patientsInScope, bucketCache);
+                    //return patientsInScope;
+                    distributableQuery.addRequiredVariantField(path);
+                    return null;
+                } else {
+                    return new HashSet<Integer>(getCube(path).keyBasedIndex());
+                }
+            }).filter(Objects::nonNull).collect(Collectors.toList());
+        }
+        return List.of();
 	}
 
-	private void addIdSetsForAnyRecordOf(Query query, DistributableQuery distributableQuery) {
+	private Optional<Set<Integer>> getPatientIdsForAnyRecordOf(Query query) {
 		if(!query.getAnyRecordOf().isEmpty()) {
 			// This is an OR aggregation of anyRecordOf filters
 			Set<Integer> anyRecordOfPatientSet = query.getAnyRecordOf().parallelStream().flatMap(path -> {
@@ -276,36 +283,39 @@ public class AbstractProcessor {
 				}
 				return (Stream<Integer>) getCube(path).keyBasedIndex().stream();
 			}).collect(Collectors.toSet());
-			distributableQuery.addAndClausePatients(anyRecordOfPatientSet);
+			return Optional.of(anyRecordOfPatientSet);
 		}
+        return Optional.empty();
 	}
 
-	private void addIdSetsForNumericFilters(Query query, DistributableQuery distributableQuery) {
+	private List<Set<Integer>> getIdSetsForNumericFilters(Query query) {
 		if(!query.getNumericFilters().isEmpty()) {
-			query.getNumericFilters().forEach((key, value) -> {
-				Set<Integer> keysForRange = getCube(key).getKeysForRange(value.getMin(), value.getMax());
-				distributableQuery.addAndClausePatients(keysForRange);
-			});
+			return query.getNumericFilters().entrySet().stream().map(entry -> {
+				Set<Integer> keysForRange = getCube(entry.getKey()).getKeysForRange(entry.getValue().getMin(), entry.getValue().getMax());
+				return keysForRange;
+			}).collect(Collectors.toList());
 		}
+        return List.of();
 	}
 
-	private void addIdSetsForCategoryFilters(Query query, DistributableQuery distributableQuery) {
+	private List<Set<Integer>> getIdSetsForCategoryFilters(Query query, DistributableQuery distributableQuery) {
 		if(!query.getCategoryFilters().isEmpty()) {
-			query.getCategoryFilters().forEach((key, categoryFilters) -> {
+			return query.getCategoryFilters().entrySet().stream().map((entry) -> {
 				Set<Integer> ids = new TreeSet<>();
-				if (VariantUtils.pathIsVariantSpec(key)) {
+				if (VariantUtils.pathIsVariantSpec(entry.getKey())) {
 					// todo: implement this logic in the genomic nodes
 					//VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
 					//addIdSetsForVariantSpecCategoryFilters(categoryFilters, key, ids, bucketCache);
-					distributableQuery.addVariantSpecCategoryFilter(key, categoryFilters);
+					distributableQuery.addVariantSpecCategoryFilter(entry.getKey(), entry.getValue());
 				} else {
-					for (String category : categoryFilters) {
-						ids.addAll(getCube(key).getKeysForValue(category));
+					for (String category : entry.getValue()) {
+						ids.addAll(getCube(entry.getKey()).getKeysForValue(category));
 					}
 				}
-				distributableQuery.addAndClausePatients(ids);
-			});
+				return ids;
+			}).collect(Collectors.toList());
 		}
+        return List.of();
 	}
 
 	private void addIdSetsForVariantSpecCategoryFilters(String[] zygosities, String key, Set<Integer> ids, VariantBucketHolder<VariantMasks> bucketCache) {
@@ -381,97 +391,11 @@ public class AbstractProcessor {
 		return indiscriminateVariantBitmask;
 	}
 
-	protected List<Set<Integer>> addIdSetsForVariantInfoFilters(Query query, DistributableQuery distributableQuery) {
-//		log.debug("filterdIDSets START size: " + filteredIdSets.size());
-		/* VARIANT INFO FILTER HANDLING IS MESSY */
-		if(!query.getVariantInfoFilters().isEmpty()) {
-			for(VariantInfoFilter filter : query.getVariantInfoFilters()){
-				ArrayList<VariantIndex> variantSets = new ArrayList<>();
-				addVariantsMatchingFilters(filter, variantSets);
-				log.info("Found " + variantSets.size() + " groups of sets for patient identification");
-				//log.info("found " + variantSets.stream().mapToInt(Set::size).sum() + " variants for identification");
-				if(!variantSets.isEmpty()) {
-					// INTERSECT all the variant sets.
-					VariantIndex intersectionOfInfoFilters = variantSets.get(0);
-					for(VariantIndex variantSet : variantSets) {
-						intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(variantSet);
-					}
-					// Apparently set.size() is really expensive with large sets... I just saw it take 17 seconds for a set with 16.7M entries
-					if(log.isDebugEnabled()) {
-						//IntSummaryStatistics stats = variantSets.stream().collect(Collectors.summarizingInt(set->set.size()));
-						//log.debug("Number of matching variants for all sets : " + stats.getSum());
-						//log.debug("Number of matching variants for intersection of sets : " + intersectionOfInfoFilters.size());
-					}
-					// add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-					return patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(filteredIdSets, intersectionOfInfoFilters);
-				}
-			}
-		}
-		return filteredIdSets;
-		/* END OF VARIANT INFO FILTER HANDLING */
-	}
-
-	protected void addVariantsMatchingFilters(VariantInfoFilter filter, ArrayList<VariantIndex> variantSets) {
-		// Add variant sets for each filter
-		if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
-			filter.categoryVariantInfoFilters.entrySet().parallelStream().forEach((Entry<String,String[]> entry) ->{
-				addVariantsMatchingCategoryFilter(variantSets, entry);
-			});
-		}
-		if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
-			filter.numericVariantInfoFilters.forEach((String column, FloatFilter doubleFilter)->{
-				FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-
-				doubleFilter.getMax();
-				Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
-				List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-				VariantIndex variants = new SparseVariantIndex(Set.of());
-				for(String value : valuesInRange) {
-					variants = variants.union(variantIndexCache.get(column, value));
-				}
-				variantSets.add(variants);
-			});
-		}
-	}
-
-	private void addVariantsMatchingCategoryFilter(ArrayList<VariantIndex> variantSets, Entry<String, String[]> entry) {
-		String column = entry.getKey();
-		String[] values = entry.getValue();
-		Arrays.sort(values);
-		FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
-
-		List<String> infoKeys = filterInfoCategoryKeys(values, infoStore);
-		/*
-		 * We want to union all the variants for each selected key, so we need an intermediate set
-		 */
-		VariantIndex[] categoryVariantSets = new VariantIndex[] {new SparseVariantIndex(Set.of())};
-
-		if(infoKeys.size()>1) {
-			infoKeys.stream().forEach((key)->{
-				VariantIndex variantsForColumnAndValue = variantIndexCache.get(column, key);
-				categoryVariantSets[0] = categoryVariantSets[0].union(variantsForColumnAndValue);
-			});
-		} else {
-			categoryVariantSets[0] = variantIndexCache.get(column, infoKeys.get(0));
-		}
-		variantSets.add(categoryVariantSets[0]);
-	}
-
-	private List<String> filterInfoCategoryKeys(String[] values, FileBackedByteIndexedInfoStore infoStore) {
-		List<String> infoKeys = infoStore.getAllValues().keys().stream().filter((String key)->{
-			// iterate over the values for the specific category and find which ones match the search
-			int insertionIndex = Arrays.binarySearch(values, key);
-			return insertionIndex > -1 && insertionIndex < values.length;
-		}).collect(Collectors.toList());
-		log.info("found " + infoKeys.size() + " keys");
-		return infoKeys;
-	}
-
 	protected Collection<String> getVariantList(Query query) throws IOException {
 		return processVariantList(query);
 	}
 
-	private Collection<String> processVariantList(Query query) throws IOException {
+	private Collection<String> processVariantList(Query query) {
 		boolean queryContainsVariantInfoFilters = query.getVariantInfoFilters().stream().anyMatch(variantInfoFilter ->
 				!variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
 		);
@@ -481,14 +405,14 @@ public class AbstractProcessor {
 			// todo: are these not the same thing?
 			if(query.getVariantInfoFilters().size()>1) {
 				for(VariantInfoFilter filter : query.getVariantInfoFilters()){
-					unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
+					unionOfInfoFilters = genomicProcessor.addVariantsForInfoFilter(unionOfInfoFilters, filter);
 					//log.info("filter " + filter + "  sets: " + Arrays.deepToString(unionOfInfoFilters.toArray()));
 				}
 			} else {
-				unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.getVariantInfoFilters().get(0));
+				unionOfInfoFilters = genomicProcessor.addVariantsForInfoFilter(unionOfInfoFilters, query.getVariantInfoFilters().get(0));
 			}
 
-			TreeSet<Integer> patientSubsetForQuery = getPatientSubsetForQuery(query);
+			Set<Integer> patientSubsetForQuery = getPatientSubsetForQuery(query);
 			HashSet<Integer> allPatients = new HashSet<>(
 					Arrays.stream(variantService.getPatientIds())
 							.map((id) -> {
@@ -504,7 +428,6 @@ public class AbstractProcessor {
 				return unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
 			}
 
-			// todo: continue testing from here. Also, hasn't this been done in PatientVarientJoinHandler?
 			BigInteger patientMasks = createMaskForPatientSet(patientSubset);
 
 			Set<String> unionOfInfoFiltersVariantSpecs = unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
@@ -530,27 +453,6 @@ public class AbstractProcessor {
 			}
 		}
 		return new ArrayList<>();
-	}
-
-	private VariantIndex addVariantsForInfoFilter(VariantIndex unionOfInfoFilters, VariantInfoFilter filter) {
-		ArrayList<VariantIndex> variantSets = new ArrayList<>();
-		addVariantsMatchingFilters(filter, variantSets);
-
-		if(!variantSets.isEmpty()) {
-			VariantIndex intersectionOfInfoFilters = variantSets.get(0);
-			for(VariantIndex variantSet : variantSets) {
-				//						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
-				intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(variantSet);
-			}
-			unionOfInfoFilters = unionOfInfoFilters.union(intersectionOfInfoFilters);
-		} else {
-			log.warn("No info filters included in query.");
-		}
-		return unionOfInfoFilters;
-	}
-
-	protected BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
-		return patientVariantJoinHandler.createMaskForPatientSet(patientSubset);
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
@@ -657,4 +559,9 @@ public class AbstractProcessor {
 	public VariantMasks getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
 		return variantService.getMasks(path, variantMasksVariantBucketHolder);
 	}
+
+    // todo: handle this locally, we do not want this in the genomic processor
+    protected BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+        return genomicProcessor.createMaskForPatientSet(patientSubset);
+    }
 }

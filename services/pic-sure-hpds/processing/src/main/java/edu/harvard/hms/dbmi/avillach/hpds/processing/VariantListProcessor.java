@@ -182,7 +182,7 @@ public class VariantListProcessor implements HpdsProcessor {
 
 		//then one column per patient.  We also need to identify the patient ID and
 		// map it to the right index in the bit mask fields.
-		TreeSet<Integer> patientSubset = abstractProcessor.getPatientSubsetForQuery(query);
+		Set<Integer> patientSubset = abstractProcessor.getPatientSubsetForQuery(query);
 		log.debug("identified " + patientSubset.size() + " patients from query");
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
 		BigInteger patientMasks = abstractProcessor.createMaskForPatientSet(patientSubset);

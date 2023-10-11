@@ -1,10 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -54,7 +51,7 @@ public class QueryProcessor implements HpdsProcessor {
 	}
 
 	public void runQuery(Query query, AsyncResult result) {
-		TreeSet<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
+		Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
 		log.info("Processing " + idList.size() + " rows for result " + result.id);
 		Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE).parallelStream()
 			.map(list -> buildResult(result, query, new TreeSet<>(list)))

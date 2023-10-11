@@ -31,7 +31,7 @@ public class AbstractProcessorTest {
     private VariantIndexCache variantIndexCache;
 
     @Mock
-    private PatientVariantJoinHandler patientVariantJoinHandler;
+    private GenomicProcessor genomicProcessor;
 
     public static final String GENE_WITH_VARIANT_KEY = "Gene_with_variant";
     private static final String VARIANT_SEVERITY_KEY = "Variant_severity";
@@ -66,7 +66,7 @@ public class AbstractProcessorTest {
                 null,
                 variantService,
                 variantIndexCache,
-                patientVariantJoinHandler
+                genomicProcessor
         );
     }
 
@@ -75,7 +75,7 @@ public class AbstractProcessorTest {
         when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4, 6)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
-        when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
+        //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
 
         Map<String, String[]> categoryVariantInfoFilters =
                 Map.of(GENE_WITH_VARIANT_KEY, new String[] {EXAMPLE_GENES_WITH_VARIANT.get(0)});
@@ -87,7 +87,7 @@ public class AbstractProcessorTest {
         Query query = new Query();
         query.setVariantInfoFilters(variantInfoFilters);
 
-        TreeSet<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
+        Set<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
         assertFalse(patientSubsetForQuery.isEmpty());
         assertEquals(argumentCaptor.getValue(), new SparseVariantIndex(Set.of(2,4,6)));
     }
@@ -98,7 +98,7 @@ public class AbstractProcessorTest {
         when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(1))).thenReturn(new SparseVariantIndex(Set.of(6)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
-        when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
+        //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
 
         Map<String, String[]> categoryVariantInfoFilters =
                 Map.of(GENE_WITH_VARIANT_KEY, new String[] {EXAMPLE_GENES_WITH_VARIANT.get(0), EXAMPLE_GENES_WITH_VARIANT.get(1)});
@@ -110,7 +110,7 @@ public class AbstractProcessorTest {
         Query query = new Query();
         query.setVariantInfoFilters(variantInfoFilters);
 
-        TreeSet<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
+        Set<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
         assertFalse(patientSubsetForQuery.isEmpty());
         // Expected result is the union of the two values
         assertEquals(argumentCaptor.getValue(), new SparseVariantIndex(Set.of(2,4,6)));
@@ -122,7 +122,7 @@ public class AbstractProcessorTest {
         when(variantIndexCache.get(VARIANT_SEVERITY_KEY, EXAMPLE_VARIANT_SEVERITIES.get(0))).thenReturn(new SparseVariantIndex(Set.of(4, 5, 6, 7)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
-        when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
+        //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
 
         Map<String, String[]> categoryVariantInfoFilters = Map.of(
             GENE_WITH_VARIANT_KEY, new String[] {EXAMPLE_GENES_WITH_VARIANT.get(0)},
@@ -136,7 +136,7 @@ public class AbstractProcessorTest {
         Query query = new Query();
         query.setVariantInfoFilters(variantInfoFilters);
 
-        TreeSet<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
+        Set<Integer> patientSubsetForQuery = abstractProcessor.getPatientSubsetForQuery(query);
         assertFalse(patientSubsetForQuery.isEmpty());
         // Expected result is the intersection of the two filters
         assertEquals(argumentCaptor.getValue(), new SparseVariantIndex(Set.of(4, 6)));
