@@ -225,8 +225,8 @@ public class PicSureService implements IResourceRS {
 	@Path("/query/{resourceQueryId}/result")
 	@Produces(MediaType.TEXT_PLAIN_VALUE)
 	@Override
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
-		AsyncResult result = queryService.getResultFor(queryId);
+	public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
+		AsyncResult result = queryService.getResultFor(queryId.toString());
 		if (result == null) {
 			// This happens sometimes when users immediately request the status for a query
 			// before it can be initialized. We wait a bit and try again before throwing an
@@ -237,7 +237,7 @@ public class PicSureService implements IResourceRS {
 				return Response.status(500).build();
 			}
 
-			result = queryService.getResultFor(queryId);
+			result = queryService.getResultFor(queryId.toString());
 			if (result == null) {
 				return Response.status(404).build();
 			}
@@ -253,8 +253,8 @@ public class PicSureService implements IResourceRS {
 	@POST
 	@Path("/query/{resourceQueryId}/status")
 	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest request) {
-		return convertToQueryStatus(queryService.getStatusFor(queryId));
+	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest request) {
+		return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
 	}
 
 	@POST
@@ -328,7 +328,7 @@ public class PicSureService implements IResourceRS {
 			QueryStatus status = query(resultRequest);
 			while (status.getResourceStatus().equalsIgnoreCase("RUNNING")
 					|| status.getResourceStatus().equalsIgnoreCase("PENDING")) {
-				status = queryStatus(status.getResourceResultId(), null);
+				status = queryStatus(UUID.fromString(status.getResourceResultId()), null);
 			}
 			log.info(status.toString());
 

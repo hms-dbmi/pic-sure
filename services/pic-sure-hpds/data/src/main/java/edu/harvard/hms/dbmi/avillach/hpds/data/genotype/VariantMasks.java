@@ -1,5 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
+import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.map.annotate.JsonSerialize;
+import org.codehaus.jackson.map.ser.ToStringSerializer;
+
 import java.io.Serializable;
 import java.math.BigInteger;
 
@@ -166,8 +170,19 @@ public class VariantMasks implements Serializable {
 		
 	}
 
+	public VariantMasks() {
+	}
+
+	@JsonProperty("ho")
+	@JsonSerialize(using = ToStringSerializer.class, include=JsonSerialize.Inclusion.NON_NULL)
 	public BigInteger homozygousMask;
+	@JsonProperty("he")
+	@JsonSerialize(using = ToStringSerializer.class, include=JsonSerialize.Inclusion.NON_NULL)
 	public BigInteger heterozygousMask;
+	@JsonProperty("hon")
+	@JsonSerialize(using = ToStringSerializer.class, include=JsonSerialize.Inclusion.NON_NULL)
 	public BigInteger homozygousNoCallMask;
+	@JsonProperty("hen")
+	@JsonSerialize(using = ToStringSerializer.class, include=JsonSerialize.Inclusion.NON_NULL)
 	public BigInteger heterozygousNoCallMask;
 }

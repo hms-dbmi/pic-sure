@@ -67,23 +67,21 @@ public class VariantIndexCache {
             log.debug("Calculating value for cache for key " + infoColumn_valueKey);
             long time = System.currentTimeMillis();
             String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
-            String[] variantArray = infoStores.get(column_and_value[0]).getAllValues().get(column_and_value[1]);
+            Integer[] variantIndexIntArray = infoStores.get(column_and_value[0]).getAllValues().get(column_and_value[1]);
 
-            if ((double)variantArray.length / (double)variantIndex.length < MAX_SPARSE_INDEX_RATIO ) {
+            if ((double)variantIndexIntArray.length / (double)variantIndex.length < MAX_SPARSE_INDEX_RATIO ) {
                 Set<Integer> variantIds = new HashSet<>();
-                for(String variantSpec : variantArray) {
-                    int variantIndexArrayIndex = Arrays.binarySearch(variantIndex, variantSpec);
-                    variantIds.add(variantIndexArrayIndex);
+                for(Integer variantIndex : variantIndexIntArray) {
+                    variantIds.add(variantIndex);
                 }
                 return new SparseVariantIndex(variantIds);
             } else {
                 boolean[] variantIndexArray = new boolean[variantIndex.length];
                 int x = 0;
-                for(String variantSpec : variantArray) {
-                    int variantIndexArrayIndex = Arrays.binarySearch(variantIndex, variantSpec);
+                for(Integer variantIndex : variantIndexIntArray) {
                     // todo: shouldn't this be greater than or equal to 0? 0 is a valid index
-                    if (variantIndexArrayIndex > 0) {
-                        variantIndexArray[variantIndexArrayIndex] = true;
+                    if (variantIndex > 0) {
+                        variantIndexArray[variantIndex] = true;
                     }
                 }
                 log.debug("Cache value for key " + infoColumn_valueKey + " calculated in " + (System.currentTimeMillis() - time) + " ms");

@@ -51,10 +51,7 @@ public class RemapPatientIds {
 	private static final int TEXT_VALUE = 3;
 	
 	public static void main(String[] args) throws ClassNotFoundException, FileNotFoundException, IOException {
-		
-		ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream("/opt/local/hpds/all/variantStore.javabin")));
-		VariantStore variantStore = (VariantStore) objectInputStream.readObject();
-		objectInputStream.close();
+		VariantStore variantStore = VariantStore.readInstance("/opt/local/hpds/all/");
 		
 		String[] oldPatientIds = variantStore.getPatientIds();
 		String[] newPatientIds = new String[oldPatientIds.length];

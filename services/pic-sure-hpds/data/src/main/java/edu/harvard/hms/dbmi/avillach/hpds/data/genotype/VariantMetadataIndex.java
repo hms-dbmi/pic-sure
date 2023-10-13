@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,7 +92,7 @@ public class VariantMetadataIndex implements Serializable {
 			log.warn("No bucket found for spec " + variantSpec + " in bucket " + chrOffset);
 			return new String[0];
 		
-		} catch (IOException e) {
+		} catch (UncheckedIOException e) {
 			log.warn("IOException caught looking up variantSpec : " + variantSpec, e);
 			return new String[0];
 		}
@@ -112,7 +113,6 @@ public class VariantMetadataIndex implements Serializable {
 	 * have to write them to disk once.  The data will be written to disk only when the flush() method is called.
 	 * 
 	 * @param variantSpec
-	 * @param array
 	 * @throws IOException
 	 */
 	public void put(String variantSpec, String metaData ) throws IOException {
@@ -161,7 +161,7 @@ public class VariantMetadataIndex implements Serializable {
 			if(contigFbbis == null) {
 				log.info("creating new file for " + contig);
 				String filePath = fileStoragePrefix + "_" + contig + ".bin";
-				contigFbbis = new FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>>(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
+				contigFbbis = new FileBackedJavaIndexedStorage(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
 				indexMap.put(contig, contigFbbis);
 			}
 			
@@ -200,7 +200,8 @@ public class VariantMetadataIndex implements Serializable {
 			return (VariantMetadataIndex) in.readObject();
 		} catch(Exception e) {
 			// todo: handle exceptions better
-			log.error("No Metadata Index found at " + metadataIndexPath, e);
+			log.info("No Metadata Index found at " + metadataIndexPath);
+			log.debug("Error loading metadata index:", e);
 			return null;
 		}
 	}

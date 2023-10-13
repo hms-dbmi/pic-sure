@@ -37,6 +37,7 @@ public class Query {
 	private List<String> fields = new ArrayList<>();
 	private List<String> requiredFields = new ArrayList<>();
 	private List<String> anyRecordOf = new ArrayList<>();
+	private List<List<String>> anyRecordOfMulti = new ArrayList<>();
 	private Map<String, DoubleFilter> numericFilters = new HashMap<>();
 	private Map<String, String[]> categoryFilters = new HashMap<>();
 	private List<VariantInfoFilter> variantInfoFilters = new ArrayList<>();
@@ -61,6 +62,14 @@ public class Query {
 
 	public List<String> getAnyRecordOf() {
 		return anyRecordOf;
+	}
+	public List<List<String>> getAnyRecordOfMulti() {
+		return anyRecordOfMulti;
+	}
+	public List<List<String>> getAllAnyRecordOf() {
+		List<List<String>> anyRecordOfMultiCopy = new ArrayList<>(anyRecordOfMulti);
+		anyRecordOfMultiCopy.add(anyRecordOf);
+		return anyRecordOfMultiCopy;
 	}
 
 	public Map<String, DoubleFilter> getNumericFilters() {
@@ -97,6 +106,9 @@ public class Query {
 
 	public void setAnyRecordOf(Collection<String> anyRecordOf) {
 		this.anyRecordOf = anyRecordOf != null ? new ArrayList<>(anyRecordOf) : new ArrayList<>();
+	}
+	public void setAnyRecordOfMulti(Collection<List<String>> anyRecordOfMulti) {
+		this.anyRecordOfMulti = anyRecordOfMulti != null ? new ArrayList<>(anyRecordOfMulti) : new ArrayList<>();
 	}
 
 	public void setNumericFilters(Map<String, DoubleFilter> numericFilters) {
@@ -191,7 +203,7 @@ public class Query {
 		writePartFormat("Numeric filters", numericFilters, builder);
 		writePartFormat("Category filters", categoryFilters, builder);
 		writePartFormat("Variant Info filters", variantInfoFilters, builder, false);
-		writePartFormat("Any-Record-Of filters", anyRecordOf, builder, true);
+		writePartFormat("Any-Record-Of filters", getAllAnyRecordOf(), builder, true);
 
 		return builder.toString();
 	}
@@ -234,7 +246,7 @@ public class Query {
 				
 				Integer count = countMap.get(firstLevel);
 				if(count == null) {
-					count = new Integer(1);
+					count = 1;
 				} else {
 					count = count + 1;
 				}

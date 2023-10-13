@@ -12,6 +12,8 @@ public class DistributableQuery {
 
     private List<String> requiredFields = new ArrayList<>();
 
+    private List<String> anyRecordOfFields = new ArrayList<>();
+
     private Set<Integer> patientIds;
 
 
@@ -20,6 +22,14 @@ public class DistributableQuery {
     }
     public List<String> getRequiredFields() {
         return requiredFields;
+    }
+
+    public void addAnyRecordOfField(String path) {
+        anyRecordOfFields.add(path);
+    }
+
+    public List<String> getAnyRecordOfFields() {
+        return anyRecordOfFields;
     }
 
     public void addVariantSpecCategoryFilter(String key, String[] values) {

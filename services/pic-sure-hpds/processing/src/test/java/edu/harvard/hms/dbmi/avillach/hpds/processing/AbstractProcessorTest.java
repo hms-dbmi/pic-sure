@@ -42,12 +42,12 @@ public class AbstractProcessorTest {
     @Before
     public void setup() {
         FileBackedByteIndexedInfoStore mockInfoStore = mock(FileBackedByteIndexedInfoStore.class);
-        FileBackedByteIndexedStorage<String, String[]> mockIndexedStorage = mock(FileBackedByteIndexedStorage.class);
+        FileBackedByteIndexedStorage<String, Integer[]> mockIndexedStorage = mock(FileBackedByteIndexedStorage.class);
         when(mockIndexedStorage.keys()).thenReturn(new HashSet<>(EXAMPLE_GENES_WITH_VARIANT));
         when(mockInfoStore.getAllValues()).thenReturn(mockIndexedStorage);
 
         FileBackedByteIndexedInfoStore mockInfoStore2 = mock(FileBackedByteIndexedInfoStore.class);
-        FileBackedByteIndexedStorage<String, String[]> mockIndexedStorage2 = mock(FileBackedByteIndexedStorage.class);
+        FileBackedByteIndexedStorage<String, Integer[]> mockIndexedStorage2 = mock(FileBackedByteIndexedStorage.class);
         when(mockIndexedStorage2.keys()).thenReturn(new HashSet<>(EXAMPLE_VARIANT_SEVERITIES));
         when(mockInfoStore2.getAllValues()).thenReturn(mockIndexedStorage2);
 

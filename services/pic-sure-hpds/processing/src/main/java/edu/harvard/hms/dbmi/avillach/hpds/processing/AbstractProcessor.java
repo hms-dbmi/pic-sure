@@ -128,6 +128,7 @@ public class AbstractProcessor {
 						){
 							log.info("loading " + filename);
 							FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+							infoStore.updateStorageDirectory(genomicDataDirectory);
 							infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);
 							ois.close();
 						} catch (IOException e) {
@@ -195,7 +196,9 @@ public class AbstractProcessor {
         List<Set<Integer>> patientIdSets = new ArrayList<>();
 
 		try {
-            getPatientIdsForAnyRecordOf(query).map(patientIdSets::add);
+			query.getAllAnyRecordOf().forEach(anyRecordOfFilterList -> {
+				getPatientIdsForAnyRecordOf(anyRecordOfFilterList, distributableQuery).map(patientIdSets::add);
+			});
             patientIdSets.addAll(getIdSetsForNumericFilters(query));
             patientIdSets.addAll(getIdSetsForRequiredFields(query, distributableQuery));
             patientIdSets.addAll(getIdSetsForCategoryFilters(query, distributableQuery));
@@ -274,11 +277,16 @@ public class AbstractProcessor {
         return List.of();
 	}
 
-	private Optional<Set<Integer>> getPatientIdsForAnyRecordOf(Query query) {
-		if(!query.getAnyRecordOf().isEmpty()) {
+	private Optional<Set<Integer>> getPatientIdsForAnyRecordOf(List<String> anyRecordOfFilters, DistributableQuery distributableQuery) {
+		if(!anyRecordOfFilters.isEmpty()) {
 			// This is an OR aggregation of anyRecordOf filters
-			Set<Integer> anyRecordOfPatientSet = query.getAnyRecordOf().parallelStream().flatMap(path -> {
+			Set<Integer> anyRecordOfPatientSet = anyRecordOfFilters.parallelStream().flatMap(path -> {
 				if (VariantUtils.pathIsVariantSpec(path)) {
+					// todo: implement this logic in the genomic nodes
+					/*TreeSet<Integer> patientsInScope = new TreeSet<>();
+					addIdSetsForVariantSpecCategoryFilters(new String[]{"0/1", "1/1"}, path, patientsInScope, bucketCache);
+					return patientsInScope.stream();*/
+					distributableQuery.addRequiredVariantField(path);
 					throw new IllegalArgumentException("Variant paths not allowed for anyRecordOf queries");
 				}
 				return (Stream<Integer>) getCube(path).keyBasedIndex().stream();

@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -54,13 +54,13 @@ public class VariantService {
         }
     }
 
-    public VariantService() throws IOException, ClassNotFoundException, InterruptedException {
-        genomicDataDirectory = System.getProperty("HPDS_DATA_HOME", "/opt/local/hpds/all/");
+    public VariantService() {
+        genomicDataDirectory = System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
         VARIANT_INDEX_FBBIS_STORAGE_FILE = genomicDataDirectory + "variantIndex_fbbis_storage.javabin";
         VARIANT_INDEX_FBBIS_FILE = genomicDataDirectory + "variantIndex_fbbis.javabin";
         BUCKET_INDEX_BY_SAMPLE_FILE = genomicDataDirectory + "BucketIndexBySample.javabin";
 
-        variantStore = VariantStore.deserializeInstance(genomicDataDirectory);
+        variantStore = loadVariantStore();
         try {
             loadGenomicCacheFiles();
         } catch (Exception e) {
@@ -68,66 +68,29 @@ public class VariantService {
         }
     }
 
-    public void populateVariantIndex() throws InterruptedException {
+    private VariantStore loadVariantStore() {
+        VariantStore variantStore;
+        try {
+            variantStore = VariantStore.readInstance(genomicDataDirectory);
+        } catch (Exception e) {
+            variantStore = new VariantStore();
+            variantStore.setPatientIds(new String[0]);
+            log.warn("Unable to load variant store");
+        }
+        return variantStore;
+    }
+
+    public String[] loadVariantIndex() {
         //skip if we have no variants
         if(variantStore.getPatientIds().length == 0) {
-            variantIndex = new String[0];
             log.warn("No Genomic Data found.  Skipping variant Indexing");
-            return;
-        }
-        int[] numVariants = {0};
-        HashMap<String, String[]> contigMap = new HashMap<>();
-
-        ExecutorService ex = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        variantStore.getVariantMaskStorage().entrySet().forEach(entry->{
-            ex.submit(()->{
-                int numVariantsInContig = 0;
-                FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = entry.getValue();
-                HashMap<Integer, String[]> bucketMap = new HashMap<>();
-                log.info("Creating bucketMap for contig " + entry.getKey());
-                for(Integer bucket: storage.keys()){
-                    try {
-                        ConcurrentHashMap<String, VariantMasks> bucketStorage = storage.get(bucket);
-                        numVariantsInContig += bucketStorage.size();
-                        bucketMap.put(bucket, bucketStorage.keySet().toArray(new String[0]));
-                    } catch (IOException e) {
-                        log.error("an error occurred", e);
-                    }
-                };
-                log.info("Completed bucketMap for contig " + entry.getKey());
-                String[] variantsInContig = new String[numVariantsInContig];
-                int current = 0;
-                for(String[] bucketList  : bucketMap.values()) {
-                    System.arraycopy(bucketList, 0, variantsInContig, current, bucketList.length);
-                    current = current + bucketList.length;
-                }
-                bucketMap.clear();
-                synchronized(numVariants) {
-                    log.info("Found " + variantsInContig.length + " variants in contig " + entry.getKey() + ".");
-                    contigMap.put(entry.getKey(), variantsInContig);
-                    numVariants[0] += numVariantsInContig;
-                }
-            });
-        });
-        ex.shutdown();
-        while(!ex.awaitTermination(10, TimeUnit.SECONDS)) {
-            Thread.sleep(20000);
-            log.info("Awaiting completion of variant index");
+            return new String[0];
         }
 
-        log.info("Found " + numVariants[0] + " total variants.");
+        String[] variantIndex = VariantStore.loadVariantIndexFromFile(genomicDataDirectory);
 
-        variantIndex = new String[numVariants[0]];
-
-        int current = 0;
-        for(String[] contigList  : contigMap.values()) {
-            System.arraycopy(contigList, 0, variantIndex, current, contigList.length);
-            current = current + contigList.length;
-        }
-        contigMap.clear();
-
-        Arrays.sort(variantIndex);
         log.info("Index created with " + variantIndex.length + " total variants.");
+        return variantIndex;
     }
 
     /**
@@ -141,9 +104,9 @@ public class VariantService {
             if(variantIndex==null) {
                 if(!new File(VARIANT_INDEX_FBBIS_FILE).exists()) {
                     log.info("Creating new " + VARIANT_INDEX_FBBIS_FILE);
-                    populateVariantIndex();
+                    this.variantIndex = loadVariantIndex();
                     FileBackedByteIndexedStorage<Integer, String[]> fbbis =
-                            new FileBackedByteIndexedStorage<Integer, String[]>(Integer.class, String[].class, new File(VARIANT_INDEX_FBBIS_STORAGE_FILE));
+                            new FileBackedJavaIndexedStorage<>(Integer.class, String[].class, new File(VARIANT_INDEX_FBBIS_STORAGE_FILE));
                     try (ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(VARIANT_INDEX_FBBIS_FILE)));
                     ){
 
@@ -182,17 +145,10 @@ public class VariantService {
 
                         for( int i = 0; i < bucketCount; i++) {
                             final int _i = i;
-                            ex.submit(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        String[] variantIndexBucket = indexStore.get(_i);
-                                        System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
-                                        log.info("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
-                                    } catch (IOException e) {
-                                        throw new UncheckedIOException(e);
-                                    }
-                                }
+                            ex.submit(() -> {
+                                String[] variantIndexBucket = indexStore.get(_i);
+                                System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
+                                log.info("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
                             });
                         }
                         objectInputStream.close();
