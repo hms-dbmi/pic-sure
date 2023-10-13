@@ -27,6 +27,7 @@
 			<Host name="localhost" appBase="/.extract/webapps" unpackWARs="true"
 				autoDeploy="true">
 				<Context path="/" reloadable="true" />
+				<Valve className="org.apache.catalina.valves.ErrorReportValve" showReport="false" showServerInfo="false"/>
 			</Host>
 		</Engine>
 	</Service>

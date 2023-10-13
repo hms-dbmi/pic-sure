@@ -6,7 +6,6 @@
     <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
     <version>3.0.0-SNAPSHOT</version>
   </parent>
-
   <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
   <artifactId>client-api</artifactId>
   <version>3.0.0-SNAPSHOT</version>
@@ -14,17 +13,15 @@
   <name>client-api</name>
   <!-- FIXME change it to the project's website -->
   <url>http://www.example.com</url>
-
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
-
   <dependencies>
 
   </dependencies>
-
   <build>
-    <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
+    <pluginManagement>
+      <!-- lock down plugins versions to avoid using Maven defaults (may be moved to parent pom) -->
       <plugins>
         <!-- clean lifecycle, see https://maven.apache.org/ref/current/maven-core/lifecycles.html#clean_Lifecycle -->
         <plugin>
@@ -38,7 +35,7 @@
         </plugin>
         <plugin>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.8.0</version>
+          <version>3.11.0</version>
         </plugin>
         <plugin>
           <artifactId>maven-surefire-plugin</artifactId>
