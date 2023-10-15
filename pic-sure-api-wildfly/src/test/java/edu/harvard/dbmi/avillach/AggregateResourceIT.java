@@ -123,8 +123,8 @@ public class AggregateResourceIT extends BaseIT {
 
 
         //Create multiple queries and add them to a main query as a list
-        QueryRequest queryRequest1 = new QueryRequest();
-        QueryRequest queryRequest2 = new QueryRequest();
+        QueryRequest queryRequest1 = new GeneralQueryRequest();
+        QueryRequest queryRequest2 = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         queryRequest1.setResourceCredentials(credentials);
         queryRequest1.setQuery(queryString);
@@ -136,7 +136,7 @@ public class AggregateResourceIT extends BaseIT {
         queryList.add(queryRequest1);
         queryList.add(queryRequest2);
 
-        QueryRequest topQuery = new QueryRequest();
+        QueryRequest topQuery = new GeneralQueryRequest();
         topQuery.setQuery(queryList);
         topQuery.setResourceUUID(aggregateUUID);
 
@@ -234,7 +234,7 @@ public class AggregateResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(resourceResponse))));
 
-        QueryRequest request = new QueryRequest();
+        QueryRequest request = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);
@@ -309,12 +309,12 @@ public class AggregateResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(resultResponse))));
 
-        QueryRequest resultRequest = new QueryRequest();
+        QueryRequest resultRequest = new GeneralQueryRequest();
 
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
 
-        QueryRequest request = new QueryRequest();
+        QueryRequest request = new GeneralQueryRequest();
         request.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(request);
 

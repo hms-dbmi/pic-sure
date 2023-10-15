@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.util.Utilities;
@@ -33,7 +34,7 @@ public class PicsureSearchService {
 	 * Executes a concept search against a target resource
 	 *
 	 * @param resourceId         - UUID of target resource
-	 * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object
+	 * @param searchQueryRequest - {@link GeneralQueryRequest} containing resource specific credentials object
 	 *                           and resource specific query (could be a string or a json object)
 	 * @param headers
 	 * @return {@link SearchResults}

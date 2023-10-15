@@ -161,7 +161,8 @@ public class PicsureRS {
 		if (isInstitutionQuery == null || !isInstitutionQuery) {
 			return queryService.query(dataQueryRequest, headers);
 		} else {
-			return queryService.institutionalQuery(dataQueryRequest, headers, context.getUserPrincipal().getName());
+			String email = context.getUserPrincipal().getName();
+			return queryService.institutionalQuery((GICQueryRequest) dataQueryRequest, headers, email);
 		}
 	}
 	
@@ -199,9 +200,11 @@ public class PicsureRS {
 		@QueryParam("isInstitute")
 		Boolean isInstitutionQuery
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.queryStatus(queryId, credentialsQueryRequest, headers) :
-			queryService.institutionQueryStatus(queryId, credentialsQueryRequest, headers);
+		if (credentialsQueryRequest instanceof GeneralQueryRequest) {
+			return queryService.queryStatus(queryId, (GeneralQueryRequest) credentialsQueryRequest, headers);
+		} else {
+			return queryService.institutionQueryStatus(queryId, (GICQueryRequest) credentialsQueryRequest, headers);
+		}
 	}
 	
 	@POST

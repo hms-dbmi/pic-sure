@@ -12,7 +12,7 @@ import org.junit.Test;
 import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
@@ -58,7 +58,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
 
     @Test
     public void testSearch() {
-        QueryRequest searchQueryRequest = new QueryRequest();
+        GeneralQueryRequest searchQueryRequest = new GeneralQueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put("bearer key", "bearer token");
         searchQueryRequest.setResourceCredentials(clientCredentials);

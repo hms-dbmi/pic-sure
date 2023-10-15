@@ -5,10 +5,8 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
 
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
@@ -54,7 +52,7 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/info";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			if (infoRequest != null) {
 				chainRequest.setQuery(infoRequest.getQuery());
 				chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
@@ -99,12 +97,8 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
-			chainRequest.setQuery(queryRequest.getQuery());
-			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+			QueryRequest chainRequest = queryRequest.copy();
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
-			chainRequest.setCommonAreaUUID(queryRequest.getCommonAreaUUID());
-			chainRequest.setInstitutionOfOrigin(queryRequest.getInstitutionOfOrigin());
 
 			String payload = objectMapper.writeValueAsString(chainRequest);
 			HttpResponse response = httpClient.retrievePostResponse(
@@ -137,7 +131,7 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query/" + queryId + "/result";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			chainRequest.setQuery(resultRequest.getQuery());
 			chainRequest.setResourceCredentials(resultRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
@@ -173,7 +167,7 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query/" + queryId + "/status";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			chainRequest.setQuery(statusRequest.getQuery());
 			chainRequest.setResourceCredentials(statusRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
@@ -214,7 +208,7 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query/sync";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			chainRequest.setQuery(queryRequest.getQuery());
 			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
@@ -259,7 +253,7 @@ public class PassThroughResourceRS implements IResourceRS {
 
 		String pathName = "/search/" + properties.getTargetResourceId();
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			chainRequest.setQuery(searchRequest.getQuery());
 			chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
@@ -294,7 +288,7 @@ public class PassThroughResourceRS implements IResourceRS {
 		String pathName = "/query/format";
 
 		try {
-			QueryRequest chainRequest = new QueryRequest();
+			QueryRequest chainRequest = new GeneralQueryRequest();
 			chainRequest.setQuery(queryRequest.getQuery());
 			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));

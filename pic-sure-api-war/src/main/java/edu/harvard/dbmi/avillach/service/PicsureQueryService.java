@@ -7,13 +7,14 @@ import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.domain.GICQueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,7 +94,7 @@ public class PicsureQueryService {
 	 * @return {@link QueryStatus}
 	 */
 	@Transactional
-	public QueryStatus queryStatus(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
+	public QueryStatus queryStatus(UUID queryId, GeneralQueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null){
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}
@@ -282,7 +283,7 @@ public class PicsureQueryService {
 	 *                         and resource specific query (could be a string or a json object)
 	 * @return {@link QueryStatus}
 	 */
-	public QueryStatus institutionalQuery(QueryRequest dataQueryRequest, HttpHeaders headers, String email) {
+	public QueryStatus institutionalQuery(GICQueryRequest dataQueryRequest, HttpHeaders headers, String email) {
 		String siteCode = siteParsingService.parseSiteOfOrigin(email).orElseThrow(() -> new RuntimeException("Bad email"));
 		dataQueryRequest.setInstitutionOfOrigin(siteCode);
 		Resource resource = verifyQueryRequest(dataQueryRequest, headers);
@@ -314,18 +315,15 @@ public class PicsureQueryService {
 				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
 			}
 		}
-
 		Map<String, Object> metaData = response.getResultMetadata();
 		metaData = metaData == null ? new HashMap<>() : metaData;
-		if (dataQueryRequest.getCommonAreaUUID() != null) {
-			metaData.put("commonAreaUUID", dataQueryRequest.getCommonAreaUUID());
-		}
 
-		if (!StringUtils.isEmpty(dataQueryRequest.getInstitutionOfOrigin())) {
-			metaData.put("site", dataQueryRequest.getInstitutionOfOrigin());
+		if (dataQueryRequest instanceof GICQueryRequest) {
+			GICQueryRequest gicRequest = (GICQueryRequest) dataQueryRequest;
+			metaData.put("commonAreaUUID", gicRequest.getCommonAreaUUID());
+			metaData.put("site", gicRequest.getInstitutionOfOrigin());
+			metaData.put("sharingStatus", DataSharingStatus.Unknown);
 		}
-
-		metaData.put("sharingStatus", DataSharingStatus.Unknown);
 
 		queryEntity.setQuery(queryJson);
 
@@ -339,7 +337,7 @@ public class PicsureQueryService {
 		return queryEntity;
 	}
 
-	public QueryStatus institutionQueryStatus(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
+	public QueryStatus institutionQueryStatus(UUID queryId, GICQueryRequest credentialsQueryRequest, HttpHeaders headers) {
 		if (queryId == null) {
 			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
 		}

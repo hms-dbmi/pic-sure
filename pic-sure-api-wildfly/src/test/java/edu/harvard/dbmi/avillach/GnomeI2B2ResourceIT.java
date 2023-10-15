@@ -160,7 +160,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
                         .withBody(objectMapper.writeValueAsString(gnomeResponse))));
 
         //Create a query
-        QueryRequest queryRequest = new QueryRequest();
+        QueryRequest queryRequest = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         Map<String, Object> queryMap = new HashMap<>();
         queryRequest.setResourceCredentials(credentials);
@@ -282,7 +282,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(errorResponse))));
 
-        QueryRequest statusQuery = new QueryRequest();
+        QueryRequest statusQuery = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         statusQuery.setResourceCredentials(credentials);
         String body = objectMapper.writeValueAsString(statusQuery);
@@ -392,7 +392,7 @@ public class GnomeI2B2ResourceIT extends BaseIT {
                         .withStatus(200)
                         .withBody(objectMapper.writeValueAsString(i2b2Response))));
 
-        QueryRequest resultRequest = new QueryRequest();
+        QueryRequest resultRequest = new GeneralQueryRequest();
         Map<String, String> credentials = new HashMap<String, String>();
         credentials.put(GnomeI2B2CountResourceRS.I2B2_BEARER_TOKEN_KEY, token);
         credentials.put(GnomeI2B2CountResourceRS.GNOME_BEARER_TOKEN_KEY, token);

@@ -1,45 +1,72 @@
 package edu.harvard.dbmi.avillach.domain;
 
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import junit.framework.TestCase;
+import org.junit.Assert;
+import org.junit.Test;
 
 import java.util.HashMap;
-import java.util.Objects;
 import java.util.UUID;
 
-public class QueryRequestTest extends TestCase {
+public class QueryRequestTest {
+    private static final ObjectMapper mapper = new ObjectMapper();
 
-    public void testShouldIgnoreMissingQueryId() throws JsonProcessingException {
-        QueryRequest expected = new QueryRequestWithEq();
-        expected.setQuery("{}");
+    @Test
+    public void shouldSerializeGeneralQueryRequest() throws JsonProcessingException {
+        GeneralQueryRequest expected = new GeneralQueryRequest();
+        expected.setQuery(null);
         expected.setResourceCredentials(new HashMap<>());
-        expected.setResourceUUID(UUID.fromString("364c958e-53bb-4be7-bd5b-44fcda1592bc"));
-        expected.setCommonAreaUUID(null);
+        expected.setResourceUUID(UUID.randomUUID());
+        String json = mapper.writeValueAsString(expected);
 
-        ObjectMapper mapper = new ObjectMapper();
-        String jsonWithNoCUUID =
-            "{\"resourceCredentials\":{},\"query\":\"{}\",\"resourceUUID\":\"364c958e-53bb-4be7-bd5b-44fcda1592bc\"}";
-        QueryRequest actual = mapper.readValue(jsonWithNoCUUID, QueryRequestWithEq.class);
+        QueryRequest actual = mapper.readValue(json, QueryRequest.class);
 
-        assertEquals(expected, actual);
+        Assert.assertEquals(GeneralQueryRequest.class, actual.getClass());
+        Assert.assertEquals(expected.getResourceUUID(), actual.getResourceUUID());
     }
 
-    /**
-     * This is just to get comparison to work for the test.
-     */
-    private static final class QueryRequestWithEq extends QueryRequest {
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof QueryRequestWithEq)) return false;
-            QueryRequestWithEq that = (QueryRequestWithEq) o;
-            return Objects.equals(getResourceCredentials(), that.getResourceCredentials()) && Objects.equals(getQuery(), that.getQuery()) && Objects.equals(getResourceUUID(), that.getResourceUUID()) && Objects.equals(getCommonAreaUUID(), that.getCommonAreaUUID());
-        }
+    @Test
+    public void shouldSerializeGICRequest() throws JsonProcessingException {
+        GICQueryRequest expected = new GICQueryRequest();
+        expected.setQuery(null);
+        expected.setResourceCredentials(new HashMap<>());
+        expected.setResourceUUID(UUID.randomUUID());
+        expected.setCommonAreaUUID(UUID.randomUUID());
+        expected.setInstitutionOfOrigin("Top secret institution (shh!)");
+        String json = mapper.writeValueAsString(expected);
 
-        @Override
-        public int hashCode() {
-            return Objects.hash(getResourceCredentials(), getQuery(), getResourceUUID(), getCommonAreaUUID());
-        }
+        QueryRequest actual = mapper.readValue(json, QueryRequest.class);
+
+        Assert.assertEquals(GICQueryRequest.class, actual.getClass());
+        Assert.assertEquals(expected.getResourceUUID(), actual.getResourceUUID());
+    }
+
+    @Test
+    public void shouldSerializeRequestWithNoType() throws JsonProcessingException {
+        // Make sure json without the @Type annotation doesn't break this
+        String json = "{\"resourceCredentials\":{},\"query\":null,\"resourceUUID\":\"e4513cca-12c0-4fe2-b2fd-5d05b821056c\"}";
+        QueryRequest actual = mapper.readValue(json, QueryRequest.class);
+
+        Assert.assertEquals(GeneralQueryRequest.class, actual.getClass());
+    }
+
+    @Test
+    public void shouldSerializeRequestWithNoTypeWithGICFields() throws JsonProcessingException {
+        String json = "{\"resourceCredentials\":{},\"query\":null,\"resourceUUID\":\"716d744f-9c89-40af-b572-222c1b20848f\",\"commonAreaUUID\":\"a79e3da0-e1fa-4626-9873-41cffd5e9115\",\"institutionOfOrigin\":\"Top secret institution (shh!)\"}";
+        QueryRequest actual = mapper.readValue(json, QueryRequest.class);
+
+        // This is for backwards compatibility. An un-updated client should handle unknown fields gracefully
+        Assert.assertEquals(GeneralQueryRequest.class, actual.getClass());
+    }
+
+    @Test
+    public void shouldSerializeRequestWithGICTypeAndExtraField() throws JsonProcessingException {
+        String json = "{\"@type\":\"GICQueryRequest\",\"madeUpField\":0,\"resourceCredentials\":{},\"query\":null,\"resourceUUID\":\"716d744f-9c89-40af-b572-222c1b20848f\",\"commonAreaUUID\":\"a79e3da0-e1fa-4626-9873-41cffd5e9115\",\"institutionOfOrigin\":\"Top secret institution (shh!)\"}";
+        QueryRequest actual = mapper.readValue(json, QueryRequest.class);
+
+        // This is for backwards compatibility.
+        // An un-updated client should handle unknown fields gracefully, even when it's a GIC request
+        Assert.assertEquals(GICQueryRequest.class, actual.getClass());
     }
 }
