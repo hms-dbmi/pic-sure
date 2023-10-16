@@ -224,9 +224,22 @@ public class AbstractProcessor {
 
         if (distributableQuery.hasFilters()) {
             BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMaskForVariantInfoFilters(distributableQuery);
+			return patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
         }
 
 		return phenotypicPatientSet;
+	}
+
+	public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
+		Set<Integer> ids = new HashSet<>();
+		String bitmaskString = patientMask.toString(2);
+		for(int x = 2;x < bitmaskString.length()-2;x++) {
+			if('1'==bitmaskString.charAt(x)) {
+				String patientId = variantService.getPatientIds()[x-2].trim();
+				ids.add(Integer.parseInt(patientId));
+			}
+		}
+		return ids;
 	}
 
 	/**

@@ -33,9 +33,8 @@ public class GenomicProcessor {
     private final VariantService variantService;
 
     @Autowired
-    public GenomicProcessor(PatientVariantJoinHandler patientVariantJoinHandler, VariantIndexCache variantIndexCache, VariantService variantService) {
+    public GenomicProcessor(PatientVariantJoinHandler patientVariantJoinHandler, VariantService variantService) {
         this.patientVariantJoinHandler = patientVariantJoinHandler;
-        this.variantIndexCache = variantIndexCache;
         this.variantService = variantService;
 
         genomicDataDirectory = System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
@@ -97,7 +96,7 @@ public class GenomicProcessor {
     }
 
     public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-        Set<Integer> ids = new TreeSet<Integer>();
+        Set<Integer> ids = new HashSet<>();
         String bitmaskString = patientMask.toString(2);
         for(int x = 2;x < bitmaskString.length()-2;x++) {
             if('1'==bitmaskString.charAt(x)) {
