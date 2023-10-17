@@ -4,5 +4,6 @@ public enum PicSureStatus {
 	QUEUED,
 	PENDING,
 	ERROR,
-	AVAILABLE
+	AVAILABLE,
+	FEDERATED
 }
