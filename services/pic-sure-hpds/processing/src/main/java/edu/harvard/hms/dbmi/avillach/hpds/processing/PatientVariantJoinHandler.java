@@ -14,14 +14,12 @@ import java.math.BigInteger;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Component
 public class PatientVariantJoinHandler {
 
     private static Logger log = LoggerFactory.getLogger(PatientVariantJoinHandler.class);
 
     private final VariantService variantService;
 
-    @Autowired
     public PatientVariantJoinHandler(VariantService variantService) {
         this.variantService = variantService;
     }

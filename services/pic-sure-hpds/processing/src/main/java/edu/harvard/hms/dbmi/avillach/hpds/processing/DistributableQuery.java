@@ -8,11 +8,9 @@ public class DistributableQuery {
 
     private List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
 
-    private Map<String, String[]> categoryFilters = new HashMap<>();
+    private final Map<String, String[]> categoryFilters = new HashMap<>();
 
-    private List<String> requiredFields = new ArrayList<>();
-
-    private List<String> anyRecordOfFields = new ArrayList<>();
+    private final Set<String> requiredFields = new HashSet<>();
 
     private Set<Integer> patientIds;
 
@@ -20,16 +18,8 @@ public class DistributableQuery {
     public void addRequiredVariantField(String path) {
         requiredFields.add(path);
     }
-    public List<String> getRequiredFields() {
+    public Set<String> getRequiredFields() {
         return requiredFields;
-    }
-
-    public void addAnyRecordOfField(String path) {
-        anyRecordOfFields.add(path);
-    }
-
-    public List<String> getAnyRecordOfFields() {
-        return anyRecordOfFields;
     }
 
     public void addVariantSpecCategoryFilter(String key, String[] values) {
