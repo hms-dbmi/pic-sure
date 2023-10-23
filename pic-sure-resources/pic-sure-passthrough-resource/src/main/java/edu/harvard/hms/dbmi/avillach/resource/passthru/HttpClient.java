@@ -56,4 +56,8 @@ public class HttpClient {
 	public void throwResponseError(HttpResponse response, String baseURL) {
 		edu.harvard.dbmi.avillach.util.HttpClientUtil.throwResponseError(response, baseURL);
 	}
+
+	public void throwInternalResponseError(HttpResponse response, String baseURL) {
+		edu.harvard.dbmi.avillach.util.HttpClientUtil.throwInternalResponseError(response, baseURL);
+	}
 }

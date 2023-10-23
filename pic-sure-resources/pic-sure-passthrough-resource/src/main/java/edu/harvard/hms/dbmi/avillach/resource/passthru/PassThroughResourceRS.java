@@ -66,7 +66,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			ResourceInfo resourceInfo = httpClient.readObjectFromResponse(response, ResourceInfo.class);
@@ -110,7 +110,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
 						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
 			queryStatus.setResourceID(queryRequest.getResourceUUID());
@@ -146,7 +146,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
 						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			return Response.ok(response.getEntity().getContent()).build();
@@ -182,7 +182,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
 						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
 			queryStatus.setResourceID(statusRequest.getResourceUUID());
@@ -223,7 +223,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
 						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			if (response.containsHeader(QUERY_METADATA_FIELD)) {
@@ -267,7 +267,7 @@ public class PassThroughResourceRS implements IResourceRS {
 			if (response.getStatusLine().getStatusCode() != 200) {
 				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 			return httpClient.readObjectFromResponse(response, SearchResults.class);
 		} catch (IOException e) {
@@ -303,7 +303,7 @@ public class PassThroughResourceRS implements IResourceRS {
 				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
 						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
 						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwResponseError(response, properties.getTargetPicsureUrl());
+				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
 			}
 
 			return Response.ok(response.getEntity().getContent()).build();
