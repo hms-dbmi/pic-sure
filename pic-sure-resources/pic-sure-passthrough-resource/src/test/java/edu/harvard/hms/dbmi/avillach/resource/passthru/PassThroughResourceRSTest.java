@@ -14,8 +14,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.ws.rs.NotAuthorizedException;
-
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
@@ -59,6 +57,7 @@ class PassThroughResourceRSTest {
 		lenient().doCallRealMethod().when(httpClient).composeURL(anyString(), anyString());
 		lenient().doCallRealMethod().when(httpClient).readObjectFromResponse(any(HttpResponse.class), any());
 		lenient().doCallRealMethod().when(httpClient).throwResponseError(any(HttpResponse.class), anyString());
+		lenient().doCallRealMethod().when(httpClient).throwInternalResponseError(any(HttpResponse.class), anyString());
 
 		resource = new PassThroughResourceRS(appProperties, httpClient);
 	}
@@ -79,9 +78,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.info(new QueryRequest());
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		ResourceInfo resourceInfo = newResourceInfo();
@@ -119,9 +118,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.query(newQueryRequest("test"));
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		QueryStatus queryStatus = newQueryStatus(null);
@@ -157,9 +156,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.queryResult(UUID.randomUUID().toString(), newQueryRequest(null));
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		String resultId = UUID.randomUUID().toString();
@@ -198,9 +197,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.queryStatus(UUID.randomUUID().toString(), newQueryRequest(null));
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		UUID queryId = UUID.randomUUID();
@@ -239,9 +238,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.querySync(newQueryRequest("test"));
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		String resultId = UUID.randomUUID().toString();
@@ -279,9 +278,9 @@ class PassThroughResourceRSTest {
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
-		assertThrows(NotAuthorizedException.class, () -> {
+		assertThrows(ResourceInterfaceException.class, () -> {
 			resource.search(newQueryRequest("test"));
-		}, "Downstream Resource returned 401 and should cause 'NotAuthorizedException'");
+		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		String queryText = "test";
 		when(statusLine.getStatusCode()).thenReturn(200);
