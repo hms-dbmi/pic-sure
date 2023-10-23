@@ -186,6 +186,22 @@ public class HttpClientUtil {
 		throw new ResourceInterfaceException(errorMessage);
 	}
 
+	public static void throwInternalResponseError(HttpResponse response, String baseURL) {
+		// We don't want to propagate 401s. A site 401ing is a server side error and should
+		// 500 in the common area.
+		String errorMessage = baseURL + " " + response.getStatusLine().getStatusCode() + " "
+			+ response.getStatusLine().getReasonPhrase();
+		try {
+			JsonNode responseNode = json.readTree(response.getEntity().getContent());
+			if (responseNode != null && responseNode.has("message")) {
+				errorMessage += "/n" + responseNode.get("message").asText();
+			}
+		} catch (IOException e) {
+			// That's fine, there's no message
+		}
+		throw new ResourceInterfaceException(errorMessage);
+	}
+
 	/**
 	 * Basic and general post function using Apache Http Client
 	 *
