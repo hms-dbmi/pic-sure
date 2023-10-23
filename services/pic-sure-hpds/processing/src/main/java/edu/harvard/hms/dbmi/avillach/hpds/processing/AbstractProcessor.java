@@ -226,7 +226,11 @@ public class AbstractProcessor {
 				if (VariantUtils.pathIsVariantSpec(path)) {
 					throw new IllegalArgumentException("Variant paths not allowed for anyRecordOf queries");
 				}
-				return (Stream<Integer>) getCube(path).keyBasedIndex().stream();
+				try {
+					return (Stream<Integer>) getCube(path).keyBasedIndex().stream();
+				} catch (Exception e) {
+					return Stream.empty();
+				}
 			}).collect(Collectors.toSet());
 			return Optional.of(anyRecordOfPatientSet);
 		}
