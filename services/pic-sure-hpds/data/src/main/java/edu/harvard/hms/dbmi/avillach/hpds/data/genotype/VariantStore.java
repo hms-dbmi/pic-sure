@@ -115,7 +115,7 @@ public class VariantStore implements Serializable {
 		return patientIds;
 	}
 
-	public VariantMasks getMasks(String variant, VariantBucketHolder<VariantMasks> bucketCache) throws IOException {
+	public Optional<VariantMasks> getMasks(String variant, VariantBucketHolder<VariantMasks> bucketCache) throws IOException {
 		String[] segments = variant.split(",");
 		if (segments.length < 2) {
 			log.error("Less than 2 segments found in this variant : " + variant);
@@ -133,11 +133,16 @@ public class VariantStore implements Serializable {
 				&& chrOffset == bucketCache.lastChunkOffset) {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
-			bucketCache.lastValue = variantMaskStorage.get(contig).get(chrOffset);
+			// todo: don't bother doing a lookup if this node does not have the chromosome specified
+			FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>> indexedStorage = variantMaskStorage.get(contig);
+			if (indexedStorage == null) {
+				return Optional.empty();
+			}
+			bucketCache.lastValue = indexedStorage.get(chrOffset);
 			bucketCache.lastContig = contig;
 			bucketCache.lastChunkOffset = chrOffset;
 		}
-		return bucketCache.lastValue == null ? null : bucketCache.lastValue.get(variant);
+		return bucketCache.lastValue == null ? Optional.empty() : Optional.of(bucketCache.lastValue.get(variant));
 	}
 
 	public String[] getHeaders() {

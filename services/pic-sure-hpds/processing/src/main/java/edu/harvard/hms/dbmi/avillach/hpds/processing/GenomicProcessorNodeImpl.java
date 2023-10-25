@@ -90,22 +90,34 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                     intersectionOfInfoFilters = new SparseVariantIndex(Set.of());
                 }
             }
-
             // todo: handle empty getVariantInfoFilters()
 
             // add filteredIdSet for patients who have matching variants, heterozygous or homozygous for now.
-            BigInteger patientMask = patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(distributableQuery.getPatientIds(), intersectionOfInfoFilters);
+            BigInteger patientMask = null;
+            if (intersectionOfInfoFilters != null ){
+                patientMask = patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(distributableQuery.getPatientIds(), intersectionOfInfoFilters);
+            }
 
+
+            VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder = new VariantBucketHolder<>();
             if (!distributableQuery.getRequiredFields().isEmpty() ) {
                 for (String variantSpec : distributableQuery.getRequiredFields()) {
-                    BigInteger patientsForVariantSpec = getIdSetForVariantSpecCategoryFilter(new String[]{"0/1", "1/1"}, variantSpec, null);
-                    patientMask = patientMask.and(patientsForVariantSpec);
+                    BigInteger patientsForVariantSpec = getIdSetForVariantSpecCategoryFilter(new String[]{"0/1", "1/1"}, variantSpec, variantMasksVariantBucketHolder);
+                    if (patientMask == null) {
+                        patientMask = patientsForVariantSpec;
+                    } else {
+                        patientMask = patientMask.and(patientsForVariantSpec);
+                    }
                 }
             }
             if (!distributableQuery.getCategoryFilters().isEmpty()) {
                 for (Map.Entry<String, String[]> categoryFilterEntry : distributableQuery.getCategoryFilters().entrySet()) {
                     BigInteger patientsForVariantSpec = getIdSetForVariantSpecCategoryFilter(categoryFilterEntry.getValue(), categoryFilterEntry.getKey(), null);
-                    patientMask = patientMask.and(patientsForVariantSpec);
+                    if (patientMask == null) {
+                        patientMask = patientsForVariantSpec;
+                    } else {
+                        patientMask = patientMask.and(patientsForVariantSpec);
+                    }
                 }
             }
 
@@ -248,16 +260,17 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             //NC - this is the original variant filtering, which checks the patient mask from each variant against the patient mask from the query
             if(variantsInScope.size()<100000) {
                 ConcurrentSkipListSet<String> variantsWithPatients = new ConcurrentSkipListSet<String>();
-                variantsInScope.parallelStream().forEach((String variantKey)->{
-                    VariantMasks masks = variantService.getMasks(variantKey, new VariantBucketHolder<VariantMasks>());
-                    if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
-                        variantsWithPatients.add(variantKey);
-                    } else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
-                        variantsWithPatients.add(variantKey);
-                    } else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
-                        //so heterozygous no calls we want, homozygous no calls we don't
-                        variantsWithPatients.add(variantKey);
-                    }
+                variantsInScope.parallelStream().forEach(variantKey -> {
+                    variantService.getMasks(variantKey, new VariantBucketHolder<>()).ifPresent(masks -> {
+                        if ( masks.heterozygousMask != null && masks.heterozygousMask.and(patientMasks).bitCount()>4) {
+                            variantsWithPatients.add(variantKey);
+                        } else if ( masks.homozygousMask != null && masks.homozygousMask.and(patientMasks).bitCount()>4) {
+                            variantsWithPatients.add(variantKey);
+                        } else if ( masks.heterozygousNoCallMask != null && masks.heterozygousNoCallMask.and(patientMasks).bitCount()>4) {
+                            //so heterozygous no calls we want, homozygous no calls we don't
+                            variantsWithPatients.add(variantKey);
+                        }
+                    });
                 });
                 return variantsWithPatients;
             }else {
@@ -286,10 +299,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         ArrayList<BigInteger> variantBitmasks = new ArrayList<>();
         variantName = variantName.replaceAll(",\\d/\\d$", "");
         log.debug("looking up mask for : " + variantName);
-        VariantMasks masks;
-        masks = variantService.getMasks(variantName, bucketCache);
+        Optional<VariantMasks> optionalMasks = variantService.getMasks(variantName, bucketCache);
         Arrays.stream(zygosities).forEach((zygosity) -> {
-            if(masks!=null) {
+            optionalMasks.ifPresent(masks -> {
                 if(zygosity.equals(HOMOZYGOUS_REFERENCE)) {
                     BigInteger homozygousReferenceBitmask = calculateIndiscriminateBitmask(masks);
                     for(int x = 2;x<homozygousReferenceBitmask.bitLength()-2;x++) {
@@ -303,7 +315,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 }else if(zygosity.equals("")) {
                     variantBitmasks.add(calculateIndiscriminateBitmask(masks));
                 }
-            } else {
+            });
+            if (optionalMasks.isEmpty()) {
                 variantBitmasks.add(variantService.emptyBitmask());
             }
 

@@ -261,7 +261,8 @@ public class VariantListProcessor implements HpdsProcessor {
 				}
 			}
 
-			VariantMasks masks = abstractProcessor.getMasks(variantSpec, variantMaskBucketHolder);
+			// todo: deal with empty return
+			VariantMasks masks = abstractProcessor.getMasks(variantSpec, variantMaskBucketHolder).get();
 
 			//make strings of 000100 so we can just check 'char at'
 			//so heterozygous no calls we want, homozygous no calls we don't

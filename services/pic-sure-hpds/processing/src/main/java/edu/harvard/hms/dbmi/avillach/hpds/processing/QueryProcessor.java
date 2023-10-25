@@ -105,7 +105,7 @@ public class QueryProcessor implements HpdsProcessor {
 			Integer x) {
 		String path = paths.get(x-1);
 		if(VariantUtils.pathIsVariantSpec(path)) {
-			VariantMasks masks = abstractProcessor.getMasks(path, new VariantBucketHolder<VariantMasks>());
+			Optional<VariantMasks> masks = abstractProcessor.getMasks(path, new VariantBucketHolder<>());
 			String[] patientIds = abstractProcessor.getPatientIds();
 			int idPointer = 0;
 
@@ -117,8 +117,7 @@ public class QueryProcessor implements HpdsProcessor {
 					if(key < id) {
 						idPointer++;
 					} else if(key == id){
-						idPointer = writeVariantResultField(results, x, masks, idPointer, doubleBuffer,
-								idInSubsetPointer);
+						idPointer = writeVariantResultField(results, x, masks, idPointer, idInSubsetPointer);
 						break;
 					} else {
 						writeVariantNullResultField(results, x, doubleBuffer, idInSubsetPointer);
@@ -162,17 +161,17 @@ public class QueryProcessor implements HpdsProcessor {
 		results.writeField(x,idInSubsetPointer, valueBuffer);
 	}
 
-	private int writeVariantResultField(ResultStore results, Integer x, VariantMasks masks, int idPointer,
-			ByteBuffer doubleBuffer, int idInSubsetPointer) {
-		byte[] valueBuffer;
-		if(masks.heterozygousMask != null && masks.heterozygousMask.testBit(idPointer)) {
-			valueBuffer = "0/1".getBytes();
-		}else if(masks.homozygousMask != null && masks.homozygousMask.testBit(idPointer)) {
-			valueBuffer = "1/1".getBytes();
-		}else {
-			valueBuffer = "0/0".getBytes();
-		}
-		valueBuffer = masks.toString().getBytes();
+	private int writeVariantResultField(ResultStore results, Integer x, Optional<VariantMasks> variantMasks, int idPointer,
+			int idInSubsetPointer) {
+		byte[] valueBuffer = variantMasks.map(masks -> {
+			if(masks.heterozygousMask != null && masks.heterozygousMask.testBit(idPointer)) {
+				return "0/1".getBytes();
+			} else if(masks.homozygousMask != null && masks.homozygousMask.testBit(idPointer)) {
+				return "1/1".getBytes();
+			}else {
+				return "0/0".getBytes();
+			}
+		}).orElse("".getBytes());
 		results.writeField(x,idInSubsetPointer, valueBuffer);
 		return idPointer;
 	}

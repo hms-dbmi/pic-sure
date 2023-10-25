@@ -427,7 +427,7 @@ public class AbstractProcessor {
 		return genomicProcessor.getPatientIds();
 	}
 
-	public VariantMasks getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+	public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
 		return variantService.getMasks(path, variantMasksVariantBucketHolder);
 	}
 

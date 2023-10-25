@@ -9,6 +9,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -47,9 +48,31 @@ public class PatientVariantJoinHandlerTest {
         variantMasks.heterozygousMask = maskForAllPatients;
         VariantMasks emptyVariantMasks = new VariantMasks(new String[0]);
         emptyVariantMasks.heterozygousMask = maskForNoPatients;
-        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(variantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(emptyVariantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(emptyVariantMasks);
+        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(emptyVariantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.of(emptyVariantMasks));
+
+        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
+        // this should be all patients, as all patients match one of the variants
+        assertEquals(PATIENT_IDS_INTEGERS, patientIdsForIntersectionOfVariantSets);
+    }
+
+    @Test
+    public void getPatientIdsForIntersectionOfVariantSets_allPatientsMatchOneVariantWithNoVariantFound() {
+        VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of(0, 2, 4));
+        when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
+        when(variantService.emptyBitmask()).thenReturn(emptyBitmask(PATIENT_IDS));
+
+        BigInteger maskForAllPatients = patientVariantJoinHandler.createMaskForPatientSet(PATIENT_IDS_INTEGERS);
+        BigInteger maskForNoPatients = patientVariantJoinHandler.createMaskForPatientSet(Set.of());
+
+        VariantMasks variantMasks = new VariantMasks(new String[0]);
+        variantMasks.heterozygousMask = maskForAllPatients;
+        VariantMasks emptyVariantMasks = new VariantMasks(new String[0]);
+        emptyVariantMasks.heterozygousMask = maskForNoPatients;
+        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.empty());
+        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.empty());
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
         // this should be all patients, as all patients match one of the variants
@@ -65,9 +88,9 @@ public class PatientVariantJoinHandlerTest {
         BigInteger maskForNoPatients = patientVariantJoinHandler.createMaskForPatientSet(Set.of());
         VariantMasks emptyVariantMasks = new VariantMasks(new String[0]);
         emptyVariantMasks.heterozygousMask = maskForNoPatients;
-        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(emptyVariantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(emptyVariantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(emptyVariantMasks);
+        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(emptyVariantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(emptyVariantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.of(emptyVariantMasks));
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
         // this should be empty because all variants masks have no matching patients
@@ -87,8 +110,8 @@ public class PatientVariantJoinHandlerTest {
         variantMasks.heterozygousMask = maskForPatients1;
         VariantMasks variantMasks2 = new VariantMasks(new String[0]);
         variantMasks2.heterozygousMask = maskForPatients2;
-        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(variantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(variantMasks2);
+        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(variantMasks2));
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
         // this should be all patients who match at least one variant
@@ -116,8 +139,8 @@ public class PatientVariantJoinHandlerTest {
         variantMasks.heterozygousMask = maskForPatients1;
         VariantMasks variantMasks2 = new VariantMasks(new String[0]);
         variantMasks2.heterozygousMask = maskForPatients2;
-        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(variantMasks);
-        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(variantMasks2);
+        when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
+        when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(variantMasks2));
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(102, 103, 104, 105, 106), intersectionOfInfoFilters));
         // this should be the union of patients matching variants (101, 103, 105, 107), intersected with the patient subset parameter (103, 104, 105) which is (103, 105)

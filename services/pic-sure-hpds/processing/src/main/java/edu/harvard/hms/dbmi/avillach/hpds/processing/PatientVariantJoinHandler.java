@@ -66,12 +66,10 @@ public class PatientVariantJoinHandler {
                 x < variantBucketPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
                 x++) {
                 List<List<String>> variantBuckets = variantBucketPartitions.get(x);
-                variantBuckets.parallelStream().forEach((variantBucket)->{
-                    VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<VariantMasks>();
-                    variantBucket.stream().forEach((variantSpec)->{
-                        VariantMasks masks;
-                        masks = variantService.getMasks(variantSpec, bucketCache);
-                        if(masks != null) {
+                variantBuckets.parallelStream().forEach(variantBucket -> {
+                    VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
+                    variantBucket.forEach(variantSpec -> {
+                        variantService.getMasks(variantSpec, bucketCache).ifPresent(masks -> {
                             BigInteger heteroMask = masks.heterozygousMask == null ? variantService.emptyBitmask() : masks.heterozygousMask;
                             BigInteger homoMask = masks.homozygousMask == null ? variantService.emptyBitmask() : masks.homozygousMask;
                             BigInteger orMasks = heteroMask.or(homoMask);
@@ -79,19 +77,10 @@ public class PatientVariantJoinHandler {
                             synchronized(matchingPatients) {
                                 matchingPatients[0] = matchingPatients[0].or(andMasks);
                             }
-                        }
+                        });
                     });
                 });
             }
-/*            Set<Integer> ids = new TreeSet<Integer>();
-            String bitmaskString = matchingPatients[0].toString(2);
-            for(int x = 2;x < bitmaskString.length()-2;x++) {
-                if('1'==bitmaskString.charAt(x)) {
-                    String patientId = variantService.getPatientIds()[x-2].trim();
-                    ids.add(Integer.parseInt(patientId));
-                }
-            }
-            return ids;*/
             return matchingPatients[0];
         }else {
             log.error("No matches found for info filters.");

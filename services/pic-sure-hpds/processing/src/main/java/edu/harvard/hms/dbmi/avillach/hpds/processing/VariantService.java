@@ -188,7 +188,7 @@ public class VariantService {
         return variantStore.getPatientIds();
     }
 
-    public VariantMasks getMasks(String variantName, VariantBucketHolder<VariantMasks> bucketCache) {
+    public Optional<VariantMasks> getMasks(String variantName, VariantBucketHolder<VariantMasks> bucketCache) {
         try {
             return variantStore.getMasks(variantName, bucketCache);
         } catch (IOException e) {
