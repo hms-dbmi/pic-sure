@@ -96,6 +96,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             BigInteger patientMask = null;
             if (intersectionOfInfoFilters != null ){
                 patientMask = patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(distributableQuery.getPatientIds(), intersectionOfInfoFilters);
+            } else {
+                patientMask = createMaskForPatientSet(distributableQuery.getPatientIds());
             }
 
 
