@@ -51,8 +51,6 @@ public class AbstractProcessor {
 
 	private final PhenotypeMetaStore phenotypeMetaStore;
 
-	private final VariantIndexCache variantIndexCache;
-
 	private final GenomicProcessor genomicProcessor;
 
 	private final LoadingCache<String, List<String>> infoStoreValuesCache = CacheBuilder.newBuilder().build(new CacheLoader<>() {
@@ -135,19 +133,16 @@ public class AbstractProcessor {
 					});
 		}
 		infoStoreColumns = new ArrayList<>(infoStores.keySet());
-
-		variantIndexCache = new VariantIndexCache(variantService.getVariantIndex(), infoStores);
 	}
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
 							 Map<String, FileBackedByteIndexedInfoStore> infoStores, List<String> infoStoreColumns,
-							 VariantService variantService, VariantIndexCache variantIndexCache, GenomicProcessor genomicProcessor) {
+							 VariantService variantService, GenomicProcessor genomicProcessor) {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.store = store;
 		this.infoStores = infoStores;
 		this.infoStoreColumns = infoStoreColumns;
 		this.variantService = variantService;
-		this.variantIndexCache = variantIndexCache;
 		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
@@ -188,8 +183,19 @@ public class AbstractProcessor {
 	 * @return
 	 */
 	protected Set<Integer> idSetsForEachFilter(Query query) {
+		DistributableQuery distributableQuery = getDistributableQuery(query);
+
+		if (distributableQuery.hasFilters()) {
+            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMaskForVariantInfoFilters(distributableQuery);
+			return patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
+        }
+
+		return distributableQuery.getPatientIds();
+	}
+
+	private DistributableQuery getDistributableQuery(Query query) {
 		DistributableQuery distributableQuery = new DistributableQuery();
-        List<Set<Integer>> patientIdSets = new ArrayList<>();
+		List<Set<Integer>> patientIdSets = new ArrayList<>();
 
 		try {
 			query.getAllAnyRecordOf().forEach(anyRecordOfFilterList -> {
@@ -216,14 +222,8 @@ public class AbstractProcessor {
 					.collect(Collectors.toSet());
 		}
 		distributableQuery.setVariantInfoFilters(query.getVariantInfoFilters());
-        distributableQuery.setPatientIds(phenotypicPatientSet);
-
-        if (distributableQuery.hasFilters()) {
-            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMaskForVariantInfoFilters(distributableQuery);
-			return patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
-        }
-
-		return phenotypicPatientSet;
+		distributableQuery.setPatientIds(phenotypicPatientSet);
+		return distributableQuery;
 	}
 
 	public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
@@ -323,7 +323,8 @@ public class AbstractProcessor {
 	}
 
 	protected Collection<String> getVariantList(Query query) throws IOException {
-		return genomicProcessor.processVariantList(getPatientSubsetForQuery(query), query);
+		DistributableQuery distributableQuery = getDistributableQuery(query);
+		return genomicProcessor.processVariantList(distributableQuery);
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {

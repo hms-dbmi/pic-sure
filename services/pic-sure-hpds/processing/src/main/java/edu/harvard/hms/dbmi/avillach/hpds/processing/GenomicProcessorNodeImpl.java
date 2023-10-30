@@ -64,6 +64,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                             throw new RuntimeException(e);
                         }
                     });
+        } else {
+            throw new IllegalArgumentException("Not a valid genomicDataDirectory: " + this.genomicDataDirectory);
         }
         infoStoreColumns = new ArrayList<>(infoStores.keySet());
 
@@ -222,7 +224,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public Collection<String> processVariantList(Set<Integer> patientSubsetForQuery, Query query) {
+    public Collection<String> processVariantList(DistributableQuery query) {
         boolean queryContainsVariantInfoFilters = query.getVariantInfoFilters().stream().anyMatch(variantInfoFilter ->
                 !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
         );
@@ -245,7 +247,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                                 return Integer.parseInt(id.trim());
                             })
                             .collect(Collectors.toList()));
-            Set<Integer> patientSubset = Sets.intersection(patientSubsetForQuery, allPatients);
+            Set<Integer> patientSubset = Sets.intersection(query.getPatientIds(), allPatients);
 //			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
             // If we have all patients then no variants would be filtered, so no need to do further processing

@@ -28,9 +28,6 @@ public class AbstractProcessorTest {
     private VariantService variantService;
 
     @Mock
-    private VariantIndexCache variantIndexCache;
-
-    @Mock
     private GenomicProcessor genomicProcessor;
 
     public static final String GENE_WITH_VARIANT_KEY = "Gene_with_variant";
@@ -65,14 +62,13 @@ public class AbstractProcessorTest {
                 infoStores,
                 null,
                 variantService,
-                variantIndexCache,
                 genomicProcessor
         );
     }
 
     @Test
     public void getPatientSubsetForQuery_oneVariantCategoryFilter_indexFound() {
-        when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4, 6)));
+        //when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4, 6)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
         //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
@@ -94,8 +90,8 @@ public class AbstractProcessorTest {
 
     @Test
     public void getPatientSubsetForQuery_oneVariantCategoryFilterTwoValues_unionFilters() {
-        when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4)));
-        when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(1))).thenReturn(new SparseVariantIndex(Set.of(6)));
+        //when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4)));
+        //when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(1))).thenReturn(new SparseVariantIndex(Set.of(6)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
         //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));
@@ -118,8 +114,8 @@ public class AbstractProcessorTest {
 
     @Test
     public void getPatientSubsetForQuery_twoVariantCategoryFilters_intersectFilters() {
-        when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4, 6)));
-        when(variantIndexCache.get(VARIANT_SEVERITY_KEY, EXAMPLE_VARIANT_SEVERITIES.get(0))).thenReturn(new SparseVariantIndex(Set.of(4, 5, 6, 7)));
+        //when(variantIndexCache.get(GENE_WITH_VARIANT_KEY, EXAMPLE_GENES_WITH_VARIANT.get(0))).thenReturn(new SparseVariantIndex(Set.of(2, 4, 6)));
+        //when(variantIndexCache.get(VARIANT_SEVERITY_KEY, EXAMPLE_VARIANT_SEVERITIES.get(0))).thenReturn(new SparseVariantIndex(Set.of(4, 5, 6, 7)));
 
         ArgumentCaptor<VariantIndex> argumentCaptor = ArgumentCaptor.forClass(VariantIndex.class);
         //when(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(any(), argumentCaptor.capture())).thenReturn(List.of(Set.of(42)));

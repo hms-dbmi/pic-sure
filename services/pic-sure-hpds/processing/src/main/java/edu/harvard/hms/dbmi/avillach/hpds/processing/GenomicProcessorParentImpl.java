@@ -55,9 +55,9 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     }
 
     @Override
-    public Collection<String> processVariantList(Set<Integer> patientSubsetForQuery, Query query) {
+    public Collection<String> processVariantList(DistributableQuery distributableQuery) {
         return nodes.parallelStream().flatMap(node ->
-                node.processVariantList(patientSubsetForQuery, query).stream()).collect(Collectors.toList()
+                node.processVariantList(distributableQuery).stream()).collect(Collectors.toList()
         );
     }
 

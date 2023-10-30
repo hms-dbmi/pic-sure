@@ -105,6 +105,7 @@ public class QueryProcessor implements HpdsProcessor {
 			Integer x) {
 		String path = paths.get(x-1);
 		if(VariantUtils.pathIsVariantSpec(path)) {
+			// todo: confirm this entire if block is even used. I don't think it is
 			Optional<VariantMasks> masks = abstractProcessor.getMasks(path, new VariantBucketHolder<>());
 			String[] patientIds = abstractProcessor.getPatientIds();
 			int idPointer = 0;

@@ -13,7 +13,7 @@ public interface GenomicProcessor {
 
     BigInteger createMaskForPatientSet(Set<Integer> patientSubset);
 
-    Collection<String> processVariantList(Set<Integer> patientSubsetForQuery, Query query);
+    Collection<String> processVariantList(DistributableQuery distributableQuery);
 
     String[] getPatientIds();
 }
