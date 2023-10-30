@@ -245,6 +245,8 @@ public class JWTFilter implements ContainerRequestFilter {
 			if (response.getStatusLine().getStatusCode() != 200){
 				logger.error("callTokenIntroEndpoint() error back from token intro host server ["
 						+ token_introspection_url + "]: " + EntityUtils.toString(response.getEntity()));
+				logger.info("This callTokenIntroEndpoint error can happen when your introspection token has expired. " +
+					"You can fix this by running the Configure PIC-SURE Token Introspection Token job in Jenkins.");
 				throw new ApplicationException("Token Introspection host server return " + response.getStatusLine().getStatusCode() +
 						". Please see the log");
 			}
