@@ -77,6 +77,7 @@ public class VisualizationResource implements IResourceRS {
         String requestSource = null;
         if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
             requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
+            logger.info("resource=visualization /query/sync query=" + query.getQuery().toString() + " request-source=" + requestSource);
         }
 
         return visualizationService.handleQuerySync(query, requestSource);
@@ -99,6 +100,6 @@ public class VisualizationResource implements IResourceRS {
     @Path("/bin/continuous")
     public Response generateContinuousBin(QueryRequest continuousData) {
         logger.info("resource=visualization /bin/continuous query=" + continuousData.getQuery().toString());
-    	return visualizationService.generateContinuousBin(continuousData);
+        return visualizationService.generateContinuousBin(continuousData);
     }
 }

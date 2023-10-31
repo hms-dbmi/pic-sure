@@ -52,14 +52,9 @@ public class DataProcessingService {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            if (VisualizationUtil.skipKey(entry)) continue;
-
-            Map<String, Integer> axisMap = null;
-            if (isObfuscated) {
-                axisMap = VisualizationUtil.processResults(entry.getValue());
-            } else {
-                axisMap = new LinkedHashMap<>(entry.getValue());
-            }
+            // We should not need to obfuscate the data here as it should already be obfuscated
+            // Additionally, we no longer need to process the data here as it is already processed
+            Map<String, Integer> axisMap = new LinkedHashMap<>(entry.getValue());
 
             String title = getChartTitle(entry.getKey());
             categoricalDataList.add(new CategoricalData(
@@ -250,15 +245,17 @@ public class DataProcessingService {
             double minForLabel = ranges.get(bucket.getKey()).stream().min(Double::compareTo).orElse(0.0);
             double maxForLabel = ranges.get(bucket.getKey()).stream().max(Double::compareTo).orElse(0.0);
             if (minForLabel == maxForLabel) {
-                label = String.format("%.1f", minForLabel);
+                // This should only happen when the min and max are the same
+                label = String.format("%.1f", maxForLabel);
             } else {
                 label = String.format("%.1f", minForLabel) + " - " + String.format("%.1f", maxForLabel);
             }
             finalMap.put(label, bucket.getValue());
         }
         Integer lastCount = finalMap.get(label);
-        //Last label should be the min in the range with a '+' sign.
-        if (lastCount != null) {
+
+        //Last label should be the min in the range with a '+' sign. Only if there is more than one bin.
+        if (lastCount != null && results.size() > 1) {
             String newLabel = label;
             int hasDash = label.indexOf(" -");
             if (hasDash > 0) {
