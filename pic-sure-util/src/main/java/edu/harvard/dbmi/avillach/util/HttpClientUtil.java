@@ -348,7 +348,7 @@ public class HttpClientUtil {
 		}
 	}
 	
-	private static HttpClient getConfiguredHttpClient() {
+	public static HttpClient getConfiguredHttpClient() {
 		try {
 			SSLConnectionSocketFactory.getSocketFactory();
 			SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
