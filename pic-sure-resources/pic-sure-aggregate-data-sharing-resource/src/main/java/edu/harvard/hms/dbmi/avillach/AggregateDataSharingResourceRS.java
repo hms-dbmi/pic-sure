@@ -485,7 +485,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @return int The variance
      */
     private int generateVarianceWithCrossCounts(Map<String, String> crossCounts) {
-        final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+        final List<Map.Entry<String, String>> entryList = new ArrayList<>(crossCounts.entrySet());
 
         // sort the entry set. By sorting the entry set first we can ensure that the variance is the same for each run.
         // This is to give us a random variance that is deterministic.
