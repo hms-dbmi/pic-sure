@@ -526,39 +526,14 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
         // Handle the case where there is no visualization service UUID
         if (properties.getVisualizationResourceId() != null) {
-            // convert continuousCrossCountResponse to a map
-            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>() {
-            });
+            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
+            Map<String, Map<String, Object>> binnedContinuousCrossCounts = getBinnedContinuousCrossCount(queryRequest, continuousCrossCounts);
 
-            // Create Query for Visualization /bin/continuous
-            QueryRequest visualizationBinRequest = new QueryRequest();
-            visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
-            visualizationBinRequest.setQuery(continuousCrossCounts);
-            visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+            // Log the binned continuous cross counts
+            logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
-            Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
-            if (visResource == null) {
-                throw new ApplicationException("Visualization resource could not be found");
-            }
-
-            // call the binning endpoint
-            HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
-            HttpEntity entity = httpResponse.getEntity();
-            String binResponse = EntityUtils.toString(entity, "UTF-8");
-
-            Map<String, Map<String, Integer>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Integer>>>() {
-            });
-
-            // TODO: Return to this code. I would rather not need to keep converting the data back and forth from int to string.
-            // Convert binnedContinuousCrossCounts Map to a map<String, Map<String, Object>>
-            Map<String, Map<String, Object>> convertedContinuousCrossCount = new HashMap<>();
-            binnedContinuousCrossCounts.forEach((key, value) -> {
-                Map<String, Object> innerMap = new HashMap<>(value);
-                convertedContinuousCrossCount.put(key, innerMap);
-            });
-
-            if (mustObfuscate || doObfuscateData(convertedContinuousCrossCount)) {
-                obfuscatedCrossCount(generatedVariance, convertedContinuousCrossCount);
+            if (mustObfuscate || doObfuscateData(binnedContinuousCrossCounts)) {
+                obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
             }
 
             return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
@@ -568,19 +543,32 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 return continuousCrossCountResponse;
             }
 
-            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>() {
-            });
+            Map<String, Map<String, Object>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
 
-            // Convert continuousCrossCounts Map to a map<String, Map<String, Object>>
-            Map<String, Map<String, Object>> convertedContinuousCrossCount = new HashMap<>();
-            continuousCrossCounts.forEach((key, value) -> {
-                Map<String, Object> innerMap = new HashMap<>(value);
-                convertedContinuousCrossCount.put(key, innerMap);
-            });
-
-            obfuscatedCrossCount(generatedVariance, convertedContinuousCrossCount);
-            return objectMapper.writeValueAsString(convertedContinuousCrossCount);
+            obfuscatedCrossCount(generatedVariance, continuousCrossCounts);
+            return objectMapper.writeValueAsString(continuousCrossCounts);
         }
+    }
+
+    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(QueryRequest queryRequest, Map<String, Map<String, Integer>> continuousCrossCounts) throws IOException {
+        // Create Query for Visualization /bin/continuous
+        QueryRequest visualizationBinRequest = new QueryRequest();
+        visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
+        visualizationBinRequest.setQuery(continuousCrossCounts);
+        visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+
+        Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
+        if (visResource == null) {
+            throw new ApplicationException("Visualization resource could not be found");
+        }
+
+        // call the binning endpoint
+        HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+        HttpEntity entity = httpResponse.getEntity();
+        String binResponse = EntityUtils.toString(entity, "UTF-8");
+
+        return objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {
+        });
     }
 
     /**
@@ -634,8 +622,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     *
-     *
      * @param categoricalCrossCount The categorical cross count
      * @return boolean based on if the categorical cross count needs to be obfuscated
      */
