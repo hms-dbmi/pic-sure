@@ -16,5 +16,4 @@ COPY --from=build target/*.jar /service.jar
 # Time zone
 ENV TZ="US/Eastern"
 
-EXPOSE 8080
 ENTRYPOINT ["java", "-Xmx8192m", "-jar", "/service.jar"]
