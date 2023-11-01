@@ -166,31 +166,31 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     }
 
-	@POST
-	@Path("/query/{resourceQueryId}/status")
-	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
-		logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
-		checkQuery(statusRequest);
-		HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
-		return readObjectFromResponse(response, QueryStatus.class);
-	}
+    @POST
+    @Path("/query/{resourceQueryId}/status")
+    @Override
+    public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
+        logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
+        checkQuery(statusRequest);
+        HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
+        return readObjectFromResponse(response, QueryStatus.class);
+    }
 
-	@POST
-	@Path("/query/{resourceQueryId}/result")
-	@Override
-	public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
-		logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
-		checkQuery(resultRequest);
-		HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
-		try {
-			return Response.ok(response.getEntity().getContent()).build();
-		} catch (IOException e) {
-			throw new ApplicationException(
-				"Error encoding query for resource with id " + resultRequest.getResourceUUID()
-			);
-		}
-	}
+    @POST
+    @Path("/query/{resourceQueryId}/result")
+    @Override
+    public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
+        logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
+        checkQuery(resultRequest);
+        HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
+        try {
+            return Response.ok(response.getEntity().getContent()).build();
+        } catch (IOException e) {
+            throw new ApplicationException(
+                    "Error encoding query for resource with id " + resultRequest.getResourceUUID()
+            );
+        }
+    }
 
     private HttpResponse postRequest(QueryRequest statusRequest, String pathName) {
         try {
@@ -233,6 +233,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                     "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
                     "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"
             );
+
             if (!allowedResultTypes.contains(expectedResultType)) {
                 logger.warn("Incorrect Result Type: " + expectedResultType);
                 return Response.status(Response.Status.BAD_REQUEST).build();
@@ -556,7 +557,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 convertedContinuousCrossCount.put(key, innerMap);
             });
 
-            if (mustObfuscate || doObfuscateCategoricalData(binnedContinuousCrossCounts)) {
+            if (mustObfuscate || doObfuscateData(convertedContinuousCrossCount)) {
                 obfuscatedCrossCount(generatedVariance, convertedContinuousCrossCount);
             }
 
@@ -604,61 +605,59 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         });
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
+        Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
         });
+
         if (categoricalCrossCount == null) {
+            logger.info("Categorical cross count is null. Returning categoricalEntityString: {}", categoricalEntityString);
             return categoricalEntityString;
         }
 
         // We have not obfuscated yet. We first process the data.
-        for (Map.Entry<String, Map<String, Integer>> entry : categoricalCrossCount.entrySet()) {
+        processResults(categoricalCrossCount);
+
+        if (isCrossCountObfuscated(crossCounts, generatedVariance) || doObfuscateData(categoricalCrossCount)) {
+            // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
+            obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
+        }
+
+        return objectMapper.writeValueAsString(categoricalCrossCount);
+    }
+
+    private static void processResults(Map<String, Map<String, Object>> categoricalCrossCount) {
+        for (Map.Entry<String, Map<String, Object>> entry : categoricalCrossCount.entrySet()) {
             // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
             if (VisualizationUtil.skipKey(entry)) continue;
-
-            Map<String, Integer> axisMap = VisualizationUtil.processResults(entry.getValue());
+            Map<String, Object> axisMap = VisualizationUtil.processResults(entry.getValue());
             categoricalCrossCount.put(entry.getKey(), axisMap);
         }
-
-        // Convert the categoricalCrossCount Map to a map<String, Map<String, Object>>
-        Map<String, Map<String, Object>> convertedCategoricalCrossCount = new HashMap<>();
-        categoricalCrossCount.forEach((key, value) -> {
-            Map<String, Object> innerMap = new HashMap<>(value);
-            convertedCategoricalCrossCount.put(key, innerMap);
-        });
-
-        if (isCrossCountObfuscated(crossCounts, generatedVariance) || doObfuscateCategoricalData(categoricalCrossCount)) {
-            // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
-            obfuscatedCrossCount(generatedVariance, convertedCategoricalCrossCount);
-        }
-
-        return objectMapper.writeValueAsString(convertedCategoricalCrossCount);
     }
 
     /**
-     * If the request source is open access, we need to check if there is at least one category less than threshold.
-     * If there is at least one category less than threshold and is open access, we return true.
      *
-     * @param convertedCategoricalCrossCount The categorical cross count
+     *
+     * @param categoricalCrossCount The categorical cross count
      * @return boolean based on if the categorical cross count needs to be obfuscated
      */
-    private boolean doObfuscateCategoricalData(Map<String, Map<String, Integer>> convertedCategoricalCrossCount) {
-        String requestSource = getRequestSource();
-
-        if (!isRequestSourceOpen(requestSource)) {
+    private boolean doObfuscateData(Map<String, Map<String, Object>> categoricalCrossCount) {
+        if (!isRequestSourceOpen(getRequestSource())) {
             return false;
         }
 
-        // If the request source is open access we need to check if there is at least one category less than 10
-        // If there is at least one category less than thresh, we need to obfuscate the data.
-        for (Map.Entry<String, Map<String, Integer>> entry : convertedCategoricalCrossCount.entrySet()) {
-            Map<String, Integer> axisMap = entry.getValue();
-            for (Map.Entry<String, Integer> axisEntry : axisMap.entrySet()) {
-                if (axisEntry.getValue() < threshold) {
-                    return true;
-                }
+        return categoricalCrossCount.values().stream()
+                .anyMatch(this::checkForObfuscation);
+    }
+
+    private boolean checkForObfuscation(Map<String, Object> axisMap) {
+        for (Map.Entry<String, Object> axisEntry : axisMap.entrySet()) {
+            Object value = axisEntry.getValue();
+            if (value instanceof Integer && (Integer) value < threshold) {
+                return true;
+            }
+            if (value instanceof String && Integer.parseInt((String) value) < threshold) {
+                return true;
             }
         }
-
         return false;
     }
 
@@ -667,11 +666,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     private String getRequestSource() {
-        String requestSource = null;
-        if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
-            requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
-            logger.info("Request source: " + requestSource);
+        if (requestScopedHeader == null || requestScopedHeader.getHeaders() == null) {
+            logger.warn("Request scoped header or headers are null");
+            return null;
         }
+        List<String> requestSources = requestScopedHeader.getHeaders().get("request-source");
+        if (requestSources == null || requestSources.isEmpty()) {
+            logger.warn("Request source header is missing or empty");
+            return null;
+        }
+        String requestSource = requestSources.get(0);
+        logger.info("Request source: " + requestSource);
         return requestSource;
     }
 
