@@ -169,7 +169,7 @@ public class VisualizationService {
                                                                                boolean isObfuscated, boolean isOpenAccess) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isObfuscated));
+        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isObfuscated, isOpenAccess));
         response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isObfuscated, isOpenAccess));
         return response;
     }

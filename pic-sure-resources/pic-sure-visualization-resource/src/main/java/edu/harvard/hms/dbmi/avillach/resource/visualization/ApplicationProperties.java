@@ -97,13 +97,9 @@ public class ApplicationProperties implements Serializable {
         if (visualizationResourceId == null)
             throw new PicsureQueryException("visualization.resource.id property must be set.");
 
+        // We cannot throw an exception here because we cannot guarantee that the HPDS resources will be available
         authHpdsResourceId = UUID.fromString(properties.getProperty("auth.hpds.resource.id"));
-        if (authHpdsResourceId == null)
-            throw new PicsureQueryException("auth.hpds.resource.id property must be set.");
-
         openHpdsResourceId = UUID.fromString(properties.getProperty("open.hpds.resource.id"));
-        if (openHpdsResourceId == null)
-            throw new PicsureQueryException("open.hpds.resource.id property must be set.");
 
         targetPicsureObfuscationThreshold = Optional.ofNullable(properties.getProperty("target.picsure.obfuscation_threshold"))
                 .map(Integer::parseInt)

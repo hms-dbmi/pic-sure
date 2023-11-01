@@ -615,7 +615,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     private static void processResults(Map<String, Map<String, Object>> categoricalCrossCount) {
         for (Map.Entry<String, Map<String, Object>> entry : categoricalCrossCount.entrySet()) {
             // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
-            if (VisualizationUtil.skipKey(entry)) continue;
+            if (VisualizationUtil.skipKey(entry.getKey())) continue;
             Map<String, Object> axisMap = VisualizationUtil.processResults(entry.getValue());
             categoricalCrossCount.put(entry.getKey(), axisMap);
         }

@@ -40,21 +40,19 @@ public class DataProcessingService {
      *
      * @return List<CategoricalData> - result of query
      */
-    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
-        return handleGetCategoricalData(crossCountsMap, false);
-    }
-
-    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
-        return handleGetCategoricalData(crossCountsMap, isObfuscated);
-    }
-
-    private List<CategoricalData> handleGetCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated, boolean isOpenAccess) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            // We should not need to obfuscate the data here as it should already be obfuscated
-            // Additionally, we no longer need to process the data here as it is already processed
-            Map<String, Integer> axisMap = new LinkedHashMap<>(entry.getValue());
+            Map<String, Integer> axisMap;
+            if (isOpenAccess) {
+                // If open access we need to process the data
+                // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
+                if (VisualizationUtil.skipKey(entry.getKey())) continue;
+                axisMap = VisualizationUtil.doProcessResults(entry.getValue());
+            } else {
+                axisMap = new LinkedHashMap<>(entry.getValue());
+            }
 
             String title = getChartTitle(entry.getKey());
             categoricalDataList.add(new CategoricalData(
@@ -69,6 +67,9 @@ public class DataProcessingService {
         return categoricalDataList;
     }
 
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
+        return getCategoricalData(crossCountsMap, false, false);
+    }
 
     /**
      * For each continuous cross count we create a histogram of the values.

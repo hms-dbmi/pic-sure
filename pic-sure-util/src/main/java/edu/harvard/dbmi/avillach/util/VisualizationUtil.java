@@ -15,11 +15,11 @@ public class VisualizationUtil {
     private static final boolean LIMITED = true;
     private static final int LIMIT_SIZE = 7;
 
-    public static boolean skipKey(Map.Entry<String, Map<String, Object>> entry) {
-        return entry.getKey().equals(CONSENTS_KEY) ||
-                entry.getKey().equals(HARMONIZED_CONSENT_KEY) ||
-                entry.getKey().equals(TOPMED_CONSENTS_KEY) ||
-                entry.getKey().equals(PARENT_CONSENTS_KEY);
+    public static boolean skipKey(String key) {
+        return key.equals(CONSENTS_KEY) ||
+                key.equals(HARMONIZED_CONSENT_KEY) ||
+                key.equals(TOPMED_CONSENTS_KEY) ||
+                key.equals(PARENT_CONSENTS_KEY);
     }
 
     public static Map<String, Object> processResults(Map<String, Object> axisMap) {
@@ -40,7 +40,7 @@ public class VisualizationUtil {
      * @param axisMap - Map of the categories and their counts
      * @return Map<String, Integer> - sorted map of the categories and their counts with the "other" category added if necessary
      */
-    private static Map<String, Integer> doProcessResults(Map<String, Integer> axisMap) {
+    public static Map<String, Integer> doProcessResults(Map<String, Integer> axisMap) {
         Map<String, Integer> finalAxisMap = axisMap;
         if (LIMITED && axisMap.size() > (LIMIT_SIZE + 1)) {
             //Create Other bar and sort
