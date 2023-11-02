@@ -264,7 +264,7 @@ public class DataProcessingService {
 
             finalMap.remove(label);
             finalMap.put(newLabel + " +", lastCount);
-        } else if (lastCount != null) {
+        } else if (lastCount != null && finalMap.size() == 1) {
             // If there is only one bin
             // Remove the range and just use the max value
             finalMap.remove(label);
