@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,13 +30,13 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     }
 
     @Override
-    public BigInteger getPatientMaskForVariantInfoFilters(DistributableQuery distributableQuery) {
+    public BigInteger getPatientMask(DistributableQuery distributableQuery) {
         BigInteger patientMask = null;
         for (GenomicProcessor node : nodes) {
             if (patientMask == null) {
-                patientMask = node.getPatientMaskForVariantInfoFilters(distributableQuery);
+                patientMask = node.getPatientMask(distributableQuery);
             } else {
-                patientMask = patientMask.or(node.getPatientMaskForVariantInfoFilters(distributableQuery));
+                patientMask = patientMask.or(node.getPatientMask(distributableQuery));
             }
             log.info("Patients: " + node.patientMaskToPatientIdSet(patientMask));
         }
@@ -55,9 +54,9 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     }
 
     @Override
-    public Collection<String> processVariantList(DistributableQuery distributableQuery) {
+    public Collection<String> getVariantList(DistributableQuery distributableQuery) {
         return nodes.parallelStream().flatMap(node ->
-                node.processVariantList(distributableQuery).stream()).collect(Collectors.toList()
+                node.getVariantList(distributableQuery).stream()).collect(Collectors.toList()
         );
     }
 

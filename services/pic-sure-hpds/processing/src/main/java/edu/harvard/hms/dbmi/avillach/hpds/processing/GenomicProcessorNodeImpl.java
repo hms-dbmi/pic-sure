@@ -73,7 +73,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public BigInteger getPatientMaskForVariantInfoFilters(DistributableQuery distributableQuery) {
+    public BigInteger getPatientMask(DistributableQuery distributableQuery) {
 //		log.debug("filterdIDSets START size: " + filteredIdSets.size());
         /* VARIANT INFO FILTER HANDLING IS MESSY */
         if(distributableQuery.hasFilters()) {
@@ -224,7 +224,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public Collection<String> processVariantList(DistributableQuery query) {
+    public Collection<String> getVariantList(DistributableQuery query) {
         boolean queryContainsVariantInfoFilters = query.getVariantInfoFilters().stream().anyMatch(variantInfoFilter ->
                 !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
         );

@@ -22,7 +22,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHol
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -186,7 +185,7 @@ public class AbstractProcessor {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
 
 		if (distributableQuery.hasFilters()) {
-            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMaskForVariantInfoFilters(distributableQuery);
+            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
 			return patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
         }
 
@@ -324,7 +323,7 @@ public class AbstractProcessor {
 
 	protected Collection<String> getVariantList(Query query) throws IOException {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
-		return genomicProcessor.processVariantList(distributableQuery);
+		return genomicProcessor.getVariantList(distributableQuery);
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
