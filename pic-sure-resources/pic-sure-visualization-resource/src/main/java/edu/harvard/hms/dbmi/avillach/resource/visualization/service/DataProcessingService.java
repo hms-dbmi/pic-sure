@@ -145,6 +145,7 @@ public class DataProcessingService {
     private static Map<String, Integer> bucketData(Map<String, Integer> originalMap) {
         // Convert to doubles from string then create a new map. This we need to use the keys to determine the
         // number of bins as well as the bin width.
+        boolean isSameMinMax = originalMap.size() == 1;
         Double[] keysAsDoubles = originalMap.keySet().stream().map(Double::valueOf).toArray(Double[]::new);
         Map<Double, Integer> data = new LinkedHashMap<>();
         for (Double key : keysAsDoubles) {
@@ -202,7 +203,7 @@ public class DataProcessingService {
         }
 
         //Finalizes the map by create labels that include the range of each bin.
-        Map<String, Integer> finalMap = createLabelsForBins(results, ranges);
+        Map<String, Integer> finalMap = createLabelsForBins(results, ranges, isSameMinMax);
         return finalMap;
     }
 
@@ -239,14 +240,15 @@ public class DataProcessingService {
      * @param ranges  - Map<Integer, List<Double>> - the range of each bin
      * @return - Map<String, Integer> - the new binned data with labels for each bin
      */
-    private static Map<String, Integer> createLabelsForBins(Map<Integer, Integer> results, Map<Integer, List<Double>> ranges) {
+    private static Map<String, Integer> createLabelsForBins(Map<Integer, Integer> results, Map<Integer, List<Double>> ranges, boolean isSameMinMax) {
         Map<String, Integer> finalMap = new LinkedHashMap<>();
         String label = "";
         for (Map.Entry<Integer, Integer> bucket : results.entrySet()) {
             double minForLabel = ranges.get(bucket.getKey()).stream().min(Double::compareTo).orElse(0.0);
             double maxForLabel = ranges.get(bucket.getKey()).stream().max(Double::compareTo).orElse(0.0);
-            if (minForLabel == maxForLabel) {
-                // This should only happen when the min and max are the same
+            if (minForLabel == maxForLabel || isSameMinMax) {
+                // The min and max label are the same if
+                // the user has selected a range of 1
                 label = String.format("%.1f", maxForLabel);
             } else {
                 label = String.format("%.1f", minForLabel) + " - " + String.format("%.1f", maxForLabel);
@@ -264,11 +266,6 @@ public class DataProcessingService {
 
             finalMap.remove(label);
             finalMap.put(newLabel + " +", lastCount);
-        } else if (lastCount != null && finalMap.size() == 1) {
-            // If there is only one bin
-            // Remove the range and just use the max value
-            finalMap.remove(label);
-            finalMap.put(String.format("%.1f", ranges.get(0).get(1)), lastCount);
         }
 
         return finalMap;
