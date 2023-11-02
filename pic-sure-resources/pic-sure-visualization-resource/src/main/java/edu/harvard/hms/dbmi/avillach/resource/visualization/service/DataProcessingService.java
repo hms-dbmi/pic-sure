@@ -45,7 +45,7 @@ public class DataProcessingService {
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             Map<String, Integer> axisMap;
-            if (isOpenAccess) {
+            if (!isOpenAccess) {
                 // If open access we need to process the data
                 // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
                 if (VisualizationUtil.skipKey(entry.getKey())) continue;
