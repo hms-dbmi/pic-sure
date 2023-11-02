@@ -255,16 +255,22 @@ public class DataProcessingService {
         }
         Integer lastCount = finalMap.get(label);
 
-        //Last label should be the min in the range with a '+' sign. Only if there is more than one bin.
-        if (lastCount != null && results.size() > 1) {
+        if (lastCount != null && finalMap.size() > 1) {
             String newLabel = label;
             int hasDash = label.indexOf(" -");
             if (hasDash > 0) {
                 newLabel = label.substring(0, hasDash);
             }
+
             finalMap.remove(label);
             finalMap.put(newLabel + " +", lastCount);
+        } else if (lastCount != null) {
+            // If there is only one bin
+            // Remove the range and just use the max value
+            finalMap.remove(label);
+            finalMap.put(String.format("%.1f", ranges.get(0).get(1)), lastCount);
         }
+
         return finalMap;
     }
 
