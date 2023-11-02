@@ -15,30 +15,26 @@
 	<description>Info Service API</description>
 	<repositories>
 		<repository>
-			<id>github</id>
-			<name>GitHub HMS-DBMI Apache Maven Packages</name>
-			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
-			<snapshots>
-				<enabled>true</enabled>
-			</snapshots>
+			<id>jitpack.io</id>
+			<url>https://jitpack.io</url>
 		</repository>
 	</repositories>
 	<properties>
 		<java.version>21</java.version>
 	</properties>
 	<dependencies>
-<!--		<dependency>-->
-<!--			<groupId>edu.harvard.hms.dbmi.avillach</groupId>-->
-<!--			<artifactId>pic-sure-resource-api</artifactId>-->
-<!--			<version>2.1.0-SNAPSHOT</version>-->
-<!--			<exclusions>-->
-<!--				&lt;!&ndash;Exclude all transitive dependencies. I just want the ResourceInfo class&ndash;&gt;-->
-<!--				<exclusion>-->
-<!--					<groupId>*</groupId>-->
-<!--					<artifactId>*</artifactId>-->
-<!--				</exclusion>-->
-<!--			</exclusions>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>com.github.hms-dbmi</groupId>
+			<artifactId>pic-sure</artifactId>
+			<version>e421ae9caff5ed02e9cd27812edfe24ec455281c</version>
+			<exclusions>
+				<!--Exclude all transitive dependencies. I just want the ResourceInfo class-->
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
