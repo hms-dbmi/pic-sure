@@ -690,9 +690,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * This method will determine if the cross count needs to be obfuscated. It will return true if any of the
      * cross counts are less than the threshold or if any of the cross counts have a variance.
      *
-     * @param crossCounts
-     * @param generatedVariance
-     * @return
+     * @param crossCounts     The cross counts
+     * @param generatedVariance The variance for the request
+     * @return boolean True if the cross count needs to be obfuscated, false otherwise
      */
     private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
         String lessThanThresholdStr = "< " + this.threshold;
