@@ -1,20 +1,21 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import static org.junit.Assert.assertEquals;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import org.junit.Before;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.when;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
-import static org.mockito.Mockito.*;
-
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class CountProcessorTest {
 
 	private CountProcessor countProcessor;
@@ -22,7 +23,7 @@ public class CountProcessorTest {
 	@Mock
 	private AbstractProcessor mockAbstractProcessor;
 
-	@Before
+	@BeforeTestClass
 	public void before() {
 		countProcessor = new CountProcessor(mockAbstractProcessor);
 	}

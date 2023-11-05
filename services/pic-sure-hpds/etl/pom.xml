@@ -14,11 +14,6 @@
 	<name>etl</name>
 	<dependencies>
 		<dependency>
-    			<groupId>ch.qos.logback</groupId>
-    			<artifactId>logback-core</artifactId>
-    			<version>1.2.9</version>
-		</dependency>
-		<dependency>
     			<groupId>org.apache.commons</groupId>
    	 		<artifactId>commons-compress</artifactId>
     			<version>1.21</version>
@@ -30,19 +25,8 @@
 		</dependency>
 		<dependency>
     			<groupId>com.fasterxml.jackson.core</groupId>
-    			<artifactId>jackson-core</artifactId>
-    			<version>2.10.5</version>
+    			<artifactId>jackson-databind</artifactId>
 		</dependency>
-		<dependency>
-   			 <groupId>com.fasterxml.jackson.core</groupId>
-    			<artifactId>jackson-annotations</artifactId>
-    			<version>2.10.5</version>
-		</dependency>
-		<dependency>
-                        <groupId>com.fasterxml.jackson.core</groupId>
-                        <artifactId>jackson-databind</artifactId>
-                        <version>2.10.5.1</version>
-                </dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 			<artifactId>data</artifactId>

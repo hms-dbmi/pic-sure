@@ -1,19 +1,19 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-
 import java.io.*;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.zip.GZIPInputStream;
 
-import org.junit.*;
-
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.test.util.AssertionErrors.assertEquals;
+import static org.springframework.test.util.AssertionErrors.assertNotNull;
 
 public class VariantMetadataIndexTest {
 
@@ -37,7 +37,7 @@ public class VariantMetadataIndexTest {
 	private static final String spec5 = "4,9856624,CAAAAA,CA";	private static final String spec5Info = "AC=3033;AF=6.05631e-01;NS=2504;AN=5008;EAS_AF=5.23800e-01;EUR_AF=7.54500e-01;AFR_AF=4.28900e-01;AMR_AF=7.82400e-01;SAS_AF=6.50300e-01;DP=20851;VT=INDEL";
 	
 
-	@BeforeClass
+	@BeforeTestClass
 	public static void initializeBinfile() throws Exception {
 		VariantMetadataLoader.main(new String[] {"./src/test/resources/test_vcfIndex.tsv", binFile, "target/VariantMetadataStorage.bin"});
 		
@@ -54,21 +54,21 @@ public class VariantMetadataIndexTest {
 	public void test_2a_variantFromFile_1_WasLoaded() {
 		String[] data = vmi.findBySingleVariantSpec("14,19038291,C,A", bucketCache); 
 		String[] expecteds = {"AC=14;AF=2.79553e-03;NS=2504;AN=5008;EAS_AF=0.00000e+00;EUR_AF=1.09000e-02;AFR_AF=0.00000e+00;AMR_AF=4.30000e-03;SAS_AF=0.00000e+00;DP=32694;AA=.|||;VT=SNP"};
-		assertArrayEquals("The expected values were not found.", expecteds, data);
+		assertEquals("The expected values were not found.", expecteds, data);
 	}
 
 	@Test
 	public void test_2b_variantFromFile_2_WasLoaded() {
 		String[] data = vmi.findBySingleVariantSpec("14,21089541,A,G", bucketCache); 
 		String[] expecteds = {"AC=20;AF=3.99361e-03;NS=2504;AN=5008;EAS_AF=0.00000e+00;EUR_AF=0.00000e+00;AFR_AF=1.44000e-02;AMR_AF=1.40000e-03;SAS_AF=0.00000e+00;DP=18507;AA=A|||;VT=SNP"};
-		assertArrayEquals("The expected values were not found.", expecteds, data);
+		assertEquals("The expected values were not found.", expecteds, data);
 	}
 
 	@Test
 	public void test_2c_variantFromFile_3_WasNotLoaded() {
 		String[] data = vmi.findBySingleVariantSpec("14,21616876,G,A", bucketCache); 
 		String[] expecteds = {};
-		assertArrayEquals("The expected values were not found.", expecteds, data);
+		assertEquals("The expected values were not found.", expecteds, data);
 	}
 	
 	@Test
@@ -83,13 +83,13 @@ public class VariantMetadataIndexTest {
 		
 		assertEquals("Wrong number of records in response.", data[0].size(), 2);
 		variants.stream().forEach(variant->{
-			assertArrayEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+			assertEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
 		});
 		
 		Map<String, String[]>[] data2 = new Map[] {vmi.findByMultipleVariantSpec(variants.subList(0, 1))}; 
 		
 		assertEquals("Wrong number of records in response.", 1, data2[0].size());
-		assertArrayEquals("The expected values were not found.", expectedResult.get(variants.get(0)), data2[0].get(variants.get(0)));
+		assertEquals("The expected values were not found.", expectedResult.get(variants.get(0)), data2[0].get(variants.get(0)));
 
 	}
 	
@@ -104,7 +104,7 @@ public class VariantMetadataIndexTest {
 		
 		assertEquals("Wrong number of records in response.", data[0].size(), 2);
 		variants.stream().forEach(variant->{
-			assertArrayEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+			assertEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
 		});
 	}
 	
@@ -118,7 +118,7 @@ public class VariantMetadataIndexTest {
 		
 		assertEquals("Wrong number of records in response.", data[0].size(), 2);
 		variants.stream().forEach(variant->{
-			assertArrayEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+			assertEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
 		});
 	}
 	
@@ -132,23 +132,25 @@ public class VariantMetadataIndexTest {
 		
 		assertEquals("Wrong number of records in response.", data[0].size(), 2);
 		variants.stream().forEach(variant->{
-			assertArrayEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+			assertEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
 		});
 	}
 	
 	/**
 	 * The google API that we use throws an IllegalStateException on duplicate entries
 	 */
-	@Test (expected = IllegalStateException.class)
+	@Test
 	public void testMultipleVariantSpecSameSpec() {
-		List<String> variants = List.of(spec1, spec1);
-		Map<String,String[]> expectedResult = Map.of(
-				spec1, new String[]{spec1Info});
-		Map<String, String[]>[] data = new Map[] {vmi.findByMultipleVariantSpec(variants)}; 
-		
-		assertEquals("Wrong number of records in response.", data[0].size(), 1);
-		variants.stream().forEach(variant->{
-			assertArrayEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+		assertThrows(IllegalStateException.class, () -> {
+			List<String> variants = List.of(spec1, spec1);
+			Map<String,String[]> expectedResult = Map.of(
+					spec1, new String[]{spec1Info});
+			Map<String, String[]>[] data = new Map[] {vmi.findByMultipleVariantSpec(variants)};
+
+			assertEquals("Wrong number of records in response.", data[0].size(), 1);
+			variants.stream().forEach(variant->{
+				assertEquals("The expected values were not found.", expectedResult.get(variant), data[0].get(variant));
+			});
 		});
 	}
 	

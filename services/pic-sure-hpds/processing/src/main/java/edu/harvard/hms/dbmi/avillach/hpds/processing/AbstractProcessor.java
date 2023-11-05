@@ -46,8 +46,6 @@ public class AbstractProcessor {
 
 	private LoadingCache<String, PhenoCube<?>> store;
 
-	private final VariantService variantService;
-
 	private final PhenotypeMetaStore phenotypeMetaStore;
 
 	private final GenomicProcessor genomicProcessor;
@@ -77,8 +75,6 @@ public class AbstractProcessor {
 		genomicDataDirectory = System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
 
 		this.phenotypeMetaStore = phenotypeMetaStore;
-		// todo: get rid of this
-		this.variantService = new VariantService(genomicDataDirectory);
 		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
@@ -136,12 +132,11 @@ public class AbstractProcessor {
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
 							 Map<String, FileBackedByteIndexedInfoStore> infoStores, List<String> infoStoreColumns,
-							 VariantService variantService, GenomicProcessor genomicProcessor) {
+							 GenomicProcessor genomicProcessor) {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.store = store;
 		this.infoStores = infoStores;
 		this.infoStoreColumns = infoStoreColumns;
-		this.variantService = variantService;
 		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
@@ -186,7 +181,7 @@ public class AbstractProcessor {
 
 		if (distributableQuery.hasFilters()) {
             BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
-			return patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
+			return genomicProcessor.patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
         }
 
 		return distributableQuery.getPatientIds();
@@ -223,18 +218,6 @@ public class AbstractProcessor {
 		distributableQuery.setVariantInfoFilters(query.getVariantInfoFilters());
 		distributableQuery.setPatientIds(phenotypicPatientSet);
 		return distributableQuery;
-	}
-
-	public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-		Set<Integer> ids = new HashSet<>();
-		String bitmaskString = patientMask.toString(2);
-		for(int x = 2;x < bitmaskString.length()-2;x++) {
-			if('1'==bitmaskString.charAt(x)) {
-				String patientId = variantService.getPatientIds()[x-2].trim();
-				ids.add(Integer.parseInt(patientId));
-			}
-		}
-		return ids;
 	}
 
 	/**
@@ -428,7 +411,7 @@ public class AbstractProcessor {
 	}
 
 	public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
-		return variantService.getMasks(path, variantMasksVariantBucketHolder);
+		return genomicProcessor.getMasks(path, variantMasksVariantBucketHolder);
 	}
 
     // todo: handle this locally, we do not want this in the genomic processor

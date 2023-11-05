@@ -1,13 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service.util;
 
 import edu.harvard.dbmi.avillach.domain.PaginatedSearchResult;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class PaginatorTest {
 
@@ -59,26 +60,35 @@ public class PaginatorTest {
         assertEquals(List.of(), paginatedSearchResult.getResults());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void paginate_invalidPageZero() {
-        List<String> values = List.of();
-        paginator.paginate(values, 0, 20);
+        assertThrows(IllegalArgumentException.class, () -> {
+            List<String> values = List.of();
+            paginator.paginate(values, 0, 20);
+        });
     }
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void paginate_invalidPageNegative() {
-        List<String> values = List.of();
-        paginator.paginate(values, -2, 20);
+        assertThrows(IllegalArgumentException.class, () -> {
+            List<String> values = List.of();
+            paginator.paginate(values, -2, 20);
+        });
+
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void paginate_invalidSizeZero() {
-        List<String> values = List.of();
-        paginator.paginate(values, 1, 0);
+        assertThrows(IllegalArgumentException.class, () -> {
+            List<String> values = List.of();
+            paginator.paginate(values, 1, 0);
+        });
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void paginate_invalidSizeNegative() {
-        List<String> values = List.of();
-        paginator.paginate(values, 1, -5);
+        assertThrows(IllegalArgumentException.class, () -> {
+            List<String> values = List.of();
+            paginator.paginate(values, 1, -5);
+        });
     }
 }

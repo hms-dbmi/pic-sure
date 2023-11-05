@@ -352,4 +352,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return variantService.getPatientIds();
     }
 
+    @Override
+    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+        return variantService.getMasks(path, variantMasksVariantBucketHolder);
+    }
+
 }

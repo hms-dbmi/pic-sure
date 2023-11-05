@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigInteger;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -64,5 +67,16 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     public String[] getPatientIds() {
         // todo: verify all nodes have the same potients
         return nodes.get(0).getPatientIds();
+    }
+
+    @Override
+    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+        for (GenomicProcessor node : nodes) {
+            Optional<VariantMasks> masks = node.getMasks(path, variantMasksVariantBucketHolder);
+            if (masks.isPresent()) {
+                return masks;
+            }
+        }
+        return Optional.empty();
     }
 }

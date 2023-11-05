@@ -7,7 +7,7 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class Testing504MVariants {
 

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
@@ -10,6 +12,7 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.Set;
 
 public class GenomicProcessorRestClient implements GenomicProcessor {
@@ -59,5 +62,10 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     @Override
     public String[] getPatientIds() {
         return new String[0];
+    }
+
+    @Override
+    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+        throw new RuntimeException("Not Implemented");
     }
 }

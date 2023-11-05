@@ -4,20 +4,20 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.*;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class AbstractProcessorTest {
 
     private AbstractProcessor abstractProcessor;
@@ -36,7 +36,7 @@ public class AbstractProcessorTest {
     public static final List<String> EXAMPLE_VARIANT_SEVERITIES = List.of("HIGH", "MODERATE", "LOW");
 
 
-    @Before
+    @BeforeEach
     public void setup() {
         FileBackedByteIndexedInfoStore mockInfoStore = mock(FileBackedByteIndexedInfoStore.class);
         FileBackedByteIndexedStorage<String, Integer[]> mockIndexedStorage = mock(FileBackedByteIndexedStorage.class);
@@ -61,7 +61,6 @@ public class AbstractProcessorTest {
                 null,
                 infoStores,
                 null,
-                variantService,
                 genomicProcessor
         );
     }

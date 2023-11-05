@@ -9,12 +9,10 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.storage.FileBackedStorageVariantMasksImpl;
-import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJsonIndexStorage;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
-import org.codehaus.jackson.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

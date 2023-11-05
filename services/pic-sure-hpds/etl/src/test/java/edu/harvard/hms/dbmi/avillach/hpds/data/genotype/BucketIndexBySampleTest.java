@@ -1,24 +1,19 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.zip.GZIPInputStream;
 
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
 
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
+
+import static org.springframework.test.util.AssertionErrors.*;
 
 /**
  * These tests are in the ETL project so that we can read in data from disk each time instead of storing binfiles
@@ -71,7 +66,7 @@ public class BucketIndexBySampleTest {
 	Set<String>  variantSet;
 	List<Integer> patientSet;
 	
-	@BeforeClass
+	@BeforeTestClass
 	public static void initializeBinfile() throws Exception {
 		//load variant data
 		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR, MERGED_DIR});	
@@ -83,7 +78,7 @@ public class BucketIndexBySampleTest {
 //		bucketIndexBySample.printPatientMasks();
 	}
 	
-	@Before
+	@BeforeEach
 	public void setUpTest() {
 		//start with fresh, empty collections
 		variantSet = new HashSet<String>();

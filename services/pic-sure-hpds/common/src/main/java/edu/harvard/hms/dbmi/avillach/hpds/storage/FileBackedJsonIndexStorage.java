@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.storage;
 
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.util.zip.GZIPInputStream;

@@ -1,23 +1,21 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
-import org.junit.Ignore;
-import org.junit.Test;
-
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
 
-@RunWith(MockitoJUnitRunner.class)
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@ExtendWith(MockitoExtension.class)
 public class VariantListQueryTest {
 
 	@Mock
@@ -90,7 +88,7 @@ public class VariantListQueryTest {
 		assertEquals("[]", t.runVariantListQuery(q));
 	}	
 	
-	@Ignore
+	@Disabled
 	public void testVariantListWithVariantInfoFiltersWithMultipleVariantsWithIntersectingKeys() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<>(List.of(
 				Set.of(42),
@@ -139,7 +137,7 @@ public class VariantListQueryTest {
 		assertTrue(variantList.contains("2,3456,C,A"));
 	}*/
 	
-	@Ignore
+	@Disabled
 	public void testVariantListWithVariantInfoFiltersWithOnlyOneFilterCriteria() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<Set<Integer>>(List.of(
 				Set.of(42)));

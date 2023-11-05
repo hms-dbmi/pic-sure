@@ -1,22 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.hpds.crypto;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Test;
-
-@Ignore // We should rewrite the crypto class to make it more testable, these tests don't work on certain JDKs
+@Disabled // We should rewrite the crypto class to make it more testable, these tests don't work on certain JDKs
 public class CryptoDefaultKeyTest {
 	
 	String TEST_MESSAGE = "This is a test.";
 	
-	@BeforeClass
+	@BeforeTestClass
 	public static void overrideDefaultKeyLocation() throws IllegalArgumentException, IllegalAccessException {
 	}
 	

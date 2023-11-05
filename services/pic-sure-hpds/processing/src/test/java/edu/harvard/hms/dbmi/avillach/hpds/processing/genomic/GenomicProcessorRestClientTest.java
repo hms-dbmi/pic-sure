@@ -3,7 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -17,7 +17,7 @@ public class GenomicProcessorRestClientTest {
 
 
     @Test
-    public void test() throws JsonProcessingException {
+    public void simpleTest() {
         DistributableQuery distributableQuery = new DistributableQuery();
 
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();

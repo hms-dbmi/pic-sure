@@ -1,20 +1,18 @@
 package edu.harvard.hms.dbmi.avillach.hpds.crypto;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 
 import javax.crypto.AEADBadTagException;
 
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
 
-@Ignore // We should rewrite the crypto class to make it more testable, these tests don't work on certain JDKs
+import static org.junit.jupiter.api.Assertions.*;
+
+@Disabled // We should rewrite the crypto class to make it more testable, these tests don't work on certain JDKs
 public class CryptoNamedKeyTest {
 
 	private static final String TEST_NAMED_ENCRYPTIOON_KEY_PATH = "src/test/resources/test_named_encryption_key";
@@ -23,7 +21,7 @@ public class CryptoNamedKeyTest {
 
 	String TEST_NAMED_KEY = "TEST_NAMED_KEY";
 
-	@BeforeClass
+	@BeforeTestClass
 	public static void overrideDefaultKeyLocation() throws IllegalArgumentException, IllegalAccessException, NoSuchFieldException, SecurityException {
 		Field field = Crypto.class.getDeclaredField("DEFAULT_ENCRYPTION_KEY_PATH");
 		field.setAccessible(true);
@@ -45,29 +43,21 @@ public class CryptoNamedKeyTest {
 
 	@Test
 	public void testNamedKeyEncryptNotUsingDefaultKey() {
-		Crypto.loadKey(TEST_NAMED_KEY, TEST_NAMED_ENCRYPTIOON_KEY_PATH);
-		byte[] ciphertext = Crypto.encryptData(TEST_NAMED_KEY, TEST_MESSAGE.getBytes());
-		assertTrue(!new String(ciphertext).contentEquals(TEST_MESSAGE));
-		try{
+		assertThrows(AEADBadTagException.class, () -> {
+			Crypto.loadKey(TEST_NAMED_KEY, TEST_NAMED_ENCRYPTIOON_KEY_PATH);
+			byte[] ciphertext = Crypto.encryptData(TEST_NAMED_KEY, TEST_MESSAGE.getBytes());
+			assertFalse(new String(ciphertext).contentEquals(TEST_MESSAGE));
 			Crypto.decryptData(ciphertext);
-		}catch(RuntimeException e) {
-			assertEquals(e.getCause().getClass(), AEADBadTagException.class);
-			return;
-		}
-		fail("Expected AEADBadTagException to be thrown");
+		});
 	}
 
 	@Test
 	public void testNamedKeyDecryptNotUsingDefaultKey() {
-		Crypto.loadKey(TEST_NAMED_KEY, TEST_NAMED_ENCRYPTIOON_KEY_PATH);
-		byte[] ciphertext = Crypto.encryptData(TEST_MESSAGE.getBytes());
-		assertTrue(!new String(ciphertext).contentEquals(TEST_MESSAGE));
-		try{
+		assertThrows(AEADBadTagException.class, () -> {
+			Crypto.loadKey(TEST_NAMED_KEY, TEST_NAMED_ENCRYPTIOON_KEY_PATH);
+			byte[] ciphertext = Crypto.encryptData(TEST_MESSAGE.getBytes());
+			assertTrue(!new String(ciphertext).contentEquals(TEST_MESSAGE));
 			Crypto.decryptData(TEST_NAMED_KEY, ciphertext);
-		}catch(RuntimeException e) {
-			assertEquals(e.getCause().getClass(), AEADBadTagException.class);
-			return;
-		}
-		fail("Expected AEADBadTagException to be thrown");
+		});
 	}
 }

@@ -17,12 +17,14 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult.Status;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class QueryService {
 
 	private static final int RESULTS_CACHE_SIZE = 50;
+
 	private final int SMALL_JOB_LIMIT;
 	private final int LARGE_TASK_THREADS;
 	private final int SMALL_TASK_THREADS;
@@ -46,15 +48,21 @@ public class QueryService {
 
 
 	@Autowired
-	public QueryService (AbstractProcessor abstractProcessor, QueryProcessor queryProcessor, TimeseriesProcessor timeseriesProcessor, CountProcessor countProcessor) {
+	public QueryService (AbstractProcessor abstractProcessor,
+						 QueryProcessor queryProcessor,
+						 TimeseriesProcessor timeseriesProcessor,
+						 CountProcessor countProcessor,
+						 @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
+						 @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
+						 @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads) {
 		this.abstractProcessor = abstractProcessor;
 		this.queryProcessor = queryProcessor;
 		this.timeseriesProcessor = timeseriesProcessor;
 		this.countProcessor = countProcessor;
 
-		SMALL_JOB_LIMIT = getIntProp("SMALL_JOB_LIMIT");
-		SMALL_TASK_THREADS = getIntProp("SMALL_TASK_THREADS");
-		LARGE_TASK_THREADS = getIntProp("LARGE_TASK_THREADS");
+		SMALL_JOB_LIMIT = smallJobLimit;
+		SMALL_TASK_THREADS = smallTaskThreads;
+		LARGE_TASK_THREADS = largeTaskThreads;
 
 
 		/* These have to be of type Runnable(nothing more specific) in order 

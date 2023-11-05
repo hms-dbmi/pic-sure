@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Set;
-import static org.junit.Assert.*;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class VariantIndexTest {
 

@@ -1,23 +1,22 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.context.event.annotation.BeforeTestClass;
 
 import java.math.BigInteger;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
-import static org.junit.Assert.*;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class PatientVariantJoinHandlerTest {
 
     @Mock
@@ -29,7 +28,7 @@ public class PatientVariantJoinHandlerTest {
     public static final Set<Integer> PATIENT_IDS_INTEGERS = Set.of(PATIENT_IDS).stream().map(Integer::parseInt).collect(Collectors.toSet());
     public static final String[] VARIANT_INDEX = {"16,61642243,A,T", "16,61642252,A,G", "16,61642256,C,T", "16,61642257,G,A", "16,61642258,G,A", "16,61642259,G,A", "16,61642260,G,A", "16,61642261,G,A"};
 
-    @Before
+    @BeforeTestClass
     public void setUp() {
         patientVariantJoinHandler = new PatientVariantJoinHandler(variantService);
         when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);

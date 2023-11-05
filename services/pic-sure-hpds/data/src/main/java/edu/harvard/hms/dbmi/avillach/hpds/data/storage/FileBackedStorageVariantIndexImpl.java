@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.storage;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJsonIndexStorage;
-import org.codehaus.jackson.type.TypeReference;
 
 import java.io.File;
 import java.io.FileNotFoundException;
