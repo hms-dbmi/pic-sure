@@ -1,0 +1,41 @@
+---
+version: '3'
+services:
+  uploader:
+    image: uploader:latest
+    container_name: uploader
+    build: ./dataupload/
+    env_file:
+      - ./dataupload/.env
+    depends_on:
+      - uploader-db
+    volumes:
+      - /usr/local/docker-config/aws_uploads/:/gic_query_results/
+    networks:
+      - hpdsNet
+      - picsure
+  uploader-db:
+    image: mysql:8.0
+    container_name: uploader-db
+    # This is super confusing. There are actually two .env files: one for the docker-compose environment itself
+    # and one for each container. This specifies the LATTER of those two envs
+    # The variables on the right side of the environment section are from the FORMER of these two envs
+    env_file:
+      - ./dataupload/.env
+    environment:
+      MYSQL_ROOT_PASSWORD: $DATA_UPLOAD_DB_PASS
+      MYSQL_PASSWORD: $DATA_UPLOAD_DB_PASS
+      MYSQL_DATABASE: $DATA_UPLOAD_DB_DATABASE
+      MYSQL_USER: $DATA_UPLOAD_DB_USER
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-u", "root", "-p$DATA_UPLOAD_DB_PASS" ]
+      timeout: 20s
+      retries: 10
+    networks:
+      - picsure
+    volumes:
+      - ./dataupload/data/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+      - uploader-db-data:/var/lib/mysql
+volumes:
+  uploader-db-data:
+
