@@ -30,6 +30,12 @@ public class Utilities {
         return httpClientContext;
     }
 
+    /**
+     * This method is used to get the request source from the request header. It is used for logging purposes.
+     *
+     * @param headers the request headers
+     * @return the request source
+     */
     public static String getRequestSourceFromHeader(HttpHeaders headers) {
         if (headers == null) return "headers are null";
         return headers.getHeaderString("request-source") == null ? "request-source header is null" : headers.getHeaderString("request-source");

@@ -51,7 +51,7 @@ public class VisualizationService {
     /**
      * Handles a query request from the UI. This method is called from the VisualizationResource class.
      *
-     * @param query QueryRequest - the query request
+     * @param query         QueryRequest - the query request
      * @param requestSource String - the request source, Authorized or Open
      * @return ProcessedCrossCountsResponse
      */
@@ -82,7 +82,7 @@ public class VisualizationService {
     private Response getProcessedCrossCountResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
         if ((categoryCrossCountsMap == null || categoryCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty()))
             return Response.ok().build();
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false, false);
+        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false, false, false);
         return Response.ok(response).build();
     }
 
@@ -91,7 +91,7 @@ public class VisualizationService {
      * the obfuscation types. If the value was obfuscated the response will be marked as obfuscated so the UI can
      * display the data accordingly.
      *
-     * @param categoryCrossCountsMap - the categorical cross counts
+     * @param categoryCrossCountsMap   - the categorical cross counts
      * @param continuousCrossCountsMap - the continuous cross counts
      * @return Response - the processed cross counts response
      */
@@ -111,7 +111,7 @@ public class VisualizationService {
             cleanedContinuousData = cleanCrossCountData(continuousCrossCountsMap);
         }
 
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, (isCategoricalObfuscated || isContinuousObfuscated), true);
+        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, isCategoricalObfuscated, isContinuousObfuscated, true);
         return Response.ok(response).build();
     }
 
@@ -120,7 +120,7 @@ public class VisualizationService {
      * and variance values that are appended to the cross counts when the data is obfuscated.
      *
      * @param crossCounts - the categorical cross counts
-     * @return Map<String, Map<String, Integer>> - the cleaned categorical data
+     * @return Map<String, Map < String, Integer>> - the cleaned categorical data
      */
     private Map<String, Map<String, Integer>> cleanCrossCountData(Map<String, Map<String, String>> crossCounts) {
         // remove the obfuscation types from the categorical data
@@ -165,12 +165,12 @@ public class VisualizationService {
     }
 
     private ProcessedCrossCountsResponse buildProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap,
-                                                                               Map<String, Map<String, Integer>> continuousCrossCountsMap,
-                                                                               boolean isObfuscated, boolean isOpenAccess) {
+                                                                           Map<String, Map<String, Integer>> continuousCrossCountsMap,
+                                                                           boolean isCategoricalObfuscated, boolean isContinuousObfuscated, boolean isOpenAccess) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isObfuscated));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isObfuscated, isOpenAccess));
+        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isCategoricalObfuscated, isOpenAccess));
+        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isContinuousObfuscated, isOpenAccess));
         return response;
     }
 
@@ -186,10 +186,9 @@ public class VisualizationService {
     }
 
     /**
-     *
-     * @param query QueryRequest
+     * @param query     QueryRequest
      * @param queryJson Query
-     * @return Map<String, Map<String, Integer>> - the continuous cross counts
+     * @return Map<String, Map < String, Integer>> - the continuous cross counts
      */
     private Map<String, Map<String, Integer>> getContinuousCrossCount(QueryRequest query, Query queryJson) {
         Map<String, Map<String, Integer>> continuousCrossCountsMap;
@@ -237,7 +236,8 @@ public class VisualizationService {
         }
 
         logger.info("Continuous data: " + continuousData.getQuery());
-        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {});
+        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {
+        });
         Map<String, Map<String, Integer>> continuousProcessedData = dataProcessingServices.binContinuousData(continuousDataMap);
         return Response.ok(continuousProcessedData).build();
     }
