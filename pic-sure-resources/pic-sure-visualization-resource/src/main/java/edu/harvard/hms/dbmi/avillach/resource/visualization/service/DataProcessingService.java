@@ -81,6 +81,7 @@ public class DataProcessingService {
 
         // If it's not obfuscated we need to bin the data
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
+            if (VisualizationUtil.skipKey(entry.getKey())) continue;
             String title = getChartTitle(entry.getKey());
 
             LinkedHashMap<String, Integer> binnedData;
