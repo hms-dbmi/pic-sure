@@ -40,23 +40,16 @@ public class DataProcessingService {
      *
      * @return List<CategoricalData> - result of query
      */
-    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
-        return handleGetCategoricalData(crossCountsMap, false);
-    }
-
-    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
-        return handleGetCategoricalData(crossCountsMap, isObfuscated);
-    }
-
-    private List<CategoricalData> handleGetCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated) {
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap, boolean isObfuscated, boolean isOpenAccess) {
         List<CategoricalData> categoricalDataList = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
-            if (VisualizationUtil.skipKey(entry)) continue;
-
-            Map<String, Integer> axisMap = null;
-            if (isObfuscated) {
-                axisMap = VisualizationUtil.processResults(entry.getValue());
+            Map<String, Integer> axisMap;
+            if (!isOpenAccess) {
+                // If open access we need to process the data
+                // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
+                if (VisualizationUtil.skipKey(entry.getKey())) continue;
+                axisMap = VisualizationUtil.doProcessResults(entry.getValue());
             } else {
                 axisMap = new LinkedHashMap<>(entry.getValue());
             }
@@ -74,6 +67,9 @@ public class DataProcessingService {
         return categoricalDataList;
     }
 
+    public List<CategoricalData> getCategoricalData(Map<String, Map<String, Integer>> crossCountsMap) {
+        return getCategoricalData(crossCountsMap, false, false);
+    }
 
     /**
      * For each continuous cross count we create a histogram of the values.
@@ -149,6 +145,7 @@ public class DataProcessingService {
     private static Map<String, Integer> bucketData(Map<String, Integer> originalMap) {
         // Convert to doubles from string then create a new map. This we need to use the keys to determine the
         // number of bins as well as the bin width.
+        boolean isSameMinMax = originalMap.size() == 1;
         Double[] keysAsDoubles = originalMap.keySet().stream().map(Double::valueOf).toArray(Double[]::new);
         Map<Double, Integer> data = new LinkedHashMap<>();
         for (Double key : keysAsDoubles) {
@@ -206,7 +203,7 @@ public class DataProcessingService {
         }
 
         //Finalizes the map by create labels that include the range of each bin.
-        Map<String, Integer> finalMap = createLabelsForBins(results, ranges);
+        Map<String, Integer> finalMap = createLabelsForBins(results, ranges, isSameMinMax);
         return finalMap;
     }
 
@@ -243,30 +240,34 @@ public class DataProcessingService {
      * @param ranges  - Map<Integer, List<Double>> - the range of each bin
      * @return - Map<String, Integer> - the new binned data with labels for each bin
      */
-    private static Map<String, Integer> createLabelsForBins(Map<Integer, Integer> results, Map<Integer, List<Double>> ranges) {
+    private static Map<String, Integer> createLabelsForBins(Map<Integer, Integer> results, Map<Integer, List<Double>> ranges, boolean isSameMinMax) {
         Map<String, Integer> finalMap = new LinkedHashMap<>();
         String label = "";
         for (Map.Entry<Integer, Integer> bucket : results.entrySet()) {
             double minForLabel = ranges.get(bucket.getKey()).stream().min(Double::compareTo).orElse(0.0);
             double maxForLabel = ranges.get(bucket.getKey()).stream().max(Double::compareTo).orElse(0.0);
-            if (minForLabel == maxForLabel) {
-                label = String.format("%.1f", minForLabel);
+            if (minForLabel == maxForLabel || isSameMinMax) {
+                // The min and max label are the same if
+                // the user has selected a range of 1
+                label = String.format("%.1f", maxForLabel);
             } else {
                 label = String.format("%.1f", minForLabel) + " - " + String.format("%.1f", maxForLabel);
             }
             finalMap.put(label, bucket.getValue());
         }
         Integer lastCount = finalMap.get(label);
-        //Last label should be the min in the range with a '+' sign.
-        if (lastCount != null) {
+
+        if (lastCount != null && finalMap.size() > 1) {
             String newLabel = label;
             int hasDash = label.indexOf(" -");
             if (hasDash > 0) {
                 newLabel = label.substring(0, hasDash);
             }
+
             finalMap.remove(label);
             finalMap.put(newLabel + " +", lastCount);
         }
+
         return finalMap;
     }
 

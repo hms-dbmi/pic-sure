@@ -57,7 +57,7 @@ public class HpdsService {
             logger.error("QueryRequest is null");
             return new LinkedHashMap<>();
         }
-        
+
         try {
             logger.debug("Getting {} cross counts map from query:", type, queryRequest);
             sanityCheck(queryRequest, resultType, type);
@@ -72,19 +72,22 @@ public class HpdsService {
     }
 
     public Map<String, Map<String, Integer>> getAuthCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-       return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {});
+        return getCrossCountsMap(queryRequest, resultType, AUTHORIZED_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, Integer>>>() {
+        });
     }
 
     public Map<String, Map<String, String>> getOpenCrossCountsMap(QueryRequest queryRequest, ResultType resultType) {
-        return getCrossCountsMap(queryRequest, resultType, OPEN_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, String>>>() {});
+        return getCrossCountsMap(queryRequest, resultType, OPEN_ACCESS.getValue(), new ParameterizedTypeReference<Map<String, Map<String, String>>>() {
+        });
     }
 
     /**
      * Create a new HttpHeaders object with the passed in queryRequest and ResultType. Transfers the authorization token
      * from the queryRequest and creates a new authorization header. Adds the resultType to the queryRequest.
      * Sets the correct Resource UUID
+     *
      * @param queryRequest - {@link QueryRequest} - contains the auth header
-     * @param resultType - {@link ResultType} - determines the type of query to be sent to HPDS
+     * @param resultType   - {@link ResultType} - determines the type of query to be sent to HPDS
      * @return HttpHeaders - the headers to be sent to HPDS
      */
     private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType, String accessType) {
@@ -92,6 +95,9 @@ public class HpdsService {
         headers.add(AUTH_HEADER_NAME,
                 queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
         );
+
+        headers.add("request-source", accessType);
+
         Query query;
         try {
             query = mapper.readValue(mapper.writeValueAsString(queryRequest.getQuery()), Query.class);
@@ -115,10 +121,13 @@ public class HpdsService {
     }
 
     private void sanityCheck(QueryRequest queryRequest, ResultType requestType, String accessType) {
-        if (accessType == null || accessType.trim().equals("")) throw new IllegalArgumentException("request-source header is required");
-        if (!(AUTHORIZED_ACCESS.getValue().equals(accessType) || OPEN_ACCESS.getValue().equals(accessType))) throw new IllegalArgumentException("accessType must be either Open or Authorized");
+        if (accessType == null || accessType.trim().equals(""))
+            throw new IllegalArgumentException("request-source header is required");
+        if (!(AUTHORIZED_ACCESS.getValue().equals(accessType) || OPEN_ACCESS.getValue().equals(accessType)))
+            throw new IllegalArgumentException("accessType must be either Open or Authorized");
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
-        if (applicationProperties.getAuthHpdsResourceId() == null) throw new IllegalArgumentException("picSureUuid is required");
+        if (applicationProperties.getAuthHpdsResourceId() == null)
+            throw new IllegalArgumentException("picSureUuid is required");
         if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
             throw new IllegalArgumentException("No authorization token found in queryRequest");
         if (requestType == null) throw new IllegalArgumentException("ResultType is required");

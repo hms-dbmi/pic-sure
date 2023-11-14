@@ -17,6 +17,7 @@ import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.VisualizationUtil;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
+import edu.harvard.hms.dbmi.avillach.service.RequestScopedHeader;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -33,7 +34,6 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,6 +52,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     @Inject
     private ResourceRepository resourceRepository;
+
+    @Inject
+    RequestScopedHeader requestScopedHeader;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -163,31 +166,31 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     }
 
-	@POST
-	@Path("/query/{resourceQueryId}/status")
-	@Override
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
-		logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
-		checkQuery(statusRequest);
-		HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
-		return readObjectFromResponse(response, QueryStatus.class);
-	}
+    @POST
+    @Path("/query/{resourceQueryId}/status")
+    @Override
+    public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
+        logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
+        checkQuery(statusRequest);
+        HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
+        return readObjectFromResponse(response, QueryStatus.class);
+    }
 
-	@POST
-	@Path("/query/{resourceQueryId}/result")
-	@Override
-	public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
-		logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
-		checkQuery(resultRequest);
-		HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
-		try {
-			return Response.ok(response.getEntity().getContent()).build();
-		} catch (IOException e) {
-			throw new ApplicationException(
-				"Error encoding query for resource with id " + resultRequest.getResourceUUID()
-			);
-		}
-	}
+    @POST
+    @Path("/query/{resourceQueryId}/result")
+    @Override
+    public Response queryResult(@PathParam("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
+        logger.debug("Calling Aggregate Data Sharing Resource queryResult() for query {}", queryId);
+        checkQuery(resultRequest);
+        HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
+        try {
+            return Response.ok(response.getEntity().getContent()).build();
+        } catch (IOException e) {
+            throw new ApplicationException(
+                    "Error encoding query for resource with id " + resultRequest.getResourceUUID()
+            );
+        }
+    }
 
     private HttpResponse postRequest(QueryRequest statusRequest, String pathName) {
         try {
@@ -230,6 +233,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                     "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
                     "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"
             );
+
             if (!allowedResultTypes.contains(expectedResultType)) {
                 logger.warn("Incorrect Result Type: " + expectedResultType);
                 return Response.status(Response.Status.BAD_REQUEST).build();
@@ -431,7 +435,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
-        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {});
+        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {
+        });
 
         int requestVariance = generateVarianceWithCrossCounts(crossCounts);
         crossCounts = obfuscateCrossCounts(crossCounts, requestVariance);
@@ -480,7 +485,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @return int The variance
      */
     private int generateVarianceWithCrossCounts(Map<String, String> crossCounts) {
-        final List<Map.Entry<String, String>> entryList = new ArrayList(crossCounts.entrySet());
+        final List<Map.Entry<String, String>> entryList = new ArrayList<>(crossCounts.entrySet());
 
         // sort the entry set. By sorting the entry set first we can ensure that the variance is the same for each run.
         // This is to give us a random variance that is deterministic.
@@ -517,67 +522,53 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>() {
         });
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
-
-        boolean mustObfuscate = true;
+        boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 
         // Handle the case where there is no visualization service UUID
         if (properties.getVisualizationResourceId() != null) {
-            // convert continuousCrossCountResponse to a map
-            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>() {
-            });
+            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
+            Map<String, Map<String, Object>> binnedContinuousCrossCounts = getBinnedContinuousCrossCount(queryRequest, continuousCrossCounts);
 
-            // Create Query for Visualization /bin/continuous
-            QueryRequest visualizationBinRequest = new QueryRequest();
-            visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
-            visualizationBinRequest.setQuery(continuousCrossCounts);
-            visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+            // Log the binned continuous cross counts
+            logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
-            Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
-            if (visResource == null) {
-                throw new ApplicationException("Visualization resource could not be found");
+            if (mustObfuscate || doObfuscateData(binnedContinuousCrossCounts)) {
+                obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
             }
 
-            // call the binning endpoint
-            HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
-            HttpEntity entity = httpResponse.getEntity();
-            String binResponse = EntityUtils.toString(entity, "UTF-8");
-
-            Map<String, Map<String, Object>> binnedContinuousCrossCounts = objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {
-            });
-
-            if (!mustObfuscate) {
-                // Ensure all inner values are Strings to be consistent in our returned data.
-                binnedContinuousCrossCounts.forEach(
-                        (key, value) -> value.forEach(
-                                (innerKey, innerValue) -> value.put(innerKey, innerValue.toString())
-                        )
-                );
-
-                return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
-            }
-
-            obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
             return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
         } else {
             // If there is no visualization service resource id, we will simply return the continuous cross count response.
-
             if (!mustObfuscate) {
                 return continuousCrossCountResponse;
             }
 
-            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<Map<String, Map<String, Integer>>>() {
-            });
+            Map<String, Map<String, Object>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
 
-            // Convert continuousCrossCounts Map to a map<String, Map<String, Object>>
-            Map<String, Map<String, Object>> convertedContinuousCrossCount = new HashMap<>();
-            continuousCrossCounts.forEach((key, value) -> {
-                Map<String, Object> innerMap = new HashMap<>(value);
-                convertedContinuousCrossCount.put(key, innerMap);
-            });
-
-            obfuscatedCrossCount(generatedVariance, convertedContinuousCrossCount);
-            return objectMapper.writeValueAsString(convertedContinuousCrossCount);
+            obfuscatedCrossCount(generatedVariance, continuousCrossCounts);
+            return objectMapper.writeValueAsString(continuousCrossCounts);
         }
+    }
+
+    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(QueryRequest queryRequest, Map<String, Map<String, Integer>> continuousCrossCounts) throws IOException {
+        // Create Query for Visualization /bin/continuous
+        QueryRequest visualizationBinRequest = new QueryRequest();
+        visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
+        visualizationBinRequest.setQuery(continuousCrossCounts);
+        visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+
+        Resource visResource = resourceRepository.getById(visualizationBinRequest.getResourceUUID());
+        if (visResource == null) {
+            throw new ApplicationException("Visualization resource could not be found");
+        }
+
+        // call the binning endpoint
+        HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+        HttpEntity entity = httpResponse.getEntity();
+        String binResponse = EntityUtils.toString(entity, "UTF-8");
+
+        return objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {
+        });
     }
 
     /**
@@ -598,40 +589,81 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             return null;
         }
 
-        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {
+        });
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-        boolean mustObfuscate = true;
-        if (!mustObfuscate) {
-            return categoricalEntityString;
-        }
-
-        // This might break in the object mapper. We need to test this.
-        Map<String, Map<String, Integer>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {});
-
-        if (categoricalCrossCount == null) {
-            return categoricalEntityString;
-        }
-
-        for (Map.Entry<String, Map<String, Integer>> entry : categoricalCrossCount.entrySet()) {
-            // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
-            if (VisualizationUtil.skipKey(entry)) continue;
-
-            Map<String, Integer> axisMap = VisualizationUtil.processResults(entry.getValue());
-            categoricalCrossCount.put(entry.getKey(), axisMap);
-        }
-
-        // Convert the categoricalCrossCount Map to a map<String, Map<String, Object>>
-        Map<String, Map<String, Object>> convertedCategoricalCrossCount = new HashMap<>();
-        categoricalCrossCount.forEach((key, value) -> {
-            Map<String, Object> innerMap = new HashMap<>(value);
-            convertedCategoricalCrossCount.put(key, innerMap);
+        Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
         });
 
-        // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
-        obfuscatedCrossCount(generatedVariance, convertedCategoricalCrossCount);
+        if (categoricalCrossCount == null) {
+            logger.info("Categorical cross count is null. Returning categoricalEntityString: {}", categoricalEntityString);
+            return categoricalEntityString;
+        }
 
-        return objectMapper.writeValueAsString(convertedCategoricalCrossCount);
+        // We have not obfuscated yet. We first process the data.
+        processResults(categoricalCrossCount);
+
+        if (isCrossCountObfuscated(crossCounts, generatedVariance) || doObfuscateData(categoricalCrossCount)) {
+            // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
+            obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
+        }
+
+        return objectMapper.writeValueAsString(categoricalCrossCount);
+    }
+
+    private static void processResults(Map<String, Map<String, Object>> categoricalCrossCount) {
+        for (Map.Entry<String, Map<String, Object>> entry : categoricalCrossCount.entrySet()) {
+            // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
+            if (VisualizationUtil.skipKey(entry.getKey())) continue;
+            Map<String, Object> axisMap = VisualizationUtil.processResults(entry.getValue());
+            categoricalCrossCount.put(entry.getKey(), axisMap);
+        }
+    }
+
+    /**
+     * @param categoricalCrossCount The categorical cross count
+     * @return boolean based on if the categorical cross count needs to be obfuscated
+     */
+    private boolean doObfuscateData(Map<String, Map<String, Object>> categoricalCrossCount) {
+        if (!isRequestSourceOpen(getRequestSource())) {
+            return false;
+        }
+
+        return categoricalCrossCount.values().stream()
+                .anyMatch(this::checkForObfuscation);
+    }
+
+    private boolean checkForObfuscation(Map<String, Object> axisMap) {
+        for (Map.Entry<String, Object> axisEntry : axisMap.entrySet()) {
+            Object value = axisEntry.getValue();
+            if (value instanceof Integer && (Integer) value < threshold) {
+                return true;
+            }
+            if (value instanceof String && Integer.parseInt((String) value) < threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isRequestSourceOpen(String requestSource) {
+        return requestSource != null && requestSource.equalsIgnoreCase("Open");
+    }
+
+    private String getRequestSource() {
+        if (requestScopedHeader == null || requestScopedHeader.getHeaders() == null) {
+            logger.warn("Request scoped header or headers are null");
+            return null;
+        }
+        List<String> requestSources = requestScopedHeader.getHeaders().get("request-source");
+        if (requestSources == null || requestSources.isEmpty()) {
+            logger.warn("Request source header is missing or empty");
+            return null;
+        }
+        String requestSource = requestSources.get(0);
+        logger.info("Request source: " + requestSource);
+        return requestSource;
     }
 
     /**
@@ -658,9 +690,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * This method will determine if the cross count needs to be obfuscated. It will return true if any of the
      * cross counts are less than the threshold or if any of the cross counts have a variance.
      *
-     * @param crossCounts
-     * @param generatedVariance
-     * @return
+     * @param crossCounts     The cross counts
+     * @param generatedVariance The variance for the request
+     * @return boolean True if the cross count needs to be obfuscated, false otherwise
      */
     private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
         String lessThanThresholdStr = "< " + this.threshold;
