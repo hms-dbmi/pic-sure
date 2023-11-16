@@ -10,6 +10,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.math.BigInteger;
@@ -73,7 +74,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public BigInteger getPatientMask(DistributableQuery distributableQuery) {
+    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
 //		log.debug("filterdIDSets START size: " + filteredIdSets.size());
         /* VARIANT INFO FILTER HANDLING IS MESSY */
         if(distributableQuery.hasFilters()) {
@@ -125,9 +126,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 }
             }
 
-            return patientMask;
+            return Mono.just(patientMask);
         }
-        return createMaskForPatientSet(distributableQuery.getPatientIds());
+        return Mono.fromCallable(() -> createMaskForPatientSet(distributableQuery.getPatientIds()));
         /* END OF VARIANT INFO FILTER HANDLING */
     }
 
@@ -224,7 +225,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public Collection<String> getVariantList(DistributableQuery query) {
+    public Mono<Collection<String>> getVariantList(DistributableQuery query) {
         boolean queryContainsVariantInfoFilters = query.getVariantInfoFilters().stream().anyMatch(variantInfoFilter ->
                 !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
         );
@@ -253,7 +254,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             // If we have all patients then no variants would be filtered, so no need to do further processing
             if(patientSubset.size()==variantService.getPatientIds().length) {
                 log.info("query selects all patient IDs, returning....");
-                return unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
+                return Mono.just(unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex()));
             }
 
             BigInteger patientMasks = createMaskForPatientSet(patientSubset);
@@ -276,12 +277,12 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                         }
                     });
                 });
-                return variantsWithPatients;
+                return Mono.just(variantsWithPatients);
             }else {
-                return unionOfInfoFiltersVariantSpecs;
+                return Mono.just(unionOfInfoFiltersVariantSpecs);
             }
         }
-        return new ArrayList<>();
+        return Mono.just(new ArrayList<>());
     }
 
     private BigInteger getIdSetForVariantSpecCategoryFilter(String[] zygosities, String key, VariantBucketHolder<VariantMasks> bucketCache) {
@@ -348,8 +349,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public String[] getPatientIds() {
-        return variantService.getPatientIds();
+    public List<String> getPatientIds() {
+        return List.of(variantService.getPatientIds());
     }
 
     @Override
@@ -357,4 +358,16 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return variantService.getMasks(path, variantMasksVariantBucketHolder);
     }
 
+    @Override
+    public List<String> getInfoStoreColumns() {
+        return infoStoreColumns;
+    }
+
+    @Override
+    public List<String> getInfoStoreValues(String conceptPath) {
+        return infoStores.get(conceptPath).getAllValues().keys()
+                .stream()
+                .sorted(String::compareToIgnoreCase)
+                .collect(Collectors.toList());
+    }
 }

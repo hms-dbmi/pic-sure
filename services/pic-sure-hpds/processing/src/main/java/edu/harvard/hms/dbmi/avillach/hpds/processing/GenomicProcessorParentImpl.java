@@ -1,72 +1,111 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.genomic.GenomicProcessorRestClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
-@Component
 public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     private static Logger log = LoggerFactory.getLogger(GenomicProcessorParentImpl.class);
 
     private final List<GenomicProcessor> nodes;
 
+    private final LoadingCache<String, List<String>> infoStoreValuesCache = CacheBuilder.newBuilder().build(new CacheLoader<>() {
+        @Override
+        public List<String> load(String conceptPath) {
+            return nodes.parallelStream()
+                    .map(node -> node.getInfoStoreValues(conceptPath))
+                    .flatMap(List::stream)
+                    .sorted(String::compareToIgnoreCase)
+                    .collect(Collectors.toList());
+        }
+    });
 
-    @Autowired
-    public GenomicProcessorParentImpl() {
-        // Just for testing, for now, move to a configuration file or something
-        String[] paths = new String[] {"/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.20/all/", "/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.22/all/"};
-        nodes = List.of(
-                new GenomicProcessorNodeImpl(paths[0]),
-                new GenomicProcessorNodeImpl(paths[1])
-        );
+    private List<String> patientIds;
+
+    public GenomicProcessorParentImpl(List<GenomicProcessor> nodes) {
+        this.nodes = nodes;
     }
 
     @Override
-    public BigInteger getPatientMask(DistributableQuery distributableQuery) {
-        BigInteger patientMask = null;
+    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
+        Mono<BigInteger> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMap(node -> node.getPatientMask(distributableQuery))
+                .reduce(BigInteger::or);
+        return result;
+        /*BigInteger patientMask = null;
+        System.out.println("Calling all nodes loop");
         for (GenomicProcessor node : nodes) {
             if (patientMask == null) {
-                patientMask = node.getPatientMask(distributableQuery);
+                System.out.println("Calling first node");
+                patientMask = node.getPatientMask(distributableQuery).block();
             } else {
-                patientMask = patientMask.or(node.getPatientMask(distributableQuery));
+                System.out.println("Calling second node");
+                patientMask = patientMask.or(node.getPatientMask(distributableQuery).block());
             }
-            log.info("Patients: " + node.patientMaskToPatientIdSet(patientMask));
         }
-        return patientMask;
+        System.out.println("Finished calling all nodes loop");
+        return Mono.just(patientMask);*/
     }
 
     @Override
     public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-        return null;
+        Set<Integer> ids = new HashSet<>();
+        String bitmaskString = patientMask.toString(2);
+        for(int x = 2;x < bitmaskString.length()-2;x++) {
+            if('1'==bitmaskString.charAt(x)) {
+                String patientId = patientIds.get(x-2).trim();
+                ids.add(Integer.parseInt(patientId));
+            }
+        }
+        return ids;
     }
 
     @Override
     public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
-        return null;
+        throw new RuntimeException("Not implemented");
     }
 
     @Override
-    public Collection<String> getVariantList(DistributableQuery distributableQuery) {
-        return nodes.parallelStream().flatMap(node ->
+    public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
+        Mono<Collection<String>> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMap(node -> node.getVariantList(distributableQuery))
+                .reduce((variantList1, variantList2) -> {
+                    List<String> mergedResult = new ArrayList<>(variantList1.size() + variantList2.size());
+                    mergedResult.addAll(variantList1);
+                    mergedResult.addAll(variantList2);
+                    return mergedResult;
+                });
+        return result;
+        /*return nodes.parallelStream().flatMap(node ->
                 node.getVariantList(distributableQuery).stream()).collect(Collectors.toList()
-        );
+        );*/
     }
 
     @Override
-    public String[] getPatientIds() {
-        // todo: verify all nodes have the same potients
-        return nodes.get(0).getPatientIds();
+    public List<String> getPatientIds() {
+        if (patientIds != null) {
+            return patientIds;
+        } else {
+            // todo: verify all nodes have the same potients
+            List<String> result = nodes.get(0).getPatientIds();
+            patientIds = result;
+            return result;
+        }
     }
 
     @Override
@@ -78,5 +117,19 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
             }
         }
         return Optional.empty();
+    }
+
+    @Override
+    public List<String> getInfoStoreColumns() {
+        // todo: cache this
+        return nodes.parallelStream()
+                .map(GenomicProcessor::getInfoStoreColumns)
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<String> getInfoStoreValues(String conceptPath) {
+        return infoStoreValuesCache.getUnchecked(conceptPath);
     }
 }

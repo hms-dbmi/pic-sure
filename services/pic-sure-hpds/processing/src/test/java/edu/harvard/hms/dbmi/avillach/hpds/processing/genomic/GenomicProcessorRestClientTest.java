@@ -33,7 +33,7 @@ public class GenomicProcessorRestClientTest {
         distributableQuery.setVariantInfoFilters(variantInfoFilters);
         distributableQuery.setPatientIds(Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
 
-        BigInteger patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery);
+        BigInteger patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery).block();
         System.out.println(patientMaskForVariantInfoFilters);
     }
 }

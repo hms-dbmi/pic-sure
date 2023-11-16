@@ -6,7 +6,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.GZIPInputStream;
 
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.slf4j.Logger;
@@ -24,6 +23,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 
 @Component
@@ -39,32 +39,11 @@ public class AbstractProcessor {
 	private final String genomicDataDirectory;
 
 
-
-	private List<String> infoStoreColumns;
-
-	private Map<String, FileBackedByteIndexedInfoStore> infoStores;
-
 	private LoadingCache<String, PhenoCube<?>> store;
 
 	private final PhenotypeMetaStore phenotypeMetaStore;
 
 	private final GenomicProcessor genomicProcessor;
-
-	private final LoadingCache<String, List<String>> infoStoreValuesCache = CacheBuilder.newBuilder().build(new CacheLoader<>() {
-		@Override
-		public List<String> load(String conceptPath) {
-			FileBackedByteIndexedInfoStore store = getInfoStore(conceptPath);
-			if (store == null) {
-				throw new IllegalArgumentException("Concept path: " + conceptPath + " not found");
-			} else if (store.isContinuous) {
-				throw new IllegalArgumentException("Concept path: " + conceptPath + " is not categorical");
-			}
-			return store.getAllValues().keys()
-					.stream()
-					.sorted(String::compareToIgnoreCase)
-					.collect(Collectors.toList());
-		}
-	});
 
 	@Autowired
 	public AbstractProcessor(
@@ -105,29 +84,6 @@ public class AbstractProcessor {
 			}
 
 		}
-		infoStores = new HashMap<>();
-		File genomicDataDirectory = new File(this.genomicDataDirectory);
-		if(genomicDataDirectory.exists() && genomicDataDirectory.isDirectory()) {
-			Arrays.stream(genomicDataDirectory.list((file, filename)->{return filename.endsWith("infoStore.javabin");}))
-					.forEach((String filename)->{
-						try (
-								FileInputStream fis = new FileInputStream(this.genomicDataDirectory + filename);
-								GZIPInputStream gis = new GZIPInputStream(fis);
-								ObjectInputStream ois = new ObjectInputStream(gis)
-						){
-							log.info("loading " + filename);
-							FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-							infoStore.updateStorageDirectory(genomicDataDirectory);
-							infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);
-							ois.close();
-						} catch (IOException e) {
-							throw new UncheckedIOException(e);
-						} catch (ClassNotFoundException e) {
-							throw new RuntimeException(e);
-						}
-					});
-		}
-		infoStoreColumns = new ArrayList<>(infoStores.keySet());
 	}
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
@@ -135,8 +91,6 @@ public class AbstractProcessor {
 							 GenomicProcessor genomicProcessor) {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.store = store;
-		this.infoStores = infoStores;
-		this.infoStoreColumns = infoStoreColumns;
 		this.genomicProcessor = genomicProcessor;
 
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
@@ -148,7 +102,7 @@ public class AbstractProcessor {
 	}
 
 	public List<String> getInfoStoreColumns() {
-		return infoStoreColumns;
+		return genomicProcessor.getInfoStoreColumns();
 	}
 
 
@@ -180,8 +134,8 @@ public class AbstractProcessor {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
 
 		if (distributableQuery.hasFilters()) {
-            BigInteger patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
-			return genomicProcessor.patientMaskToPatientIdSet(patientMaskForVariantInfoFilters);
+            Mono<BigInteger> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
+			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
         }
 
 		return distributableQuery.getPatientIds();
@@ -210,7 +164,7 @@ public class AbstractProcessor {
 		} else {
             // if there are no patient filters, use all patients.
             // todo: we should not have to send these
-			phenotypicPatientSet = Arrays.stream(genomicProcessor.getPatientIds())
+			phenotypicPatientSet = genomicProcessor.getPatientIds().stream()
 					.map(String::trim)
 					.map(Integer::parseInt)
 					.collect(Collectors.toSet());
@@ -306,16 +260,18 @@ public class AbstractProcessor {
 
 	protected Collection<String> getVariantList(Query query) throws IOException {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
-		return genomicProcessor.getVariantList(distributableQuery);
+		return genomicProcessor.getVariantList(distributableQuery).block();
 	}
 
 	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
-		return infoStores.get(column);
+		// todo: figure out how we want to expose inner workings of the FBBIIS
+		throw new RuntimeException("Not yet implemented");
+		//return infoStores.get(column);
 	}
 
 	public List<String> searchInfoConceptValues(String conceptPath, String query) {
 		try {
-			return infoStoreValuesCache.getUnchecked(conceptPath).stream()
+			return genomicProcessor.getInfoStoreValues(conceptPath).stream()
 					.filter(variableValue -> variableValue.toUpperCase().contains(query.toUpperCase()))
 					.collect(Collectors.toList());
 		} catch (UncheckedExecutionException e) {
@@ -406,7 +362,7 @@ public class AbstractProcessor {
 		return phenotypeMetaStore.getMetaStore();
 	}
 
-	public String[] getPatientIds() {
+	public List<String> getPatientIds() {
 		return genomicProcessor.getPatientIds();
 	}
 
