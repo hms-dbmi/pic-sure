@@ -2,13 +2,12 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
-import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,8 +16,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 import org.springframework.http.MediaType;
 
 public class AsyncResult implements Runnable, Comparable<AsyncResult>{
@@ -116,7 +113,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	}
 
 	private int retryCount;
-	
+
 	private int queueDepth;
 
 	public int getQueueDepth() {
@@ -136,9 +133,9 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 	}
 
 	private int numRows;
-	
+
 	private int numColumns;
-	
+
 	private String id;
 
 	public String getId() {
@@ -245,6 +242,8 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 		return this.query.getId().compareTo(o.query.getId());
 	}
 
-
+	public Path getTempFilePath() {
+		return stream.getTempFilePath();
+	}
 
 }

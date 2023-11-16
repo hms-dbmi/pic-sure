@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import java.io.*;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
@@ -121,4 +122,8 @@ public class ResultStoreStream extends InputStream {
 	public File getFile() {
 		return writer.getFile();
 	}
+	public Path getTempFilePath() {
+		return Path.of(getFile().getAbsolutePath());
+	}
+
 }

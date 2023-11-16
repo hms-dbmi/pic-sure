@@ -13,6 +13,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryServic
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +51,7 @@ public class QueryService {
 	private final MultiValueQueryProcessor multiValueQueryProcessor;
 
 	private final DictionaryService dictionaryService;
+	private final QueryDecorator queryDecorator;
 
 	HashMap<String, AsyncResult> results = new HashMap<>();
 
@@ -61,15 +63,17 @@ public class QueryService {
 						 CountProcessor countProcessor,
 						 MultiValueQueryProcessor multiValueQueryProcessor,
 						 @Autowired(required = false) DictionaryService dictionaryService,
+                         QueryDecorator queryDecorator,
 						 @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
 						 @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
 						 @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads) {
 		this.abstractProcessor = abstractProcessor;
 		this.queryProcessor = queryProcessor;
 		this.timeseriesProcessor = timeseriesProcessor;
-		this.countProcessor = countProcessor;
-		this.multiValueQueryProcessor = multiValueQueryProcessor;
-		this.dictionaryService = dictionaryService;
+        this.countProcessor = countProcessor;
+        this.multiValueQueryProcessor = multiValueQueryProcessor;
+        this.dictionaryService = dictionaryService;
+        this.queryDecorator = queryDecorator;
 
 		SMALL_JOB_LIMIT = smallJobLimit;
 		SMALL_TASK_THREADS = smallTaskThreads;
@@ -88,9 +92,9 @@ public class QueryService {
 
 	public AsyncResult runQuery(Query query) throws IOException {
 		// Merging fields from filters into selected fields for user validation of results
-		mergeFilterFieldsIntoSelectedFields(query);
-
-		Collections.sort(query.getFields());
+		List<String> fields = query.getFields();
+		Collections.sort(fields);
+		query.setFields(fields);
 
 		AsyncResult result = initializeResult(query);
 		
@@ -150,34 +154,10 @@ public class QueryService {
 				.setStatus(AsyncResult.Status.PENDING)
 				.setQueuedTime(System.currentTimeMillis())
 				.setId(queryId);
+        queryDecorator.setId(query);
 		query.setId(result.getId());
 		results.put(result.getId(), result);
 		return result;
-	}
-	
-	
-	private void mergeFilterFieldsIntoSelectedFields(Query query) {
-		LinkedHashSet<String> fields = new LinkedHashSet<>();
-		fields.addAll(query.getFields());
-		if(!query.getCategoryFilters().isEmpty()) {
-			Set<String> categoryFilters = new TreeSet<String>(query.getCategoryFilters().keySet());
-			Set<String> toBeRemoved = new TreeSet<String>();
-			for(String categoryFilter : categoryFilters) {
-				System.out.println("In : " + categoryFilter);
-				if(VariantUtils.pathIsVariantSpec(categoryFilter)) {
-					toBeRemoved.add(categoryFilter);
-				}
-			}
-			categoryFilters.removeAll(toBeRemoved);
-			for(String categoryFilter : categoryFilters) {
-				System.out.println("Out : " + categoryFilter);
-			}
-			fields.addAll(categoryFilters);
-		}
-		fields.addAll(query.getAnyRecordOf());
-		fields.addAll(query.getRequiredFields());
-		fields.addAll(query.getNumericFilters().keySet());
-		query.setFields(fields);
 	}
 
 	private boolean ensureAllFieldsExist(Query query) {

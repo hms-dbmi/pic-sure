@@ -9,7 +9,10 @@ import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
+import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
+import org.apache.http.entity.ContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,12 +30,15 @@ import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
+import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.RequestBody;
 
 @RequestMapping(value = "PIC-SURE", produces = "application/json")
 @RestController
@@ -41,13 +47,16 @@ public class PicSureService {
 	@Autowired
 	public PicSureService(QueryService queryService, TimelineProcessor timelineProcessor, CountProcessor countProcessor,
 						  VariantListProcessor variantListProcessor, AbstractProcessor abstractProcessor, Paginator paginator,
-						  SignUrlService signUrlService) {
+						  SignUrlService signUrlService, FileSharingService fileSystemService, QueryDecorator queryDecorator
+	) {
 		this.queryService = queryService;
 		this.timelineProcessor = timelineProcessor;
 		this.countProcessor = countProcessor;
 		this.variantListProcessor = variantListProcessor;
 		this.abstractProcessor = abstractProcessor;
 		this.paginator = paginator;
+		this.fileSystemService = fileSystemService;
+		this.queryDecorator = queryDecorator;
 		this.signUrlService = signUrlService;
 		Crypto.loadDefaultKey();
 	}
@@ -69,6 +78,10 @@ public class PicSureService {
 	private final Paginator paginator;
 
 	private final SignUrlService signUrlService;
+
+	private final FileSharingService fileSystemService;
+
+	private final QueryDecorator queryDecorator;
 
 	private static final String QUERY_METADATA_FIELD = "queryMetadata";
 	private static final int RESPONSE_CACHE_SIZE = 50;
@@ -205,7 +218,8 @@ public class PicSureService {
 		status.setStatus(entity.getStatus().toPicSureStatus());
 
 		Map<String, Object> metadata = new HashMap<String, Object>();
-		metadata.put("picsureQueryId", UUIDv5.UUIDFromString(entity.getQuery().toString()));
+        queryDecorator.setId(entity.getQuery());
+        metadata.put("picsureQueryId", UUIDv5.UUIDFromString(entity.getQuery().getId()));
 		status.setResultMetadata(metadata);
 		return status;
 	}
@@ -304,6 +318,7 @@ public class PicSureService {
 
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:
+		case DATAFRAME_TIMESERIES:
 			QueryStatus status = query(resultRequest).getBody();
 			while (status.getResourceStatus().equalsIgnoreCase("RUNNING")
 					|| status.getResourceStatus().equalsIgnoreCase("PENDING")) {
@@ -359,12 +374,14 @@ public class PicSureService {
 	}
 
 	private ResponseEntity queryOkResponse(Object obj, Query incomingQuery) {
-		HttpHeaders responseHeaders = new HttpHeaders();
+        queryDecorator.setId(incomingQuery);
+        HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()).toString());
 		return new ResponseEntity<>(obj, responseHeaders, HttpStatus.OK);
 	}
 	private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {
-		HttpHeaders responseHeaders = new HttpHeaders();
+        queryDecorator.setId(incomingQuery);
+        HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()).toString());
 		return ResponseEntity
 				.ok()

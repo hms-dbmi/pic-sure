@@ -30,6 +30,7 @@ public class Query {
 			});
 		}
 		this.id = query.id;
+		this.picSureId = query.picSureId;
 	}
 
 	private ResultType expectedResultType = ResultType.COUNT;
@@ -43,6 +44,7 @@ public class Query {
 	private List<VariantInfoFilter> variantInfoFilters = new ArrayList<>();
 	private String id;
 
+	private String picSureId;
 
 	public ResultType getExpectedResultType() {
 		return expectedResultType;
@@ -125,6 +127,14 @@ public class Query {
 
 	public void setId(String id) {
 		this.id = id;
+	}
+
+	public String getPicSureId() {
+		return picSureId;
+	}
+
+	public void setPicSureId(String picSureId) {
+		this.picSureId = picSureId;
 	}
 
 	public static class VariantInfoFilter {

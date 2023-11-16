@@ -84,7 +84,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 	 * @throws IOException
 	 */
 	private void exportTimeData(Query query, AsyncResult result, Set<Integer> idList) throws IOException {
-
+		log.info("Starting export for time series data of query {} (HPDS ID {})", query.getPicSureId(), query.getId());
 		Set<String> exportedConceptPaths = new HashSet<String>();
 		//get a list of all fields mentioned in the query;  export all data associated with any included field
 		List<String> pathList = new LinkedList<String>();
