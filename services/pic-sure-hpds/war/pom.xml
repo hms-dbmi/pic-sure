@@ -40,39 +40,5 @@
 				</plugin>
 			</plugins>
 		</pluginManagement>
-		<plugins>
-			<plugin>
-				<artifactId>maven-clean-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>default-clean</id>
-						<phase>clean</phase>
-						<goals>
-							<goal>clean</goal>
-						</goals>
-						<configuration>
-							<filesets>
-								<fileset>
-									<directory>../docker/pic-sure-hpds</directory>
-									<includes>
-										<include>*.war</include>
-										<include>*.jar</include>
-										<include>war-exec.*</include>
-									</includes>
-								</fileset>
-							</filesets>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-war-plugin</artifactId>
-				<version>3.3.1</version>
-				<configuration>
-					<outputDirectory>docker/pic-sure-hpds</outputDirectory>
-				</configuration>
-			</plugin>
-		</plugins>
 	</build>
 </project>
