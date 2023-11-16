@@ -6,6 +6,7 @@ import javax.ws.rs.core.Response;
 import edu.harvard.dbmi.avillach.domain.*;
 import io.swagger.v3.oas.annotations.Operation;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Path("/pic-sure")
@@ -78,6 +79,28 @@ public interface IResourceRS
 	@Path("/bin/continuous")
 	@Operation(hidden = true)
 	default Response generateContinuousBin(QueryRequest continuousData) {
+		throw new NotSupportedException();
+	}
+
+
+	@POST
+	@Path("/proxy/{container}/{request : .+}")
+	@Operation(hidden = true)
+	default Response postProxy(
+		@PathParam("containerId") String containerId,
+		@PathParam("request") String request,
+		String body
+	) {
+		throw new NotSupportedException();
+	}
+
+	@GET
+	@Path("/proxy/{container}/{request : .+}")
+	@Operation(hidden = true)
+	default Response getProxy(
+		@PathParam("containerId") String containerId,
+		@PathParam("request") String request
+	) {
 		throw new NotSupportedException();
 	}
 

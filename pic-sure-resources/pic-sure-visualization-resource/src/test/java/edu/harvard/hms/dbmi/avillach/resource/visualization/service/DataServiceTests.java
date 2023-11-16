@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.resource.visualization.service;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.CategoricalData;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.ContinuousData;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Filter;
@@ -27,7 +27,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Var name is the title")
         void TestSingleSmallCategoryHasCorrectResults() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -64,7 +64,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Correct order and other bar is last")
         void TestSingleRequiredLargeCategoryHasCorrectOrder() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -111,7 +111,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Ensure large category has other bar and correct count")
         void TestSingleRequiredLargeCategoryHasCorrectResults() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -151,7 +151,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Test Other bar NOT there for 8 categories")
         void TestSingleRequired8CategoryWithCorrectResults() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -186,7 +186,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Test Many filters")
         void TestManyRequiredCategoricalFilters() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -260,7 +260,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Test Many filters")
         void TestManyRequiredContinuousFilters() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -314,7 +314,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Data accuracy test, no extra zeros added")
         void TestSingleDataAccuracyForNoExtraZero() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -363,7 +363,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Make Sure last value has plus and isn't a value of zero")
         void TestSingleDataAccuracyForPlusNotLastZero() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -481,7 +481,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Make Sure Empty buckets are added")
         void TestSingleDataAccuracyForAddingMissingBucketsWithZeroValues() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
@@ -586,7 +586,7 @@ class DataServiceTests {
         @Test
         @DisplayName("Test Big data set has more than 1 column when max-min>numBins")
         void TestBigDataSetHasMoreThenOneColumnWhenNumBinsGreaterThanMaxMinusMin() {
-            QueryRequest goodQueryRequest = new QueryRequest();
+            GeneralQueryRequest goodQueryRequest = new GeneralQueryRequest();
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();

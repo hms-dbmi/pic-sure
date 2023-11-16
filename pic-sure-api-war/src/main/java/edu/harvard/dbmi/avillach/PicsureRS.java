@@ -8,12 +8,10 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.service.FormatService;
-import edu.harvard.dbmi.avillach.service.PicsureInfoService;
-import edu.harvard.dbmi.avillach.service.PicsureQueryService;
-import edu.harvard.dbmi.avillach.service.PicsureSearchService;
+import edu.harvard.dbmi.avillach.service.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.info.Info;
@@ -40,6 +38,9 @@ public class PicsureRS {
 
 	@Inject
 	FormatService formatService;
+
+	@Inject
+	ProxyWebClient proxyWebClient;
 
 	@POST
 	@Path("/info/{resourceId}")
@@ -153,11 +154,16 @@ public class PicsureRS {
 
 		@Parameter
 		@QueryParam("isInstitute")
-		Boolean isInstitutionQuery
+		Boolean isInstitutionQuery,
+
+		@Context SecurityContext context
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.query(dataQueryRequest, headers) :
-			queryService.institutionalQuery(dataQueryRequest, headers);
+		if (isInstitutionQuery == null || !isInstitutionQuery) {
+			return queryService.query(dataQueryRequest, headers);
+		} else {
+			String email = context.getUserPrincipal().getName();
+			return queryService.institutionalQuery((FederatedQueryRequest) dataQueryRequest, headers, email);
+		}
 	}
 	
 	@POST
@@ -194,9 +200,11 @@ public class PicsureRS {
 		@QueryParam("isInstitute")
 		Boolean isInstitutionQuery
 	) {
-		return isInstitutionQuery == null || !isInstitutionQuery ?
-			queryService.queryStatus(queryId, credentialsQueryRequest, headers) :
-			queryService.institutionQueryStatus(queryId, credentialsQueryRequest, headers);
+		if (credentialsQueryRequest instanceof GeneralQueryRequest) {
+			return queryService.queryStatus(queryId, (GeneralQueryRequest) credentialsQueryRequest, headers);
+		} else {
+			return queryService.institutionQueryStatus(queryId, (FederatedQueryRequest) credentialsQueryRequest, headers);
+		}
 	}
 	
 	@POST
@@ -270,6 +278,28 @@ public class PicsureRS {
 	@Path("/bin/continuous")
 	public Response generateContinuousBin(QueryRequest continuousData, @Context HttpHeaders headers) {
 		return formatService.format(continuousData, headers);
+	}
+
+
+	@POST
+	@Path("/proxy/{container}/{request : .+}")
+	@Operation(hidden = true)
+	public Response postProxy(
+		@PathParam("container") String containerId,
+		@PathParam("request") String request,
+		String body
+	) {
+		return proxyWebClient.postProxy(containerId, request, body);
+	}
+
+	@GET
+	@Path("/proxy/{container}/{request : .+}")
+	@Operation(hidden = true)
+	public Response getProxy(
+		@PathParam("container") String containerId,
+		@PathParam("request") String request
+	) {
+		return proxyWebClient.getProxy(containerId, request);
 	}
 	
 }

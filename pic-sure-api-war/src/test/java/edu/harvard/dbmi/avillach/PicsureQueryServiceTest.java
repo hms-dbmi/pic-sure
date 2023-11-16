@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
@@ -32,7 +31,7 @@ import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
@@ -111,7 +110,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQueryMissingResourceId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -134,7 +133,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQueryInvalidResourceId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -155,7 +154,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
 	@Test
 	public void testQueryValidRequest() {
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		dataQueryRequest.setResourceCredentials(clientCredentials);
@@ -184,7 +183,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQueryStatusNoId() {
 
-		QueryRequest statusRequest = new QueryRequest();
+		GeneralQueryRequest statusRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		statusRequest.setResourceCredentials(clientCredentials);
 		try {
@@ -201,7 +200,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQueryStatusInvalidId() {
 
-		QueryRequest statusRequest = new QueryRequest();
+		GeneralQueryRequest statusRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		statusRequest.setResourceCredentials(clientCredentials);
 
@@ -220,7 +219,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQueryStatusValid() {
 
-		QueryRequest statusRequest = new QueryRequest();
+		GeneralQueryRequest statusRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		statusRequest.setResourceCredentials(clientCredentials);
 		// Setup a pre-existing query Entity
@@ -253,7 +252,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	public void testQueryResultNoId() {
 
 
-		QueryRequest resultRequest = new QueryRequest();
+		GeneralQueryRequest resultRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		resultRequest.setResourceCredentials(clientCredentials);
 		try {
@@ -271,7 +270,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	public void testQueryResultInvalidId() {
 
 
-		QueryRequest resultRequest = new QueryRequest();
+		GeneralQueryRequest resultRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		resultRequest.setResourceCredentials(clientCredentials);
 		try {
@@ -290,7 +289,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	public void testQueryResultValid() {
 
 
-		QueryRequest resultRequest = new QueryRequest();
+		GeneralQueryRequest resultRequest = new GeneralQueryRequest();
 		Map<String, String> clientCredentials = new HashMap<String, String>();
 		resultRequest.setResourceCredentials(clientCredentials);	
 
@@ -331,7 +330,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQuerySyncNoResourceId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -353,7 +352,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQuerySyncInvalidResourceId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -374,7 +373,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQuerySyncValidNoResponseId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();
@@ -446,7 +445,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Test
 	public void testQuerySyncValidWithResponseId() {
 
-		QueryRequest dataQueryRequest = new QueryRequest();
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
 		// At this level we don't check the credentials themselves, just that the map
 		// exists
 		Map<String, String> clientCredentials = new HashMap<String, String>();

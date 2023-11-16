@@ -8,10 +8,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.VisualizationUtil;
@@ -110,7 +107,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         String pathName = "/info";
 
         try {
-            QueryRequest chainRequest = new QueryRequest();
+            QueryRequest chainRequest = new GeneralQueryRequest();
             if (infoRequest != null) {
                 chainRequest.setQuery(infoRequest.getQuery());
                 chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
@@ -399,7 +396,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     private SearchResults getAllStudyConsents() {
         logger.debug("Calling Aggregate Data Sharing Resource getAllStudyConsents()");
 
-        QueryRequest studiesConsents = new QueryRequest();
+        QueryRequest studiesConsents = new GeneralQueryRequest();
         studiesConsents.setQuery("\\_studies_consents\\");
         return this.search(studiesConsents);
     }
@@ -552,7 +549,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(QueryRequest queryRequest, Map<String, Map<String, Integer>> continuousCrossCounts) throws IOException {
         // Create Query for Visualization /bin/continuous
-        QueryRequest visualizationBinRequest = new QueryRequest();
+        QueryRequest visualizationBinRequest = new GeneralQueryRequest();
         visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
         visualizationBinRequest.setQuery(continuousCrossCounts);
         visualizationBinRequest.setResourceCredentials(queryRequest.getResourceCredentials());
@@ -720,7 +717,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @return int The variance for the request
      */
     private QueryRequest createChainRequest(QueryRequest queryRequest) {
-        QueryRequest chainRequest = new QueryRequest();
+        QueryRequest chainRequest = new GeneralQueryRequest();
         chainRequest.setQuery(queryRequest.getQuery());
         chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
 

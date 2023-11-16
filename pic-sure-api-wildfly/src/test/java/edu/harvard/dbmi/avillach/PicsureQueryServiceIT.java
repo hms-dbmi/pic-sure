@@ -51,7 +51,7 @@ public class PicsureQueryServiceIT extends BaseIT {
 
         //Test missing info
         String uri = composeURL(endpointUrl, "/query/");
-        QueryRequest dataQueryRequest = new QueryRequest();
+        QueryRequest dataQueryRequest = new GeneralQueryRequest();
         HttpResponse response = retrievePostResponse(uri, headers, "");
         assertEquals("Missing query request info should return 500", 500, response.getStatusLine().getStatusCode());
         EntityUtils.consume(response.getEntity());
@@ -88,7 +88,7 @@ public class PicsureQueryServiceIT extends BaseIT {
     @Test
     public void testQueryStatus() throws Exception {
 
-        QueryRequest statusRequest = new QueryRequest();
+        QueryRequest statusRequest = new GeneralQueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         statusRequest.setResourceCredentials(clientCredentials);
@@ -137,7 +137,7 @@ public class PicsureQueryServiceIT extends BaseIT {
                         .withStatus(200)
                         .withBody("anyOldResultWillDo")));
 
-        QueryRequest resultRequest = new QueryRequest();
+        QueryRequest resultRequest = new GeneralQueryRequest();
         Map<String, String> clientCredentials = new HashMap<String, String>();
         clientCredentials.put(IRCTResourceRS.IRCT_BEARER_TOKEN_KEY, token);
         resultRequest.setResourceCredentials(clientCredentials);

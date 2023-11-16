@@ -24,7 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 
@@ -126,7 +126,7 @@ public class SystemService {
 
 	private boolean testResourcesRespond(List<Resource> resourcesToTest) {
 		for(Resource resource : resourcesToTest) {
-			ResourceInfo info = new ResourceWebClient().info(resource.getResourceRSPath(), new QueryRequest());
+			ResourceInfo info = new ResourceWebClient().info(resource.getResourceRSPath(), new GeneralQueryRequest());
 			if(info==null) {
 				return false;
 			}

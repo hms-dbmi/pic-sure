@@ -30,7 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
@@ -74,19 +74,19 @@ class PassThroughResourceRSTest {
 
 		when(statusLine.getStatusCode()).thenReturn(500);
 		assertThrows(ResourceInterfaceException.class, () -> {
-			resource.info(new QueryRequest());
+			resource.info(new GeneralQueryRequest());
 		}, "Downstream Resource returned 500 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(401);
 		assertThrows(ResourceInterfaceException.class, () -> {
-			resource.info(new QueryRequest());
+			resource.info(new GeneralQueryRequest());
 		}, "Downstream Resource returned 401 and should cause 'ResourceInterfaceException'");
 
 		when(statusLine.getStatusCode()).thenReturn(200);
 		ResourceInfo resourceInfo = newResourceInfo();
 		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(resourceInfo)));
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		ResourceInfo returnVal = resource.info(new QueryRequest());
+		ResourceInfo returnVal = resource.info(new GeneralQueryRequest());
 		assertEquals(resourceInfo.getId(), returnVal.getId(), "Downstream ResourceInfo Id should match output");
 		assertEquals(resourceInfo.getName(), returnVal.getName(), "Downstream ResourceInfo Name should match output");
 		assertEquals(resourceInfo.getQueryFormats().size(), returnVal.getQueryFormats().size(),
@@ -109,7 +109,7 @@ class PassThroughResourceRSTest {
 		}, "QueryRequest is required");
 
 		assertThrows(ProtocolException.class, () -> {
-			resource.query(new QueryRequest());
+			resource.query(new GeneralQueryRequest());
 		}, "Query is required");
 
 		when(statusLine.getStatusCode()).thenReturn(500);
@@ -126,7 +126,7 @@ class PassThroughResourceRSTest {
 		QueryStatus queryStatus = newQueryStatus(null);
 		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(queryStatus)));
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		QueryRequest queryRequest = newQueryRequest("test");
+		GeneralQueryRequest queryRequest = newQueryRequest("test");
 		QueryStatus returnVal = resource.query(queryRequest);
 		assertEquals(queryRequest.getResourceUUID(), returnVal.getResourceID());
 	}
@@ -166,7 +166,7 @@ class PassThroughResourceRSTest {
 		lenient().when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
 		httpResponseEntity = new StringEntity("4");
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		QueryRequest queryRequest = newQueryRequest(null);
+		GeneralQueryRequest queryRequest = newQueryRequest(null);
 		javax.ws.rs.core.Response returnVal = resource.queryResult(queryId.toString(), queryRequest);
 		assertEquals("4", IOUtils.toString((InputStream) returnVal.getEntity(), StandardCharsets.UTF_8));
 		//assertEquals(resultId, returnVal.getHeaderString("resultId"));
@@ -206,7 +206,7 @@ class PassThroughResourceRSTest {
 		QueryStatus queryStatus = newQueryStatus(queryId);
 		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(queryStatus)));
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		QueryRequest queryRequest = newQueryRequest(null);
+		GeneralQueryRequest queryRequest = newQueryRequest(null);
 		QueryStatus returnVal = resource.queryStatus(queryId.toString(), queryRequest);
 		assertEquals(queryId, returnVal.getPicsureResultId());
 		assertEquals(queryStatus.getStatus(), returnVal.getStatus());
@@ -229,7 +229,7 @@ class PassThroughResourceRSTest {
 		}, "QueryRequest is required");
 
 		assertThrows(ProtocolException.class, () -> {
-			resource.querySync(new QueryRequest());
+			resource.querySync(new GeneralQueryRequest());
 		}, "Query is required");
 
 		when(statusLine.getStatusCode()).thenReturn(500);
@@ -247,7 +247,7 @@ class PassThroughResourceRSTest {
 		lenient().when(httpResponse.getFirstHeader("resultId")).thenReturn(newHeader("resultId", resultId));
 		httpResponseEntity = new StringEntity("4");
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		QueryRequest queryRequest = newQueryRequest(newQuery());
+		GeneralQueryRequest queryRequest = newQueryRequest(newQuery());
 		javax.ws.rs.core.Response returnVal = resource.querySync(queryRequest);
 		assertEquals("4", IOUtils.toString((InputStream) returnVal.getEntity(), StandardCharsets.UTF_8));
 		//assertEquals(resultId, returnVal.getHeaderString("resultId"));
@@ -269,7 +269,7 @@ class PassThroughResourceRSTest {
 		}, "QueryRequest is required");
 
 		assertThrows(ProtocolException.class, () -> {
-			resource.search(new QueryRequest());
+			resource.search(new GeneralQueryRequest());
 		}, "Query is required");
 
 		when(statusLine.getStatusCode()).thenReturn(500);
@@ -288,7 +288,7 @@ class PassThroughResourceRSTest {
 		searchResults.setSearchQuery(queryText);
 		httpResponseEntity = new StringEntity(new String(objectMapper.writeValueAsBytes(searchResults)));
 		when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
-		QueryRequest queryRequest = newQueryRequest(queryText);
+		GeneralQueryRequest queryRequest = newQueryRequest(queryText);
 		SearchResults returnVal = resource.search(queryRequest);
 		assertEquals(queryText, returnVal.getSearchQuery());
 	}
@@ -312,8 +312,8 @@ class PassThroughResourceRSTest {
 		return status;
 	}
 
-	private QueryRequest newQueryRequest(Object query) {
-		QueryRequest request = new QueryRequest();
+	private GeneralQueryRequest newQueryRequest(Object query) {
+		GeneralQueryRequest request = new GeneralQueryRequest();
 		request.setResourceUUID(UUID.randomUUID());
 		request.setQuery(query);
 		return request;
