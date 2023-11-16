@@ -45,10 +45,10 @@ public class DataProcessingService {
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
             Map<String, Integer> axisMap;
+            if (VisualizationUtil.skipKey(entry.getKey())) continue;
             if (!isOpenAccess) {
                 // If open access we need to process the data
                 // skipKey is expecting an entrySet, so we need to convert the axisMap to an entrySet
-                if (VisualizationUtil.skipKey(entry.getKey())) continue;
                 axisMap = VisualizationUtil.doProcessResults(entry.getValue());
             } else {
                 axisMap = new LinkedHashMap<>(entry.getValue());
@@ -81,6 +81,7 @@ public class DataProcessingService {
 
         // If it's not obfuscated we need to bin the data
         for (Map.Entry<String, Map<String, Integer>> entry : crossCountsMap.entrySet()) {
+            if (VisualizationUtil.skipKey(entry.getKey())) continue;
             String title = getChartTitle(entry.getKey());
 
             LinkedHashMap<String, Integer> binnedData;
