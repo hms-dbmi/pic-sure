@@ -47,19 +47,6 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
                 .flatMap(node -> node.getPatientMask(distributableQuery))
                 .reduce(BigInteger::or);
         return result;
-        /*BigInteger patientMask = null;
-        System.out.println("Calling all nodes loop");
-        for (GenomicProcessor node : nodes) {
-            if (patientMask == null) {
-                System.out.println("Calling first node");
-                patientMask = node.getPatientMask(distributableQuery).block();
-            } else {
-                System.out.println("Calling second node");
-                patientMask = patientMask.or(node.getPatientMask(distributableQuery).block());
-            }
-        }
-        System.out.println("Finished calling all nodes loop");
-        return Mono.just(patientMask);*/
     }
 
     @Override
