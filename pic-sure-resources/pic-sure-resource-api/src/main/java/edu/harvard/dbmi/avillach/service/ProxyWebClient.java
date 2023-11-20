@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.service;
 
+import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
-import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -13,21 +13,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
+import javax.inject.Inject;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.regex.Pattern;
 
 @ApplicationScoped
 public class ProxyWebClient {
     private static final Logger LOG = LoggerFactory.getLogger(ProxyWebClient.class);
     HttpClient client;
 
+    @Inject
+    ResourceRepository resourceRepository;
+
     public ProxyWebClient() {
         client = HttpClientUtil.getConfiguredHttpClient();
     }
 
     public Response postProxy(String containerId, String path, String body) {
+        if (containerIsNOTAResource(containerId)) {
+            return Response.status(400, "container name not trustworthy").build();
+        }
         try {
             URI uri = new URIBuilder()
                 .setScheme("http")
@@ -47,6 +55,9 @@ public class ProxyWebClient {
     }
 
     public Response getProxy(String containerId, String path) {
+        if (containerIsNOTAResource(containerId)) {
+            return Response.status(400, "container name not trustworthy").build();
+        }
         try {
             URI uri = new URIBuilder()
                 .setScheme("http")
@@ -61,6 +72,10 @@ public class ProxyWebClient {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean containerIsNOTAResource(String container) {
+        return resourceRepository.getByColumn("name", container).isEmpty();
     }
 
     private Response getResponse(HttpRequestBase request) throws IOException {
