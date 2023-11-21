@@ -67,7 +67,7 @@ public class PicSureService {
 	private static final int RESPONSE_CACHE_SIZE = 50;
 
 	@PostMapping("/info")
-	public ResourceInfo info(QueryRequest request) {
+	public ResourceInfo info(@RequestBody QueryRequest request) {
 		ResourceInfo info = new ResourceInfo();
 		info.setName("PhenoCube v1.0-SNAPSHOT");
 		info.setId(UUID.randomUUID());
@@ -131,7 +131,7 @@ public class PicSureService {
 	}
 
 	@PostMapping("/search")
-	public SearchResults search(QueryRequest searchJson) {
+	public SearchResults search(@RequestBody QueryRequest searchJson) {
 		Set<Entry<String, ColumnMeta>> allColumns = abstractProcessor.getDictionary().entrySet();
 
 		// Phenotype Values
@@ -173,7 +173,7 @@ public class PicSureService {
 	}
 
 	@PostMapping("/query")
-	public ResponseEntity<QueryStatus> query(QueryRequest queryJson) {
+	public ResponseEntity<QueryStatus> query(@RequestBody QueryRequest queryJson) {
 		if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
 			try {
 				Query query = convertIncomingQuery(queryJson);
@@ -214,7 +214,7 @@ public class PicSureService {
 	}
 
 	@PostMapping(value = "/query/{resourceQueryId}/result", produces = MediaType.TEXT_PLAIN_VALUE)
-	public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, QueryRequest resultRequest) {
+	public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) {
 		AsyncResult result = queryService.getResultFor(queryId.toString());
 		if (result == null) {
 			// This happens sometimes when users immediately request the status for a query
@@ -240,7 +240,7 @@ public class PicSureService {
 	}
 
 	@PostMapping("/query/{resourceQueryId}/status")
-	public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, QueryRequest request) {
+	public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
 		return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
 	}
 
@@ -256,7 +256,7 @@ public class PicSureService {
 	}
 
 	@PostMapping(value = "/query/sync", produces = MediaType.TEXT_PLAIN_VALUE)
-	public ResponseEntity querySync(QueryRequest resultRequest) {
+	public ResponseEntity querySync(@RequestBody QueryRequest resultRequest) {
 		if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
 			try {
 				return _querySync(resultRequest);
