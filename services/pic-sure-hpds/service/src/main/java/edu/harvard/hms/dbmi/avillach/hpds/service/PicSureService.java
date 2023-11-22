@@ -318,41 +318,41 @@ public class PicSureService {
 				result.stream.open();
 				return queryOkResponse(result.stream, incomingQuery);
 			}
-			return ResponseEntity.status(400).body("Status : " + result.status.name());
+			return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body("Status : " + result.status.name());
 
 		case CROSS_COUNT:
-			return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery);
+			return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
 		case CATEGORICAL_CROSS_COUNT:
-			return queryOkResponse(countProcessor.runCategoryCrossCounts(incomingQuery), incomingQuery);
+			return queryOkResponse(countProcessor.runCategoryCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
 		case CONTINUOUS_CROSS_COUNT:
-			return queryOkResponse(countProcessor.runContinuousCrossCounts(incomingQuery), incomingQuery);
+			return queryOkResponse(countProcessor.runContinuousCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
 		case OBSERVATION_COUNT:
-			return queryOkResponse(countProcessor.runObservationCount(incomingQuery), incomingQuery);
+			return queryOkResponse(String.valueOf(countProcessor.runObservationCount(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
 
 		case OBSERVATION_CROSS_COUNT:
-			return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery);
+			return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
 		case VARIANT_COUNT_FOR_QUERY:
-			return queryOkResponse(countProcessor.runVariantCount(incomingQuery), incomingQuery);
+			return queryOkResponse(countProcessor.runVariantCount(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
 		case VARIANT_LIST_FOR_QUERY:
-			return queryOkResponse(variantListProcessor.runVariantListQuery(incomingQuery), incomingQuery);
+			return queryOkResponse(variantListProcessor.runVariantListQuery(incomingQuery), incomingQuery, MediaType.TEXT_PLAIN);
 
 		case VCF_EXCERPT:
-			return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, true), incomingQuery);
+			return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, true), incomingQuery, MediaType.TEXT_PLAIN);
 
 		case AGGREGATE_VCF_EXCERPT:
-			return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery);
+			return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery, MediaType.TEXT_PLAIN);
 
 		case TIMELINE_DATA:
 			return queryOkResponse(mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery)),
-					incomingQuery);
+					incomingQuery, MediaType.TEXT_PLAIN);
 
 		case COUNT:
-			return queryOkResponse(countProcessor.runCounts(incomingQuery), incomingQuery);
+			return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
 
 		default:
 			// no valid type
@@ -364,5 +364,14 @@ public class PicSureService {
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()).toString());
 		return new ResponseEntity<>(obj, responseHeaders, HttpStatus.OK);
+	}
+	private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {
+		HttpHeaders responseHeaders = new HttpHeaders();
+		responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()).toString());
+		return ResponseEntity
+				.ok()
+				.contentType(mediaType)
+				.headers(responseHeaders)
+				.body(obj);
 	}
 }
