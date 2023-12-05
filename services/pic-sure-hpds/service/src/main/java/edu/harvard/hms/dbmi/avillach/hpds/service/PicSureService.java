@@ -245,7 +245,7 @@ public class PicSureService {
 	}
 
 	@PostMapping("/query/format")
-	public ResponseEntity queryFormat(QueryRequest resultRequest) {
+	public ResponseEntity queryFormat(@RequestBody QueryRequest resultRequest) {
 		try {
 			// The toString() method here has been overridden to produce a human readable
 			// value
