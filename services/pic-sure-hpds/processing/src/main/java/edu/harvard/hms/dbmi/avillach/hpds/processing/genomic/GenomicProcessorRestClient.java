@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
@@ -49,6 +50,7 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     }
 
     private static final ParameterizedTypeReference<Collection<String>> VARIANT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+    private static final ParameterizedTypeReference<List<InfoColumnMeta>> INFO_COLUMNS_META_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     @SuppressWarnings("unchecked")
     @Override
     public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
@@ -84,5 +86,15 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     @Override
     public List<String> getInfoStoreValues(String conceptPath) {
         throw new RuntimeException("Not Yet implemented");
+    }
+
+    @Override
+    public List<InfoColumnMeta> getInfoColumnMeta() {
+        List<InfoColumnMeta> result = webClient.get()
+                .uri("/info/meta")
+                .retrieve()
+                .bodyToMono(INFO_COLUMNS_META_TYPE_REFERENCE)
+                .block();
+        return result;
     }
 }

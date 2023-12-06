@@ -5,6 +5,7 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +29,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.*;
 
 @RequestMapping(value = "PIC-SURE", produces = "application/json")
@@ -143,28 +143,8 @@ public class PicSureService {
 		}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) : allColumns;
 
 		// Info Values
-		Map<String, Map> infoResults = new TreeMap<String, Map>();
-		abstractProcessor.getInfoStoreColumns().stream().forEach((String infoColumn) -> {
-			FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
-			if (store != null) {
-				String query = searchJson.getQuery().toString();
-				String lowerCase = query.toLowerCase();
-				boolean storeIsNumeric = store.isContinuous;
-				if (store.description.toLowerCase().contains(lowerCase)
-						|| store.column_key.toLowerCase().contains(lowerCase)) {
-					infoResults.put(infoColumn,
-							ImmutableMap.of("description", store.description, "values",
-									store.isContinuous ? new ArrayList<String>() : store.getAllValues().keys(), "continuous",
-									storeIsNumeric));
-				} else {
-					List<String> searchResults = store.search(query);
-					if (!searchResults.isEmpty()) {
-						infoResults.put(infoColumn, ImmutableMap.of("description", store.description, "values",
-								searchResults, "continuous", storeIsNumeric));
-					}
-				}
-			}
-		});
+		Map<String, Map> infoResults = new HashMap<>();
+		log.warn("Info values no longer supported for this resource");
 
 		return new SearchResults()
 				.setResults(
@@ -286,6 +266,12 @@ public class PicSureService {
 		return paginator.paginate(matchingValues, page, size);
 	}
 
+	@GetMapping("/test")
+	public ResponseEntity test() {
+		List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
+		return ResponseEntity.ok(infoColumnMeta);
+	}
+
 	private ResponseEntity _querySync(QueryRequest resultRequest) throws IOException {
 		Query incomingQuery;
 		incomingQuery = convertIncomingQuery(resultRequest);
@@ -293,15 +279,8 @@ public class PicSureService {
 		switch (incomingQuery.getExpectedResultType()) {
 
 		case INFO_COLUMN_LISTING:
-			ArrayList<Map> infoStores = new ArrayList<>();
-			abstractProcessor.getInfoStoreColumns().stream().forEach((infoColumn) -> {
-				FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
-				if (store != null) {
-					infoStores.add(ImmutableMap.of("key", store.column_key, "description", store.description,
-							"isContinuous", store.isContinuous, "min", store.min, "max", store.max));
-				}
-			});
-			return ResponseEntity.ok(infoStores);
+			List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
+			return ResponseEntity.ok(infoColumnMeta);
 
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:

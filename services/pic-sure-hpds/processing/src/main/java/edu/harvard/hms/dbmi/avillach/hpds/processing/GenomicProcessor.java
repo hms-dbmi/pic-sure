@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import reactor.core.publisher.Mono;
@@ -26,4 +27,6 @@ public interface GenomicProcessor {
     List<String> getInfoStoreColumns();
 
     List<String> getInfoStoreValues(String conceptPath);
+
+    List<InfoColumnMeta> getInfoColumnMeta();
 }

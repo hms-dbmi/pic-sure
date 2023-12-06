@@ -263,10 +263,8 @@ public class AbstractProcessor {
 		return genomicProcessor.getVariantList(distributableQuery).block();
 	}
 
-	public FileBackedByteIndexedInfoStore getInfoStore(String column) {
-		// todo: figure out how we want to expose inner workings of the FBBIIS
-		throw new RuntimeException("Not yet implemented");
-		//return infoStores.get(column);
+	public List<InfoColumnMeta> getInfoStoreMeta() {
+		return genomicProcessor.getInfoColumnMeta();
 	}
 
 	public List<String> searchInfoConceptValues(String conceptPath, String query) {

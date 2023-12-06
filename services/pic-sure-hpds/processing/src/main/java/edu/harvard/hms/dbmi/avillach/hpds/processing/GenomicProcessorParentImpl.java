@@ -4,6 +4,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.genomic.GenomicProcessorRestClient;
@@ -34,6 +35,8 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
                     .collect(Collectors.toList());
         }
     });
+
+    private List<InfoColumnMeta> infoColumnsMeta;
 
     private List<String> patientIds;
 
@@ -118,5 +121,14 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     @Override
     public List<String> getInfoStoreValues(String conceptPath) {
         return infoStoreValuesCache.getUnchecked(conceptPath);
+    }
+
+    @Override
+    public List<InfoColumnMeta> getInfoColumnMeta() {
+        // todo: initialize on startup?
+        if (infoColumnsMeta == null) {
+            infoColumnsMeta = nodes.get(0).getInfoColumnMeta();
+        }
+        return infoColumnsMeta;
     }
 }

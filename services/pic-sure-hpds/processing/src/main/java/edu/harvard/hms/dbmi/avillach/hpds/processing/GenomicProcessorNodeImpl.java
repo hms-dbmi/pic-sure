@@ -4,6 +4,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
@@ -368,6 +369,20 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return infoStores.get(conceptPath).getAllValues().keys()
                 .stream()
                 .sorted(String::compareToIgnoreCase)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<InfoColumnMeta> getInfoColumnMeta() {
+        return getInfoStoreColumns().stream().map(infoStores::get)
+                .map(fileBackedByteIndexedInfoStore -> InfoColumnMeta.builder()
+                        .key(fileBackedByteIndexedInfoStore.column_key)
+                        .description(fileBackedByteIndexedInfoStore.description)
+                        .continuous(fileBackedByteIndexedInfoStore.isContinuous)
+                        .min(fileBackedByteIndexedInfoStore.min)
+                        .max(fileBackedByteIndexedInfoStore.max)
+                        .build()
+                )
                 .collect(Collectors.toList());
     }
 }
