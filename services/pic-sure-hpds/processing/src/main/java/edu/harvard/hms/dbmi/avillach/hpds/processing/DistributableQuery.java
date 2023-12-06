@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class DistributableQuery {
 
@@ -30,7 +31,9 @@ public class DistributableQuery {
     }
 
     public void setVariantInfoFilters(Collection<Query.VariantInfoFilter> variantInfoFilters) {
-        this.variantInfoFilters = variantInfoFilters != null ? new ArrayList<>(variantInfoFilters) : new ArrayList<>();
+        this.variantInfoFilters = variantInfoFilters.stream()
+                .filter(variantInfoFilter -> !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty())
+                .collect(Collectors.toList());
     }
     public List<Query.VariantInfoFilter> getVariantInfoFilters() {
         return new ArrayList<>(variantInfoFilters);
