@@ -23,6 +23,7 @@
 		<module>processing</module>
 		<module>war</module>
 		<module>client-api</module>
+		<module>genomic-processor</module>
 	</modules>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

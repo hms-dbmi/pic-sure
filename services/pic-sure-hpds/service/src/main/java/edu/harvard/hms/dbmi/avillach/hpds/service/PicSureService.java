@@ -280,7 +280,7 @@ public class PicSureService {
 
 		case INFO_COLUMN_LISTING:
 			List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
-			return ResponseEntity.ok(infoColumnMeta);
+			return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(infoColumnMeta);
 
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:
