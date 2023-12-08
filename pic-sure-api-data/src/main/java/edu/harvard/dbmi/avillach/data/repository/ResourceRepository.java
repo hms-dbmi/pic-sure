@@ -5,7 +5,6 @@ import javax.transaction.Transactional;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 
-import java.util.Optional;
 import java.util.UUID;
 
 @Transactional
@@ -15,4 +14,6 @@ public class ResourceRepository extends BaseRepository<Resource, UUID> {
 	protected ResourceRepository() {
 		super(Resource.class);
 	}
+
+
 }
