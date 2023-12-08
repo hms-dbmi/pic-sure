@@ -4,8 +4,8 @@ services:
   info-service:
     image: info-service:latest
     container_name: info-service
-    build: infoservice/
+    build: info-service/
     env_file:
-      - infoservice/.env
+      - info-service/.env
     networks:
       - picsure
