@@ -107,10 +107,12 @@ public class Resource extends BaseEntity{
 	}
 
 	@Converter
-	protected class ResourcePathConverter implements AttributeConverter<String, String> {
+	public static class ResourcePathConverter implements AttributeConverter<String, String> {
 
+		public ResourcePathConverter() {
+		}
 
-		private Optional<String> targetStack = Optional.ofNullable(System.getProperty("TARGET_STACK", null));
+		private static final Optional<String> targetStack = Optional.ofNullable(System.getProperty("TARGET_STACK", null));
 
 		@Override
 		public String convertToDatabaseColumn(String attribute) {
