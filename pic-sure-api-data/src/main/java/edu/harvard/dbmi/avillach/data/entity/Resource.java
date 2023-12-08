@@ -1,12 +1,12 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
 import java.io.StringReader;
+import java.util.Optional;
 
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
-import javax.persistence.Column;
-import javax.persistence.Entity;
+import javax.persistence.*;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -18,6 +18,9 @@ public class Resource extends BaseEntity{
 	@Column(length = 8192)
 	private String description;
 	private String targetURL;
+
+
+	@Convert(converter = ResourcePathConverter.class)
 	private String resourceRSPath;
 
 	@Column(length = 8192)
@@ -101,5 +104,24 @@ public class Resource extends BaseEntity{
 	            .add("hidden", Boolean.toString(hidden))
 	            .add("metadata", metadataObj)
 	            .build().toString();
+	}
+
+	@Converter
+	protected class ResourcePathConverter implements AttributeConverter {
+
+
+		private Optional<String> targetStack = Optional.ofNullable(System.getProperty("TARGET_STACK", null));
+
+		@Override
+		public Object convertToDatabaseColumn(Object attribute) {
+			return attribute;
+		}
+
+		@Override
+		public Object convertToEntityAttribute(Object dbData) {
+			return targetStack.map(stack -> {
+				return ((String) dbData).replace("___target_stack___", stack);
+			}).orElse((String) dbData);
+		}
 	}
 }
