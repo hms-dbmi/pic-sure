@@ -106,6 +106,12 @@ public class Resource extends BaseEntity{
 	            .build().toString();
 	}
 
+	/**
+	 * This resource path converter allows resource paths to contain a reference to a specific stack that is
+	 * imputed at runtime based an an environment parameter. This allows multiple stacks to share the same database.
+	 *
+	 * The ___target_stack___ token in any resource path value will be replaced with the TARGET_STACK environment variable
+	 */
 	@Converter
 	public static class ResourcePathConverter implements AttributeConverter<String, String> {
 
