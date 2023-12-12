@@ -8,7 +8,9 @@ This is the git repository for version 2+ of the PIC-SURE API.
 
 ## Pre-requisits
 
-*  Java 11
+* Java 11
+* Before contributing code, please set up our git hook:
+  `cp code-formatting/pre-commit.sh .git/hooks/pre-commit`
 
 ## Build
 The build consists of the following top level maven modules:
