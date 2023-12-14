@@ -33,7 +33,7 @@ public class GenomicProcessorConfig {
     public GenomicProcessor localDistributedGenomicProcessor() {
         //System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
         List<GenomicProcessor> processorNodes = IntStream.range(1, 22)
-                .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i))
+                .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/"))
                 .collect(Collectors.toList());
         return new GenomicProcessorParentImpl(processorNodes);
     }
