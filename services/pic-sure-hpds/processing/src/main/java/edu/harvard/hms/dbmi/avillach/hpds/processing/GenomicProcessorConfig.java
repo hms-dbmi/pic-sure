@@ -9,6 +9,8 @@ import org.springframework.context.annotation.PropertySource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @SpringBootApplication
 @PropertySource("classpath:application.properties")
@@ -24,6 +26,16 @@ public class GenomicProcessorConfig {
         // todo: make sure this is set as default
         //System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
         return new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory);
+    }
+
+    @Bean(name = "localDistributedGenomicProcessor")
+    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localDistributed")
+    public GenomicProcessor localDistributedGenomicProcessor() {
+        //System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
+        List<GenomicProcessor> processorNodes = IntStream.range(1, 22)
+                .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i))
+                .collect(Collectors.toList());
+        return new GenomicProcessorParentImpl(processorNodes);
     }
 
     @Bean(name = "remoteGenomicProcessor")

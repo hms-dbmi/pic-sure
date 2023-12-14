@@ -21,6 +21,10 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
 
     private final WebClient webClient;
 
+    private static final ParameterizedTypeReference<Collection<String>> VARIANT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+    private static final ParameterizedTypeReference<List<InfoColumnMeta>> INFO_COLUMNS_META_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+    private static final ParameterizedTypeReference<List<String>> LIST_OF_STRING_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+
     public GenomicProcessorRestClient(String serviceUrl) {
         this.webClient = WebClient.builder()
                 .baseUrl(serviceUrl)
@@ -41,16 +45,14 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
 
     @Override
     public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-        return null;
+        throw new RuntimeException("Not Implemented");
     }
 
     @Override
     public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
-        return null;
+        throw new RuntimeException("Not Implemented");
     }
 
-    private static final ParameterizedTypeReference<Collection<String>> VARIANT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
-    private static final ParameterizedTypeReference<List<InfoColumnMeta>> INFO_COLUMNS_META_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     @SuppressWarnings("unchecked")
     @Override
     public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
@@ -65,10 +67,10 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
 
     @Override
     public List<String> getPatientIds() {
-        List result = webClient.get()
+        List<String> result = webClient.get()
                 .uri("/patients/ids")
                 .retrieve()
-                .bodyToMono(List.class)
+                .bodyToMono(LIST_OF_STRING_TYPE_REFERENCE)
                 .block();
         return result;
     }
@@ -80,12 +82,27 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
 
     @Override
     public List<String> getInfoStoreColumns() {
-        throw new RuntimeException("Not yet implemented");
+        List<String> result = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/info/columns")
+                        .build())
+                .retrieve()
+                .bodyToMono(LIST_OF_STRING_TYPE_REFERENCE)
+                .block();
+        return result;
     }
 
     @Override
     public List<String> getInfoStoreValues(String conceptPath) {
-        throw new RuntimeException("Not Yet implemented");
+        List<String> result = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/info/values")
+                        .queryParam("conceptPath", conceptPath)
+                        .build(conceptPath))
+                .retrieve()
+                .bodyToMono(LIST_OF_STRING_TYPE_REFERENCE)
+                .block();
+        return result;
     }
 
     @Override

@@ -4,10 +4,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
@@ -26,7 +23,7 @@ public class GenomicProcessorController {
     }
 
     @PostMapping("/patients")
-    public Mono<BigInteger> queryForPatientMask(@RequestBody DistributableQuery distributableQuery) throws InterruptedException {
+    public Mono<BigInteger> queryForPatientMask(@RequestBody DistributableQuery distributableQuery) {
         return genomicProcessor.getPatientMask(distributableQuery);
     }
 
@@ -38,6 +35,16 @@ public class GenomicProcessorController {
     @GetMapping("/patients/ids")
     public List<String> getPatientIds() {
         return genomicProcessor.getPatientIds();
+    }
+
+    @GetMapping("/info/columns")
+    public List<String> getInfoStoreColumns() {
+        return genomicProcessor.getInfoStoreColumns();
+    }
+
+    @GetMapping("/info/values")
+    public List<String> getInfoStoreValues(@RequestParam("conceptPath") String conceptPath) {
+        return genomicProcessor.getInfoStoreValues(conceptPath);
     }
 
     @GetMapping("/info/meta")

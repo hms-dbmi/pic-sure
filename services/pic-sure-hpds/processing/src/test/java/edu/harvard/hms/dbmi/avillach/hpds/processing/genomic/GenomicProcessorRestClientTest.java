@@ -1,9 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -35,5 +36,27 @@ public class GenomicProcessorRestClientTest {
 
         BigInteger patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery).block();
         System.out.println(patientMaskForVariantInfoFilters);
+    }
+
+    @Test
+    public void getInfoStoreColumns() {
+        List<String> infoStoreColumns = genomicProcessorRestClient.getInfoStoreColumns();
+        assertTrue(infoStoreColumns.contains("Variant_consequence_calculated"));
+    }
+    @Test
+    public void getInfoStoreValues() {
+        List<String> infoStoreValues = genomicProcessorRestClient.getInfoStoreValues("Variant_consequence_calculated");
+        assertTrue(infoStoreValues.contains("inframe_deletion"));
+    }
+
+    @Test
+    public void getInfoColumnMeta() {
+        List<InfoColumnMeta> infoColumnMeta = genomicProcessorRestClient.getInfoColumnMeta();
+        for (InfoColumnMeta columnMeta : infoColumnMeta) {
+            if (columnMeta.getKey().equals("Variant_consequence_calculated")) {
+                return;
+            }
+        }
+        throw new RuntimeException("Variant_consequence_calculated not found in info column meta");
     }
 }
