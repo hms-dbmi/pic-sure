@@ -58,7 +58,7 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
         String bitmaskString = patientMask.toString(2);
         for(int x = 2;x < bitmaskString.length()-2;x++) {
             if('1'==bitmaskString.charAt(x)) {
-                String patientId = patientIds.get(x-2).trim();
+                String patientId = getPatientIds().get(x-2).trim();
                 ids.add(Integer.parseInt(patientId));
             }
         }
