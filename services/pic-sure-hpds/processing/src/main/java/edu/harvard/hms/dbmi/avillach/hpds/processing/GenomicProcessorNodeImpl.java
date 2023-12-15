@@ -77,6 +77,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     @Override
     public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
+        return Mono.fromCallable(() -> runGetPatientMask(distributableQuery));
+    }
+    public BigInteger runGetPatientMask(DistributableQuery distributableQuery) {
 //		log.debug("filterdIDSets START size: " + filteredIdSets.size());
         /* VARIANT INFO FILTER HANDLING IS MESSY */
         if(distributableQuery.hasFilters()) {
@@ -128,9 +131,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 }
             }
 
-            return Mono.just(patientMask);
+            return patientMask;
         }
-        return Mono.fromCallable(() -> createMaskForPatientSet(distributableQuery.getPatientIds()));
+        return createMaskForPatientSet(distributableQuery.getPatientIds());
         /* END OF VARIANT INFO FILTER HANDLING */
     }
 
