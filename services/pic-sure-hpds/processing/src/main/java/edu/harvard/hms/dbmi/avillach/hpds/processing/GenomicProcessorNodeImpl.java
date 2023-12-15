@@ -58,6 +58,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                         ){
                             log.info("loading " + filename);
                             FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+                            infoStore.updateStorageDirectory(genomicDataDirectoryFile);
                             infoStores.put(filename.replace("_infoStore.javabin", ""), infoStore);
                             ois.close();
                         } catch (IOException e) {
