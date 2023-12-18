@@ -48,7 +48,6 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     @Override
     public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
         Mono<BigInteger> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
-                .publishOn(Schedulers.boundedElastic())
                 .flatMap(node -> node.getPatientMask(distributableQuery))
                 .reduce(BigInteger::or);
         return result;

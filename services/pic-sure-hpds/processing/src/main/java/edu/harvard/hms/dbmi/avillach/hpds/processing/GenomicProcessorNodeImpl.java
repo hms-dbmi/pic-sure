@@ -78,7 +78,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     @Override
     public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
-        return Mono.fromCallable(() -> runGetPatientMask(distributableQuery));
+        return Mono.fromCallable(() -> runGetPatientMask(distributableQuery)).subscribeOn(Schedulers.boundedElastic());
     }
     public BigInteger runGetPatientMask(DistributableQuery distributableQuery) {
 //		log.debug("filterdIDSets START size: " + filteredIdSets.size());

@@ -38,6 +38,16 @@ public class GenomicProcessorConfig {
         return new GenomicProcessorParentImpl(processorNodes);
     }
 
+    @Bean(name = "integrationTestGenomicProcessor")
+    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "integrationTest")
+    public GenomicProcessor integrationTestGenomicProcessor() {
+        // todo: parameterize these
+        return new GenomicProcessorParentImpl(List.of(
+                new GenomicProcessorNodeImpl("/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.22/all/"),
+                new GenomicProcessorNodeImpl("/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.20/all/")
+        ));
+    }
+
     @Bean(name = "remoteGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "remote")
     public GenomicProcessor remoteGenomicProcessor() {
