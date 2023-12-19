@@ -15,4 +15,6 @@ changelog:
     - title: Bug Fixes
       labels:
         - bug
-
+    - title: Other Changes
+      labels:
+        - "*"
