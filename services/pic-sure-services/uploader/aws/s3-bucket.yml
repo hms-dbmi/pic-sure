@@ -1,0 +1,308 @@
+Description: S3 Bucket for GIC Data Access
+
+Parameters:
+  InstitutionName:
+    Type: String
+    Description: The short name of your institution
+    Default: prototype
+  ExternalId:
+    Type: String
+    Description: External ID to be shared with uploaders
+    Default: 12345
+  # 3rd party accounts can successfully assume our role, but users created by
+  # that account cannot, regardless of if we add them to the trust policy
+  # Hence why we're using account roots rather than iam users. 
+  UploaderAccountIds:
+    Type: List<String>
+    Description: 'A comma delimited list of AWS account roots. Ex: arn:aws:iam::762503070141:root,arn:aws:iam::2222222222222:root'
+    Default: ''
+
+Resources:
+#-------------------------------------------------------------------------------
+#                               Users & Access Keys
+#-------------------------------------------------------------------------------
+  DataUploadUser:
+    # make dep on policy
+    Type: AWS::IAM::User
+    Properties:
+      Path: "/data-upload-user/"
+      Policies:
+        - PolicyName: DataUploadUserKeyPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource:
+                  - !GetAtt BucketKMSKey.Arn
+                Action:
+                  - 'kms:GetPublicKey'
+                  - 'kms:Decrypt'
+                  - 'kms:ListKeyPolicies'
+                  - 'kms:GetKeyPolicy'
+                  - 'kms:GenerateDataKeyWithoutPlaintext'
+                  - 'kms:ListResourceTags'
+                  - 'kms:GenerateDataKeyPairWithoutPlaintext'
+                  - 'kms:GenerateDataKeyPair'
+                  - 'kms:ReEncryptFrom'
+                  - 'kms:ListGrants'
+                  - 'kms:GetParametersForImport'
+                  - 'kms:Encrypt'
+                  - 'kms:GetKeyRotationStatus'
+                  - 'kms:GenerateDataKey'
+                  - 'kms:ReEncryptTo'
+                  - 'kms:DescribeKey'
+        - PolicyName: DataUploadUserKMSPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource:
+                  - !GetAtt BucketKMSKey.Arn
+                Action:
+                  - 'kms:DescribeCustomKeyStores'
+                  - 'kms:ListKeys'
+                  - 'kms:ListRetirableGrants'
+                  - 'kms:ListAliases'
+
+  DataUploadUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName:
+        !Ref DataUploadUser
+
+  DataUploadUserSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Join ['-', [!Ref InstitutionName, data-upload-user-secret]]
+      Description: Access Key secret for Data Upload User
+      SecretString: !GetAtt DataUploadUserAccessKey.SecretAccessKey
+#-------------------------------------------------------------------------------
+#                                Roles & Policies
+#-------------------------------------------------------------------------------
+  PicSureUploadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Roles:
+        - !Ref PicSureDataUploader
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:GetObjectTagging
+              - s3:GetObjectVersionTagging
+              - s3:DeleteObjectTagging
+              - s3:DeleteObjectVersionTagging
+              - s3:GetObjectVersion
+              - s3:ListBucketVersions
+              - s3:DeleteObjectVersion
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+
+  # Uploaders need to be able to encrypt their data prior to upload
+  PicSureDataUploaderKMSPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UploaderKMSPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey'
+              - 'kms:GenerateDataKeyWithoutPlaintext'
+            Resource: !GetAtt BucketKMSKey.Arn
+      Roles:
+        - !Ref PicSureDataUploader
+
+  # Uploaders need PUT access to the S3 bucket, but nothing else
+  # Each institution has a single uploader, tied to their PIC-SURE node
+  PicSureDataUploader:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: PicSureDataUploaderRole
+      Path: '/'
+      # unit = seconds. 12 hours
+      MaxSessionDuration: 43200
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              AWS: !Ref UploaderAccountIds
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Policies: []
+
+  # The site owner runs a Service Workbench instance that has full access to the
+  # S3 bucket
+  ServiceWorkbenchClient:
+    Type: AWS::IAM::Role
+    Properties:
+      # unit seconds. 12 hours
+      MaxSessionDuration: 43200
+      RoleName: ServiceWorkbenchRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              AWS: !Ref 'AWS::AccountId'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: PicSureUploadPolicy 
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+                  - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+                Action:
+                  - s3:*
+
+#-------------------------------------------------------------------------------
+#                                 Encryption Key
+#-------------------------------------------------------------------------------
+  BucketKMSKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: Symmetric encryption KMS key for bucket
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow use of the key
+            Effect: Allow
+            Principal:
+              AWS: !Ref UploaderAccountIds
+            Action:
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey'
+              - 'kms:GenerateDataKeyWithoutPlaintext'
+            Resource: '*'
+  BucketKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/s3gic
+      TargetKeyId:
+        Ref: BucketKMSKey
+
+#-------------------------------------------------------------------------------
+#                                Buckets & Policies
+#-------------------------------------------------------------------------------
+  PicSureStudyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join ['-', ['pic-sure-data-sharing-bucket', !Ref InstitutionName]]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+      BucketEncryption:
+          ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${BucketKMSKeyAlias}'
+              SSEAlgorithm: 'aws:kms'
+
+  PicSureStudyBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - PicSureDataUploader
+      - ServiceWorkbenchClient
+      - PicSureStudyBucket
+    Properties:
+      Bucket: !Join [ '-', [ 'pic-sure-data-sharing-bucket', !Ref InstitutionName ] ]
+      PolicyDocument:
+        Statement:
+          - Sid: Deny requests that do not use TLS/HTTPS
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          - Sid: Allow PIC-SURE clients with uploader role
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/PicSureDataUploaderRole'
+            Action:
+              - s3:DeleteObject
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:GetObjectTagging
+              - s3:GetObjectVersionTagging
+              - s3:DeleteObjectTagging
+              - s3:DeleteObjectVersionTagging
+              - s3:GetObjectVersion
+              - s3:ListBucketVersions
+              - s3:DeleteObjectVersion
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+          - Sid: Allow SWB clients with everything role
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${AWS::AccountId}:role/ServiceWorkbenchRole
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+          - Sid: Deny unencrypted object uploads
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - s3:PutObject*
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: 'aws:kms'
+          - Sid: Deny Wrong KMS Key
+            Effect: Deny
+            Principal: '*'
+            Action:
+              - s3:PutObject*
+            Resource:
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}/*'
+              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-${InstitutionName}'
+            Condition:
+              StringNotEqualsIfExists:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt BucketKMSKey.Arn
