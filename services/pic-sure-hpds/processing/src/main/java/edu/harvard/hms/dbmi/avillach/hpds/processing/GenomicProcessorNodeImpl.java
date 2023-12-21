@@ -191,7 +191,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         } else { // infoKeys.size() == 0
             log.info("No indexes found for column [" + column + "] for values [" + Joiner.on(",").join(values) + "]");
             // todo: test this case. should this be empty list or a list with an empty VariantIndex?
-            return List.of();
+            return List.of(new SparseVariantIndex(Set.of()));
         }
     }
 
@@ -232,6 +232,9 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     @Override
     public Mono<Collection<String>> getVariantList(DistributableQuery query) {
+        return Mono.fromCallable(() -> runGetVariantList(query)).subscribeOn(Schedulers.boundedElastic());
+    }
+    public Collection<String> runGetVariantList(DistributableQuery query) {
         boolean queryContainsVariantInfoFilters = query.getVariantInfoFilters().stream().anyMatch(variantInfoFilter ->
                 !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
         );
@@ -260,7 +263,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             // If we have all patients then no variants would be filtered, so no need to do further processing
             if(patientSubset.size()==variantService.getPatientIds().length) {
                 log.info("query selects all patient IDs, returning....");
-                return Mono.just(unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex()));
+                return unionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
             }
 
             BigInteger patientMasks = createMaskForPatientSet(patientSubset);
@@ -283,12 +286,12 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                         }
                     });
                 });
-                return Mono.just(variantsWithPatients);
+                return variantsWithPatients;
             }else {
-                return Mono.just(unionOfInfoFiltersVariantSpecs);
+                return unionOfInfoFiltersVariantSpecs;
             }
         }
-        return Mono.just(new ArrayList<>());
+        return new ArrayList<>();
     }
 
     private BigInteger getIdSetForVariantSpecCategoryFilter(String[] zygosities, String key, VariantBucketHolder<VariantMasks> bucketCache) {

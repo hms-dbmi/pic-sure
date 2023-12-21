@@ -23,15 +23,12 @@ public class GenomicProcessorConfig {
     @Bean(name = "localGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "local")
     public GenomicProcessor localGenomicProcessor() {
-        // todo: make sure this is set as default
-        //System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
         return new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory);
     }
 
     @Bean(name = "localDistributedGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localDistributed")
     public GenomicProcessor localDistributedGenomicProcessor() {
-        //System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
         List<GenomicProcessor> processorNodes = IntStream.range(1, 22)
                 .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/"))
                 .collect(Collectors.toList());
@@ -52,9 +49,8 @@ public class GenomicProcessorConfig {
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "remote")
     public GenomicProcessor remoteGenomicProcessor() {
         // Just for testing, for now, move to a configuration file or something
-        List<GenomicProcessor> nodes = new ArrayList<>();
         String[] hosts = new String[] {"http://localhost:8090/", "http://localhost:8091/"};
-        nodes = List.of(
+        List<GenomicProcessor> nodes = List.of(
                 new GenomicProcessorRestClient(hosts[0]),
                 new GenomicProcessorRestClient(hosts[1])
         );

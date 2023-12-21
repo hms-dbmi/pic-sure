@@ -36,7 +36,6 @@ public class AbstractProcessor {
 	private final int CACHE_SIZE;
 
 	private final String hpdsDataDirectory;
-	private final String genomicDataDirectory;
 
 
 	private LoadingCache<String, PhenoCube<?>> store;
@@ -51,7 +50,6 @@ public class AbstractProcessor {
 			GenomicProcessor genomicProcessor
 	) throws ClassNotFoundException, IOException, InterruptedException {
 		hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
-		genomicDataDirectory = System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
 
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.genomicProcessor = genomicProcessor;
@@ -98,7 +96,6 @@ public class AbstractProcessor {
 		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
 
 		hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
-		genomicDataDirectory = System.getProperty("HPDS_GENOMIC_DATA_DIRECTORY", "/opt/local/hpds/all/");
 	}
 
 	public List<String> getInfoStoreColumns() {

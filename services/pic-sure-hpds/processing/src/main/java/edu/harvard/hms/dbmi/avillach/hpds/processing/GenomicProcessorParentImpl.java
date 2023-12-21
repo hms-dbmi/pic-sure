@@ -82,9 +82,6 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
                     return mergedResult;
                 });
         return result;
-        /*return nodes.parallelStream().flatMap(node ->
-                node.getVariantList(distributableQuery).stream()).collect(Collectors.toList()
-        );*/
     }
 
     @Override
