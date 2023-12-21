@@ -33,10 +33,24 @@
     <httpclient.version>4.5.13</httpclient.version>
     <commons-io.version>2.15.1</commons-io.version>
     <lombok.version>1.18.30</lombok.version>
+    <spotless.version>2.41.1</spotless.version>
   </properties>
   <build>
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>${spotless.version}</version>
+          <configuration>
+            <java>
+              <eclipse>
+                <version>4.26</version>
+                <file>code-formatting/eclipse-formatter.xml</file>
+              </eclipse>
+            </java>
+          </configuration>
+        </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
