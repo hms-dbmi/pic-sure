@@ -14,10 +14,6 @@
 		<wildfly.version>13.0.0.Final</wildfly.version>
 		<jboss.home>${project.build.directory}/wildfly-${wildfly.version}</jboss.home>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<guava.version>25.1-jre</guava.version>
-		<junit-jupiter.version>5.6.2</junit-jupiter.version>
-		<mockito-core.version>3.5.10</mockito-core.version>
-		<mockito-junit-jupiter.version>3.5.10</mockito-junit-jupiter.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -54,24 +50,20 @@
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
-			<version>${guava.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
-			<version>${junit-jupiter.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-core</artifactId>
-			<version>${mockito-core.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-junit-jupiter</artifactId>
-			<version>${mockito-junit-jupiter.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>

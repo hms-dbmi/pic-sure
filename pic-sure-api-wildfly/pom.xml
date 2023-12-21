@@ -37,12 +37,6 @@
         </dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-hsapi-resource</artifactId>
-			<classifier>classes</classifier>
-			<version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-resource-api</artifactId>
 			<version>${project.version}</version>
 		</dependency>
