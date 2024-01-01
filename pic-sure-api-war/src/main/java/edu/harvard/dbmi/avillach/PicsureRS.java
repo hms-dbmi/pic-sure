@@ -5,11 +5,9 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
+import javax.ws.rs.core.*;
 
+import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
@@ -26,280 +24,199 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @Produces("application/json")
 @Consumes("application/json")
 public class PicsureRS {
-	
-	@Inject
-	PicsureInfoService infoService;
-	
-	@Inject
-	PicsureSearchService searchService;
-	
-	@Inject
-	PicsureQueryService queryService;
 
-	@Inject
-	FormatService formatService;
+    @Inject
+    PicsureInfoService infoService;
 
-	@Inject
-	ProxyWebClient proxyWebClient;
+    @Inject
+    PicsureSearchService searchService;
 
-	@POST
-	@Path("/info/{resourceId}")
-	@Operation(
-			summary = "Returns information about the provided resource",
-			tags = { "info" },
-			operationId = "resourceInfo",
-			responses = { @ApiResponse(
-					responseCode = "200",
-					description = "Resource information",
-					content = @Content(
-							schema = @Schema(
-									implementation = ResourceInfo.class
-							)
-					)
-			)}
-	)
-	public ResourceInfo resourceInfo(@Parameter(description="The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
-									 @Parameter QueryRequest credentialsQueryRequest,
-									 @Context HttpHeaders headers) {
-		System.out.println("Resource info requested for : " + resourceId);
-		return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest, headers);
-	}
-	
-	@GET
-	@Path("/info/resources")
-	@Operation(
-			summary = "Returns list of resources available",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Resource information",
-							content = @Content(
-									schema = @Schema(
-											implementation = Map.class
-									)
-							)
-					)
-			}
-	)
-	public Map<UUID,String> resources(@Context HttpHeaders headers){
-		return infoService.resources(headers);
-	}
+    @Inject
+    PicsureQueryService queryService;
 
-	@GET
-	@Path("/search/{resourceId}/values/")
-	@Consumes("*/*")
-	public PaginatedSearchResult<?> searchGenomicConceptValues(
-			@PathParam("resourceId") UUID resourceId,
-			QueryRequest searchQueryRequest,
-			@QueryParam("genomicConceptPath") String genomicConceptPath,
-			@QueryParam("query") String query,
-			@QueryParam("page") Integer page,
-			@QueryParam("size") Integer size,
-			@Context HttpHeaders headers
-	) {
-		return searchService.searchGenomicConceptValues(resourceId, searchQueryRequest, genomicConceptPath, query, page, size, headers);
-	}
-	
-	@POST
-	@Path("/search/{resourceId}")
-	@Operation(
-		summary = "Searches for concept paths on the given resource matching the supplied search term",
-		responses = {
-		@ApiResponse(
-				responseCode = "200",
-				description = "Search results",
-				content = @Content(
-						schema = @Schema(
-								implementation = SearchResults.class
-						)
-				)
-		)},
-		requestBody = @RequestBody(
-				required = true,
-				content = @Content(
-						schema = @Schema(
-								example = "{ \"query\": \"searchTerm\" }"
-						)
-				)
-		)
-	)
-	public SearchResults search(@Parameter(description="The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
-								@Parameter(hidden = true) QueryRequest searchQueryRequest,
-								@Context HttpHeaders headers) {
-		return searchService.search(resourceId, searchQueryRequest, headers);
-	}
+    @Inject
+    FormatService formatService;
 
-	@POST
-	@Path("/query")
-	@Operation(
-			summary = "Submits a query to the given resource",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Query status",
-							content = @Content(
-									schema = @Schema(
-											implementation = QueryStatus.class
-									)
-							)
-					)
-			}
-	)
-	public QueryStatus query(
-		@Parameter
-		QueryRequest dataQueryRequest,
+    @Inject
+    ProxyWebClient proxyWebClient;
 
-		@Context
-		HttpHeaders headers,
+    @POST
+    @Path("/info/{resourceId}")
+    @Operation(
+        summary = "Returns information about the provided resource", tags = {"info"}, operationId = "resourceInfo",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Resource information",
+            content = @Content(schema = @Schema(implementation = ResourceInfo.class))
+        )}
+    )
+    public ResourceInfo resourceInfo(
+        @Parameter(description = "The UUID of the resource to fetch information about") @PathParam("resourceId") String resourceId,
+        @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+    ) {
+        System.out.println("Resource info requested for : " + resourceId);
+        return infoService.info(UUID.fromString(resourceId), credentialsQueryRequest, headers);
+    }
 
-		@Parameter
-		@QueryParam("isInstitute")
-		Boolean isInstitutionQuery,
+    @GET
+    @Path("/info/resources")
+    @Operation(
+        summary = "Returns list of resources available",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Resource information", content = @Content(schema = @Schema(implementation = Map.class))
+        )}
+    )
+    public Map<UUID, String> resources(@Context HttpHeaders headers) {
+        return infoService.resources(headers);
+    }
 
-		@Context SecurityContext context
-	) {
-		if (isInstitutionQuery == null || !isInstitutionQuery) {
-			return queryService.query(dataQueryRequest, headers);
-		} else {
-			String email = context.getUserPrincipal().getName();
-			return queryService.institutionalQuery((FederatedQueryRequest) dataQueryRequest, headers, email);
-		}
-	}
-	
-	@POST
-	@Path("/query/{queryId}/status")
-	@Operation(
-			summary = "Returns the status of the given query",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Query status",
-							content = @Content(
-									schema = @Schema(
-											implementation = QueryStatus.class
-									)
-							)
-					)
-			}
-	)
-	public QueryStatus queryStatus(
-		@Parameter(
-			description="The UUID of the query to fetch the status of. The UUID is returned by the /query " +
-			"endpoint as the \"picsureResultId\" in the response object"
-		)
-		@PathParam("queryId")
-		UUID queryId,
+    @GET
+    @Path("/search/{resourceId}/values/")
+    @Consumes("*/*")
+    public PaginatedSearchResult<?> searchGenomicConceptValues(
+        @PathParam("resourceId") UUID resourceId, QueryRequest searchQueryRequest,
+        @QueryParam("genomicConceptPath") String genomicConceptPath, @QueryParam("query") String query, @QueryParam("page") Integer page,
+        @QueryParam("size") Integer size, @Context HttpHeaders headers
+    ) {
+        return searchService.searchGenomicConceptValues(resourceId, searchQueryRequest, genomicConceptPath, query, page, size, headers);
+    }
 
-		@Parameter
-		QueryRequest credentialsQueryRequest,
+    @POST
+    @Path("/search/{resourceId}")
+    @Operation(
+        summary = "Searches for concept paths on the given resource matching the supplied search term",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Search results", content = @Content(schema = @Schema(implementation = SearchResults.class))
+        )}, requestBody = @RequestBody(required = true, content = @Content(schema = @Schema(example = "{ \"query\": \"searchTerm\" }")))
+    )
+    public SearchResults search(
+        @Parameter(description = "The UUID of the resource to search") @PathParam("resourceId") UUID resourceId,
+        @Parameter(hidden = true) QueryRequest searchQueryRequest, @Context HttpHeaders headers
+    ) {
+        return searchService.search(resourceId, searchQueryRequest, headers);
+    }
 
-		@Context
-		HttpHeaders headers,
+    @POST
+    @Path("/query")
+    @Operation(
+        summary = "Submits a query to the given resource",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query status", content = @Content(schema = @Schema(implementation = QueryStatus.class))
+        )}
+    )
+    public QueryStatus query(
+        @Parameter QueryRequest dataQueryRequest,
 
-		@Parameter
-		@QueryParam("isInstitute")
-		Boolean isInstitutionQuery
-	) {
-		if (credentialsQueryRequest instanceof GeneralQueryRequest) {
-			return queryService.queryStatus(queryId, (GeneralQueryRequest) credentialsQueryRequest, headers);
-		} else {
-			return queryService.institutionQueryStatus(queryId, (FederatedQueryRequest) credentialsQueryRequest, headers);
-		}
-	}
-	
-	@POST
-	@Path("/query/{queryId}/result")
-	@Operation(
-			summary = "Returns result for given query",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Query result",
-							content = @Content(
-									schema = @Schema(
-											implementation = Response.class
-									)
-							)
-					)
-			}
-	)
-	public Response queryResult(@Parameter(description="The UUID of the query to fetch the status of. The UUID is " +
-			"returned by the /query endpoint as the \"picsureResultId\" in the response object") @PathParam("queryId") UUID queryId,
-								@Parameter QueryRequest credentialsQueryRequest,
-								@Context HttpHeaders headers) {
-		return queryService.queryResult(queryId, credentialsQueryRequest, headers);
-	}
+        @Context HttpHeaders headers,
 
-	@POST
-	@Path("/query/sync")
-	@Operation(
-			summary = "Returns result for given query",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Query result",
-							content = @Content(
-									schema = @Schema(
-											implementation = Response.class
-									)
-							)
-					)
-			}
-	)
-	public Response querySync(@Context HttpHeaders headers,
-			@Parameter(description="Object with field named 'resourceCredentials' which is a key-value map, " +
-										"key is identifier for resource, value is token for resource") QueryRequest credentialsQueryRequest) {
-		return queryService.querySync(credentialsQueryRequest, headers);
-	}
-	
-	@GET
-	@Path("/query/{queryId}/metadata")
-	@Operation(
-			summary = "Returns metadata for given query",
-			description = "Generally used to reconstruct a query that was previously submitted.	The queryId is " +
-					"returned by the /query endpoint as the \"picsureResultId\" in the response object",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "Query metadata",
-							content = @Content(
-									schema = @Schema(
-											implementation = QueryStatus.class
-									)
-							)
-					)
-			}
-	)
-	public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId, @Context HttpHeaders headers){
-		return queryService.queryMetadata(queryId, headers);
-	}
+        @Parameter @QueryParam("isInstitute") Boolean isInstitutionQuery,
 
-	@POST
-	@Path("/bin/continuous")
-	public Response generateContinuousBin(QueryRequest continuousData, @Context HttpHeaders headers) {
-		return formatService.format(continuousData, headers);
-	}
+        @Context SecurityContext context
+    ) {
+        if (isInstitutionQuery == null || !isInstitutionQuery) {
+            return queryService.query(dataQueryRequest, headers);
+        } else {
+            String email = context.getUserPrincipal().getName();
+            return queryService.institutionalQuery((FederatedQueryRequest) dataQueryRequest, headers, email);
+        }
+    }
+
+    @POST
+    @Path("/query/{queryId}/status")
+    @Operation(
+        summary = "Returns the status of the given query",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query status", content = @Content(schema = @Schema(implementation = QueryStatus.class))
+        )}
+    )
+    public QueryStatus queryStatus(
+        @Parameter(
+            description = "The UUID of the query to fetch the status of. The UUID is returned by the /query "
+                + "endpoint as the \"picsureResultId\" in the response object"
+        ) @PathParam("queryId") UUID queryId,
+
+        @Parameter QueryRequest credentialsQueryRequest,
+
+        @Context HttpHeaders headers,
+
+        @Parameter @QueryParam("isInstitute") Boolean isInstitutionQuery
+    ) {
+        if (credentialsQueryRequest instanceof GeneralQueryRequest) {
+            return queryService.queryStatus(queryId, (GeneralQueryRequest) credentialsQueryRequest, headers);
+        } else {
+            return queryService.institutionQueryStatus(queryId, (FederatedQueryRequest) credentialsQueryRequest, headers);
+        }
+    }
+
+    @POST
+    @Path("/query/{queryId}/result")
+    @Operation(
+        summary = "Returns result for given query",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+        )}
+    )
+    public Response queryResult(
+        @Parameter(
+            description = "The UUID of the query to fetch the status of. The UUID is "
+                + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
+        ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+    ) {
+        return queryService.queryResult(queryId, credentialsQueryRequest, headers);
+    }
+
+    @POST
+    @Path("/query/sync")
+    @Operation(
+        summary = "Returns result for given query",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+        )}
+    )
+    public Response querySync(
+        @Context HttpHeaders headers,
+        @Parameter(
+            description = "Object with field named 'resourceCredentials' which is a key-value map, "
+                + "key is identifier for resource, value is token for resource"
+        ) QueryRequest credentialsQueryRequest
+    ) {
+        return queryService.querySync(credentialsQueryRequest, headers);
+    }
+
+    @GET
+    @Path("/query/{queryId}/metadata")
+    @Operation(
+        summary = "Returns metadata for given query",
+        description = "Generally used to reconstruct a query that was previously submitted.	The queryId is "
+            + "returned by the /query endpoint as the \"picsureResultId\" in the response object",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query metadata", content = @Content(schema = @Schema(implementation = QueryStatus.class))
+        )}
+    )
+    public QueryStatus queryMetadata(@PathParam("queryId") UUID queryId, @Context HttpHeaders headers) {
+        return queryService.queryMetadata(queryId, headers);
+    }
+
+    @POST
+    @Path("/bin/continuous")
+    public Response generateContinuousBin(QueryRequest continuousData, @Context HttpHeaders headers) {
+        return formatService.format(continuousData, headers);
+    }
 
 
-	@POST
-	@Path("/proxy/{container}/{request : .+}")
-	@Operation(hidden = true)
-	public Response postProxy(
-		@PathParam("container") String containerId,
-		@PathParam("request") String request,
-		String body
-	) {
-		return proxyWebClient.postProxy(containerId, request, body);
-	}
+    @POST
+    @Path("/proxy/{container}/{request : .+}")
+    @Operation(hidden = true)
+    public Response postProxy(
+        @PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo, String body
+    ) {
+        return proxyWebClient.postProxy(containerId, request, body, uriInfo.getQueryParameters());
+    }
 
-	@GET
-	@Path("/proxy/{container}/{request : .+}")
-	@Operation(hidden = true)
-	public Response getProxy(
-		@PathParam("container") String containerId,
-		@PathParam("request") String request
-	) {
-		return proxyWebClient.getProxy(containerId, request);
-	}
-	
+    @GET
+    @Path("/proxy/{container}/{request : .+}")
+    @Operation(hidden = true)
+    public Response getProxy(@PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo) {
+        return proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters());
+    }
+
 }
