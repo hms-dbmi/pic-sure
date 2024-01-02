@@ -89,10 +89,16 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 List<VariantIndex> variantSets = getVariantsMatchingFilters(filter);
                 log.info("Found " + variantSets.size() + " groups of sets for patient identification");
                 if(!variantSets.isEmpty()) {
-                    // INTERSECT all the variant sets.
-                    intersectionOfInfoFilters = variantSets.get(0);
+                    // todo: and/or distinction missing
+                    VariantIndex unionOfVariantSets = new SparseVariantIndex(Set.of());
                     for(VariantIndex variantSet : variantSets) {
-                        intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(variantSet);
+                        unionOfVariantSets = unionOfVariantSets.union(variantSet);
+                    }
+
+                    if (intersectionOfInfoFilters == null) {
+                        intersectionOfInfoFilters = unionOfVariantSets;
+                    } else {
+                        intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(unionOfVariantSets);
                     }
                 } else {
                     // todo: create an empty variant index implementation
@@ -183,6 +189,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         List<String> infoKeys = filterInfoCategoryKeys(values, infoStore);
 
         if(infoKeys.size()>1) {
+            // These should be ANDed
             return infoKeys.stream()
                     .map(key -> variantIndexCache.get(column, key))
                     .collect(Collectors.toList());
