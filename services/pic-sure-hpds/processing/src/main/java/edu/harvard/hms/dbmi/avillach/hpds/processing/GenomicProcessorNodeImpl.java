@@ -89,7 +89,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 List<VariantIndex> variantSets = getVariantsMatchingFilters(filter);
                 log.info("Found " + variantSets.size() + " groups of sets for patient identification");
                 if(!variantSets.isEmpty()) {
-                    // todo: and/or distinction missing
                     VariantIndex unionOfVariantSets = new SparseVariantIndex(Set.of());
                     for(VariantIndex variantSet : variantSets) {
                         unionOfVariantSets = unionOfVariantSets.union(variantSet);
@@ -162,7 +161,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         // Add variant sets for each filter
         if(filter.categoryVariantInfoFilters != null && !filter.categoryVariantInfoFilters.isEmpty()) {
             filter.categoryVariantInfoFilters.entrySet().stream().forEach((Map.Entry<String,String[]> entry) ->{
-                variantIndices.addAll(getVariantIndicesForCategoryFilter(entry));
+                variantIndices.add(getComputedVariantIndexForCategoryFilter(entry));
             });
         }
         if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
@@ -180,7 +179,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return variantIndices;
     }
 
-    private List<VariantIndex> getVariantIndicesForCategoryFilter(Map.Entry<String, String[]> entry) {
+    private VariantIndex getComputedVariantIndexForCategoryFilter(Map.Entry<String, String[]> entry) {
         String column = entry.getKey();
         String[] values = entry.getValue();
         Arrays.sort(values);
@@ -192,13 +191,17 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             // These should be ANDed
             return infoKeys.stream()
                     .map(key -> variantIndexCache.get(column, key))
-                    .collect(Collectors.toList());
+                    .reduce(VariantIndex::union)
+                    .orElseGet(() -> {
+                        log.info("No variant index computed for category filter. This should never happen");
+                        return new SparseVariantIndex(Set.of());
+                    });
         } else if(infoKeys.size() == 1) {
-            return List.of(variantIndexCache.get(column, infoKeys.get(0)));
+            return variantIndexCache.get(column, infoKeys.get(0));
         } else { // infoKeys.size() == 0
             log.info("No indexes found for column [" + column + "] for values [" + Joiner.on(",").join(values) + "]");
             // todo: test this case. should this be empty list or a list with an empty VariantIndex?
-            return List.of(new SparseVariantIndex(Set.of()));
+            return new SparseVariantIndex(Set.of());
         }
     }
 
