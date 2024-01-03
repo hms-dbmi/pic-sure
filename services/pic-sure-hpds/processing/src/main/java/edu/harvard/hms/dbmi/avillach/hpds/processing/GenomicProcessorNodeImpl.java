@@ -89,15 +89,12 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 List<VariantIndex> variantSets = getVariantsMatchingFilters(filter);
                 log.info("Found " + variantSets.size() + " groups of sets for patient identification");
                 if(!variantSets.isEmpty()) {
-                    VariantIndex unionOfVariantSets = VariantIndex.empty();
-                    for(VariantIndex variantSet : variantSets) {
-                        unionOfVariantSets = unionOfVariantSets.union(variantSet);
-                    }
-
+                    // INTERSECT all the variant sets.
                     if (intersectionOfInfoFilters == null) {
-                        intersectionOfInfoFilters = unionOfVariantSets;
-                    } else {
-                        intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(unionOfVariantSets);
+                        intersectionOfInfoFilters = variantSets.get(0);
+                    }
+                    for(VariantIndex variantSet : variantSets) {
+                        intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(variantSet);
                     }
                 } else {
                     intersectionOfInfoFilters = VariantIndex.empty();
@@ -250,14 +247,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         if(queryContainsVariantInfoFilters) {
             VariantIndex unionOfInfoFilters = VariantIndex.empty();
 
-            // todo: are these not the same thing?
-            if(query.getVariantInfoFilters().size()>1) {
-                for(Query.VariantInfoFilter filter : query.getVariantInfoFilters()){
-                    unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
-                    //log.info("filter " + filter + "  sets: " + Arrays.deepToString(unionOfInfoFilters.toArray()));
-                }
-            } else {
-                unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, query.getVariantInfoFilters().get(0));
+            for(Query.VariantInfoFilter filter : query.getVariantInfoFilters()){
+                unionOfInfoFilters = addVariantsForInfoFilter(unionOfInfoFilters, filter);
             }
 
             HashSet<Integer> allPatients = new HashSet<>(
@@ -267,7 +258,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                             })
                             .collect(Collectors.toList()));
             Set<Integer> patientSubset = Sets.intersection(query.getPatientIds(), allPatients);
-//			log.debug("Patient subset " + Arrays.deepToString(patientSubset.toArray()));
 
             // If we have all patients then no variants would be filtered, so no need to do further processing
             if(patientSubset.size()==variantService.getPatientIds().length) {
