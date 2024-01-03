@@ -119,7 +119,7 @@ public class PatientVariantJoinHandlerTest {
 
     @Test
     public void getPatientIdsForIntersectionOfVariantSets_noVariants() {
-        VariantIndex intersectionOfInfoFilters = new SparseVariantIndex(Set.of());
+        VariantIndex intersectionOfInfoFilters = VariantIndex.empty();
 
         Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
         // this should be empty, as there are no variants

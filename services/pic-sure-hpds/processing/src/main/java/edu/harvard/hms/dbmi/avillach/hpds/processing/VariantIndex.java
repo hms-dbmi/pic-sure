@@ -28,4 +28,8 @@ public abstract class VariantIndex {
                 .collect(Collectors.toSet());
         return new SparseVariantIndex(intersection);
     }
+
+    public static VariantIndex empty() {
+        return new SparseVariantIndex(Set.of());
+    }
 }

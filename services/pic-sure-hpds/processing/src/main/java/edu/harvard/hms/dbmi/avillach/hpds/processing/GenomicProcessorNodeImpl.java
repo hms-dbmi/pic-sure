@@ -89,7 +89,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 List<VariantIndex> variantSets = getVariantsMatchingFilters(filter);
                 log.info("Found " + variantSets.size() + " groups of sets for patient identification");
                 if(!variantSets.isEmpty()) {
-                    VariantIndex unionOfVariantSets = new SparseVariantIndex(Set.of());
+                    VariantIndex unionOfVariantSets = VariantIndex.empty();
                     for(VariantIndex variantSet : variantSets) {
                         unionOfVariantSets = unionOfVariantSets.union(variantSet);
                     }
@@ -100,8 +100,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                         intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(unionOfVariantSets);
                     }
                 } else {
-                    // todo: create an empty variant index implementation
-                    intersectionOfInfoFilters = new SparseVariantIndex(Set.of());
+                    intersectionOfInfoFilters = VariantIndex.empty();
                 }
             }
             // todo: handle empty getVariantInfoFilters()
@@ -194,14 +193,14 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                     .reduce(VariantIndex::union)
                     .orElseGet(() -> {
                         log.info("No variant index computed for category filter. This should never happen");
-                        return new SparseVariantIndex(Set.of());
+                        return VariantIndex.empty();
                     });
         } else if(infoKeys.size() == 1) {
             return variantIndexCache.get(column, infoKeys.get(0));
         } else { // infoKeys.size() == 0
             log.info("No indexes found for column [" + column + "] for values [" + Joiner.on(",").join(values) + "]");
             // todo: test this case. should this be empty list or a list with an empty VariantIndex?
-            return new SparseVariantIndex(Set.of());
+            return VariantIndex.empty();
         }
     }
 
@@ -249,7 +248,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
         );
         if(queryContainsVariantInfoFilters) {
-            VariantIndex unionOfInfoFilters = new SparseVariantIndex(Set.of());
+            VariantIndex unionOfInfoFilters = VariantIndex.empty();
 
             // todo: are these not the same thing?
             if(query.getVariantInfoFilters().size()>1) {
