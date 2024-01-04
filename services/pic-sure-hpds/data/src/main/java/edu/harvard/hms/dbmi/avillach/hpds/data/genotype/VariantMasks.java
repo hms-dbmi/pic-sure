@@ -2,11 +2,13 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import java.io.Serializable;
 import java.math.BigInteger;
+import java.util.Objects;
 
 public class VariantMasks implements Serializable {
 	private static final long serialVersionUID = 6225420483804601477L;
@@ -174,20 +176,73 @@ public class VariantMasks implements Serializable {
 	public VariantMasks() {
 	}
 
+
+	public BigInteger homozygousMask;
+
+	public BigInteger heterozygousMask;
+
+	public BigInteger homozygousNoCallMask;
+
+	public BigInteger heterozygousNoCallMask;
+
+
 	@JsonProperty("ho")
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	@JsonSerialize(using = ToStringSerializer.class)
-	public BigInteger homozygousMask;
+	public BigInteger getHomozygousMask() {
+		return homozygousMask;
+	}
+
+	@JsonProperty("ho")
+	public void setHomozygousMask(String homozygousMask) {
+		this.homozygousMask = new BigInteger(homozygousMask);
+	}
+
 	@JsonProperty("he")
 	@JsonSerialize(using = ToStringSerializer.class)
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public BigInteger heterozygousMask;
+	public BigInteger getHeterozygousMask() {
+		return heterozygousMask;
+	}
+	@JsonProperty("he")
+	public void setHeterozygousMask(String heterozygousMask) {
+		this.heterozygousMask = new BigInteger(heterozygousMask);
+	}
+
 	@JsonProperty("hon")
 	@JsonSerialize(using = ToStringSerializer.class)
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public BigInteger homozygousNoCallMask;
+	public BigInteger getHomozygousNoCallMask() {
+		return homozygousNoCallMask;
+	}
+
+	@JsonProperty("hon")
+	public void setHomozygousNoCallMask(String homozygousNoCallMask) {
+		this.homozygousNoCallMask = new BigInteger(homozygousNoCallMask);
+	}
+
 	@JsonProperty("hen")
 	@JsonSerialize(using = ToStringSerializer.class)
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public BigInteger heterozygousNoCallMask;
+	public BigInteger getHeterozygousNoCallMask() {
+		return heterozygousNoCallMask;
+	}
+	@JsonProperty("hen")
+	public void setHeterozygousNoCallMask(String heterozygousNoCallMask) {
+		this.heterozygousNoCallMask = new BigInteger(heterozygousNoCallMask);
+	}
+
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		VariantMasks that = (VariantMasks) o;
+		return Objects.equals(homozygousMask, that.homozygousMask) && Objects.equals(heterozygousMask, that.heterozygousMask) && Objects.equals(homozygousNoCallMask, that.homozygousNoCallMask) && Objects.equals(heterozygousNoCallMask, that.heterozygousNoCallMask);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(homozygousMask, heterozygousMask, homozygousNoCallMask, heterozygousNoCallMask);
+	}
 }
