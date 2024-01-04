@@ -62,7 +62,7 @@ public class PatientVariantJoinHandler {
 
             int patientsInScopeSize = patientsInScope.size();
             BigInteger patientsInScopeMask = createMaskForPatientSet(patientsInScope);
-            for(int x = 0;
+/*            for(int x = 0;
                 x < variantBucketPartitions.size() && matchingPatients[0].bitCount() < patientsInScopeSize + 4;
                 x++) {
                 List<List<String>> variantBuckets = variantBucketPartitions.get(x);
@@ -79,6 +79,22 @@ public class PatientVariantJoinHandler {
                             }
                         });
                     });
+                });
+            }*/
+
+            for (String variantSpec : variantsInScope) {
+                Optional<VariantMasks> masksForVariant = variantService.getMasks(variantSpec, new VariantBucketHolder<>());
+                if (masksForVariant.isEmpty()) {
+                    log.info(variantSpec + " not found");
+                }
+                masksForVariant.ifPresent(masks -> {
+                    BigInteger heteroMask = masks.heterozygousMask == null ? variantService.emptyBitmask() : masks.heterozygousMask;
+                    BigInteger homoMask = masks.homozygousMask == null ? variantService.emptyBitmask() : masks.homozygousMask;
+                    BigInteger orMasks = heteroMask.or(homoMask);
+                    BigInteger andMasks = orMasks.and(patientsInScopeMask);
+                    synchronized(matchingPatients) {
+                        matchingPatients[0] = matchingPatients[0].or(andMasks);
+                    }
                 });
             }
             return matchingPatients[0];
