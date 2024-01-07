@@ -3,7 +3,7 @@ package edu.harvard.dbmi.avillach.dataupload.upload;
 import edu.harvard.dbmi.avillach.dataupload.aws.SelfRefreshingS3Client;
 import edu.harvard.dbmi.avillach.dataupload.aws.SiteAWSInfo;
 import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
-import edu.harvard.dbmi.avillach.dataupload.hpds.Query;
+import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.DataUploadStatuses;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;

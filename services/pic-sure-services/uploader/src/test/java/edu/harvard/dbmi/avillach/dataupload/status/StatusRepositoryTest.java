@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach.dataupload.status;
 
-import edu.harvard.dbmi.avillach.dataupload.hpds.Query;
+import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dataupload.hpds;
 
+import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;

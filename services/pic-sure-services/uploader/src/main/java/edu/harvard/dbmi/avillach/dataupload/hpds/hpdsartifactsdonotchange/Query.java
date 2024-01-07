@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.dataupload.hpds;
+package edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

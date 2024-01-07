@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.dataupload.hpds;
+package edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange;
 
 public enum ResultType {
 	/**
