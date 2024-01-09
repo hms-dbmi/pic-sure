@@ -44,7 +44,7 @@ public class VariantService {
     public BucketIndexBySample getBucketIndex() {
         return bucketIndex;
     }
-    public Collection<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet) {
+    public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, Collection<Integer> patientSet) {
         try {
             return bucketIndex.filterVariantSetForPatientSet(variantSet, patientSet);
         } catch (IOException e) {

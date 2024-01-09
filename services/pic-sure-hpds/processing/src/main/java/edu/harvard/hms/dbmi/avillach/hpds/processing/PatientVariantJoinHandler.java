@@ -45,7 +45,10 @@ public class PatientVariantJoinHandler {
 
             Set<String> variantsInScope = intersectionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
 
-            // todo: use BucketIndexBySample.filterVariantSetForPatientSet here?
+            // todo: determine ideal ratio to bother with this
+            if (patientsInScope.size() < variantService.getPatientIds().length) {
+                variantsInScope = variantService.filterVariantSetForPatientSet(variantsInScope, patientsInScope);
+            }
             Collection<List<String>> values = variantsInScope.stream()
                     .collect(Collectors.groupingByConcurrent((variantSpec) -> {
                         return new VariantSpec(variantSpec).metadata.offset / 1000;

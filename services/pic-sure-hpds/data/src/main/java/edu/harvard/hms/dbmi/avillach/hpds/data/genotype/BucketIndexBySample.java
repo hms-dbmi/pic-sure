@@ -144,12 +144,12 @@ public class BucketIndexBySample implements Serializable {
 	 * @return
 	 * @throws IOException 
 	 */
-	public Collection<String> filterVariantSetForPatientSet(Set<String> variantSet, List<Integer> patientSet) throws IOException{
-		
-		//a bitmask of which buckets contain any relevant variant. 
-		BigInteger patientBucketMask = patientSet.size() == 0 ? 
-				new BigInteger(new String(emptyBucketMaskChar()),2) : patientBucketMasks.get(patientSet.get(0));
-		
+	public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, Collection<Integer> patientSet) throws IOException{
+
+		BigInteger patientBucketMask = patientSet.stream().findFirst()
+				.map(id -> patientBucketMasks.get(id))
+				.orElseGet(() -> new BigInteger(new String(emptyBucketMaskChar()),2));
+
 		BigInteger _defaultMask = patientBucketMask;
 		List<BigInteger> patientBucketmasksForSet = patientSet.parallelStream()
 				.map((patientNum)-> patientBucketMasks.get(patientNum))
