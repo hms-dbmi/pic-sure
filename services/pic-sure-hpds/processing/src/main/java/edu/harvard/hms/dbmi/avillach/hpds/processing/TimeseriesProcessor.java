@@ -104,11 +104,12 @@ public class TimeseriesProcessor implements HpdsProcessor {
 				continue;
 			}
 			ArrayList<String[]> dataEntries = new ArrayList<String[]>();
-			PhenoCube<?> cube = abstractProcessor.getCube(conceptPath);
-			if(cube == null) {
-				log.warn("Attempting export of non-existant concept: " + conceptPath);
+			Optional<PhenoCube<?>> maybeCube = abstractProcessor.nullableGetCube(conceptPath);
+			if(maybeCube.isEmpty()) {
+				log.warn("Attempting export of non-existant concept: {}", conceptPath);
 				continue;
 			}
+			PhenoCube<?> cube = maybeCube.get();
 			log.debug("Exporting " + conceptPath);
 			List<?> valuesForKeys = cube.getValuesForKeys(idList);
 			for (Object kvObj : valuesForKeys) {

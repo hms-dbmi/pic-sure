@@ -361,6 +361,19 @@ public class AbstractProcessor {
 		}
 	}
 
+	/**
+	 * Get a cube without throwing an error if not found.
+	 * Useful for federated pic-sure's where there are fewer
+	 * guarantees about concept paths.
+	 */
+	protected Optional<PhenoCube<?>> nullableGetCube(String path) {
+		try {
+			return Optional.ofNullable(store.get(path));
+		} catch (InvalidCacheLoadException | ExecutionException e) {
+			return Optional.empty();
+		}
+	}
+
 	public TreeMap<String, ColumnMeta> getDictionary() {
 		return phenotypeMetaStore.getMetaStore();
 	}
