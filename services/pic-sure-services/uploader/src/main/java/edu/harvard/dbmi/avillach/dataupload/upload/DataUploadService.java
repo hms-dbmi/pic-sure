@@ -64,7 +64,7 @@ public class DataUploadService {
         });
     }
 
-    private enum DataType {Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.tsv");
+    private enum DataType {Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.csv");
         private final String fileName;
         
         DataType(String fileName) {
