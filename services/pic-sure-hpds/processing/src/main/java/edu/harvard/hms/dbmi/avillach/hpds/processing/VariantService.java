@@ -163,7 +163,7 @@ public class VariantService {
             }
             if(variantStore.getPatientIds().length > 0 && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
                 log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
-                bucketIndex = new BucketIndexBySample(variantStore);
+                bucketIndex = new BucketIndexBySample(variantStore, genomicDataDirectory);
                 try (
                         FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
                         GZIPOutputStream gzos = new GZIPOutputStream(fos);

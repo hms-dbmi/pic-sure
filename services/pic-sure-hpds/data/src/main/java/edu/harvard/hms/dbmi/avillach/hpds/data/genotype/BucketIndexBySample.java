@@ -34,10 +34,6 @@ public class BucketIndexBySample implements Serializable {
 	 * finding the offset of a given bucket.
 	 */
 	private ArrayList<String> bucketList = new ArrayList<String>();
-
-	public BucketIndexBySample(VariantStore variantStore) throws FileNotFoundException {
-		this(variantStore, "/opt/local/hpds/all/");
-	}
 	
 	public BucketIndexBySample(VariantStore variantStore, String storageDir) throws FileNotFoundException {
 		log.info("Creating new Bucket Index by Sample");
