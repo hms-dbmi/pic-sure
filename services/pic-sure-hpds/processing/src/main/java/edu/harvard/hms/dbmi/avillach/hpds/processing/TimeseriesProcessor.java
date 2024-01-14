@@ -69,7 +69,6 @@ public class TimeseriesProcessor implements HpdsProcessor {
 				log.error("Exception exporting time data", e);
 			}
 		} else {
-			// todo: create an exception for this and handle it with an appropriate response code
 			throw new RuntimeException("Data Export is not authorized for this system");
 		}
 		return;
@@ -127,7 +126,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
 					dataEntries.add(entryData);
 				}
 				//batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
-				if(dataEntries.size() >= ID_BATCH_SIZE) {
+				if(dataEntries.size() >= (ID_BATCH_SIZE > 0 ? 10 : ID_BATCH_SIZE)) {
 					result.appendResults(dataEntries);
 					dataEntries = new ArrayList<String[]>();
 				}
