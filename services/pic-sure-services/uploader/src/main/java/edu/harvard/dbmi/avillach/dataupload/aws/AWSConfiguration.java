@@ -66,8 +66,9 @@ public class AWSConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(name = "production", havingValue = "true")
+    @ConditionalOnProperty(name = "aws.authentication.method", havingValue = "user")
     AwsCredentials credentials() {
+        LOG.info("Authentication method is user. Attempting to resolve user credentials.");
         if (Strings.isBlank(key)) {
             LOG.error("No AWS key. Can't create client. Exiting");
             context.close();
@@ -81,6 +82,12 @@ public class AWSConfiguration {
         } else {
             return AwsSessionCredentials.create(key, secret, token);
         }
+    }
+    @Bean
+    @ConditionalOnProperty(name = "aws.authentication.method", havingValue = "instance-profile")
+    AwsCredentials ipCredentials() {
+        LOG.info("Authentication method is instance-profile. Attempting to resolve instance profile credentials.");
+        return InstanceProfileCredentialsProvider.create().resolveCredentials();
     }
 
     @Bean
