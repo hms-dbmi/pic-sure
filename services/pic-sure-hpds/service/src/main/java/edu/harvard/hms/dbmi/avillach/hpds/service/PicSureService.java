@@ -8,6 +8,7 @@ import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
@@ -239,6 +240,67 @@ public class PicSureService {
 			return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
 		}
 	}
+    private Optional<String> roundTripUUID(String uuid) {
+        try {
+            return Optional.ofNullable(UUID.fromString(uuid).toString());
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    @PostMapping("/write/{dataType}")
+    public ResponseEntity writeQueryResult(
+            @RequestBody() Query query, @PathVariable("dataType") String datatype
+    ) {
+        if (roundTripUUID(query.getPicSureId()).map(id -> !id.equalsIgnoreCase(query.getPicSureId())).orElse(false)) {
+            return ResponseEntity
+                    .status(400)
+					.body("The query pic-sure ID is not a UUID");
+        }
+        if (query.getExpectedResultType() != ResultType.DATAFRAME_TIMESERIES) {
+            return ResponseEntity
+                    .status(400)
+					.body("The write endpoint only writes time series dataframes. Fix result type.");
+        }
+        String hpdsQueryID;
+        try {
+            QueryStatus queryStatus = convertToQueryStatus(queryService.runQuery(query));
+            String status = queryStatus.getResourceStatus();
+            hpdsQueryID = queryStatus.getResourceResultId();
+            while ("RUNNING".equalsIgnoreCase(status) || "PENDING".equalsIgnoreCase(status)) {
+                Thread.sleep(10000); // Yea, this is not restful. Sorry.
+                status = convertToQueryStatus(queryService.getStatusFor(hpdsQueryID)).getResourceStatus();
+            }
+        } catch (IOException | InterruptedException e) {
+            log.warn("Error waiting for response", e);
+            return ResponseEntity.internalServerError().build();
+        }
+
+        AsyncResult result = queryService.getResultFor(hpdsQueryID);
+        // the queryResult has this DIY retry logic that blocks a system thread.
+        // I'm not going to do that here. If the service can't find it, you get a 404.
+        // Retry it client side.
+        if (result == null) {
+            return ResponseEntity.status(404).build();
+        }
+        if (AsyncResult.Status.ERROR.equals(result.getStatus())) {
+            return ResponseEntity.status(500).build();
+        }
+        if (!AsyncResult.Status.SUCCESS.equals(result.getStatus())) {
+            return ResponseEntity.status(503).build(); // 503 = unavailable
+        }
+
+        // at least for now, this is going to block until we finish writing
+        // Not very restful, but it will make this API very easy to consume
+        boolean success = false;
+        query.setId(hpdsQueryID);
+        if ("phenotypic".equals(datatype)) {
+            success = fileSystemService.createPhenotypicData(query);
+        } else if ("genomic".equals(datatype)) {
+            success = fileSystemService.createGenomicData(query);
+        }
+        return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
+    }
 
 	@PostMapping(value = "/query/{resourceQueryId}/signed-url")
 	public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) throws IOException {
