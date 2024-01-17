@@ -109,7 +109,7 @@ public class DataUploadService {
                 .bucket(site.bucket())
                 .serverSideEncryption(ServerSideEncryption.AWS_KMS)
                 .ssekmsKeyId(site.kmsKeyID())
-                .key(Path.of(dir, p.getFileName().toString()).toString())
+                .key(Path.of(dir, site.siteName() + "_" + p.getFileName().toString()).toString())
                 .build();
             s3.getS3Client(site.siteName()).putObject(request, body);
         } catch (AwsServiceException | SdkClientException e) {
