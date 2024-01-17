@@ -13,7 +13,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @SpringBootApplication
-@PropertySource("classpath:application.properties")
 public class GenomicProcessorConfig {
 
     @Value("${HPDS_GENOMIC_DATA_DIRECTORY:/opt/local/hpds/all/}")
@@ -29,7 +28,7 @@ public class GenomicProcessorConfig {
     @Bean(name = "localDistributedGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localDistributed")
     public GenomicProcessor localDistributedGenomicProcessor() {
-        List<GenomicProcessor> processorNodes = IntStream.range(1, 22)
+        List<GenomicProcessor> processorNodes = IntStream.range(1, 23)
                 .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/"))
                 .collect(Collectors.toList());
         return new GenomicProcessorParentImpl(processorNodes);

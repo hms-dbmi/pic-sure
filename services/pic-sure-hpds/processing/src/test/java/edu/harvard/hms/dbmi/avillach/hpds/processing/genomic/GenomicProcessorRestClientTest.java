@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class GenomicProcessorRestClientTest {
 
@@ -24,15 +26,13 @@ public class GenomicProcessorRestClientTest {
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
         variantInfoFilter.categoryVariantInfoFilters = Map.of(
-                "Gene_with_variant", new String[]{"FRG1FP"}
+                "Gene_with_variant", new String[]{"BRCA1"},
+                "Variant_consequence_calculated", new String[]{"splice_donor_variant"}
         );
-        Query.VariantInfoFilter variantInfoFilter2 = new Query.VariantInfoFilter();
-        variantInfoFilter2.categoryVariantInfoFilters = Map.of(
-                "Gene_with_variant", new String[]{"ACTG1P3"}
-        );
-        variantInfoFilters.add(variantInfoFilter2);
+        variantInfoFilters.add(variantInfoFilter);
         distributableQuery.setVariantInfoFilters(variantInfoFilters);
-        distributableQuery.setPatientIds(Set.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+        Set<Integer> patientIds = IntStream.range(53000, 53635).boxed().collect(Collectors.toSet());
+        distributableQuery.setPatientIds(patientIds);
 
         BigInteger patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery).block();
         System.out.println(patientMaskForVariantInfoFilters);
