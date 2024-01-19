@@ -213,7 +213,9 @@ public class PicSureService {
 		}
 		if (result.status == AsyncResult.Status.SUCCESS) {
 			result.stream.open();
-			return ResponseEntity.ok(result.stream);
+			return ResponseEntity.ok()
+					.contentType(MediaType.TEXT_PLAIN)
+					.body(result.stream);
 		} else {
 			return ResponseEntity.status(400).body("Status : " + result.status.name());
 		}
