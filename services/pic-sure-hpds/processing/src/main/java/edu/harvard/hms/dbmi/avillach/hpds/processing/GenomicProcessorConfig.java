@@ -6,6 +6,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.PropertySource;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,10 +31,11 @@ public class GenomicProcessorConfig {
     @Bean(name = "localDistributedGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localDistributed")
     public GenomicProcessor localDistributedGenomicProcessor() {
-        List<GenomicProcessor> processorNodes = IntStream.range(1, 23)
-                .mapToObj(i -> new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/"))
-                .collect(Collectors.toList());
-        return new GenomicProcessorParentImpl(processorNodes);
+        List<GenomicProcessor> genomicProcessors = Flux.range(1, 22)
+                .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
+                .collectList()
+                .block();
+        return new GenomicProcessorParentImpl(genomicProcessors);
     }
 
     @Bean(name = "integrationTestGenomicProcessor")
@@ -47,7 +51,7 @@ public class GenomicProcessorConfig {
     @Bean(name = "remoteGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "remote")
     public GenomicProcessor remoteGenomicProcessor() {
-        // Just for testing, for now, move to a configuration file or something
+        // todo: Just for testing, for now, move to a configuration file or something
         String[] hosts = new String[] {"http://localhost:8090/", "http://localhost:8091/"};
         List<GenomicProcessor> nodes = List.of(
                 new GenomicProcessorRestClient(hosts[0]),
