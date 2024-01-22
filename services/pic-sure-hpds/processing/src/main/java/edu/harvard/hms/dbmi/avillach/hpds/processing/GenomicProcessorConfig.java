@@ -38,25 +38,14 @@ public class GenomicProcessorConfig {
         return new GenomicProcessorParentImpl(genomicProcessors);
     }
 
-    @Bean(name = "integrationTestGenomicProcessor")
-    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "integrationTest")
-    public GenomicProcessor integrationTestGenomicProcessor() {
-        // todo: parameterize these
-        return new GenomicProcessorParentImpl(List.of(
-                new GenomicProcessorNodeImpl("/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.22/all/"),
-                new GenomicProcessorNodeImpl("/Users/ryan/dev/pic-sure-hpds-test/data/orchestration/1040.20/all/")
-        ));
-    }
-
     @Bean(name = "remoteGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "remote")
-    public GenomicProcessor remoteGenomicProcessor() {
-        // todo: Just for testing, for now, move to a configuration file or something
-        String[] hosts = new String[] {"http://localhost:8090/", "http://localhost:8091/"};
-        List<GenomicProcessor> nodes = List.of(
-                new GenomicProcessorRestClient(hosts[0]),
-                new GenomicProcessorRestClient(hosts[1])
-        );
-        return new GenomicProcessorParentImpl(nodes);
+    public GenomicProcessor remoteGenomicProcessor(@Value("${hpds.genomicProcessor.remoteHosts}") List<String> remoteHosts) {
+        List<GenomicProcessor> genomicProcessors = Flux.fromIterable(remoteHosts)
+                .flatMap(remoteHost -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorRestClient(remoteHost)).subscribeOn(Schedulers.boundedElastic()))
+                .collectList()
+                .block();
+        // todo: validate remote processors are valid
+        return new GenomicProcessorParentImpl(genomicProcessors);
     }
 }

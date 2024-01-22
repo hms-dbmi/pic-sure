@@ -1,6 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
@@ -194,7 +197,7 @@ public class PicSureService {
 	}
 
 	@PostMapping(value = "/query/{resourceQueryId}/result", produces = MediaType.TEXT_PLAIN_VALUE)
-	public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) {
+	public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) throws IOException {
 		AsyncResult result = queryService.getResultFor(queryId.toString());
 		if (result == null) {
 			// This happens sometimes when users immediately request the status for a query
@@ -215,7 +218,7 @@ public class PicSureService {
 			result.stream.open();
 			return ResponseEntity.ok()
 					.contentType(MediaType.TEXT_PLAIN)
-					.body(result.stream);
+					.body(new String(result.stream.readAllBytes(), StandardCharsets.UTF_8));
 		} else {
 			return ResponseEntity.status(400).body("Status : " + result.status.name());
 		}
@@ -268,12 +271,6 @@ public class PicSureService {
 		return paginator.paginate(matchingValues, page, size);
 	}
 
-	@GetMapping("/test")
-	public ResponseEntity test() {
-		List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
-		return ResponseEntity.ok(infoColumnMeta);
-	}
-
 	private ResponseEntity _querySync(QueryRequest resultRequest) throws IOException {
 		Query incomingQuery;
 		incomingQuery = convertIncomingQuery(resultRequest);
@@ -297,7 +294,7 @@ public class PicSureService {
 			AsyncResult result = queryService.getResultFor(status.getResourceResultId());
 			if (result.status == AsyncResult.Status.SUCCESS) {
 				result.stream.open();
-				return queryOkResponse(result.stream, incomingQuery);
+				return queryOkResponse(new String(result.stream.readAllBytes(), StandardCharsets.UTF_8), incomingQuery, MediaType.TEXT_PLAIN);
 			}
 			return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body("Status : " + result.status.name());
 
