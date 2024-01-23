@@ -1,9 +1,13 @@
-package edu.harvard.hms.dbmi.avillach.hpds.processing;
+package edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
+import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.HpdsProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.QueryProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,14 +40,16 @@ public class TimeseriesProcessor implements HpdsProcessor {
 	private Logger log = LoggerFactory.getLogger(QueryProcessor.class);
 
 	private AbstractProcessor abstractProcessor;
+	private final TimeSeriesConversionService conversionService;
 
 	private final String ID_CUBE_NAME;
 	private final int ID_BATCH_SIZE;
 	private final int CACHE_SIZE;
 
 	@Autowired
-	public TimeseriesProcessor(AbstractProcessor abstractProcessor) {
+	public TimeseriesProcessor(AbstractProcessor abstractProcessor, TimeSeriesConversionService conversionService) {
 		this.abstractProcessor = abstractProcessor;
+		this.conversionService = conversionService;
 		// todo: handle these via spring annotations
 		CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
 		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
@@ -115,14 +121,24 @@ public class TimeseriesProcessor implements HpdsProcessor {
 				if (cube.isStringType()) {
 					KeyAndValue<String> keyAndValue = (KeyAndValue) kvObj;
 					// "PATIENT_NUM","CONCEPT_PATH","NVAL_NUM","TVAL_CHAR","TIMESTAMP"
-					String[] entryData = { keyAndValue.getKey().toString(), conceptPath, "", keyAndValue.getValue(),
-							keyAndValue.getTimestamp().toString() };
+					String[] entryData = {
+						keyAndValue.getKey().toString(),
+						conceptPath,
+						"",
+						keyAndValue.getValue(),
+						conversionService.toISOString(keyAndValue.getTimestamp())
+					};
 					dataEntries.add(entryData);
 				} else { // numeric
 					KeyAndValue<Double> keyAndValue = (KeyAndValue) kvObj;
 					// "PATIENT_NUM","CONCEPT_PATH","NVAL_NUM","TVAL_CHAR","TIMESTAMP"
-					String[] entryData = { keyAndValue.getKey().toString(), conceptPath,
-							keyAndValue.getValue().toString(), "", keyAndValue.getTimestamp().toString() };
+					String[] entryData = {
+						keyAndValue.getKey().toString(),
+						conceptPath,
+						keyAndValue.getValue().toString(),
+						"",
+						conversionService.toISOString(keyAndValue.getTimestamp())
+					};
 					dataEntries.add(entryData);
 				}
 				//batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
