@@ -1,10 +1,8 @@
-FROM docker.io/alpine:3.16
+FROM eclipse-temurin:21-alpine
 
 RUN apk add --no-cache --purge -uU bash &&     rm -rf /var/cache/apk/* /tmp/*
 
 RUN apk add --no-cache --purge -uU curl wget unzip gnupg openssl
-
-RUN apk add --no-cache --purge openjdk21
 
 ADD create_key.sh .
 ADD SQLLoader-jar-with-dependencies.jar .
