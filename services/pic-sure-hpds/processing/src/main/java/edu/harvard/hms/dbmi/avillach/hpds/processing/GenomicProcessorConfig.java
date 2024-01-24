@@ -31,6 +31,7 @@ public class GenomicProcessorConfig {
                 .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
                 .collectList()
                 .block();
+        genomicProcessors.add(new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/X/"));
         return new GenomicProcessorParentImpl(genomicProcessors);
     }
 
