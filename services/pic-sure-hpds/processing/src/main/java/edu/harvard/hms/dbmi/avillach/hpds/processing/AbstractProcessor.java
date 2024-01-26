@@ -130,7 +130,7 @@ public class AbstractProcessor {
 	protected Set<Integer> idSetsForEachFilter(Query query) {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
 
-		if (distributableQuery.hasFilters()) {
+		if (!distributableQuery.getPatientIds().isEmpty() && distributableQuery.hasFilters()) {
             Mono<BigInteger> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
 			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
         }
@@ -156,7 +156,7 @@ public class AbstractProcessor {
 
 		Set<Integer> phenotypicPatientSet;
 		//AND logic to make sure all patients match each filter
-		if(patientIdSets.size()>0) {
+		if(!patientIdSets.isEmpty()) {
 			phenotypicPatientSet = applyBooleanLogic(patientIdSets);
 		} else {
             // if there are no patient filters, use all patients.
