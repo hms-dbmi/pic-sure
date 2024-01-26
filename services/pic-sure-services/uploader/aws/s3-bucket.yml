@@ -16,6 +16,10 @@ Parameters:
     Type: List<String>
     Description: 'A comma delimited list of AWS account roots. Ex: arn:aws:iam::762503070141:root,arn:aws:iam::2222222222222:root'
     Default: ''
+  AllRoleArns:
+    Type: List<String>
+    Description: 'A comma delimited list of role ARNS that we want to be able to assume.'
+    Default: ''
 
 Resources:
 #-------------------------------------------------------------------------------
@@ -61,6 +65,13 @@ Resources:
                   - 'kms:ListKeys'
                   - 'kms:ListRetirableGrants'
                   - 'kms:ListAliases'
+        - PolicyName: DataUploadUserSTSPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Resource: !Ref AllRoleArns
+                Action:
+                  - 'sts:AssumeRole'
 
   DataUploadUserAccessKey:
     Type: AWS::IAM::AccessKey
