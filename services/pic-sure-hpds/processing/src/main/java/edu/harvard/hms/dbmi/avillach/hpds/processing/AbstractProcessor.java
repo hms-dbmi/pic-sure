@@ -130,11 +130,12 @@ public class AbstractProcessor {
 	protected Set<Integer> idSetsForEachFilter(Query query) {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
 
-		if (!distributableQuery.getPatientIds().isEmpty() && distributableQuery.hasFilters()) {
+		// NULL (representing no phenotypic filters, i.e. all patients) or not empty patient ID sets require a genomic query.
+		// Otherwise, short circuit and return no patients
+		if ((distributableQuery.getPatientIds() == null || !distributableQuery.getPatientIds().isEmpty()) && distributableQuery.hasFilters()) {
             Mono<BigInteger> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
 			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
         }
-
 		return distributableQuery.getPatientIds();
 	}
 
@@ -154,17 +155,12 @@ public class AbstractProcessor {
 			patientIdSets.add(new HashSet<>()); // if an invalid path is supplied, no patients should match.
 		}
 
-		Set<Integer> phenotypicPatientSet;
+		Set<Integer> phenotypicPatientSet = null;
 		//AND logic to make sure all patients match each filter
 		if(!patientIdSets.isEmpty()) {
 			phenotypicPatientSet = applyBooleanLogic(patientIdSets);
 		} else {
-            // if there are no patient filters, use all patients.
-            // todo: we should not have to send these
-			phenotypicPatientSet = genomicProcessor.getPatientIds().stream()
-					.map(String::trim)
-					.map(Integer::parseInt)
-					.collect(Collectors.toSet());
+            // if there are no patient filters, represent with null. 0 patients means no patients matched the filter
 		}
 		distributableQuery.setVariantInfoFilters(query.getVariantInfoFilters());
 		distributableQuery.setPatientIds(phenotypicPatientSet);
@@ -197,6 +193,9 @@ public class AbstractProcessor {
 		}else {
 			idList = new TreeSet<>(applyBooleanLogic(patientIdSet));
 		}*/
+		if (patientIdSet == null) {
+			return phenotypeMetaStore.getPatientIds();
+		}
 		return patientIdSet;
 	}
 
