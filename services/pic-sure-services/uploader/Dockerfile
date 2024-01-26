@@ -16,4 +16,4 @@ COPY --from=build target/uploader-*.jar /dataupload.jar
 # Time zone
 ENV TZ="US/Eastern"
 
-ENTRYPOINT ["java", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", "-Xmx8192m", "-jar", "/dataupload.jar"]
+ENTRYPOINT java $DEBUG_VARS $PROXY_VARS -Xmx8192m -jar /dataupload.jar

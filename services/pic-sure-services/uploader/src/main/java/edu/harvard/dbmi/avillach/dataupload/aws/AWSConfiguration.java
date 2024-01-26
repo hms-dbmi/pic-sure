@@ -9,7 +9,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.*;
+import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
@@ -18,7 +20,6 @@ import software.amazon.encryption.s3.S3EncryptionClient;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @ConditionalOnProperty(name = "production", havingValue = "true")
@@ -53,16 +54,27 @@ public class AWSConfiguration {
     @Autowired
     private ConfigurableApplicationContext context;
 
+    @Autowired(required = false)
+    private SdkHttpClient sdkHttpClient;
+
+    @Value("${http.proxyUser:}")
+    private String proxyUser;
+
     @Bean
     @ConditionalOnProperty(name = "production", havingValue = "true")
     public StsClient stsClients(
         @Autowired AwsCredentials credentials,
         @Autowired StsClientBuilder stsClientBuilder
     ) {
-        return stsClientBuilder
+        StsClientBuilder builder = stsClientBuilder
             .region(Region.US_EAST_1)
-            .credentialsProvider(StaticCredentialsProvider.create(credentials))
-            .build();
+            .credentialsProvider(StaticCredentialsProvider.create(credentials));
+
+        if (StringUtils.hasLength(proxyUser)) {
+            builder.httpClient(sdkHttpClient);
+        }
+
+        return builder.build();
     }
 
     @Bean

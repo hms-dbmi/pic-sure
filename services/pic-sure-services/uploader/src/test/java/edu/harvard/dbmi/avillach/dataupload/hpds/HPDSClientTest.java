@@ -1,6 +1,11 @@
 package edu.harvard.dbmi.avillach.dataupload.hpds;
 
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -9,8 +14,6 @@ import org.mockito.Mockito;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.IOException;
-import java.net.http.HttpClient;
-import java.net.http.HttpResponse;
 
 @SpringBootTest
 class HPDSClientTest {
@@ -19,7 +22,13 @@ class HPDSClientTest {
     HttpClient client;
 
     @Mock
-    HttpResponse<Object> response;
+    HttpClientContext context;
+
+    @Mock
+    HttpResponse response;
+
+    @Mock
+    StatusLine line;
 
     @InjectMocks
     HPDSClient subject;
@@ -29,9 +38,11 @@ class HPDSClientTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(response.statusCode())
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
             .thenReturn(200);
-        Mockito.when(client.send(Mockito.any(), Mockito.any()))
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
             .thenReturn(response);
 
         boolean actual = subject.initializeQuery(query);
@@ -40,13 +51,15 @@ class HPDSClientTest {
     }
 
     @Test
-    void shouldNotInitializeQuery() throws IOException, InterruptedException {
+    void shouldNotInitializeQuery() throws IOException {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(response.statusCode())
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
             .thenReturn(404);
-        Mockito.when(client.send(Mockito.any(), Mockito.any()))
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
             .thenReturn(response);
 
         boolean actual = subject.initializeQuery(query);
@@ -59,10 +72,12 @@ class HPDSClientTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(response.statusCode())
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
             .thenReturn(404);
-        Mockito.when(client.send(Mockito.any(), Mockito.any()))
-            .thenThrow(new IOException());
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
+            .thenReturn(response);
 
         boolean actual = subject.initializeQuery(query);
 
@@ -74,9 +89,11 @@ class HPDSClientTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(response.statusCode())
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
             .thenReturn(200);
-        Mockito.when(client.send(Mockito.any(), Mockito.any()))
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
             .thenReturn(response);
 
         boolean actual = subject.writePhenotypicData(query);
@@ -89,9 +106,11 @@ class HPDSClientTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(response.statusCode())
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
             .thenReturn(500);
-        Mockito.when(client.send(Mockito.any(), Mockito.any()))
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
             .thenReturn(response);
 
         boolean actual = subject.writeGenomicData(query);

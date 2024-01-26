@@ -40,6 +40,9 @@ public class DataUploadService {
     @Value("${aws.s3.access_key_id}")
     private String keyId;
 
+    @Value("${institution.name}")
+    private String home;
+
     @Autowired
     private SelfRefreshingS3Client s3;
 
@@ -51,9 +54,6 @@ public class DataUploadService {
 
     @Autowired
     private Path sharingRoot;
-
-    @Value("${institution.name}")
-    private String home;
 
     @Autowired
     private Map<String, SiteAWSInfo> roleARNs;

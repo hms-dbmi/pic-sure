@@ -5,17 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.entity.StringEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpRequest.BodyPublishers;
-import java.net.http.HttpResponse;
+import java.util.Optional;
 
 @Service
 public class HPDSClient {
@@ -26,6 +29,9 @@ public class HPDSClient {
 
     @Autowired
     private HttpClient client;
+
+    @Autowired
+    private HttpClientContext context;
 
     public boolean writePhenotypicData(Query query) {
         return writeData(query, "phenotypic");
@@ -44,13 +50,11 @@ public class HPDSClient {
             return false;
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(HPDS_URI + "query/sync"))
-            .POST(BodyPublishers.ofString(body))
-            .setHeader("Content-Type", "application/json")
-            .build();
+        Optional<HttpPost> maybePost = createPost(HPDS_URI + "query/sync", body);
 
-        return sendAndVerifyRequest(request);
+        return maybePost
+            .map(this::sendAndVerifyRequest)
+            .orElse(false);
     }
 
     private boolean writeData(Query query, String mode) {
@@ -59,20 +63,31 @@ public class HPDSClient {
             return false;
         }
 
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(HPDS_URI + "write/" + mode))
-            .POST(BodyPublishers.ofString(body))
-            .setHeader("Content-Type", "application/json")
-            .build();
+        Optional<HttpPost> maybePost = createPost(HPDS_URI + "write/" + mode, body);
 
-        return sendAndVerifyRequest(request);
+        return maybePost
+            .map(this::sendAndVerifyRequest)
+            .orElse(false);
     }
 
-    private boolean sendAndVerifyRequest(HttpRequest request) {
+    private Optional<HttpPost> createPost(String uri, String body) {
+        HttpPost request = new HttpPost(URI.create(uri));
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() == 200;
-        } catch (IOException | InterruptedException e) {
+            request.setEntity(new StringEntity(body));
+        } catch (UnsupportedEncodingException e) {
+            LOG.error("Error making request body", e);
+            return Optional.empty();
+        }
+        request.setHeader("Content-Type", "application/json");
+
+        return Optional.of(request);
+    }
+
+    private boolean sendAndVerifyRequest(HttpPost request) {
+        try {
+            HttpResponse response = client.execute(request, context);
+            return response.getStatusLine().getStatusCode() == 200;
+        } catch (IOException e) {
             LOG.error("Error making request", e);
             return false;
         }

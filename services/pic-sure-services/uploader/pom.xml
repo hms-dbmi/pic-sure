@@ -58,6 +58,11 @@
 			<version>${aws.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>apache-client</artifactId>
+			<version>${aws.version}</version>
+		</dependency>
+		<dependency>
 			<groupId>software.amazon.encryption.s3</groupId>
 			<artifactId>amazon-s3-encryption-client-java</artifactId>
 			<version>3.1.0</version>

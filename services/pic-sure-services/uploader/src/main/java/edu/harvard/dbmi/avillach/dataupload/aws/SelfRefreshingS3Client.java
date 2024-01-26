@@ -11,8 +11,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
@@ -53,6 +55,9 @@ public class SelfRefreshingS3Client {
 
     @Autowired
     StatusService statusService;
+
+    @Autowired(required = false)
+    private SdkHttpClient sdkHttpClient;
 
     @PostConstruct
     private void refreshClient() {
@@ -95,12 +100,14 @@ public class SelfRefreshingS3Client {
             .expirationTime(credentials.expiration())
             .build();
         StaticCredentialsProvider provider = StaticCredentialsProvider.create(sessionCredentials);
-        S3Client client = S3Client.builder()
+        S3ClientBuilder builder = S3Client.builder()
             .credentialsProvider(provider)
-            .region(Region.US_EAST_1)
-            .build();
+            .region(Region.US_EAST_1);
+        if (sdkHttpClient != null) {
+            builder.httpClient(sdkHttpClient);
+        }
         LOG.info("Created S3 client");
-        clients.put(siteName, client);
+        clients.put(siteName, builder.build());
         // now that client is refreshed, unlock for reading
         LOG.info("Unlocking s3 client. Session refreshed");
         locks.get(siteName).writeLock().unlock();
