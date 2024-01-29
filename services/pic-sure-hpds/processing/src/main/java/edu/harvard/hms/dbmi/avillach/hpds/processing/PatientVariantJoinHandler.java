@@ -33,7 +33,7 @@ public class PatientVariantJoinHandler {
             Set<Integer> patientIds = Arrays.asList(
                     variantService.getPatientIds()).stream().map((String id)->{
                 return Integer.parseInt(id);}).collect(Collectors.toSet());
-            if(patientSubset == null) {
+            if(patientSubset != null) {
                 // for now, null means there were no phenotypic filters and all patients are eligible
                 patientsInScope = Sets.intersection(patientIds, patientSubset);
             } else {
