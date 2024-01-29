@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
@@ -70,8 +71,10 @@ public class PatientVariantJoinHandler {
                 List<List<String>> variantBuckets = variantBucketPartitions.get(x);
                 variantBuckets.parallelStream().forEach(variantBucket -> {
                     VariantBucketHolder<VariantMasks> bucketCache = new VariantBucketHolder<>();
+                    List<String> missingVariants = new ArrayList<>();
                     variantBucket.forEach(variantSpec -> {
-                        variantService.getMasks(variantSpec, bucketCache).ifPresent(masks -> {
+                        Optional<VariantMasks> variantMask = variantService.getMasks(variantSpec, bucketCache);
+                        variantMask.ifPresentOrElse(masks -> {
                             BigInteger heteroMask = masks.heterozygousMask == null ? variantService.emptyBitmask() : masks.heterozygousMask;
                             BigInteger homoMask = masks.homozygousMask == null ? variantService.emptyBitmask() : masks.homozygousMask;
                             BigInteger orMasks = heteroMask.or(homoMask);
@@ -79,8 +82,10 @@ public class PatientVariantJoinHandler {
                             synchronized(matchingPatients) {
                                 matchingPatients[0] = matchingPatients[0].or(andMasks);
                             }
-                        });
+                        }, () -> missingVariants.add(variantSpec));
                     });
+                    log.info(missingVariants.size() + "variant masks not found");
+                    log.info("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, 100)));
                 });
             }
             return matchingPatients[0];

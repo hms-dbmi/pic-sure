@@ -142,7 +142,7 @@ public class VariantStore implements Serializable {
 			bucketCache.lastContig = contig;
 			bucketCache.lastChunkOffset = chrOffset;
 		}
-		return bucketCache.lastValue == null ? Optional.empty() : Optional.of(bucketCache.lastValue.get(variant));
+		return bucketCache.lastValue == null ? Optional.empty() : Optional.ofNullable(bucketCache.lastValue.get(variant));
 	}
 
 	public String[] getHeaders() {
