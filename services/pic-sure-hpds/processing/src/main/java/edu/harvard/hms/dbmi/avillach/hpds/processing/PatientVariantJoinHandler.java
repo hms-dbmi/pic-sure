@@ -45,10 +45,10 @@ public class PatientVariantJoinHandler {
 
             Set<String> variantsInScope = intersectionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
 
-            // todo: determine ideal ratio to bother with this
+            /*// todo: determine ideal ratio to bother with this
             if (patientsInScope.size() < variantService.getPatientIds().length) {
                 variantsInScope = variantService.filterVariantSetForPatientSet(variantsInScope, patientsInScope);
-            }
+            }*/
             Collection<List<String>> values = variantsInScope.stream()
                     .collect(Collectors.groupingByConcurrent((variantSpec) -> {
                         return new VariantSpec(variantSpec).metadata.offset / 1000;
@@ -84,8 +84,10 @@ public class PatientVariantJoinHandler {
                             }
                         }, () -> missingVariants.add(variantSpec));
                     });
-                    log.info(missingVariants.size() + "variant masks not found");
-                    log.info("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, 100)));
+                    if (!missingVariants.isEmpty()) {
+                        log.info(missingVariants.size() + " variant masks not found");
+                        log.info("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, Math.min(100, missingVariants.size()))));
+                    }
                 });
             }
             return matchingPatients[0];

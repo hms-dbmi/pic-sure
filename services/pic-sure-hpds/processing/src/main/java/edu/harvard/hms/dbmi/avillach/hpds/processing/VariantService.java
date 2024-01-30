@@ -162,7 +162,8 @@ public class VariantService {
                 }
             }
             if(variantStore.getPatientIds().length > 0 && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
-                log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
+                // TODO: remove this! for testing only
+                /*log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
                 bucketIndex = new BucketIndexBySample(variantStore, genomicDataDirectory);
                 try (
                         FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
@@ -171,7 +172,7 @@ public class VariantService {
                 ){
                     oos.writeObject(bucketIndex);
                     oos.flush();oos.close();
-                }
+                }*/
             }else {
                 try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
                     log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
