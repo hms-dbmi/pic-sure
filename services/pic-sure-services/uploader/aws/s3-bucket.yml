@@ -244,8 +244,7 @@ Resources:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
-              KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${BucketKMSKeyAlias}'
-              SSEAlgorithm: 'aws:kms'
+              SSEAlgorithm: 'AES256'
 
   PicSureLoggingBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -255,16 +254,6 @@ Resources:
       Bucket: !Join [ '-', [ 'pic-sure-data-sharing-bucket-access-logs', !Ref InstitutionName ] ]
       PolicyDocument:
         Statement:
-          - Sid: Deny requests that do not use TLS/HTTPS
-            Effect: Deny
-            Principal: '*'
-            Action: s3:*
-            Resource:
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}/*'
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}'
-            Condition:
-              Bool:
-                aws:SecureTransport: false
           - Sid: Allow this account access
             Effect: Allow
             Principal:
@@ -274,28 +263,6 @@ Resources:
             Resource:
               - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}/*'
               - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}'
-          - Sid: Deny unencrypted object uploads
-            Effect: Deny
-            Principal: '*'
-            Action:
-              - s3:PutObject*
-            Resource:
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}/*'
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}'
-            Condition:
-              StringNotEquals:
-                s3:x-amz-server-side-encryption: 'aws:kms'
-          - Sid: Deny Wrong KMS Key
-            Effect: Deny
-            Principal: '*'
-            Action:
-              - s3:PutObject*
-            Resource:
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}/*'
-              - !Sub 'arn:aws:s3:::pic-sure-data-sharing-bucket-access-logs-${InstitutionName}'
-            Condition:
-              StringNotEqualsIfExists:
-                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt BucketKMSKey.Arn
 
   PicSureStudyBucket:
     Type: AWS::S3::Bucket
