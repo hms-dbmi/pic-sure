@@ -69,25 +69,53 @@ public class VisualizationUtil {
     }
 
     /**
-     * Replaces long column names with shorter version.
+     * This method is used to limit the size of the keys in the axisMap to a maximum of 45 characters. If the key is longer
+     * than 45 characters, it will be shortened to 45 characters and the last 3 characters will be replaced with "...".
+     * If the shortened key is not unique, we will search for the first unique key by walking through the string and
+     * grabbing the next 6 characters after the first unique character. We then build a new key with the shortened key and
+     * the unique characters and add it to the newAxisMap.
+     * <p>
      *
-     * @param axisMap
-     * @return
+     * @param axisMap - Map of the categories and their counts
+     * @return Map<String, Integer> - Map of the categories and their counts with the keys limited to 45 characters
      */
     private static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
-        List<String> toRemove = new ArrayList<>();
-        Map<String, Integer> toAdd = new HashMap<>();
-        axisMap.keySet().forEach(key -> {
-            if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
-                toRemove.add(key);
-                toAdd.put(
-                        key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...",
-                        axisMap.get(key));
+        Map<String, Integer> newAxisMap = new HashMap<>();
+        HashSet<String> keys = new HashSet<>();
+
+        axisMap.forEach((key, value) -> {
+            if (key.length() < MAX_X_LABEL_LINE_LENGTH) {
+                newAxisMap.put(key, value);
+                keys.add(key);
+            } else {
+                String shortKey = key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3);
+                if (keys.contains(shortKey)) {
+                    for (int i = 0; i < key.length(); i++) {
+                        if (i + MAX_X_LABEL_LINE_LENGTH < key.length()) {
+                            // Walk through the string to find the first unique key.
+                            shortKey = key.substring(i, i + MAX_X_LABEL_LINE_LENGTH - 3);
+
+                            // We check if the short key is unique by checking if it is not in the keys set.
+                            if (!keys.contains(shortKey)) {
+                                // Get the next 6 characters after the first unique character.
+                                String uniqueEnd = key.substring(i + MAX_X_LABEL_LINE_LENGTH - 3, i + MAX_X_LABEL_LINE_LENGTH + 3);
+                                // remove 6 characters from the original short key
+                                shortKey = key.substring(i, MAX_X_LABEL_LINE_LENGTH - 3) + "..." + uniqueEnd;
+                                // we can break here because we have found a unique key
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    shortKey = shortKey + "...";
+                }
+
+                newAxisMap.put(shortKey, value);
+                keys.add(shortKey);
             }
         });
-        toRemove.forEach(key -> axisMap.remove(key));
-        axisMap.putAll(toAdd);
-        return axisMap;
+
+        return newAxisMap;
     }
 
 }
