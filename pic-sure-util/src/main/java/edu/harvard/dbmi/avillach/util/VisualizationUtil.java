@@ -79,7 +79,7 @@ public class VisualizationUtil {
      * @param axisMap - Map of the categories and their counts
      * @return Map<String, Integer> - Map of the categories and their counts with the keys limited to 45 characters
      */
-    private static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
+    public static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
         Map<String, Integer> newAxisMap = new HashMap<>();
         HashSet<String> keys = new HashSet<>();
 
@@ -88,30 +88,39 @@ public class VisualizationUtil {
                 newAxisMap.put(key, value);
                 keys.add(key);
             } else {
-                String shortKey = key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3);
-                if (keys.contains(shortKey)) {
-                    for (int i = 0; i < key.length(); i++) {
-                        if (i + MAX_X_LABEL_LINE_LENGTH < key.length()) {
-                            // Walk through the string to find the first unique key.
-                            shortKey = key.substring(i, i + MAX_X_LABEL_LINE_LENGTH - 3);
+                // proposed key
+                StringBuilder proposedKey;
 
-                            // We check if the short key is unique by checking if it is not in the keys set.
-                            if (!keys.contains(shortKey)) {
-                                // Get the next 6 characters after the first unique character.
-                                String uniqueEnd = key.substring(i + MAX_X_LABEL_LINE_LENGTH - 3, i + MAX_X_LABEL_LINE_LENGTH + 3);
-                                // remove 6 characters from the original short key
-                                shortKey = key.substring(i, MAX_X_LABEL_LINE_LENGTH - 3) + "..." + uniqueEnd;
-                                // we can break here because we have found a unique key
-                                break;
-                            }
-                        }
+                // Check if the key exists in the keys set.
+                boolean hasEqual = false;
+                // Let first check if the proposed key is a leading substring of another key
+                for (String innerKey : axisMap.keySet()) {// Check if this key will be equal to any future keys.
+                    hasEqual = key.substring(0, MAX_X_LABEL_LINE_LENGTH).equals(innerKey.substring(0, MAX_X_LABEL_LINE_LENGTH));
+                    if (hasEqual) {
+                        break;
                     }
-                } else {
-                    shortKey = shortKey + "...";
                 }
 
-                newAxisMap.put(shortKey, value);
-                keys.add(shortKey);
+                if (hasEqual) { // if we have an equal we want to create a more unique key
+                    int countFromEnd = 6;
+                    String uniqueness;
+                    do {
+                        // get the original key substring max x + 3 (for the dots) + countFromEnd.
+                        proposedKey = new StringBuilder(key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3 - countFromEnd));
+
+                        // Get the last "countFromEnd" characters
+                        uniqueness = key.substring(key.length() - countFromEnd);
+
+                        proposedKey.append("...").append(uniqueness);
+                        countFromEnd++; // increase the number of characters from the end of the string we will use
+                    } while (keys.contains(proposedKey.toString()));
+
+                } else {
+                    proposedKey = new StringBuilder(key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...");
+                }
+
+                newAxisMap.put(proposedKey.toString(), value);
+                keys.add(proposedKey.toString());
             }
         });
 
