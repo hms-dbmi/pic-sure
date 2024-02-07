@@ -241,6 +241,7 @@ public class PicsureQueryService {
      */
     public QueryStatus queryMetadata(UUID queryId, HttpHeaders headers) {
         Query query = queryRepo.getById(queryId);
+        query = query == null ? queryRepo.getQueryUUIDFromCommonAreaUUID(queryId) : query;
         if (query == null) {
             throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
