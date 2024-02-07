@@ -95,9 +95,11 @@ public class VisualizationUtil {
                 boolean hasEqual = false;
                 // Let first check if the proposed key is a leading substring of another key
                 for (String innerKey : axisMap.keySet()) {// Check if this key will be equal to any future keys.
-                    hasEqual = key.substring(0, MAX_X_LABEL_LINE_LENGTH).equals(innerKey.substring(0, MAX_X_LABEL_LINE_LENGTH));
-                    if (hasEqual) {
-                        break;
+                    if (innerKey.length() >= MAX_X_LABEL_LINE_LENGTH) {
+                        hasEqual = key.substring(0, MAX_X_LABEL_LINE_LENGTH).equals(innerKey.substring(0, MAX_X_LABEL_LINE_LENGTH));
+                        if (hasEqual) {
+                            break;
+                        }
                     }
                 }
 
