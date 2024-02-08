@@ -105,7 +105,7 @@ public class VisualizationUtil {
                     int countFromEnd = 6;
                     String uniqueness;
                     do {
-                        // get the original key substring max x + 3 (for the dots) + countFromEnd.
+                        // get the original key substring max x - 3 (for the dots) - countFromEnd.
                         proposedKey = new StringBuilder(key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3 - countFromEnd));
 
                         // Get the last "countFromEnd" characters
