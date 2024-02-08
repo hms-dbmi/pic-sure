@@ -71,7 +71,7 @@ public class VisualizationUtil {
     /**
      * This method is used to limit the size of the keys in the axisMap to a maximum of 45 characters. If the key is longer
      * than 45 characters, it will be shortened to 45 characters and the last 3 characters will be replaced with "...".
-     * If the shortened key is not unique, we will search for the first unique key by walking through the string and
+     * If the shortened key is not unique, we will search for the first unique key by walking backward through the string and
      * grabbing the next 6 characters after the first unique character. We then build a new key with the shortened key and
      * the unique characters and add it to the newAxisMap.
      * <p>
