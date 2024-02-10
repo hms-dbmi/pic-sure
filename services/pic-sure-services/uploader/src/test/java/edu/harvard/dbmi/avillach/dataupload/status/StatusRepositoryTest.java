@@ -23,7 +23,7 @@ class StatusRepositoryTest {
 
     @Container
     static final MySQLContainer<?> databaseContainer =
-        new MySQLContainer<>("mysql:8").withReuse(true);
+        new MySQLContainer<>("mysql:8.0").withReuse(true);
 
     @DynamicPropertySource
     static void mySQLProperties(DynamicPropertyRegistry registry) {
