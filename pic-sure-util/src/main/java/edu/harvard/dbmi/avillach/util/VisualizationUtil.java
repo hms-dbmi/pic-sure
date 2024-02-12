@@ -71,60 +71,48 @@ public class VisualizationUtil {
     /**
      * This method is used to limit the size of the keys in the axisMap to a maximum of 45 characters. If the key is longer
      * than 45 characters, it will be shortened to 45 characters and the last 3 characters will be replaced with "...".
-     * If the shortened key is not unique, we will create a unique one 
+     * If the shortened key is not unique, we will create a unique one
      * <p>
      *
      * @param axisMap - Map of the categories and their counts
      * @return Map<String, Integer> - Map of the categories and their counts with the keys limited to 45 characters
      */
     public static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
+        if (axisMap == null) {
+            return new HashMap<>();
+        }
+
         Map<String, Integer> newAxisMap = new HashMap<>();
         HashSet<String> keys = new HashSet<>();
-
         axisMap.forEach((key, value) -> {
-            if (key.length() < MAX_X_LABEL_LINE_LENGTH) {
-                newAxisMap.put(key, value);
-                keys.add(key);
-            } else {
-                // proposed key
-                StringBuilder proposedKey;
-
-                // Check if the key exists in the keys set.
-                boolean hasEqual = false;
-                // Let first check if the proposed key is a leading substring of another key
-                for (String innerKey : axisMap.keySet()) {// Check if this key will be equal to any future keys.
-                    if (innerKey.length() >= MAX_X_LABEL_LINE_LENGTH) {
-                        hasEqual = key.substring(0, MAX_X_LABEL_LINE_LENGTH).equals(innerKey.substring(0, MAX_X_LABEL_LINE_LENGTH));
-                        if (hasEqual) {
-                            break;
-                        }
-                    }
-                }
-
-                if (hasEqual) { // if we have an equal we want to create a more unique key
-                    int countFromEnd = 6;
-                    String uniqueness;
-                    do {
-                        // get the original key substring max x - 3 (for the dots) - countFromEnd.
-                        proposedKey = new StringBuilder(key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3 - countFromEnd));
-
-                        // Get the last "countFromEnd" characters
-                        uniqueness = key.substring(key.length() - countFromEnd);
-
-                        proposedKey.append("...").append(uniqueness);
-                        countFromEnd++; // increase the number of characters from the end of the string we will use
-                    } while (keys.contains(proposedKey.toString()));
-
-                } else {
-                    proposedKey = new StringBuilder(key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...");
-                }
-
-                newAxisMap.put(proposedKey.toString(), value);
-                keys.add(proposedKey.toString());
-            }
+            String adjustedKey = key.length() < MAX_X_LABEL_LINE_LENGTH ? key : createAdjustedKey(axisMap, keys, key);
+            newAxisMap.put(adjustedKey, value);
+            keys.add(adjustedKey);
         });
-
         return newAxisMap;
+    }
+
+    private static String createAdjustedKey(Map<String, Integer> axisMap, HashSet<String> keys, String key) {
+        String keyPrefix = key.substring(0, MAX_X_LABEL_LINE_LENGTH);
+        return isKeyPrefixInAxisMap(axisMap, keyPrefix) ? generateUniqueKey(keys, key) : appendEllipsis(keyPrefix);
+    }
+
+    private static boolean isKeyPrefixInAxisMap(Map<String, Integer> axisMap, String keyPrefix) {
+        return axisMap.keySet().stream().anyMatch(k -> k.startsWith(keyPrefix));
+    }
+
+    private static String generateUniqueKey(HashSet<String> keys, String key) {
+        int countFromEnd = 6;
+        String proposedKey;
+        do {
+            proposedKey = String.format("%s...%s", key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3 - countFromEnd), key.substring(key.length() - countFromEnd));
+            countFromEnd++;
+        } while (keys.contains(proposedKey));
+        return proposedKey;
+    }
+
+    private static String appendEllipsis(String keyPrefixAdjusted) {
+        return String.format("%s...", keyPrefixAdjusted);
     }
 
 }
