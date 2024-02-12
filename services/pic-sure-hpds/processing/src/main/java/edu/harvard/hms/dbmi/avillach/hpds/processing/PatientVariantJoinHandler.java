@@ -35,10 +35,17 @@ public class PatientVariantJoinHandler {
                     variantService.getPatientIds()).stream().map((String id)->{
                 return Integer.parseInt(id);}).collect(Collectors.toSet());
             if(patientSubset != null) {
-                // for now, null means there were no phenotypic filters and all patients are eligible
                 patientsInScope = Sets.intersection(patientIds, patientSubset);
             } else {
+                // for now, null means there were no phenotypic filters and all patients are eligible
+                // this should be heavily tested/reconsidered for sharding genomic data by study
                 patientsInScope = patientIds;
+            }
+
+            // If genomic data is sharded by studies, it may be possible that the node this is running in does not have genomic
+            // data for any of the patients in the phenotypic query. In which case, we don't have to look for matching patients
+            if (patientsInScope.isEmpty()) {
+                return variantService.emptyBitmask();
             }
 
             BigInteger[] matchingPatients = new BigInteger[] {variantService.emptyBitmask()};

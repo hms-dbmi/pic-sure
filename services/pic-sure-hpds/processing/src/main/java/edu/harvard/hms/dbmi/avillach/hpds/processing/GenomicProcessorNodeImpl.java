@@ -31,7 +31,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     private final Map<String, FileBackedByteIndexedInfoStore> infoStores;
 
-    private final List<String> infoStoreColumns;
+    private final Set<String> infoStoreColumns;
 
     private final String genomicDataDirectory;
 
@@ -71,7 +71,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         } else {
             throw new IllegalArgumentException("Not a valid genomicDataDirectory: " + this.genomicDataDirectory);
         }
-        infoStoreColumns = new ArrayList<>(infoStores.keySet());
+        infoStoreColumns = new HashSet<>(infoStores.keySet());
 
         variantIndexCache = new VariantIndexCache(variantService.getVariantIndex(), infoStores);
     }
@@ -367,16 +367,16 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
     }
 
     @Override
-    public List<String> getInfoStoreColumns() {
+    public Set<String> getInfoStoreColumns() {
         return infoStoreColumns;
     }
 
     @Override
-    public List<String> getInfoStoreValues(String conceptPath) {
+    public Set<String> getInfoStoreValues(String conceptPath) {
         return infoStores.get(conceptPath).getAllValues().keys()
                 .stream()
                 .sorted(String::compareToIgnoreCase)
-                .collect(Collectors.toList());
+                .collect(Collectors.toSet());
     }
 
     @Override

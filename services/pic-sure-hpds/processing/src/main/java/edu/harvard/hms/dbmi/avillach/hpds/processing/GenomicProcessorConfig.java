@@ -9,6 +9,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 @SpringBootApplication
@@ -33,6 +35,29 @@ public class GenomicProcessorConfig {
                 .block();
         genomicProcessors.add(new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/X/"));
         return new GenomicProcessorParentImpl(genomicProcessors);
+    }
+
+    @Bean(name = "localPatientDistributedGenomicProcessor")
+    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localPatientDistributed")
+    public GenomicProcessor localPatientDistributedGenomicProcessor() {
+        // assumed for now that all first level directories contain a genomic dataset for a group of studies
+        File[] directories = new File(hpdsGenomicDataDirectory).listFiles(File::isDirectory);
+        if (directories.length > 10) {
+            throw new IllegalArgumentException("Number of genomic partitions by studies exceeds maximum of 10 (" + directories.length + ")");
+        }
+
+        List<GenomicProcessor> studyGroupedGenomicProcessors = new ArrayList<>();
+
+        for (File directory : directories) {
+            List<GenomicProcessor> genomicProcessors = Flux.range(1, 22)
+                    .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
+                    .collectList()
+                    .block();
+            genomicProcessors.add(new GenomicProcessorNodeImpl(directory + "/X/"));
+            studyGroupedGenomicProcessors.add(new GenomicProcessorParentImpl(genomicProcessors));
+        }
+
+        return new GenomicProcessorPatientMergingParentImpl(studyGroupedGenomicProcessors);
     }
 
     @Bean(name = "remoteGenomicProcessor")

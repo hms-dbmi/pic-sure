@@ -10,17 +10,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigInteger;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * This genomic processor assumes child nodes all have the same patient set
- */
-public class GenomicProcessorParentImpl implements GenomicProcessor {
+public class GenomicProcessorPatientMergingParentImpl implements GenomicProcessor {
 
-    private static Logger log = LoggerFactory.getLogger(GenomicProcessorParentImpl.class);
+    private static Logger log = LoggerFactory.getLogger(GenomicProcessorPatientMergingParentImpl.class);
 
     private final List<GenomicProcessor> nodes;
 
@@ -38,25 +36,34 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     private List<String> patientIds;
 
-    public GenomicProcessorParentImpl(List<GenomicProcessor> nodes) {
+    public GenomicProcessorPatientMergingParentImpl(List<GenomicProcessor> nodes) {
         this.nodes = nodes;
     }
 
     @Override
     public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
         Mono<BigInteger> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
-                .flatMap(node -> node.getPatientMask(distributableQuery))
-                .reduce(BigInteger::or);
+                .flatMapSequential(node -> node.getPatientMask(distributableQuery))
+                .reduce(this::appendMask);
         return result;
+    }
+
+    public BigInteger appendMask(BigInteger mask1, BigInteger mask2) {
+        String binaryMask1 = mask1.toString(2);
+        String binaryMask2 = mask2.toString(2);
+        String appendedString = binaryMask1.substring(0, binaryMask1.length() - 2) +
+                binaryMask2.substring(2);
+        return new BigInteger(appendedString, 2);
     }
 
     @Override
     public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
         Set<Integer> ids = new HashSet<>();
         String bitmaskString = patientMask.toString(2);
+        List<String> patientIds = getPatientIds();
         for(int x = 2;x < bitmaskString.length()-2;x++) {
             if('1'==bitmaskString.charAt(x)) {
-                String patientId = getPatientIds().get(x-2).trim();
+                String patientId = patientIds.get(x-2).trim();
                 ids.add(Integer.parseInt(patientId));
             }
         }
@@ -86,8 +93,14 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
         if (patientIds != null) {
             return patientIds;
         } else {
-            // todo: verify all nodes have the same potients
-            List<String> result = nodes.get(0).getPatientIds();
+            // todo: verify all nodes have distinct patients
+            List<String> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                    .flatMapSequential(node -> Mono.fromCallable(node::getPatientIds).subscribeOn(Schedulers.boundedElastic()))
+                    .reduce((list1, list2) -> {
+                        List<String> concatenatedList = new ArrayList<>(list1);
+                        concatenatedList.addAll(list2);
+                        return concatenatedList;
+                    }).block();
             patientIds = result;
             return result;
         }
@@ -95,14 +108,8 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     @Override
     public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
-        // TODO: test. only used in variant explorer
-        for (GenomicProcessor node : nodes) {
-            Optional<VariantMasks> masks = node.getMasks(path, variantMasksVariantBucketHolder);
-            if (masks.isPresent()) {
-                return masks;
-            }
-        }
-        return Optional.empty();
+        // TODO: implement this. only used in variant explorer
+        throw new RuntimeException("Method not implemented");
     }
 
     @Override

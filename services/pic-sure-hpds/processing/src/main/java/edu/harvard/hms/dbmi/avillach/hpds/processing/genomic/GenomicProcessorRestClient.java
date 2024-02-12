@@ -24,6 +24,7 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     private static final ParameterizedTypeReference<Collection<String>> VARIANT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     private static final ParameterizedTypeReference<List<InfoColumnMeta>> INFO_COLUMNS_META_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     private static final ParameterizedTypeReference<List<String>> LIST_OF_STRING_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+    private static final ParameterizedTypeReference<Set<String>> SET_OF_STRING_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
 
     public GenomicProcessorRestClient(String serviceUrl) {
         this.webClient = WebClient.builder()
@@ -81,26 +82,26 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     }
 
     @Override
-    public List<String> getInfoStoreColumns() {
-        List<String> result = webClient.get()
+    public Set<String> getInfoStoreColumns() {
+        Set<String> result = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/info/columns")
                         .build())
                 .retrieve()
-                .bodyToMono(LIST_OF_STRING_TYPE_REFERENCE)
+                .bodyToMono(SET_OF_STRING_TYPE_REFERENCE)
                 .block();
         return result;
     }
 
     @Override
-    public List<String> getInfoStoreValues(String conceptPath) {
-        List<String> result = webClient.get()
+    public Set<String> getInfoStoreValues(String conceptPath) {
+        Set<String> result = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/info/values")
                         .queryParam("conceptPath", conceptPath)
                         .build(conceptPath))
                 .retrieve()
-                .bodyToMono(LIST_OF_STRING_TYPE_REFERENCE)
+                .bodyToMono(SET_OF_STRING_TYPE_REFERENCE)
                 .block();
         return result;
     }

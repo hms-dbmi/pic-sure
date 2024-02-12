@@ -24,9 +24,9 @@ public interface GenomicProcessor {
 
     Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder);
 
-    List<String> getInfoStoreColumns();
+    Set<String> getInfoStoreColumns();
 
-    List<String> getInfoStoreValues(String conceptPath);
+    Set<String> getInfoStoreValues(String conceptPath);
 
     List<InfoColumnMeta> getInfoColumnMeta();
 }

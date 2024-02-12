@@ -98,7 +98,7 @@ public class AbstractProcessor {
 		hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
 	}
 
-	public List<String> getInfoStoreColumns() {
+	public Set<String> getInfoStoreColumns() {
 		return genomicProcessor.getInfoStoreColumns();
 	}
 
