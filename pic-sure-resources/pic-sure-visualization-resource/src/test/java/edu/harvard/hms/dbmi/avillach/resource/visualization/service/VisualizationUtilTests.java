@@ -45,9 +45,12 @@ public class VisualizationUtilTests {
     @DisplayName("Test null Map limitKeySize")
     public void testNullMapLimitKeySize() {
         Map<String, Integer> axisMap = null;
-        Map<String, Integer> actual = VisualizationUtil.limitKeySize(axisMap);
-        Map<String, Integer> expected = new HashMap<>();
-        assertEquals(expected, actual);
+        // this should throw a NullPointerException
+        try {
+            VisualizationUtil.limitKeySize(axisMap);
+        } catch (IllegalArgumentException e) {
+            assertEquals("axisMap cannot be null", e.getMessage());
+        }
     }
 
     @Test

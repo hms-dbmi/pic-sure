@@ -79,7 +79,7 @@ public class VisualizationUtil {
      */
     public static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
         if (axisMap == null) {
-            return new HashMap<>();
+            throw new IllegalArgumentException("axisMap cannot be null");
         }
 
         Map<String, Integer> newAxisMap = new HashMap<>();
