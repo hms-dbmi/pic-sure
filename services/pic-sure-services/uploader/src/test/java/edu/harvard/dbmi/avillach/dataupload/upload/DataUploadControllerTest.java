@@ -33,7 +33,7 @@ class DataUploadControllerTest {
 
     @BeforeEach
     public void init() {
-        ReflectionTestUtils.setField(subject, "institutions", List.of("bch"));
+        ReflectionTestUtils.setField(subject, "institutions", List.of("bch", DataType.Genomic));
     }
 
     @Test
@@ -46,14 +46,14 @@ class DataUploadControllerTest {
             new DataUploadStatuses(UploadStatus.Uploading, UploadStatus.Uploading, query.getPicSureId(), LocalDate.EPOCH, "bch");
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(before));
-        Mockito.when(uploadService.upload(query, "bch"))
+        Mockito.when(uploadService.asyncUpload(query, "bch", DataType.Genomic))
             .thenReturn(after);
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
         ResponseEntity<DataUploadStatuses> expected = ResponseEntity.ok(after);
 
         Mockito.verify(uploadService, Mockito.times(1))
-            .upload(query, "bch");
+            .asyncUpload(query, "bch", DataType.Genomic);
         Assertions.assertEquals(expected, actual);
     }
 
@@ -65,7 +65,7 @@ class DataUploadControllerTest {
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.empty());
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
     }
@@ -75,7 +75,7 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "foo");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "foo", DataType.Genomic);
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
     }
@@ -89,7 +89,7 @@ class DataUploadControllerTest {
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(nullApprovalDate));
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
         Assertions.assertEquals(HttpStatus.UNAUTHORIZED, actual.getStatusCode());
     }
@@ -103,7 +103,7 @@ class DataUploadControllerTest {
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(nullApprovalDate));
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
         Assertions.assertEquals(HttpStatus.UNAUTHORIZED, actual.getStatusCode());
     }
@@ -117,7 +117,7 @@ class DataUploadControllerTest {
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(uploading));
 
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch");
+        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
         Assertions.assertEquals(HttpStatus.ACCEPTED, actual.getStatusCode());
     }

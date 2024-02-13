@@ -7,11 +7,13 @@ import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.DataUploadStatuses;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -22,6 +24,7 @@ import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 
 @ConditionalOnProperty(name = "production", havingValue = "true")
@@ -29,6 +32,9 @@ import java.util.function.BiConsumer;
 public class DataUploadService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DataUploadService.class);
+
+    @Autowired
+    private Semaphore uploadLock;
 
     @Value("${aws.s3.access_key_id}")
     private String keyId;
@@ -51,40 +57,33 @@ public class DataUploadService {
     @Autowired
     private Map<String, SiteAWSInfo> roleARNs;
 
-    public DataUploadStatuses upload(Query query, String site) {
-        Thread.ofVirtual().start(() -> asyncUpload(query, site));
-        statusService.setGenomicStatus(query, UploadStatus.Uploading);
-        statusService.setPhenotypicStatus(query, UploadStatus.Uploading);
+    public DataUploadStatuses asyncUpload(Query query, String site, DataType dataType) {
+        dataType.getStatusSetter(statusService).accept(query, UploadStatus.Queued);
+        Thread.ofVirtual().start(() -> uploadData(query, dataType, site));
         statusService.setSite(query, site);
         return statusService.getStatus(query.getPicSureId())
             .orElse(null); // this should never happen. the status object is created during the set calls above
     }
 
-    private void asyncUpload(Query query, String site) {
-        Thread.ofVirtual().start(() -> {
-            uploadData(query, DataType.Phenotypic, site);
-            uploadData(query, DataType.Genomic, site);
-        });
-    }
-
-    private enum DataType {Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.csv");
-        private final String fileName;
-        
-        DataType(String fileName) {
-            this.fileName = fileName;    
+    protected void uploadData(Query query, DataType dataType, String site) {
+        LOG.info("Requesting lock for  {} / {}", dataType, query.getPicSureId());
+        try {
+            uploadLock.acquire();
+        } catch (InterruptedException e) {
+            LOG.error("Failed to acquire. Abandoning upload");
+            return;
         }
-    }
 
-    private void uploadData(Query query, DataType dataType, String site) {
         LOG.info("Starting upload {} process for uuid: {}", dataType, query.getPicSureId());
-        BiConsumer<Query, UploadStatus> statusSetter = 
-            dataType == DataType.Genomic ? statusService::setGenomicStatus : statusService::setPhenotypicStatus;
-
-        boolean success = dataType == DataType.Genomic ? hpds.writeGenomicData(query) : hpds.writePhenotypicData(query);
+        BiConsumer<Query, UploadStatus> statusSetter = dataType.getStatusSetter(statusService);
+        statusSetter.accept(query, UploadStatus.Querying);
+        boolean success = dataType.getHPDSUpload(hpds).apply(query);
         if (!success) {
             statusSetter.accept(query, UploadStatus.Error);
             LOG.info("HPDS failed to write {} data. Status for {} set to error.", dataType, query.getPicSureId());
             return;
+        } else {
+            statusSetter.accept(query, UploadStatus.Uploading);
         }
         LOG.info("HPDS reported successfully writing {} data for {} to file.", dataType, query.getPicSureId());
 
@@ -103,6 +102,8 @@ public class DataUploadService {
         } else {
             statusSetter.accept(query, UploadStatus.Error);
         }
+        LOG.info("Releasing lock for  {} / {}", dataType, query.getPicSureId());
+        uploadLock.release();
     }
 
     private boolean uploadFileFromPath(Path p, SiteAWSInfo site, String dir) {

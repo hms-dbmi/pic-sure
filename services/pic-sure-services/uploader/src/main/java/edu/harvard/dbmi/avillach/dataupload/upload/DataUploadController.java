@@ -16,6 +16,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -37,7 +38,9 @@ public class DataUploadController {
     private List<String> institutions;
 
     @PostMapping("/upload/{site}")
-    public ResponseEntity<DataUploadStatuses> startUpload(@RequestBody Query query, @PathVariable String site) {
+    public ResponseEntity<DataUploadStatuses> startUpload(
+        @RequestBody Query query, @PathVariable String site, @RequestParam(value = "dataType") DataType dataType
+    ) {
         site = site.toLowerCase();
         query.setExpectedResultType(ResultType.DATAFRAME_TIMESERIES);
         if (!institutions.contains(site)) {
@@ -58,6 +61,6 @@ public class DataUploadController {
         if (statuses.phenotypic() == UploadStatus.Uploading || statuses.genomic() == UploadStatus.Uploading) {
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(statuses);
         }
-        return ResponseEntity.ok(uploadService.upload(query, site));
+        return ResponseEntity.ok(uploadService.asyncUpload(query, site, dataType));
     }
 }

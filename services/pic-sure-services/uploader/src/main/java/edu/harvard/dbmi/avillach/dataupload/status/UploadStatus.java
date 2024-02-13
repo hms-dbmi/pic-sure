@@ -3,7 +3,7 @@ package edu.harvard.dbmi.avillach.dataupload.status;
 import java.util.Arrays;
 
 public enum UploadStatus {
-    Uploading, Uploaded, Error, Unsent, Unknown;
+    Uploading, Querying, Uploaded, Error, Unsent, Unknown, Queued;
 
     public static UploadStatus fromString(String status) {
         return Arrays.stream(UploadStatus.values())
