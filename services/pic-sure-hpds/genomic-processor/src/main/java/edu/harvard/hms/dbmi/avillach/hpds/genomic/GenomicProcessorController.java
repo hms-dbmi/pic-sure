@@ -10,6 +10,7 @@ import reactor.core.publisher.Mono;
 import java.math.BigInteger;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 
 @RestController
@@ -38,12 +39,12 @@ public class GenomicProcessorController {
     }
 
     @GetMapping("/info/columns")
-    public List<String> getInfoStoreColumns() {
+    public Set<String> getInfoStoreColumns() {
         return genomicProcessor.getInfoStoreColumns();
     }
 
     @GetMapping("/info/values")
-    public List<String> getInfoStoreValues(@RequestParam("conceptPath") String conceptPath) {
+    public Set<String> getInfoStoreValues(@RequestParam("conceptPath") String conceptPath) {
         return genomicProcessor.getInfoStoreValues(conceptPath);
     }
 

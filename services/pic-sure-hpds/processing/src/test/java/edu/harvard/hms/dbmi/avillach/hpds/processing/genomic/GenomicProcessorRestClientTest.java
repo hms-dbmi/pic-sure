@@ -40,12 +40,12 @@ public class GenomicProcessorRestClientTest {
 
     @Test
     public void getInfoStoreColumns() {
-        List<String> infoStoreColumns = genomicProcessorRestClient.getInfoStoreColumns();
+        Set<String> infoStoreColumns = genomicProcessorRestClient.getInfoStoreColumns();
         assertTrue(infoStoreColumns.contains("Variant_consequence_calculated"));
     }
     @Test
     public void getInfoStoreValues() {
-        List<String> infoStoreValues = genomicProcessorRestClient.getInfoStoreValues("Variant_consequence_calculated");
+        Set<String> infoStoreValues = genomicProcessorRestClient.getInfoStoreValues("Variant_consequence_calculated");
         assertTrue(infoStoreValues.contains("inframe_deletion"));
     }
 
