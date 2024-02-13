@@ -50,7 +50,7 @@ public class GenomicProcessorConfig {
 
         for (File directory : directories) {
             List<GenomicProcessor> genomicProcessors = Flux.range(1, 22)
-                    .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
+                    .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(directory.getAbsolutePath() + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
                     .collectList()
                     .block();
             genomicProcessors.add(new GenomicProcessorNodeImpl(directory + "/X/"));
