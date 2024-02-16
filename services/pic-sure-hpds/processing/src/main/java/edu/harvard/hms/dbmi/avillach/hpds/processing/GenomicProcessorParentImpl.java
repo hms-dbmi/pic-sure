@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -34,12 +35,16 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
         }
     });
 
-    private List<InfoColumnMeta> infoColumnsMeta;
-
-    private List<String> patientIds;
+    private final List<InfoColumnMeta> infoColumnsMeta;
+    private final List<String> patientIds;
+    private final Set<String> infoStoreColumns;
 
     public GenomicProcessorParentImpl(List<GenomicProcessor> nodes) {
         this.nodes = nodes;
+
+        patientIds = initializePatientIds();
+        infoStoreColumns = initializeInfoStoreColumns();
+        infoColumnsMeta = initInfoColumnsMeta();
     }
 
     @Override
@@ -83,14 +88,26 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     @Override
     public List<String> getPatientIds() {
-        if (patientIds != null) {
-            return patientIds;
-        } else {
-            // todo: verify all nodes have the same potients
-            List<String> result = nodes.get(0).getPatientIds();
-            patientIds = result;
-            return result;
-        }
+        return patientIds;
+    }
+
+    private List<String> initializePatientIds() {
+        List<String> patientIds = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMap(node -> Mono.fromCallable(node::getPatientIds).subscribeOn(Schedulers.boundedElastic()))
+                .reduce((patientIds1, patientIds2) -> {
+                    if (patientIds1.size() != patientIds2.size()) {
+                        throw new IllegalStateException("Patient lists from partitions do not match");
+                    } else {
+                        for (int i = 0; i < patientIds1.size(); i++) {
+                            if (!patientIds1.get(i).equals(patientIds2.get(i))) {
+                                throw new IllegalStateException("Patient lists from partitions do not match");
+                            }
+                        }
+                    }
+                    return patientIds1;
+                }).block();
+
+        return patientIds;
     }
 
     @Override
@@ -107,7 +124,10 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     @Override
     public Set<String> getInfoStoreColumns() {
-        // todo: cache this
+        return infoStoreColumns;
+    }
+
+    private Set<String> initializeInfoStoreColumns() {
         return nodes.parallelStream()
                 .map(GenomicProcessor::getInfoStoreColumns)
                 .flatMap(Set::stream)
@@ -121,10 +141,14 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
-        // todo: initialize on startup?
-        if (infoColumnsMeta == null) {
-            infoColumnsMeta = nodes.get(0).getInfoColumnMeta();
-        }
         return infoColumnsMeta;
+    }
+
+    private List<InfoColumnMeta> initInfoColumnsMeta() {
+        return nodes.parallelStream()
+                .map(GenomicProcessor::getInfoColumnMeta)
+                .map(HashSet::new)
+                .flatMap(Set::stream)
+                .collect(Collectors.toList());
     }
 }

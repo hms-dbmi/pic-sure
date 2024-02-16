@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,6 +15,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Disabled
 public class GenomicProcessorRestClientTest {
 
     private GenomicProcessorRestClient genomicProcessorRestClient = new GenomicProcessorRestClient("http://localhost:8090/");

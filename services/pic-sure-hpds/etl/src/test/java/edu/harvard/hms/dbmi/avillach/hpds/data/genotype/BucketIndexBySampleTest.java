@@ -9,6 +9,7 @@ import java.util.Set;
 
 
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.event.annotation.BeforeTestClass;
@@ -66,7 +67,7 @@ public class BucketIndexBySampleTest {
 	Set<String>  variantSet;
 	List<Integer> patientSet;
 	
-	@BeforeTestClass
+	@BeforeAll
 	public static void initializeBinfile() throws Exception {
 		//load variant data
 		NewVCFLoader.main(new String[] {VCF_INDEX_FILE, STORAGE_DIR, MERGED_DIR});	

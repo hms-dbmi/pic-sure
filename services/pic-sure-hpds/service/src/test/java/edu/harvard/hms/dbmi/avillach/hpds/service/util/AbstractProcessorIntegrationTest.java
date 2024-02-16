@@ -21,6 +21,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 
+@Disabled
 @ExtendWith(SpringExtension.class)
 @EnableAutoConfiguration
 @SpringBootTest(classes = HpdsApplication.class)

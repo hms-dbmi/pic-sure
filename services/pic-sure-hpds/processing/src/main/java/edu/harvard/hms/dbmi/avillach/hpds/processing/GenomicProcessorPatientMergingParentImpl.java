@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableList;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
@@ -32,12 +33,17 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
         }
     });
 
-    private List<InfoColumnMeta> infoColumnsMeta;
+    private final List<InfoColumnMeta> infoColumnsMeta;
 
-    private List<String> patientIds;
+    private final List<String> patientIds;
+    private final Set<String> infoStoreColumns;
 
     public GenomicProcessorPatientMergingParentImpl(List<GenomicProcessor> nodes) {
         this.nodes = nodes;
+
+        patientIds = initializePatientIds();
+        infoStoreColumns = initializeInfoStoreColumns();
+        infoColumnsMeta = initInfoColumnsMeta();
     }
 
     @Override
@@ -90,20 +96,23 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public List<String> getPatientIds() {
-        if (patientIds != null) {
-            return patientIds;
-        } else {
-            // todo: verify all nodes have distinct patients
-            List<String> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
-                    .flatMapSequential(node -> Mono.fromCallable(node::getPatientIds).subscribeOn(Schedulers.boundedElastic()))
-                    .reduce((list1, list2) -> {
-                        List<String> concatenatedList = new ArrayList<>(list1);
-                        concatenatedList.addAll(list2);
-                        return concatenatedList;
-                    }).block();
-            patientIds = result;
-            return result;
+        return patientIds;
+    }
+
+    private List<String> initializePatientIds() {
+        List<String> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMapSequential(node -> Mono.fromCallable(node::getPatientIds).subscribeOn(Schedulers.boundedElastic()))
+                .reduce((list1, list2) -> {
+                    List<String> concatenatedList = new ArrayList<>(list1);
+                    concatenatedList.addAll(list2);
+                    return concatenatedList;
+                }).block();
+        Set<String> distinctPatientIds = new HashSet<>(result);
+        if (distinctPatientIds.size() != result.size()) {
+            log.warn((result.size() - distinctPatientIds.size()) + " duplicate patients found in patient partitions");
         }
+        log.info(distinctPatientIds.size() + " patient ids loaded from patient partitions");
+        return ImmutableList.copyOf(result);
     }
 
     @Override
@@ -114,7 +123,10 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public Set<String> getInfoStoreColumns() {
-        // todo: cache this
+        return infoStoreColumns;
+    }
+
+    private Set<String> initializeInfoStoreColumns() {
         return nodes.parallelStream()
                 .map(GenomicProcessor::getInfoStoreColumns)
                 .flatMap(Set::stream)
@@ -128,10 +140,14 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
-        // todo: initialize on startup?
-        if (infoColumnsMeta == null) {
-            infoColumnsMeta = nodes.get(0).getInfoColumnMeta();
-        }
         return infoColumnsMeta;
+    }
+
+    private List<InfoColumnMeta> initInfoColumnsMeta() {
+        return nodes.parallelStream()
+                .map(GenomicProcessor::getInfoColumnMeta)
+                .map(HashSet::new)
+                .flatMap(Set::stream)
+                .collect(Collectors.toList());
     }
 }

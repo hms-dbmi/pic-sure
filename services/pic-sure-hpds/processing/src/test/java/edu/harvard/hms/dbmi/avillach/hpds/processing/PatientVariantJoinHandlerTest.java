@@ -19,7 +19,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 public class PatientVariantJoinHandlerTest {
 
-    @Mock
     private VariantService variantService;
 
     private PatientVariantJoinHandler patientVariantJoinHandler;
@@ -28,8 +27,8 @@ public class PatientVariantJoinHandlerTest {
     public static final Set<Integer> PATIENT_IDS_INTEGERS = Set.of(PATIENT_IDS).stream().map(Integer::parseInt).collect(Collectors.toSet());
     public static final String[] VARIANT_INDEX = {"16,61642243,A,T", "16,61642252,A,G", "16,61642256,C,T", "16,61642257,G,A", "16,61642258,G,A", "16,61642259,G,A", "16,61642260,G,A", "16,61642261,G,A"};
 
-    @BeforeTestClass
-    public void setUp() {
+    public PatientVariantJoinHandlerTest(@Mock VariantService variantService) {
+        this.variantService = variantService;
         patientVariantJoinHandler = new PatientVariantJoinHandler(variantService);
         when(variantService.getVariantIndex()).thenReturn(VARIANT_INDEX);
     }
@@ -51,7 +50,7 @@ public class PatientVariantJoinHandlerTest {
         when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(emptyVariantMasks));
         when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.of(emptyVariantMasks));
 
-        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
+        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters));
         // this should be all patients, as all patients match one of the variants
         assertEquals(PATIENT_IDS_INTEGERS, patientIdsForIntersectionOfVariantSets);
     }
@@ -73,7 +72,7 @@ public class PatientVariantJoinHandlerTest {
         when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.empty());
         when(variantService.getMasks(eq(VARIANT_INDEX[4]), any())).thenReturn(Optional.empty());
 
-        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
+        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters));
         // this should be all patients, as all patients match one of the variants
         assertEquals(PATIENT_IDS_INTEGERS, patientIdsForIntersectionOfVariantSets);
     }
@@ -112,7 +111,7 @@ public class PatientVariantJoinHandlerTest {
         when(variantService.getMasks(eq(VARIANT_INDEX[0]), any())).thenReturn(Optional.of(variantMasks));
         when(variantService.getMasks(eq(VARIANT_INDEX[2]), any())).thenReturn(Optional.of(variantMasks2));
 
-        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
+        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters));
         // this should be all patients who match at least one variant
         assertEquals(Set.of(101, 103, 105), patientIdsForIntersectionOfVariantSets);
     }
@@ -120,8 +119,9 @@ public class PatientVariantJoinHandlerTest {
     @Test
     public void getPatientIdsForIntersectionOfVariantSets_noVariants() {
         VariantIndex intersectionOfInfoFilters = VariantIndex.empty();
+        when(variantService.getPatientIds()).thenReturn(PATIENT_IDS);
 
-        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(Set.of(), intersectionOfInfoFilters));
+        Set<Integer> patientIdsForIntersectionOfVariantSets = patientMaskToPatientIdSet(patientVariantJoinHandler.getPatientIdsForIntersectionOfVariantSets(null, intersectionOfInfoFilters));
         // this should be empty, as there are no variants
         assertEquals(Set.of(), patientIdsForIntersectionOfVariantSets);
     }

@@ -8,6 +8,7 @@ import java.util.zip.GZIPInputStream;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.event.annotation.BeforeTestClass;
 
@@ -37,7 +38,7 @@ public class VariantMetadataIndexTest {
 	private static final String spec5 = "4,9856624,CAAAAA,CA";	private static final String spec5Info = "AC=3033;AF=6.05631e-01;NS=2504;AN=5008;EAS_AF=5.23800e-01;EUR_AF=7.54500e-01;AFR_AF=4.28900e-01;AMR_AF=7.82400e-01;SAS_AF=6.50300e-01;DP=20851;VT=INDEL";
 	
 
-	@BeforeTestClass
+	@BeforeAll
 	public static void initializeBinfile() throws Exception {
 		VariantMetadataLoader.main(new String[] {"./src/test/resources/test_vcfIndex.tsv", binFile, "target/VariantMetadataStorage.bin"});
 		
