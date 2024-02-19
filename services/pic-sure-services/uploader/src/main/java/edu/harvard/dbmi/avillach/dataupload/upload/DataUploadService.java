@@ -21,6 +21,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -96,6 +97,7 @@ public class DataUploadService {
         
         LOG.info("File location verified. Uploading for {} to AWS", query.getPicSureId());
         success = uploadFileFromPath(data, roleARNs.get(site), query.getPicSureId());
+        deleteFile(data);
         if (success) {
             statusSetter.accept(query, UploadStatus.Uploaded);
             LOG.info("{} data for {} uploaded!", dataType, query.getPicSureId());
@@ -104,6 +106,14 @@ public class DataUploadService {
         }
         LOG.info("Releasing lock for  {} / {}", dataType, query.getPicSureId());
         uploadLock.release();
+    }
+
+    private static void deleteFile(Path data) {
+        try {
+            Files.delete(data);
+        } catch (IOException e) {
+            LOG.error("Could not data {}", data, e);
+        }
     }
 
     private boolean uploadFileFromPath(Path p, SiteAWSInfo site, String dir) {

@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -114,8 +115,9 @@ class DataUploadServiceTest {
         q.setPicSureId("my-id");
         q.setId("my-id");
 
+        Path fileToUpload = Path.of(tempDir.toString(), q.getPicSureId(), DataType.Phenotypic.fileName);
         Files.createDirectory(Path.of(tempDir.toString(), q.getPicSureId()));
-        Files.writeString(Path.of(tempDir.toString(), q.getPicSureId(), DataType.Phenotypic.fileName), ":)");
+        Files.writeString(fileToUpload, ":)");
         ReflectionTestUtils.setField(subject, "roleARNs", roleARNs);
 
         Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
@@ -130,5 +132,6 @@ class DataUploadServiceTest {
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploading);
         Mockito.verify(s3Client, Mockito.times(1)).putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class));
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploaded);
+        Assertions.assertFalse(Files.exists(fileToUpload));
     }
 }
