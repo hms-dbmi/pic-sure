@@ -70,4 +70,10 @@ public class GenomicProcessorConfig {
         // todo: validate remote processors are valid
         return new GenomicProcessorParentImpl(genomicProcessors);
     }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", matchIfMissing = true)
+    public GenomicProcessor noOpGenomicProcessor() {
+        return new GenomicProcessorNoOp();
+    }
 }
