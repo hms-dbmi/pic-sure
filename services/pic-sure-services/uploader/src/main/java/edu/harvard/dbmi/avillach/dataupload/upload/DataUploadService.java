@@ -82,6 +82,7 @@ public class DataUploadService {
         if (!success) {
             statusSetter.accept(query, UploadStatus.Error);
             LOG.info("HPDS failed to write {} data. Status for {} set to error.", dataType, query.getPicSureId());
+            uploadLock.release();
             return;
         } else {
             statusSetter.accept(query, UploadStatus.Uploading);
@@ -92,6 +93,7 @@ public class DataUploadService {
         if (!Files.exists(data)) {
             statusSetter.accept(query, UploadStatus.Error);
             LOG.info("HPDS lied; file {} DNE. Status set to error", data);
+            uploadLock.release();
             return;
         }
         

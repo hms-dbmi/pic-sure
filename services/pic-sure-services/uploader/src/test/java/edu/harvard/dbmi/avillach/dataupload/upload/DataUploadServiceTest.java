@@ -55,7 +55,7 @@ class DataUploadServiceTest {
     Map<String, SiteAWSInfo> roleARNs = Map.of("bch", new SiteAWSInfo("bch", "", "myid", "", ""));
 
     @Test
-    void shouldNotUploadDataForHPDSError(@TempDir Path tempDir) {
+    void shouldNotUploadDataForHPDSError(@TempDir Path tempDir) throws InterruptedException {
         Query q = new Query();
         q.setPicSureId("my-id");
         q.setId("my-id");
@@ -67,10 +67,12 @@ class DataUploadServiceTest {
 
         Mockito.verify(statusService, Mockito.times(1)).setGenomicStatus(q, UploadStatus.Querying);
         Mockito.verify(statusService, Mockito.times(1)).setGenomicStatus(q, UploadStatus.Error);
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
     }
 
     @Test
-    void shouldNotUploadDataIfFileDNE(@TempDir Path tempDir) {
+    void shouldNotUploadDataIfFileDNE(@TempDir Path tempDir) throws InterruptedException {
         Query q = new Query();
         q.setPicSureId("my-id");
         q.setId("my-id");
@@ -83,10 +85,12 @@ class DataUploadServiceTest {
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Querying);
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploading);
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Error);
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
     }
 
     @Test
-    void shouldNotUploadDataIfAWSUpset(@TempDir Path tempDir) throws IOException {
+    void shouldNotUploadDataIfAWSUpset(@TempDir Path tempDir) throws IOException, InterruptedException {
         Query q = new Query();
         q.setPicSureId("my-id");
         q.setId("my-id");
@@ -107,10 +111,12 @@ class DataUploadServiceTest {
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploading);
         Mockito.verify(s3Client, Mockito.times(1)).putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class));
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Error);
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
     }
 
     @Test
-    void shouldUploadData(@TempDir Path tempDir) throws IOException {
+    void shouldUploadData(@TempDir Path tempDir) throws IOException, InterruptedException {
         Query q = new Query();
         q.setPicSureId("my-id");
         q.setId("my-id");
@@ -133,5 +139,7 @@ class DataUploadServiceTest {
         Mockito.verify(s3Client, Mockito.times(1)).putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class));
         Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploaded);
         Assertions.assertFalse(Files.exists(fileToUpload));
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
     }
 }
