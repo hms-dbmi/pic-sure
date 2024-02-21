@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.genomic.GenomicProcessorRestClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import reactor.core.publisher.Flux;
@@ -72,7 +73,7 @@ public class GenomicProcessorConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", matchIfMissing = true)
+    @ConditionalOnMissingBean
     public GenomicProcessor noOpGenomicProcessor() {
         return new GenomicProcessorNoOp();
     }
