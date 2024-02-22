@@ -4,7 +4,6 @@ services:
   uploader:
     image: lukesikinabch/gic-uploader:1.2.0
     container_name: uploader
-    build: ./uploader/
     ports:
       - "5005:5005"
     env_file:
