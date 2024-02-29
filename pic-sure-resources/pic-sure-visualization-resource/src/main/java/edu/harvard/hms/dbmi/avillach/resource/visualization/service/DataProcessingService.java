@@ -158,8 +158,8 @@ public class DataProcessingService {
         int numBins = calcNumBins(data);
         double min = data.keySet().stream().min(Double::compareTo).orElse(0.0);
         double max = data.keySet().stream().max(Double::compareTo).orElse(0.0);
-
-        if ((min == 0.0 && max == 0.0) || numBins == 0) return new HashMap<>();
+        // The min and max can both be 0, but we could still have a numBins of 1 if there are values in the data.
+        if (min == 0.0 && max == 0.0 && numBins == 0) return new HashMap<>();
 
         int binSize = (int) Math.ceil((max - min) / numBins);
 
