@@ -276,8 +276,8 @@ public class HttpClientUtil {
 				    + " - At line number: "
 				    + stackTraceElements[0].getLineNumber();
 				logger.error(logMessage);
-			} catch (Exception ex) {
-				logger.error(ex);
+			} catch (Exception e) {
+				logger.error(e);
 			}
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
