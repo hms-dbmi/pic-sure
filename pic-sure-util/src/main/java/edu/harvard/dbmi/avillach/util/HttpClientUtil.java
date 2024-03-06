@@ -225,6 +225,8 @@ public class HttpClientUtil {
 		try {
 			return client.execute(post, buildHttpClientContext());
 		} catch (IOException ex) {
+			ex.printStackTrace();
+			logger.error("simplePost()", ex);
 			logger.error("simplePost() Exception: {}, cannot get response by POST from url: {}", ex.getMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
@@ -245,6 +247,8 @@ public class HttpClientUtil {
 		try {
 			return response.getEntity().getContent();
 		} catch (IOException ex) {
+			ex.printStackTrace();
+			logger.error("simplePost()", ex);
 			logger.error("simplePost() cannot get content by POST from url: {} - " + ex.getLocalizedMessage(), uri);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
