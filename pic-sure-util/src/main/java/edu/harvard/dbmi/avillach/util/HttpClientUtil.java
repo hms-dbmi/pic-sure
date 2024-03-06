@@ -265,8 +265,20 @@ public class HttpClientUtil {
 		try {
 			return objectMapper.readTree(simplePost(uri, requestBody, client, headers));
 		} catch (IOException ex) {
-			logger.error("simplePost() Exception: {}, cannot parse content from by POST from url: {}", ex.getMessage(),
+			ex.printStackTrace();
+			logger.error("simplePost() Exception: {}, cannot parse content from by POST from url: {}", ex,
 					uri);
+			StackTraceElement[] stackTraceElements = e2.getStackTrace();
+			try {
+			    	String logMessage = "IOException occured in method "
+				    + stackTraceElements[0].getMethodName() + " - File name is "
+				    + stackTraceElements[0].getFileName()
+				    + " - At line number: "
+				    + stackTraceElements[0].getLineNumber();
+				logger.error(logMessage);
+			} catch (Exception ex) {
+				logger.error(ex);
+			}
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
 		}
 	}
