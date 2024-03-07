@@ -19,6 +19,8 @@ public class JAXRSConfiguration extends Application {
 
     public static String rolesClaim;
 
+    public static String application_stack;
+
     @PostConstruct
     public void init() {
         logger.info("Starting pic-sure core app.");
@@ -27,10 +29,24 @@ public class JAXRSConfiguration extends Application {
         initializeRolesClaim();
         logger.info("Finished initializing roles claim.");
 
+        logger.info("Load optional properties.");
+        initializeApplicationStack();
+        logger.info("Finished loading optional properties.");
     }
 
-    private void initializeRolesClaim(){
-        try{
+    private void initializeApplicationStack() {
+        try {
+            Context ctx = new InitialContext();
+            application_stack = (String) ctx.lookup("global/application_stack");
+            ctx.close();
+        } catch (NamingException e) {
+            // Currently, this parameter is optional and only used if there is more than one application stack.
+            application_stack = null;
+        }
+    }
+
+    private void initializeRolesClaim() {
+        try {
             Context ctx = new InitialContext();
             rolesClaim = (String) ctx.lookup("global/roles_claim");
             ctx.close();
@@ -39,7 +55,6 @@ public class JAXRSConfiguration extends Application {
         }
     }
 
-    public JAXRSConfiguration(){
-    }
+    public JAXRSConfiguration() {}
 
 }
