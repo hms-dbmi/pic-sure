@@ -79,9 +79,12 @@ public class PicsureInfoService {
             // http://dictionary.b.${env_private_dns_name}:8080/dictionary/pic-sure
             // The application stack is a, b, c, etc.
             // I will look for %.${application_stack}.% in the url
+            // Or the resource domain is localhost.
             return resourceRepo.list().stream()
-                .filter(resource -> resource.getResourceRSPath().contains("." + JAXRSConfiguration.application_stack + "."))
-                .collect(Collectors.toMap(Resource::getUuid, Resource::getName));
+                .filter(
+                    resource -> resource.getResourceRSPath().contains("." + JAXRSConfiguration.application_stack + ".")
+                        || resource.getResourceRSPath().contains("localhost")
+                ).collect(Collectors.toMap(Resource::getUuid, Resource::getName));
         }
 
         return resourceRepo.list().stream().collect(Collectors.toMap(Resource::getUuid, Resource::getName));
