@@ -72,14 +72,7 @@ public class PicsureInfoService {
     public Map<UUID, String> resources(HttpHeaders headers) {
         logger.info("path=/info/resources, requestSource={}", Utilities.getRequestSourceFromHeader(headers));
 
-        // We need a way to only return resources for this stack.
-        // Going to create an optional property in the standalone.xml
         if (StringUtils.isNotBlank(JAXRSConfiguration.application_stack)) {
-            // The resource resourceRSPath will contain the stack value
-            // http://dictionary.b.${env_private_dns_name}:8080/dictionary/pic-sure
-            // The application stack is a, b, c, etc.
-            // I will look for %.${application_stack}.% in the url
-            // Or the resource domain is localhost.
             return resourceRepo.list().stream()
                 .filter(
                     resource -> resource.getResourceRSPath().contains("." + JAXRSConfiguration.application_stack + ".")
