@@ -75,8 +75,8 @@ public class PicsureInfoService {
         if (StringUtils.isNotBlank(JAXRSConfiguration.application_stack)) {
             return resourceRepo.list().stream()
                 .filter(
-                    resource -> resource.getResourceRSPath().contains("." + JAXRSConfiguration.application_stack + ".")
-                        || resource.getResourceRSPath().contains("localhost") || resource.getHidden()
+                    resource -> (resource.getResourceRSPath().contains("." + JAXRSConfiguration.application_stack + ".")
+                        || resource.getResourceRSPath().contains("localhost")) && !resource.getHidden()
                 ).collect(Collectors.toMap(Resource::getUuid, Resource::getName));
         }
 
