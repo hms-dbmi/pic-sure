@@ -15,5 +15,5 @@ public class ResourceRepository extends BaseRepository<Resource, UUID> {
 		super(Resource.class);
 	}
 
-	
+
 }
