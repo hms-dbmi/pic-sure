@@ -31,231 +31,225 @@ import java.util.*;
  */
 public class PicsureQueryService {
 
-	public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
-	private static final String QUERY_JSON_FIELD = "queryJson";
+    public static final String QUERY_RESULT_METADATA_FIELD = "queryResultMetadata";
+    private static final String QUERY_JSON_FIELD = "queryJson";
 
-	private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
+    private final Logger logger = LoggerFactory.getLogger(PicsureQueryService.class);
 
-	private final static ObjectMapper mapper = new ObjectMapper();
+    private final static ObjectMapper mapper = new ObjectMapper();
 
-	@Inject
-	JWTFilter jwtFilter;
+    @Inject
+    JWTFilter jwtFilter;
 
-	@Inject
-	ResourceRepository resourceRepo;
+    @Inject
+    ResourceRepository resourceRepo;
 
-	@Inject
-	QueryRepository queryRepo;
+    @Inject
+    QueryRepository queryRepo;
 
-	@Inject
-	ResourceWebClient resourceWebClient;
+    @Inject
+    ResourceWebClient resourceWebClient;
 
-	@Inject
-	SiteParsingService siteParsingService;
-
-	/**
-	 * Executes a query on a PIC-SURE resource and creates a Query entity in the
-	 * database for the query.
-	 *
-	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
-	 *                         and resource specific query (could be a string or a json object)
-	 * @return {@link QueryStatus}
-	 */
-	@Transactional
-	public QueryStatus query(QueryRequest dataQueryRequest, HttpHeaders headers) {
-		Resource resource = verifyQueryRequest(dataQueryRequest, headers);
-
-		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-
-		QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
-
-		Query queryEntity = copyQuery(dataQueryRequest, resource, results);
-		queryRepo.persist(queryEntity);
-
-		logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
-		results.setPicsureResultId(queryEntity.getUuid());
-		//In cases where there is no resource result id, the picsure result id will stand in
-		if (queryEntity.getResourceResultId() == null){
-		    results.setResourceResultId(queryEntity.getUuid().toString());
-			queryEntity.setResourceResultId(results.getPicsureResultId().toString());
-			queryRepo.persist(queryEntity);
-		}
-		results.setResourceID(resource.getUuid());
-		return results;
-	}
-
-	/**
-	 * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource
-	 * from the database and calling the target resource for an updated status. The Query entities
-	 * in the database are updated each time this is called.
-	 *
-	 * @param queryId - id of targeted resource
-	 * @param credentialsQueryRequest - contains resource specific credentials object
-	 * @return {@link QueryStatus}
-	 */
-	@Transactional
-	public QueryStatus queryStatus(UUID queryId, GeneralQueryRequest credentialsQueryRequest, HttpHeaders headers) {
-		if (queryId == null){
-			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
-		}
-		Query query = queryRepo.getById(queryId);
-		if (query == null){
-			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
-		}
-		if (credentialsQueryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Resource resource = query.getResource();
-		verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
-
-		//Update status on query object
-		QueryStatus status = resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
-		status.setPicsureResultId(queryId);
-		query.setStatus(status.getStatus());
-		queryRepo.persist(query);
-		status.setStartTime(query.getStartTime().getTime());
-		status.setResourceID(resource.getUuid());
-		return status;
-	}
-
-	/**
-	 * Streams the result for a given queryId by looking up the target resource
-	 * from the database and calling the target resource for a result. The queryStatus
-	 * method should be used to verify that the result is available prior to retrieving it.
-	 *
-	 * @param queryId - id of target resource
-	 * @param credentialsQueryRequest - contains resource specific credentials object
-	 * @return Response
-	 */
-	@Transactional
-	public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
-		if (queryId == null){
-			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
-		}
-		Query query = queryRepo.getById(queryId);
-		if (query == null){
-			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
-		}
-		Resource resource = query.getResource();
-		if (resource == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (credentialsQueryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		if (credentialsQueryRequest.getResourceCredentials() == null){
-			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
-		}
-
-		logger.info("path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}",
-				queryId,
-				Utilities.getRequestSourceFromHeader(headers),
-				Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
-		);
-
-
-		credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
-	}
-
-	/**
-	 * Streams the result for a query by looking up the target resource
-	 * from the database and calling the target resource for a result.
-	 *
-	 * @param queryRequest - contains resource specific credentials object
-	 * @return Response
-	 */
-	@Transactional
-	public Response querySync(QueryRequest queryRequest, HttpHeaders headers) {
-		if (queryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		UUID resourceId = queryRequest.getResourceUUID();
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
-		Resource resource = resourceRepo.getById(resourceId);
-		if (resource == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
-		}
-
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-
-		if (queryRequest.getResourceCredentials() == null){
-			queryRequest.setResourceCredentials(new HashMap<>());
-		}
-
-		String requestSource = Utilities.getRequestSourceFromHeader(headers);
-		logger.info("path=/query/sync, resourceId={}, requestSource={}, queryRequest={}",
-				queryRequest.getResourceUUID(),
-				requestSource,
-				Utilities.convertQueryRequestToString(mapper, queryRequest)
-		);
-
-		Query queryEntity = new Query();
-		queryEntity.setResource(resource);
-		queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
-
-
-		String queryJson = null;
-		if( queryRequest.getQuery() != null) {
-			try {
-				ObjectMapper mapper = new ObjectMapper();
-				queryJson = mapper.writeValueAsString( queryRequest);
-			} catch (JsonProcessingException e) {
-				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-			}
-		}
-
-		queryEntity.setQuery(queryJson);
-		queryRepo.persist(queryEntity);
-		queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest, requestSource);
-		String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
-
-		if (syncResponse.getHeaders() != null) {
-			Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
-			if (metadataHeader != null) {
-				try {
-					if (metadataHeader instanceof List) {
-						queryMetadata = ((List)metadataHeader).get(0).toString();
-						logger.debug("found List metadata " + queryMetadata);
-					} else {
-						logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    "  + metadataHeader);
-					}
-				} catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
-					logger.warn("failed to parse Header : ", e);
-				}
-			}
-		}
-
-		queryEntity.setResourceResultId(queryMetadata);
-		queryRepo.persist(queryEntity);
-
-		return syncResponse;
-	}
+    @Inject
+    SiteParsingService siteParsingService;
 
     /**
-     * @param queryId      The UUID of the query to get metadata about
-     * @return a QueryStatus object containing the metadata stored about the given query
+     * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
+     *
+     * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object and resource specific query (could
+     *        be a string or a json object)
+     * @return {@link QueryStatus}
      */
-	public QueryStatus queryMetadata(UUID queryId, HttpHeaders headers){
+    @Transactional
+    public QueryStatus query(QueryRequest dataQueryRequest, HttpHeaders headers) {
+        Resource resource = verifyQueryRequest(dataQueryRequest, headers);
+
+        dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+
+        QueryStatus results = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
+
+        Query queryEntity = copyQuery(dataQueryRequest, resource, results);
+        queryRepo.persist(queryEntity);
+
+        logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
+        results.setPicsureResultId(queryEntity.getUuid());
+        // In cases where there is no resource result id, the picsure result id will stand in
+        if (queryEntity.getResourceResultId() == null) {
+            results.setResourceResultId(queryEntity.getUuid().toString());
+            queryEntity.setResourceResultId(results.getPicsureResultId().toString());
+            queryRepo.persist(queryEntity);
+        }
+        results.setResourceID(resource.getUuid());
+        return results;
+    }
+
+    /**
+     * Retrieves the {@link QueryStatus} for a given queryId by looking up the target resource from the database and calling the target
+     * resource for an updated status. The Query entities in the database are updated each time this is called.
+     *
+     * @param queryId - id of targeted resource
+     * @param credentialsQueryRequest - contains resource specific credentials object
+     * @return {@link QueryStatus}
+     */
+    @Transactional
+    public QueryStatus queryStatus(UUID queryId, GeneralQueryRequest credentialsQueryRequest, HttpHeaders headers) {
+        if (queryId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+        }
         Query query = queryRepo.getById(queryId);
-        if (query == null){
-			throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
+        if (query == null) {
+            throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
+        }
+        if (credentialsQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Resource resource = query.getResource();
+        verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
+
+        // Update status on query object
+        QueryStatus status =
+            resourceWebClient.queryStatus(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+        status.setPicsureResultId(queryId);
+        query.setStatus(status.getStatus());
+        queryRepo.persist(query);
+        status.setStartTime(query.getStartTime().getTime());
+        status.setResourceID(resource.getUuid());
+        return status;
+    }
+
+    /**
+     * Streams the result for a given queryId by looking up the target resource from the database and calling the target resource for a
+     * result. The queryStatus method should be used to verify that the result is available prior to retrieving it.
+     *
+     * @param queryId - id of target resource
+     * @param credentialsQueryRequest - contains resource specific credentials object
+     * @return Response
+     */
+    @Transactional
+    public Response queryResult(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
+        if (queryId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+        }
+        Query query = queryRepo.getById(queryId);
+        if (query == null) {
+            throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
+        }
+        Resource resource = query.getResource();
+        if (resource == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+        if (credentialsQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        if (credentialsQueryRequest.getResourceCredentials() == null) {
+            credentialsQueryRequest.setResourceCredentials(new HashMap<>());
         }
 
-		logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}",
-				Utilities.getRequestSourceFromHeader(headers),
-				queryId);
+        logger.info(
+            "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+        );
 
 
-		QueryStatus response = new QueryStatus();
+        credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+        return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+    }
+
+    /**
+     * Streams the result for a query by looking up the target resource from the database and calling the target resource for a result.
+     *
+     * @param queryRequest - contains resource specific credentials object
+     * @return Response
+     */
+    @Transactional
+    public Response querySync(QueryRequest queryRequest, HttpHeaders headers) {
+        if (queryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        UUID resourceId = queryRequest.getResourceUUID();
+        if (resourceId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+        }
+        Resource resource = resourceRepo.getById(resourceId);
+        if (resource == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
+        }
+
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+
+        if (queryRequest.getResourceCredentials() == null) {
+            queryRequest.setResourceCredentials(new HashMap<>());
+        }
+
+        String requestSource = Utilities.getRequestSourceFromHeader(headers);
+        logger.info(
+            "path=/query/sync, resourceId={}, requestSource={}, queryRequest={}", queryRequest.getResourceUUID(), requestSource,
+            Utilities.convertQueryRequestToString(mapper, queryRequest)
+        );
+
+        Query queryEntity = new Query();
+        queryEntity.setResource(resource);
+        queryEntity.setStartTime(new Date(Calendar.getInstance().getTime().getTime()));
+
+
+        String queryJson = null;
+        if (queryRequest.getQuery() != null) {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                queryJson = mapper.writeValueAsString(queryRequest);
+            } catch (JsonProcessingException e) {
+                throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+            }
+        }
+
+        queryEntity.setQuery(queryJson);
+        queryRepo.persist(queryEntity);
+        queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+        Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest, requestSource);
+        String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
+
+        if (syncResponse.getHeaders() != null) {
+            Object metadataHeader = syncResponse.getHeaders().get(ResourceWebClient.QUERY_METADATA_FIELD);
+            if (metadataHeader != null) {
+                try {
+                    if (metadataHeader instanceof List) {
+                        queryMetadata = ((List) metadataHeader).get(0).toString();
+                        logger.debug("found List metadata " + queryMetadata);
+                    } else {
+                        logger.debug("Header is " + metadataHeader.getClass().getCanonicalName() + "  ::    " + metadataHeader);
+                    }
+                } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
+                    logger.warn("failed to parse Header : ", e);
+                }
+            }
+        }
+
+        queryEntity.setResourceResultId(queryMetadata);
+        queryRepo.persist(queryEntity);
+
+        return syncResponse;
+    }
+
+    /**
+     * @param queryId The UUID of the query to get metadata about
+     * @return a QueryStatus object containing the metadata stored about the given query
+     */
+    public QueryStatus queryMetadata(UUID queryId, HttpHeaders headers) {
+        Query query = queryRepo.getById(queryId);
+        query = query == null ? queryRepo.getQueryUUIDFromCommonAreaUUID(queryId) : query;
+        if (query == null) {
+            throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
+        }
+
+        logger.info("path=/query/{queryId}/metadata, requestSource={}, queryId={}", Utilities.getRequestSourceFromHeader(headers), queryId);
+
+
+        QueryStatus response = new QueryStatus();
         response.setStartTime(query.getStartTime().getTime());
         response.setPicsureResultId(query.getUuid());
         response.setResourceID(query.getResource().getUuid());
@@ -264,141 +258,138 @@ public class PicsureQueryService {
 
         Map<String, Object> metadata = new HashMap<String, Object>();
         try {
-			metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
-			metadata.put(QUERY_RESULT_METADATA_FIELD, new String(query.getMetadata(), StandardCharsets.UTF_8));
-		} catch (JsonProcessingException | NullPointerException e) {
-			logger.warn("Unable to use object mapper", e);
-		}
+            metadata.put(QUERY_JSON_FIELD, new ObjectMapper().readValue(query.getQuery(), Object.class));
+            metadata.put(QUERY_RESULT_METADATA_FIELD, new String(query.getMetadata(), StandardCharsets.UTF_8));
+        } catch (JsonProcessingException | NullPointerException e) {
+            logger.warn("Unable to use object mapper", e);
+        }
 
         response.setResultMetadata(metadata);
 
         return response;
     }
 
-	/**
-	 * Executes a query on a PIC-SURE resource and creates a Query entity in the
-	 * database for the query.
-	 *
-	 * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object
-	 *                         and resource specific query (could be a string or a json object)
-	 * @return {@link QueryStatus}
-	 */
-	public QueryStatus institutionalQuery(FederatedQueryRequest dataQueryRequest, HttpHeaders headers, String email) {
-		String siteCode = siteParsingService.parseSiteOfOrigin(email).orElseThrow(() -> new RuntimeException("Bad email"));
-		dataQueryRequest.setInstitutionOfOrigin(siteCode);
-		Resource resource = verifyQueryRequest(dataQueryRequest, headers);
-		dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+    /**
+     * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
+     *
+     * @param dataQueryRequest - - {@link QueryRequest} containing resource specific credentials object and resource specific query (could
+     *        be a string or a json object)
+     * @return {@link QueryStatus}
+     */
+    public QueryStatus institutionalQuery(FederatedQueryRequest dataQueryRequest, HttpHeaders headers, String email) {
+        String siteCode = siteParsingService.parseSiteOfOrigin(email).orElse("Unknown");
+        dataQueryRequest.setInstitutionOfOrigin(siteCode);
+        dataQueryRequest.setRequesterEmail(email);
+        Resource resource = verifyQueryRequest(dataQueryRequest, headers);
+        dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
-		QueryStatus response = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
-		Query queryEntity = copyQuery(dataQueryRequest, resource, response);
-		queryRepo.persist(queryEntity);
-		// we don't want the user to see the common area ID for now, but this could be useful later
-		// for editing the query
-		response.getResultMetadata().put("commonAreaId", queryEntity.getUuid().toString());
+        QueryStatus response = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
+        Query queryEntity = copyQuery(dataQueryRequest, resource, response);
+        queryRepo.persist(queryEntity);
+        return response;
+    }
 
-		return response;
-	}
+    private Query copyQuery(QueryRequest dataQueryRequest, Resource resource, QueryStatus response) {
+        Query queryEntity = new Query();
+        queryEntity.setResourceResultId(response.getResourceResultId());
+        queryEntity.setResource(resource);
+        queryEntity.setStatus(response.getStatus());
+        queryEntity.setStartTime(new Date(response.getStartTime()));
 
-	private Query copyQuery(QueryRequest dataQueryRequest, Resource resource, QueryStatus response) {
-		Query queryEntity = new Query();
-		queryEntity.setResourceResultId(response.getResourceResultId());
-		queryEntity.setResource(resource);
-		queryEntity.setStatus(response.getStatus());
-		queryEntity.setStartTime(new Date(response.getStartTime()));
+        ObjectMapper mapper = new ObjectMapper();
+        String queryJson = null;
+        if (dataQueryRequest.getQuery() != null) {
+            try {
+                queryJson = mapper.writeValueAsString(dataQueryRequest);
+            } catch (JsonProcessingException e) {
+                throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+            }
+        }
+        if (response.getResultMetadata() == null) {
+            response.setResultMetadata(new HashMap<>());
+        }
+        Map<String, Object> metaData = response.getResultMetadata();
 
-		ObjectMapper mapper = new ObjectMapper();
-		String queryJson = null;
-		if( dataQueryRequest.getQuery() != null) {
-			try {
-				queryJson = mapper.writeValueAsString(dataQueryRequest);
-			} catch (JsonProcessingException e) {
-				throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-			}
-		}
-		Map<String, Object> metaData = response.getResultMetadata();
-		metaData = metaData == null ? new HashMap<>() : metaData;
+        if (dataQueryRequest instanceof FederatedQueryRequest) {
+            FederatedQueryRequest gicRequest = (FederatedQueryRequest) dataQueryRequest;
+            metaData.put("commonAreaUUID", gicRequest.getCommonAreaUUID());
+            metaData.put("site", gicRequest.getInstitutionOfOrigin());
+            metaData.put("sharingStatus", DataSharingStatus.Unknown);
+            metaData.put("requesterEmail", gicRequest.getRequesterEmail());
+        }
 
-		if (dataQueryRequest instanceof FederatedQueryRequest) {
-			FederatedQueryRequest gicRequest = (FederatedQueryRequest) dataQueryRequest;
-			metaData.put("commonAreaUUID", gicRequest.getCommonAreaUUID());
-			metaData.put("site", gicRequest.getInstitutionOfOrigin());
-			metaData.put("sharingStatus", DataSharingStatus.Unknown);
-		}
+        queryEntity.setQuery(queryJson);
 
-		queryEntity.setQuery(queryJson);
+        if (!metaData.isEmpty()) {
+            try {
+                queryEntity.setMetadata(mapper.writeValueAsString(metaData).getBytes());
+            } catch (JsonProcessingException e) {
+                logger.warn("Unable to parse metadata ", e);
+            }
+        }
+        return queryEntity;
+    }
 
-		if (!metaData.isEmpty()) {
-			try {
-				queryEntity.setMetadata(mapper.writeValueAsString(metaData).getBytes());
-			} catch (JsonProcessingException e) {
-				logger.warn("Unable to parse metadata ", e);
-			}
-		}
-		return queryEntity;
-	}
+    public QueryStatus institutionQueryStatus(UUID queryId, FederatedQueryRequest credentialsQueryRequest, HttpHeaders headers) {
+        if (queryId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+        }
+        if (credentialsQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Resource resource = resourceRepo.getById(credentialsQueryRequest.getResourceUUID());
 
-	public QueryStatus institutionQueryStatus(UUID queryId, FederatedQueryRequest credentialsQueryRequest, HttpHeaders headers) {
-		if (queryId == null) {
-			throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
-		}
-		if (credentialsQueryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Resource resource = resourceRepo.getById(credentialsQueryRequest.getResourceUUID());
+        verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
 
-		verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
+        // Update status on query object
+        return resourceWebClient.queryStatus(resource.getResourceRSPath(), queryId.toString(), credentialsQueryRequest);
+    }
 
-		//Update status on query object
-		return resourceWebClient.queryStatus(resource.getResourceRSPath(), queryId.toString(), credentialsQueryRequest);
-	}
+    private void verifyQueryStatusRequest(Resource resource, QueryRequest credentialsQueryRequest, UUID queryId, HttpHeaders headers)
+        throws ProtocolException {
+        if (resource == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+        if (credentialsQueryRequest.getResourceCredentials() == null) {
+            credentialsQueryRequest.setResourceCredentials(new HashMap<>());
+        }
+        if (resource.getToken() != null) {
+            credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+        }
 
-	private void verifyQueryStatusRequest(
-		Resource resource, QueryRequest credentialsQueryRequest, UUID queryId, HttpHeaders headers
-	) throws ProtocolException {
-		if (resource == null) {
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
-		}
-		if (resource.getResourceRSPath() == null) {
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (credentialsQueryRequest.getResourceCredentials() == null) {
-			credentialsQueryRequest.setResourceCredentials(new HashMap<>());
-		}
-		if (resource.getToken() != null) {
-			credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-		}
+        logger.info(
+            "path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+        );
+    }
 
-		logger.info("path=/query/{queryId}/status, queryId={}, requestSource={}, queryRequest={}",
-			queryId,
-			Utilities.getRequestSourceFromHeader(headers),
-			Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
-		);
-	}
+    private Resource verifyQueryRequest(QueryRequest dataQueryRequest, HttpHeaders headers) throws ProtocolException {
+        if (dataQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        UUID resourceId = dataQueryRequest.getResourceUUID();
+        if (resourceId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+        }
+        Resource resource = resourceRepo.getById(resourceId);
+        if (resource == null) {
+            throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId);
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+        if (dataQueryRequest.getResourceCredentials() == null) {
+            dataQueryRequest.setResourceCredentials(new HashMap<>());
+        }
 
-	private Resource verifyQueryRequest(QueryRequest dataQueryRequest, HttpHeaders headers) throws ProtocolException {
-		if (dataQueryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		UUID resourceId = dataQueryRequest.getResourceUUID();
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
-		Resource resource = resourceRepo.getById(resourceId);
-		if (resource == null){
-			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId);
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (dataQueryRequest.getResourceCredentials() == null){
-			dataQueryRequest.setResourceCredentials(new HashMap<>());
-		}
-
-		logger.info("path=/query, requestSource={}, queryRequest={}",
-			Utilities.getRequestSourceFromHeader(headers),
-			Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
-		);
-		return resource;
-	}
+        logger.info(
+            "path=/query, requestSource={}, queryRequest={}", Utilities.getRequestSourceFromHeader(headers),
+            Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
+        );
+        return resource;
+    }
 }
 

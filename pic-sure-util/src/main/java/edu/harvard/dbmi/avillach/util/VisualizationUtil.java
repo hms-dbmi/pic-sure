@@ -69,25 +69,50 @@ public class VisualizationUtil {
     }
 
     /**
-     * Replaces long column names with shorter version.
+     * This method is used to limit the size of the keys in the axisMap to a maximum of 45 characters. If the key is longer
+     * than 45 characters, it will be shortened to 45 characters and the last 3 characters will be replaced with "...".
+     * If the shortened key is not unique, we will create a unique one
+     * <p>
      *
-     * @param axisMap
-     * @return
+     * @param axisMap - Map of the categories and their counts
+     * @return Map<String, Integer> - Map of the categories and their counts with the keys limited to 45 characters
      */
-    private static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
-        List<String> toRemove = new ArrayList<>();
-        Map<String, Integer> toAdd = new HashMap<>();
-        axisMap.keySet().forEach(key -> {
-            if (key.length() > MAX_X_LABEL_LINE_LENGTH) {
-                toRemove.add(key);
-                toAdd.put(
-                        key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3) + "...",
-                        axisMap.get(key));
-            }
+    public static Map<String, Integer> limitKeySize(Map<String, Integer> axisMap) {
+        if (axisMap == null) {
+            throw new IllegalArgumentException("axisMap cannot be null");
+        }
+
+        Map<String, Integer> newAxisMap = new HashMap<>();
+        HashSet<String> keys = new HashSet<>();
+        axisMap.forEach((key, value) -> {
+            String adjustedKey = key.length() < MAX_X_LABEL_LINE_LENGTH ? key : createAdjustedKey(axisMap, keys, key);
+            newAxisMap.put(adjustedKey, value);
+            keys.add(adjustedKey);
         });
-        toRemove.forEach(key -> axisMap.remove(key));
-        axisMap.putAll(toAdd);
-        return axisMap;
+        return newAxisMap;
+    }
+
+    private static String createAdjustedKey(Map<String, Integer> axisMap, HashSet<String> keys, String key) {
+        String keyPrefix = key.substring(0, MAX_X_LABEL_LINE_LENGTH);
+        return isKeyPrefixInAxisMap(axisMap, keyPrefix) ? generateUniqueKey(keys, key) : appendEllipsis(keyPrefix);
+    }
+
+    private static boolean isKeyPrefixInAxisMap(Map<String, Integer> axisMap, String keyPrefix) {
+        return axisMap.keySet().stream().anyMatch(k -> k.startsWith(keyPrefix));
+    }
+
+    private static String generateUniqueKey(HashSet<String> keys, String key) {
+        int countFromEnd = 6;
+        String proposedKey;
+        do {
+            proposedKey = String.format("%s...%s", key.substring(0, MAX_X_LABEL_LINE_LENGTH - 3 - countFromEnd), key.substring(key.length() - countFromEnd));
+            countFromEnd++;
+        } while (keys.contains(proposedKey));
+        return proposedKey;
+    }
+
+    private static String appendEllipsis(String keyPrefixAdjusted) {
+        return String.format("%s...", keyPrefixAdjusted);
     }
 
 }
