@@ -228,7 +228,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
             Set<String> allowedResultTypes = Set.of(
                     "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
-                    "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT"
+                    "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT",
+                    "VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "VCF_EXCERPT"
             );
 
             if (!allowedResultTypes.contains(expectedResultType)) {
