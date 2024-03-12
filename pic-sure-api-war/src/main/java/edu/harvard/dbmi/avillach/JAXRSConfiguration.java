@@ -41,6 +41,7 @@ public class JAXRSConfiguration extends Application {
             ctx.close();
         } catch (NamingException e) {
             // Currently, this parameter is optional and only used if there is more than one application stack.
+            logger.info("No application stack found. This is only a problem if there is more than one application stack.");
             application_stack = null;
         }
     }
