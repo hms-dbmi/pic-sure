@@ -1,12 +1,12 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
 import java.io.StringReader;
+import java.util.Optional;
 
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
-import javax.persistence.Column;
-import javax.persistence.Entity;
+import javax.persistence.*;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -18,6 +18,9 @@ public class Resource extends BaseEntity{
 	@Column(length = 8192)
 	private String description;
 	private String targetURL;
+
+
+	@Convert(converter = ResourcePathConverter.class)
 	private String resourceRSPath;
 
 	@Column(length = 8192)
@@ -101,5 +104,32 @@ public class Resource extends BaseEntity{
 	            .add("hidden", Boolean.toString(hidden))
 	            .add("metadata", metadataObj)
 	            .build().toString();
+	}
+
+	/**
+	 * This resource path converter allows resource paths to contain a reference to a specific stack that is
+	 * imputed at runtime based an an environment parameter. This allows multiple stacks to share the same database.
+	 *
+	 * The ___target_stack___ token in any resource path value will be replaced with the TARGET_STACK environment variable
+	 */
+	@Converter
+	public static class ResourcePathConverter implements AttributeConverter<String, String> {
+
+		public ResourcePathConverter() {
+		}
+
+		private static final Optional<String> targetStack = Optional.ofNullable(System.getProperty("TARGET_STACK", null));
+
+		@Override
+		public String convertToDatabaseColumn(String attribute) {
+			return attribute;
+		}
+
+		@Override
+		public String convertToEntityAttribute(String dbData) {
+			return targetStack
+					.map(stack -> dbData.replace("___target_stack___", stack))
+					.orElse(dbData);
+		}
 	}
 }
