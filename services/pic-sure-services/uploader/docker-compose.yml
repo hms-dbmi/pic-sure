@@ -2,7 +2,7 @@
 version: '3'
 services:
   uploader:
-    image: lukesikinabch/gic-uploader:1.2.0
+    image: lukesikinabch/gic-uploader:1.2.1
     container_name: uploader
     ports:
       - "5005:5005"
