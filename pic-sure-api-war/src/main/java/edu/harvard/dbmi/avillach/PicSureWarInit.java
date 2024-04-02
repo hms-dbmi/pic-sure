@@ -25,7 +25,10 @@ public class PicSureWarInit {
     @Resource(mappedName = "java:global/token_introspection_token")
     private String token_introspection_token;
 
-    //to be able to pre modified
+    @Resource(mappedName = "java:global/defaultApplicationUUID")
+    private String default_application_uuid;
+
+    // to be able to pre modified
     public static final ObjectMapper objectMapper = new ObjectMapper();
 
     // check the example from Apache HttpClient official website:
@@ -39,13 +42,8 @@ public class PicSureWarInit {
     static {
         HTTP_CLIENT_CONNECTION_MANAGER = new PoolingHttpClientConnectionManager();
         HTTP_CLIENT_CONNECTION_MANAGER.setMaxTotal(100);
-        CLOSEABLE_HTTP_CLIENT = HttpClients
-                .custom()
-                .setConnectionManager(HTTP_CLIENT_CONNECTION_MANAGER)
-                .useSystemProperties()
-                .build();
+        CLOSEABLE_HTTP_CLIENT = HttpClients.custom().setConnectionManager(HTTP_CLIENT_CONNECTION_MANAGER).useSystemProperties().build();
     }
-
 
     public String getToken_introspection_url() {
         return token_introspection_url;
@@ -53,5 +51,14 @@ public class PicSureWarInit {
 
     public String getToken_introspection_token() {
         return token_introspection_token;
+    }
+
+    /**
+     * This method is used to get the default application UUID. This value is either the open or auth hpds resource UUID.
+     *
+     * @return the default application UUID
+     */
+    public String getDefaultApplicationUUID() {
+        return this.default_application_uuid;
     }
 }
