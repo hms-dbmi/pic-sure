@@ -30,13 +30,13 @@ public class VariantStore implements Serializable {
 
 	private String[] vcfHeaders = new String[24];
 
-	private Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage = new TreeMap<>();
+	private Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> variantMaskStorage = new TreeMap<>();
 
-	public Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> getVariantMaskStorage() {
+	public Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> getVariantMaskStorage() {
 		return variantMaskStorage;
 	}
 
-	public void setVariantMaskStorage(Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> variantMaskStorage) {
+	public void setVariantMaskStorage(Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> variantMaskStorage) {
 		this.variantMaskStorage = variantMaskStorage;
 	}
 
@@ -81,24 +81,24 @@ public class VariantStore implements Serializable {
 		TreeMap<String, int[]> counts = new TreeMap<>();
 		for (String contig : variantMaskStorage.keySet()) {
 			counts.put(contig, new int[5]);
-			FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>> storage = variantMaskStorage
+			FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> storage = variantMaskStorage
 					.get(contig);
 			storage.keys().stream().forEach((Integer key) -> {
 				int[] contigCounts = counts.get(contig);
-				Collection<VariantMasks> values = storage.get(key).values();
-				contigCounts[0] += values.stream().collect(Collectors.summingInt((VariantMasks masks) -> {
+				Collection<VariableVariantMasks> values = storage.get(key).values();
+				contigCounts[0] += values.stream().collect(Collectors.summingInt((VariableVariantMasks masks) -> {
 					return masks.heterozygousMask != null ? 1 : 0;
 				}));
-				contigCounts[1] += values.stream().collect(Collectors.summingInt((VariantMasks masks) -> {
+				contigCounts[1] += values.stream().collect(Collectors.summingInt((VariableVariantMasks masks) -> {
 					return masks.homozygousMask != null ? 1 : 0;
 				}));
-				contigCounts[2] += values.stream().collect(Collectors.summingInt((VariantMasks masks) -> {
+				contigCounts[2] += values.stream().collect(Collectors.summingInt((VariableVariantMasks masks) -> {
 					return masks.heterozygousNoCallMask != null ? 1 : 0;
 				}));
-				contigCounts[3] += values.stream().collect(Collectors.summingInt((VariantMasks masks) -> {
+				contigCounts[3] += values.stream().collect(Collectors.summingInt((VariableVariantMasks masks) -> {
 					return masks.homozygousNoCallMask != null ? 1 : 0;
 				}));
-				contigCounts[4] += values.stream().collect(Collectors.summingInt((VariantMasks masks) -> {
+				contigCounts[4] += values.stream().collect(Collectors.summingInt((VariableVariantMasks masks) -> {
 					return masks.heterozygousMask != null || masks.homozygousMask != null
 							|| masks.heterozygousNoCallMask != null || masks.homozygousNoCallMask != null ? 1 : 0;
 				}));
@@ -115,7 +115,7 @@ public class VariantStore implements Serializable {
 		return patientIds;
 	}
 
-	public Optional<VariantMasks> getMasks(String variant, VariantBucketHolder<VariantMasks> bucketCache) throws IOException {
+	public Optional<VariableVariantMasks> getMasks(String variant, VariantBucketHolder<VariableVariantMasks> bucketCache) throws IOException {
 		String[] segments = variant.split(",");
 		if (segments.length < 2) {
 			log.error("Less than 2 segments found in this variant : " + variant);
@@ -134,7 +134,7 @@ public class VariantStore implements Serializable {
 			// TODO : This is a temporary efficiency hack, NOT THREADSAFE!!!
 		} else {
 			// todo: don't bother doing a lookup if this node does not have the chromosome specified
-			FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>> indexedStorage = variantMaskStorage.get(contig);
+			FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> indexedStorage = variantMaskStorage.get(contig);
 			if (indexedStorage == null) {
 				return Optional.empty();
 			}

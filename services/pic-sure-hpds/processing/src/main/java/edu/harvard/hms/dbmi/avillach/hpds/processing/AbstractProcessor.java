@@ -133,7 +133,7 @@ public class AbstractProcessor {
 		// NULL (representing no phenotypic filters, i.e. all patients) or not empty patient ID sets require a genomic query.
 		// Otherwise, short circuit and return no patients
 		if ((distributableQuery.getPatientIds() == null || !distributableQuery.getPatientIds().isEmpty()) && distributableQuery.hasFilters()) {
-            Mono<BigInteger> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
+            Mono<VariantMask> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
 			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
         }
 		return distributableQuery.getPatientIds();
@@ -360,12 +360,12 @@ public class AbstractProcessor {
 		return genomicProcessor.getPatientIds();
 	}
 
-	public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+	public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
 		return genomicProcessor.getMasks(path, variantMasksVariantBucketHolder);
 	}
 
     // todo: handle this locally, we do not want this in the genomic processor
-    protected BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    protected VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         return genomicProcessor.createMaskForPatientSet(patientSubset);
     }
 }

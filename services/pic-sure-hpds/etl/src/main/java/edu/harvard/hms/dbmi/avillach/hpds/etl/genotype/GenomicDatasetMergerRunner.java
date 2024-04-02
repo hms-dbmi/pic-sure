@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
 import com.google.common.base.Preconditions;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJsonIndexStorage;
@@ -45,8 +46,9 @@ public class GenomicDatasetMergerRunner {
         Map<String, FileBackedByteIndexedInfoStore> infoStores2 = loadInfoStores(genomicDirectory2);
 
         GenomicDatasetMerger genomicDatasetMerger = new GenomicDatasetMerger(VariantStore.readInstance(genomicDirectory1),VariantStore.readInstance(genomicDirectory2), infoStores1, infoStores2, outputDirectory);
+        genomicDatasetMerger.mergePatients();
 
-        Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariantMasks>>> mergedChromosomeMasks = genomicDatasetMerger.mergeChromosomeMasks();
+        Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergedChromosomeMasks = genomicDatasetMerger.mergeChromosomeMasks();
         VariantStore mergedVariantStore = genomicDatasetMerger.mergeVariantStore(mergedChromosomeMasks);
         Map<String, FileBackedByteIndexedInfoStore> variantIndexes = genomicDatasetMerger.mergeVariantIndexes();
 

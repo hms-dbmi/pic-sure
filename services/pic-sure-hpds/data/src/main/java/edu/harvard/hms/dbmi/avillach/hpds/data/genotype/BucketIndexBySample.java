@@ -43,7 +43,7 @@ public class BucketIndexBySample implements Serializable {
 		
 		//Create a bucketList, containing keys for all buckets in the variantStore
 		for(String contig: contigSet){
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore = variantStore.getVariantMaskStorage().get(contig);
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> contigStore = variantStore.getVariantMaskStorage().get(contig);
 			if(contigStore != null && contigStore.keys() != null) {
 				bucketList.addAll(contigStore.keys().stream().map(
 						(Integer bucket)->{
@@ -74,7 +74,7 @@ public class BucketIndexBySample implements Serializable {
 			patientBucketCharMasks[x] = emptyBucketMaskChar();
 		}
 		contigSet.parallelStream().forEach((contig)->{
-			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariantMasks>> contigStore =
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> contigStore =
 					variantStore.getVariantMaskStorage().get(contig);
 			if(contigStore != null && contigStore.keys() != null) {
 				contigStore.keys().stream().forEach(
@@ -82,28 +82,29 @@ public class BucketIndexBySample implements Serializable {
 							String bucketKey = contig  +  ":" + bucket;
 							
 							// Create a bitmask with 1 values for each patient who has any variant in this bucket
-							BigInteger[] patientMaskForBucket = {variantStore.emptyBitmask()};
-							contigStore.get(bucket).values().forEach((VariantMasks masks)->{
+							VariantMask[] patientMaskForBucket = {new VariantMaskSparseImpl(Set.of())};
+							contigStore.get(bucket).values().forEach((VariableVariantMasks masks)->{
 								if(masks.heterozygousMask!=null) {
-									patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousMask);
+									patientMaskForBucket[0] = patientMaskForBucket[0].union(masks.heterozygousMask);
 								}
 								//add hetreo no call bits to mask
 								if(masks.heterozygousNoCallMask!=null) {
-									patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.heterozygousNoCallMask);
+									patientMaskForBucket[0] = patientMaskForBucket[0].union(masks.heterozygousNoCallMask);
 								}
 								if(masks.homozygousMask!=null) {
-									patientMaskForBucket[0] = patientMaskForBucket[0].or(masks.homozygousMask);
+									patientMaskForBucket[0] = patientMaskForBucket[0].union(masks.homozygousMask);
 								}
 							});
 							
 							// For each patient set the patientBucketCharMask entry to 0 or 1 if they have a variant in the bucket.
-							int maxIndex = patientMaskForBucket[0].bitLength() - 1;
+
+							// todo: implement for variant explorer
 							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey) + 2; //patientBucketCharMasks has bookend bits
-							for(int x = 2;x<patientMaskForBucket[0].bitLength()-2;x++) {
-								if(patientMaskForBucket[0].testBit(maxIndex - x)) {  //testBit uses inverted indexes
-									patientBucketCharMasks[x-2][indexOfBucket] = '1';									
+							for(int x = 0; x < patientIds.size(); x++) {
+								if(patientMaskForBucket[0].testBit(x)) {
+									patientBucketCharMasks[x][indexOfBucket] = '1';
 								}else {
-									patientBucketCharMasks[x-2][indexOfBucket] = '0';
+									patientBucketCharMasks[x][indexOfBucket] = '0';
 								}
 							}
 						});

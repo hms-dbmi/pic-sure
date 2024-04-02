@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import org.junit.jupiter.api.Disabled;
@@ -36,7 +37,7 @@ public class GenomicProcessorRestClientTest {
         Set<Integer> patientIds = IntStream.range(53000, 53635).boxed().collect(Collectors.toSet());
         distributableQuery.setPatientIds(patientIds);
 
-        BigInteger patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery).block();
+        VariantMask patientMaskForVariantInfoFilters = genomicProcessorRestClient.getPatientMask(distributableQuery).block();
         System.out.println(patientMaskForVariantInfoFilters);
     }
 

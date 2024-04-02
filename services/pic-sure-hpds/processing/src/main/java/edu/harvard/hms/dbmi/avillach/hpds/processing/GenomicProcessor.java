@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import reactor.core.publisher.Mono;
@@ -12,17 +14,17 @@ import java.util.Optional;
 import java.util.Set;
 
 public interface GenomicProcessor {
-    Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery);
+    Mono<VariantMask> getPatientMask(DistributableQuery distributableQuery);
 
-    Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask);
+    Set<Integer> patientMaskToPatientIdSet(VariantMask patientMask);
 
-    BigInteger createMaskForPatientSet(Set<Integer> patientSubset);
+    VariantMask createMaskForPatientSet(Set<Integer> patientSubset);
 
     Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery);
 
     List<String> getPatientIds();
 
-    Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder);
+    Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder);
 
     Set<String> getInfoStoreColumns();
 

@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import reactor.core.publisher.Mono;
@@ -13,17 +15,17 @@ import java.util.Set;
 
 public class GenomicProcessorNoOp implements GenomicProcessor {
     @Override
-    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
+    public Mono<VariantMask> getPatientMask(DistributableQuery distributableQuery) {
         return null;
     }
 
     @Override
-    public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
+    public Set<Integer> patientMaskToPatientIdSet(VariantMask patientMask) {
         return null;
     }
 
     @Override
-    public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         return null;
     }
 
@@ -38,7 +40,7 @@ public class GenomicProcessorNoOp implements GenomicProcessor {
     }
 
     @Override
-    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+    public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
         return Optional.empty();
     }
 

@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskBitmaskImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -50,15 +52,15 @@ class GenomicProcessorParentImplTest {
     @Test
     public void getPatientMask_validResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new BigInteger("110110000011", 2)));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new BigInteger("110001100011", 2)));
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new BigInteger("110000000111", 2)));
+        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000111", 2))));
         parentProcessor = new GenomicProcessorParentImpl(List.of(
                 mockProcessor1, mockProcessor2, mockProcessor3
         ));
 
-        BigInteger patientMask = parentProcessor.getPatientMask(distributableQuery).block();
-        BigInteger expectedPatientMask = new BigInteger("110111100111", 2);
+        VariantMask patientMask = parentProcessor.getPatientMask(distributableQuery).block();
+        VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("110111100111", 2));
         assertEquals(expectedPatientMask, patientMask);
     }
 }

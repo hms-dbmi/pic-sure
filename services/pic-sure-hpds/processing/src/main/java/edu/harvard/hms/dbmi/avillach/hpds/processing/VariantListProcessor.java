@@ -6,12 +6,10 @@ import java.math.BigInteger;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMetadataIndex;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantSpec;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
@@ -185,7 +183,7 @@ public class VariantListProcessor implements HpdsProcessor {
 		Set<Integer> patientSubset = abstractProcessor.getPatientSubsetForQuery(query);
 		log.debug("identified " + patientSubset.size() + " patients from query");
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
-		BigInteger patientMasks = abstractProcessor.createMaskForPatientSet(patientSubset);
+		VariantMask patientMasks = abstractProcessor.createMaskForPatientSet(patientSubset);
 		int index = 2; //variant bitmasks are bookended with '11'
 
 		
@@ -215,7 +213,7 @@ public class VariantListProcessor implements HpdsProcessor {
 		}
 		//End of headers
 		builder.append("\n");
-		VariantBucketHolder<VariantMasks> variantMaskBucketHolder = new VariantBucketHolder<VariantMasks>();
+		VariantBucketHolder<VariableVariantMasks> variantMaskBucketHolder = new VariantBucketHolder<VariableVariantMasks>();
 
 		//loop over the variants identified, and build an output row
 		metadata.forEach((String variantSpec, String[] variantMetadata)->{
@@ -262,33 +260,22 @@ public class VariantListProcessor implements HpdsProcessor {
 			}
 
 			// todo: deal with empty return
-			VariantMasks masks = abstractProcessor.getMasks(variantSpec, variantMaskBucketHolder).get();
+			VariableVariantMasks masks = abstractProcessor.getMasks(variantSpec, variantMaskBucketHolder).get();
 
 			//make strings of 000100 so we can just check 'char at'
 			//so heterozygous no calls we want, homozygous no calls we don't
-			BigInteger heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
-			BigInteger homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
-
-
-			String heteroMaskString = heteroMask != null ? heteroMask.toString(2) : null;
-			String homoMaskString = homoMask != null ? homoMask.toString(2) : null;
+			VariantMask heteroMask = masks.heterozygousMask != null? masks.heterozygousMask : masks.heterozygousNoCallMask != null ? masks.heterozygousNoCallMask : null;
+			VariantMask homoMask = masks.homozygousMask != null? masks.homozygousMask : null;
 
 			// Patient count = (hetero mask | homo mask) & patient mask
-			BigInteger heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
-			int patientCount = heteroOrHomoMask == null ? 0 :  (heteroOrHomoMask.and(patientMasks).bitCount() - 4);
+			VariantMask heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
+			int patientCount = heteroOrHomoMask == null ? 0 :  (heteroOrHomoMask.intersection(patientMasks).bitCount() - 4);
 
 			int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
 			bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
 
 			//count how many patients have genomic data available
-			Integer patientsWithVariantsCount = null;
-			if(heteroMaskString != null) {
-				patientsWithVariantsCount = heteroMaskString.length() - 4;
-			} else if (homoMaskString != null ) {
-				patientsWithVariantsCount = homoMaskString.length() - 4;
-			} else {
-				patientsWithVariantsCount = -1;
-			}
+			Integer patientsWithVariantsCount = patientMasks.bitCount() - 4;
 
 
 			// (patients with/total) in subset   \t   (patients with/total) out of subset.
@@ -299,15 +286,15 @@ public class VariantListProcessor implements HpdsProcessor {
 				StringBuilder patientListBuilder = new StringBuilder();
 
 				for(Integer patientIndex : patientIndexMap.values()) {
-					if(heteroMaskString != null && '1' == heteroMaskString.charAt(patientIndex)) {
+					if(heteroMask != null && heteroMask.testBit(patientIndex)) {
 						patientListBuilder.append("\t0/1");
-					}else if(homoMaskString != null && '1' == homoMaskString.charAt(patientIndex)) {
+					}else if(homoMask != null && homoMask.testBit(patientIndex)) {
 						patientListBuilder.append("\t1/1");
 					}else {
 						patientListBuilder.append("\t0/0");
 					}
 				}
-				builder.append(patientListBuilder.toString());
+				builder.append(patientListBuilder);
 			}
 
 			builder.append("\n");
@@ -317,10 +304,10 @@ public class VariantListProcessor implements HpdsProcessor {
 		return builder.toString();
 	}
 
-	private BigInteger orNullableMasks(BigInteger heteroMask, BigInteger homoMask) {
+	private VariantMask orNullableMasks(VariantMask heteroMask, VariantMask homoMask) {
 		if (heteroMask != null) {
 			if (homoMask != null) {
-				return heteroMask.or(homoMask);
+				return heteroMask.union(homoMask);
 			}
 			return heteroMask;
 		} else {

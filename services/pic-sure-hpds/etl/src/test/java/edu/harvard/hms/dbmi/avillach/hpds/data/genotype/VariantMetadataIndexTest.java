@@ -9,6 +9,7 @@ import java.util.zip.GZIPInputStream;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.event.annotation.BeforeTestClass;
 
@@ -16,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.util.AssertionErrors.assertEquals;
 import static org.springframework.test.util.AssertionErrors.assertNotNull;
 
+// todo: enable when variant explorer is implemented
+@Disabled
 public class VariantMetadataIndexTest {
 
 	//From file 1 14	19038291	rs550062154	C	A

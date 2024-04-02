@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
@@ -34,23 +36,23 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     }
 
     @Override
-    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
-        Mono<BigInteger> result = webClient.post()
+    public Mono<VariantMask> getPatientMask(DistributableQuery distributableQuery) {
+        Mono<VariantMask> result = webClient.post()
                 .uri("/patients")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Mono.just(distributableQuery), DistributableQuery.class)
                 .retrieve()
-                .bodyToMono(BigInteger.class);
+                .bodyToMono(VariantMask.class);
         return result;
     }
 
     @Override
-    public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
+    public Set<Integer> patientMaskToPatientIdSet(VariantMask patientMask) {
         throw new RuntimeException("Not Implemented");
     }
 
     @Override
-    public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         throw new RuntimeException("Not Implemented");
     }
 
@@ -77,7 +79,7 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
     }
 
     @Override
-    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+    public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
         throw new RuntimeException("Not Implemented");
     }
 

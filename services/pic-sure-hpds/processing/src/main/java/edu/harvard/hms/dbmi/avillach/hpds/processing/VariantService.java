@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
@@ -189,7 +190,7 @@ public class VariantService {
         return variantStore.getPatientIds();
     }
 
-    public Optional<VariantMasks> getMasks(String variantName, VariantBucketHolder<VariantMasks> bucketCache) {
+    public Optional<VariableVariantMasks> getMasks(String variantName, VariantBucketHolder<VariableVariantMasks> bucketCache) {
         try {
             return variantStore.getMasks(variantName, bucketCache);
         } catch (IOException e) {

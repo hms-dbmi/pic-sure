@@ -4,8 +4,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,38 +45,50 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
         infoColumnsMeta = initInfoColumnsMeta();
     }
 
+    private class SizedVariantMask {
+        private final VariantMask variantMask;
+        private final int size;
+
+        public VariantMask getVariantMask() {
+            return variantMask;
+        }
+
+        public int getSize() {
+            return size;
+        }
+
+        public SizedVariantMask(VariantMask variantMask, int size) {
+            this.variantMask = variantMask;
+            this.size = size;
+        }
+    }
+
     @Override
-    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
-        Mono<BigInteger> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
-                .flatMapSequential(node -> node.getPatientMask(distributableQuery))
-                .reduce(this::appendMask);
+    public Mono<VariantMask> getPatientMask(DistributableQuery distributableQuery) {
+        Mono<VariantMask> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMapSequential(node -> {
+                    return node.getPatientMask(distributableQuery).map(mask -> {
+                        return new SizedVariantMask(mask, node.getPatientIds().size());
+                    });
+                })
+                .reduce(this::appendMask)
+                .map(SizedVariantMask::getVariantMask);
         return result;
     }
 
-    public BigInteger appendMask(BigInteger mask1, BigInteger mask2) {
-        String binaryMask1 = mask1.toString(2);
-        String binaryMask2 = mask2.toString(2);
-        String appendedString = binaryMask1.substring(0, binaryMask1.length() - 2) +
-                binaryMask2.substring(2);
-        return new BigInteger(appendedString, 2);
+    /** A little bit of a hack for now since the masks don't have sizes at this point and they are needed to merge
+     */
+    public SizedVariantMask appendMask(SizedVariantMask mask1, SizedVariantMask mask2) {
+        return new SizedVariantMask(VariableVariantMasks.appendMask(mask1.variantMask, mask2.variantMask, mask1.size, mask2.size), mask1.size + mask2.size);
     }
 
     @Override
-    public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-        Set<Integer> ids = new HashSet<>();
-        String bitmaskString = patientMask.toString(2);
-        List<String> patientIds = getPatientIds();
-        for(int x = 2;x < bitmaskString.length()-2;x++) {
-            if('1'==bitmaskString.charAt(x)) {
-                String patientId = patientIds.get(x-2).trim();
-                ids.add(Integer.parseInt(patientId));
-            }
-        }
-        return ids;
+    public Set<Integer> patientMaskToPatientIdSet(VariantMask patientMask) {
+        return patientMask.patientMaskToPatientIdSet(getPatientIds());
     }
 
     @Override
-    public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         throw new RuntimeException("Not implemented");
     }
 
@@ -116,7 +127,7 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
     }
 
     @Override
-    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+    public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
         // TODO: implement this. only used in variant explorer
         throw new RuntimeException("Method not implemented");
     }

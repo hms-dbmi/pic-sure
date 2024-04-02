@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskBitmaskImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,8 +59,8 @@ public class AbstractProcessorTest {
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
         variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
-        when(genomicProcessor.getPatientMask(isA(DistributableQuery.class))).thenReturn(Mono.just(new BigInteger("1100110011")));
-        when(genomicProcessor.patientMaskToPatientIdSet(eq(new BigInteger("1100110011")))).thenReturn(Set.of(42, 99));
+        when(genomicProcessor.getPatientMask(isA(DistributableQuery.class))).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("1100110011"))));
+        when(genomicProcessor.patientMaskToPatientIdSet(eq(new VariantMaskBitmaskImpl(new BigInteger("1100110011"))))).thenReturn(Set.of(42, 99));
 
         List<Query.VariantInfoFilter> variantInfoFilters = List.of(variantInfoFilter);
 

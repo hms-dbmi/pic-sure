@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,7 +107,7 @@ public class QueryProcessor implements HpdsProcessor {
 		String path = paths.get(x-1);
 		if(VariantUtils.pathIsVariantSpec(path)) {
 			// todo: confirm this entire if block is even used. I don't think it is
-			Optional<VariantMasks> masks = abstractProcessor.getMasks(path, new VariantBucketHolder<>());
+			Optional<VariableVariantMasks> masks = abstractProcessor.getMasks(path, new VariantBucketHolder<>());
 			List<String> patientIds = abstractProcessor.getPatientIds();
 			int idPointer = 0;
 
@@ -162,7 +163,7 @@ public class QueryProcessor implements HpdsProcessor {
 		results.writeField(x,idInSubsetPointer, valueBuffer);
 	}
 
-	private int writeVariantResultField(ResultStore results, Integer x, Optional<VariantMasks> variantMasks, int idPointer,
+	private int writeVariantResultField(ResultStore results, Integer x, Optional<VariableVariantMasks> variantMasks, int idPointer,
 			int idInSubsetPointer) {
 		byte[] valueBuffer = variantMasks.map(masks -> {
 			if(masks.heterozygousMask != null && masks.heterozygousMask.testBit(idPointer)) {

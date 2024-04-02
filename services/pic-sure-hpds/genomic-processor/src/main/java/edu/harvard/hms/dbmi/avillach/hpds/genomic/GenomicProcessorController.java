@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.genomic;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,7 @@ public class GenomicProcessorController {
     }
 
     @PostMapping("/patients")
-    public Mono<BigInteger> queryForPatientMask(@RequestBody DistributableQuery distributableQuery) {
+    public Mono<VariantMask> queryForPatientMask(@RequestBody DistributableQuery distributableQuery) {
         return genomicProcessor.getPatientMask(distributableQuery);
     }
 

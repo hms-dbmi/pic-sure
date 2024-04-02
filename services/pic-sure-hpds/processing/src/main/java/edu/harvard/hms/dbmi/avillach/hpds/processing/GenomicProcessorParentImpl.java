@@ -3,8 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,28 +47,20 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     }
 
     @Override
-    public Mono<BigInteger> getPatientMask(DistributableQuery distributableQuery) {
-        Mono<BigInteger> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+    public Mono<VariantMask> getPatientMask(DistributableQuery distributableQuery) {
+        Mono<VariantMask> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
                 .flatMap(node -> node.getPatientMask(distributableQuery))
-                .reduce(BigInteger::or);
+                .reduce(VariantMask::union);
         return result;
     }
 
     @Override
-    public Set<Integer> patientMaskToPatientIdSet(BigInteger patientMask) {
-        Set<Integer> ids = new HashSet<>();
-        String bitmaskString = patientMask.toString(2);
-        for(int x = 2;x < bitmaskString.length()-2;x++) {
-            if('1'==bitmaskString.charAt(x)) {
-                String patientId = getPatientIds().get(x-2).trim();
-                ids.add(Integer.parseInt(patientId));
-            }
-        }
-        return ids;
+    public Set<Integer> patientMaskToPatientIdSet(VariantMask patientMask) {
+        return patientMask.patientMaskToPatientIdSet(getPatientIds());
     }
 
     @Override
-    public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         throw new RuntimeException("Not implemented");
     }
 
@@ -111,10 +102,10 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     }
 
     @Override
-    public Optional<VariantMasks> getMasks(String path, VariantBucketHolder<VariantMasks> variantMasksVariantBucketHolder) {
+    public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
         // TODO: test. only used in variant explorer
         for (GenomicProcessor node : nodes) {
-            Optional<VariantMasks> masks = node.getMasks(path, variantMasksVariantBucketHolder);
+            Optional<VariableVariantMasks> masks = node.getMasks(path, variantMasksVariantBucketHolder);
             if (masks.isPresent()) {
                 return masks;
             }
