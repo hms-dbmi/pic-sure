@@ -150,11 +150,11 @@ public class QueryService {
             writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
         }
 
+        queryDecorator.setId(query);
 		AsyncResult result = new AsyncResult(query, p, writer)
 				.setStatus(AsyncResult.Status.PENDING)
 				.setQueuedTime(System.currentTimeMillis())
 				.setId(queryId);
-        queryDecorator.setId(query);
 		query.setId(result.getId());
 		results.put(result.getId(), result);
 		return result;
