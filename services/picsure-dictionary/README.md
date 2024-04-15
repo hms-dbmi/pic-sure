@@ -25,16 +25,17 @@ three ways to find variables they wish to query on:
 - A search bar
 
 The tree of variables can be filtered using the facets or the search bar. Users might also need additional information
-to support the filtering options available to them. The UI will have modals that provide meta information about variables, facets, facet categories, and, in relevant environments, studies.
+to support the filtering options available to them. The UI will have modals that provide meta information about variables, facets, facet categories, and, in relevant environments, datasets.
 
 ### API
 
-The frontend will be supported by a new Dictionary API. The API will have three core business objects:
+The frontend will be supported by a new Dictionary API. The API will have four core resources:
 
-- Concepts (`/concepts/`): Variables, the concept paths to them, and associated metadata. The concepts API will support listing (`/concepts/`), viewing details (`/concepts/<study>/<concept path>`), and viewing a tree (`/concepts/tree/<study>/<concept path>?depth=[1-9]+`). The listing API will return a paginated list of concepts; the response will also be filtered using a universal filter object. That object will be shared among all API endpoints, and will be
+- Concepts (`/concepts/`): Variables, the concept paths to them, and associated metadata. The concepts API will support listing (`/concepts/`), viewing details (`/concepts/<dataset>/<concept path>`), and viewing a tree (`/concepts/tree/<dataset>/<concept path>?depth=[1-9]+`). The listing API will return a paginated list of concepts; the response will also be filtered using a universal filter object. That object will be shared among all API endpoints, and will be
   described later. The tree API returns a hierarchy of concept nodes descending from the requested node, limiting the response to a depth of `depth`. The details API will be used for viewing details such as meta fields, type information, related facets, and related harmonized variables.
 - Facets (`/facets/`): Facets, their categories, and associated metadata. The facets API will support listing (`/facets/`), and viewing details (`/facets/<facet title>/<facet id>`). The listing API will be filtered using the universal filter object. While facets are technically two-dimensional, their hierarchies are quite shallow and broad, so a traditional listing structure will be used, with no pagination. The details API will be used for viewing meta details, related facets, and potentially variable counts for a facet.
-- Studies (`/studies/`): Studies, and their metadata. There studies API will support viewing details ((`/studies/<study id>`))
+- datasets (`/datasets/`): datasets, and their metadata. There datasets API will support viewing details (`/datasets/<dataset id>`)
+- updates (`/updates/`): update all business objects. This will not be a published, user facing API to start. Instead, it will be for ETL purposes. In the future, we may allow admin users access to this API so that they can update dictionaries in live environments.
 
 The universal filter object can be `POST`ed to filterable listing APIs to filter results. It has the following structure:
 
@@ -49,8 +50,6 @@ The universal filter object can be `POST`ed to filterable listing APIs to filter
   ]
 }
 ```
-
-In addition to basic GET operations, there is also potential for PATCH/DELETE/POST requests in the future. These would be for administrators that want to make small dictionary changes without redeploying the entire stack. 
 
 ### Architecture
 
