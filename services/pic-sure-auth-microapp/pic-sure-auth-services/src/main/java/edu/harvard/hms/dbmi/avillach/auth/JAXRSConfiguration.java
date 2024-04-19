@@ -148,16 +148,6 @@ public class JAXRSConfiguration extends Application {
         mailSession.getProperties().put("mail.smtp.ssl.trust", "smtp.gmail.com");
 
         logger.info("Auth micro app has been successfully started");
-
-        //Set info for the swagger.json
-        BeanConfig beanConfig = new BeanConfig();
-        beanConfig.setVersion("1.0.0");
-        beanConfig.setSchemes(new String[] { "https" });
-        beanConfig.setDescription("APIs for accessing PIC-SURE-AUTH-MICROAPP - a centralized authentication/authorization micro services");
-        beanConfig.setTitle("PIC-SURE-AUTH-MICROAPP");
-        beanConfig.setBasePath("/psama");
-        beanConfig.setResourcePackage(TokenService.class.getPackage().getName());
-        beanConfig.setScan(true);
     }
 
     /*
