@@ -223,4 +223,20 @@ public class CountProcessor implements HpdsProcessor {
 		}
 		return response;
 	}
+
+	public PatientAndConceptCount runPatientAndConceptCount(Query incomingQuery) {
+		log.info("Starting Patient and Concept Count query {}", incomingQuery.getPicSureId());
+		log.info("Calculating available concepts");
+		long concepts = incomingQuery.getFields().stream()
+			.map(abstractProcessor::nullableGetCube)
+			.filter(Optional::isPresent)
+			.count();
+		log.info("Calculating patient counts");
+		int patients = runCounts(incomingQuery);
+		PatientAndConceptCount patientAndConceptCount = new PatientAndConceptCount();
+		patientAndConceptCount.setConceptCount(concepts);
+		patientAndConceptCount.setPatientCount(patients);
+		log.info("Completed Patient and Concept Count query {}", incomingQuery.getPicSureId());
+		return patientAndConceptCount;
+	}
 }
