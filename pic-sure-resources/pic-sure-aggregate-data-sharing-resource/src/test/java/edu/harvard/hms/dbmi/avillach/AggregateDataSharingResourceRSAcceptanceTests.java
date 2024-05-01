@@ -90,7 +90,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
 	@Test
 	public void testZeroNotObfuscated() throws IOException {
-		expect_original_result_to_become_obfuscated_result("all_zero_open_access_cross_count_result", "all_zero_open_access_cross_count_result");
+		expect_original_result_to_become_obfuscated_result("all_zero_open_access_cross_count_result", "obfuscated_all_less_ten_open_access_cross_count_result");
 	}
 
 	@Test

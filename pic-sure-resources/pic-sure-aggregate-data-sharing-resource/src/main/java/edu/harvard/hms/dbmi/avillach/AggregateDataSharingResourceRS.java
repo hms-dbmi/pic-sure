@@ -765,7 +765,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     private Optional<String> aggregateCount(String actualCount) {
         try {
             int queryResult = Integer.parseInt(actualCount);
-            if (queryResult > 0 && queryResult < threshold) {
+            if (queryResult < threshold) {
                 return Optional.of("< " + threshold);
             }
         } catch (NumberFormatException nfe) {
