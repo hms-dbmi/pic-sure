@@ -522,6 +522,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
         boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 
+        if (mustObfuscate) {
+            return null;
+        }
+
         // Handle the case where there is no visualization service UUID
         if (properties.getVisualizationResourceId() != null) {
             Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
