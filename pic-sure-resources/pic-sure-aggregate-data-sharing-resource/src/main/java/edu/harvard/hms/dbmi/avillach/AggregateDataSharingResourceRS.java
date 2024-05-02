@@ -522,7 +522,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
         boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 
-        if (mustObfuscate) {
+        if (canShowContinuousCrossCounts(crossCounts)) {
             return null;
         }
 
@@ -711,6 +711,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         }
 
         return mustObfuscate;
+    }
+
+
+    private boolean canShowContinuousCrossCounts(Map<String, String> crossCounts) {
+        String lessThanThresholdStr = "< " + this.threshold;
+
+        String v = crossCounts.get("\\_studies_consents\\");
+        if (v.contains(lessThanThresholdStr) || v.equals("0")) {
+            return true;
+        }
+        return false;
     }
 
     /**
