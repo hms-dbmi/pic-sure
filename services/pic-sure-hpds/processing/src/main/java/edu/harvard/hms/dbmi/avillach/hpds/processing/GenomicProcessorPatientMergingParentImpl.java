@@ -79,7 +79,8 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
     /** A little bit of a hack for now since the masks don't have sizes at this point and they are needed to merge
      */
     public SizedVariantMask appendMask(SizedVariantMask mask1, SizedVariantMask mask2) {
-        return new SizedVariantMask(VariableVariantMasks.appendMask(mask1.variantMask, mask2.variantMask, mask1.size, mask2.size), mask1.size + mask2.size);
+        VariantMask variantMask = VariableVariantMasks.appendMask(mask1.variantMask, mask2.variantMask, mask1.size, mask2.size);
+        return new SizedVariantMask(variantMask != null ? variantMask : VariantMask.emptyInstance(), mask1.size + mask2.size);
     }
 
     @Override
