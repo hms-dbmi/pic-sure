@@ -10,6 +10,7 @@ services:
       - ./uploader/.env
     depends_on:
       - uploader-db
+    restart: always
     volumes:
       - /usr/local/docker-config/aws_uploads/:/gic_query_results/
     networks:
@@ -34,6 +35,7 @@ services:
       retries: 10
     networks:
       - picsure
+    restart: always
     volumes:
       - /usr/local/pic-sure-services/uploader/data/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
       - uploader-db-data:/var/lib/mysql
