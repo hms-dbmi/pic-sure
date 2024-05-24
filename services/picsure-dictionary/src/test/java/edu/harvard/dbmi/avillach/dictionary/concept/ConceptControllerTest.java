@@ -3,7 +3,6 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
-import edu.harvard.dbmi.avillach.dictionary.concept.model.InteriorConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
@@ -12,6 +11,8 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -31,27 +32,29 @@ class ConceptControllerTest {
     @Test
     void shouldListConcepts() {
         List<Concept> expected = List.of(
-            new InteriorConcept("/foo", "foo", "Foo", "my_dataset", null, Map.of()),
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of()),
+            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", List.of(), null, Map.of()),
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of()),
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", 0, 100, Map.of())
         );
         Filter filter = new Filter(
             List.of(new Facet("questionare", "Questionare", "?", null, "category")),
             "foo"
         );
-        Mockito.when(conceptService.listConcepts(filter))
+        Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1)))
             .thenReturn(expected);
+        Mockito.when(conceptService.countConcepts(filter))
+            .thenReturn(100L);
 
-        ResponseEntity<List<Concept>> actual = subject.listConcepts(filter);
+        Page<Concept> actual = subject.listConcepts(filter, 1, 10);
 
-        Assertions.assertEquals(expected, actual.getBody());
-        Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
+        Assertions.assertEquals(expected, actual.get().toList());
+        Assertions.assertEquals(100L, actual.getTotalElements());
     }
 
     @Test
     void shouldGetConceptDetails() {
         CategoricalConcept expected =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of());
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of());
         Mockito.when(conceptService.conceptDetail("my_dataset", "/foo//bar"))
             .thenReturn(Optional.of(expected));
 
@@ -74,11 +77,11 @@ class ConceptControllerTest {
     @Test
     void shouldGetConceptTree() {
         Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of());
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of());
         Concept fooBaz =
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", 0, 100, Map.of());
-        InteriorConcept foo =
-            new InteriorConcept("/foo", "foo", "Foo", "my_dataset", List.of(fooBar, fooBaz), Map.of());
+        CategoricalConcept foo =
+            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", List.of(), List.of(fooBar, fooBaz), Map.of());
 
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1))
             .thenReturn(Optional.of(foo));
@@ -92,11 +95,11 @@ class ConceptControllerTest {
     @Test
     void shouldGetNotConceptTreeForLargeDepth() {
         Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of());
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of());
         Concept fooBaz =
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", 0, 100, Map.of());
-        InteriorConcept foo =
-            new InteriorConcept("/foo", "foo", "Foo", "my_dataset", List.of(fooBar, fooBaz), Map.of());
+        CategoricalConcept foo =
+            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", List.of(), List.of(fooBar, fooBaz), Map.of());
 
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1))
             .thenReturn(Optional.of(foo));
@@ -110,12 +113,11 @@ class ConceptControllerTest {
     @Test
     void shouldGetNotConceptTreeForNegativeDepth() {
         Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of());
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of());
         Concept fooBaz =
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", 0, 100, Map.of());
-        InteriorConcept foo =
-            new InteriorConcept("/foo", "foo", "Foo", "my_dataset", List.of(fooBar, fooBaz), Map.of());
-
+        CategoricalConcept foo =
+            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", List.of(), List.of(fooBar, fooBaz), Map.of());
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", -1))
             .thenReturn(Optional.of(foo));
 
@@ -128,11 +130,11 @@ class ConceptControllerTest {
     @Test
     void shouldNotGetConceptTreeWhenConceptDNE() {
         Concept fooBar =
-            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), Map.of());
+            new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", List.of("a", "b"), List.of(), Map.of());
         Concept fooBaz =
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", 0, 100, Map.of());
-        InteriorConcept foo =
-            new InteriorConcept("/foo", "foo", "Foo", "my_dataset", List.of(fooBar, fooBaz), Map.of());
+        CategoricalConcept foo =
+            new CategoricalConcept("/foo", "foo", "Foo", "my_dataset", List.of(), List.of(fooBar, fooBaz), Map.of());
 
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1))
             .thenReturn(Optional.of(foo));

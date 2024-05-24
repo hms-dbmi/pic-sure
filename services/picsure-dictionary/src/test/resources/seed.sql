@@ -16,6 +16,20 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -29,7 +43,7 @@ CREATE TABLE public.concept_node (
     dataset_id integer NOT NULL,
     name character varying(512) NOT NULL,
     display character varying(512) NOT NULL,
-    concept_type character varying(32) NOT NULL DEFAULT 'Interior',
+    concept_type character varying(32) DEFAULT 'Interior'::character varying NOT NULL,
     concept_path character varying(10000) DEFAULT 'INVALID'::character varying NOT NULL,
     parent_id integer
 );
@@ -238,34 +252,22 @@ ALTER TABLE public.facet ALTER COLUMN facet_id ADD GENERATED ALWAYS AS IDENTITY 
 -- Data for Name: concept_node; Type: TABLE DATA; Schema: public; Owner: picsure
 --
 
-COPY public.concept_node (concept_node_id, dataset_id, concept_type, name, display, concept_path, parent_id) FROM stdin;
-1	1	Interior	ACT Diagnosis ICD-10	ACT Diagnosis I	\\\\ACT Diagnosis ICD-10\\\\	\N
-10	1	Interior	ACT Lab Test Results	ACT Lab Test Re	\\\\ACT Lab Test Results\\\\	\N
-16	1	Interior	ACT Medications	ACT Medications	\\\\ACT Medications\\\\	\N
-21	1	Interior	ACT Procedures CPT	ACT Procedures 	\\\\ACT Procedures CPT\\\\	\N
-17	1	Interior	C [Preparations]	C [Preparations	\\\\ACT Medications\\\\C [Preparations]\\\\	16
-18	1	Interior	Cefpodoxime	Cefpodoxime	\\\\ACT Medications\\\\C [Preparations]\\\\Cefpodoxime\\\\	16
-19	1	Interior	Cefpodoxime Oral Tablet	Cefpodoxime Ora	\\\\ACT Medications\\\\C [Preparations]\\\\Cefpodoxime\\\\Cefpodoxime Oral Tablet\\\\	16
-20	1	Categorical	Cefpodoxime 100 Mg Oral Tablet	Cefpodoxime 100	\\\\ACT Medications\\\\C [Preparations]\\\\Cefpodoxime\\\\Cefpodoxime Oral Tablet\\\\Cefpodoxime 100 Mg Oral Tablet\\\\	16
-22	1	Interior	Medicine Services and Procedures	Medicine Servic	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\	21
-11	1	Interior	Virus	Virus	\\\\ACT Lab Test Results\\\\Virus\\\\	10
-2	1	Interior	J00-J99 Diseases of the respiratory system (J00-J99)	J00-J99 Disease	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\	1
-3	1	Interior	J40-J47 Chronic lower respiratory diseases (J40-J47)	J40-J47 Chronic	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\	1
-4	1	Interior	J45 Asthma	J45 Asthma	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\	1
-5	1	Interior	J45.5 Severe persistent asthma	J45.5 Severe pe	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\J45.5 Severe persistent asthma\\\\	1
-6	1	Categorical	J45.51 Severe persistent asthma with (acute) exacerbation	J45.51 Severe p	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\J45.5 Severe persistent asthma\\\\J45.51 Severe persistent asthma with (acute) exacerbation\\\\	1
-7	1	Categorical	J45.52 Severe persistent asthma with status asthmaticus	J45.52 Severe p	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\J45.5 Severe persistent asthma\\\\J45.52 Severe persistent asthma with status asthmaticus\\\\	1
-8	1	Interior	J45.9 Other and unspecified asthma	J45.9 Other and	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\J45.9 Other and unspecified asthma\\\\	1
-9	1	Interior	J45.90 Unspecified asthma	J45.90 Unspecif	\\\\ACT Diagnosis ICD-10\\\\J00-J99 Diseases of the respiratory system (J00-J99)\\\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\\\J45 Asthma\\\\J45.9 Other and unspecified asthma\\\\J45.90 Unspecified asthma\\\\	1
-12	1	Interior	Hepatitis B virus	Hepatitis B vir	\\\\ACT Lab Test Results\\\\Virus\\\\Hepatitis B virus\\\\	11
-13	1	Interior	Hepatitis B virus core Ab	Hepatitis B vir	\\\\ACT Lab Test Results\\\\Virus\\\\Hepatitis B virus\\\\Hepatitis B virus core Ab\\\\	12
-23	1	Interior	Neurology and Neuromuscular Procedures	Neurology and N	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\Neurology and Neuromuscular Procedures\\\\	22
-27	1	Interior	Non-Face-To-Face Nonphysician Services	Non-Face-To-Fac	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\Non-Face-To-Face Nonphysician Services\\\\	22
-14	1	Interior	Hepatitis B virus core Ab [Presence] in Serum by Immunoassay	Hepatitis B vir	\\\\ACT Lab Test Results\\\\Virus\\\\Hepatitis B virus\\\\Hepatitis B virus core Ab\\\\Hepatitis B virus core Ab [Presence] in Serum by Immunoassay\\\\	13
-15	1	Interior	Hepatitis B virus core Ab [Presence] in Serum	Hepatitis B vir	\\\\ACT Lab Test Results\\\\Virus\\\\Hepatitis B virus\\\\Hepatitis B virus core Ab\\\\Hepatitis B virus core Ab [Presence] in Serum\\\\	13
-24	1	Interior	Special Eeg Testing Procedures	Special Eeg Tes	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\Neurology and Neuromuscular Procedures\\\\Special Eeg Testing Procedures\\\\	23
-26	1	Interior	Wada activation test for hemispheric function, including electroencephalographic (EEG) monitoring	Wada activation	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\Neurology and Neuromuscular Procedures\\\\Special Eeg Testing Procedures\\\\Wada activation test for hemispheric function, including electroencephalographic (EEG) monitoring\\\\	24
-25	1	Interior	Pharmacological or physical activation requiring physician or other qualified health care professional attendance during EEG recording of activation phase (eg, thiopental activation test)	Pharmacological	\\\\ACT Procedures CPT\\\\Medicine Services and Procedures\\\\Neurology and Neuromuscular Procedures\\\\Special Eeg Testing Procedures\\\\Pharmacological or physical activation requiring physician or other qualified health care professional attendance during EEG recording of activation phase (eg, thiopental activation test)\\\\	24
+COPY public.concept_node (concept_node_id, dataset_id, name, display, concept_type, concept_path, parent_id) FROM stdin;
+44	1	a	A	Categorical	\\\\\\\\A\\\\\\\\	\N
+51	1	b	B	Categorical	\\\\\\\\B\\\\\\\\	\N
+45	1	1	1	Categorical	\\\\\\\\A\\\\\\\\1\\\\\\\\	44
+46	1	0	0	Categorical	\\\\\\\\A\\\\\\\\0\\\\\\\\	44
+52	1	0	0	Categorical	\\\\\\\\B\\\\\\\\0\\\\\\\\	51
+53	1	2	2	Categorical	\\\\\\\\B\\\\\\\\2\\\\\\\\	51
+49	1	x	X	Continuous	\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\	45
+50	1	z	Z	Continuous	\\\\\\\\A\\\\\\\\1\\\\\\\\Z\\\\\\\\	45
+54	1	x	X	Categorical	\\\\\\\\B\\\\\\\\0\\\\\\\\X\\\\\\\\	52
+55	1	y	Y	Categorical	\\\\\\\\B\\\\\\\\0\\\\\\\\Y\\\\\\\\	52
+56	1	z	Z	Categorical	\\\\\\\\B\\\\\\\\0\\\\\\\\Z\\\\\\\\	52
+57	1	y	Y	Continuous	\\\\\\\\B\\\\\\\\2\\\\\\\\Y\\\\\\\\	53
+58	1	z	Z	Continuous	\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\	53
+47	1	x	X	Categorical	\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\	46
+48	1	y	Y	Categorical	\\\\\\\\A\\\\\\\\0\\\\\\\\Y\\\\\\\\	46
 \.
 
 
@@ -274,67 +276,28 @@ COPY public.concept_node (concept_node_id, dataset_id, concept_type, name, displ
 --
 
 COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value) FROM stdin;
-1	1	Ontology	ACT 10
-2	2	Ontology	ACT 10
-3	3	Ontology	ACT 10
-4	4	Ontology	ACT 10
-5	5	Ontology	ACT 10
-6	6	Ontology	ACT 10
-7	7	Ontology	ACT 10
-8	8	Ontology	ACT 10
-9	9	Ontology	ACT 10
-10	10	Ontology	ACT 10
-11	11	Ontology	ACT 10
-12	12	Ontology	ACT 10
-13	13	Ontology	ACT 10
-14	14	Ontology	ACT 10
-15	15	Ontology	ACT 10
-16	16	Ontology	ACT 10
-17	17	Ontology	ACT 10
-18	18	Ontology	ACT 10
-19	19	Ontology	ACT 10
-20	20	Ontology	ACT 10
-21	21	Ontology	ACT 10
-22	22	Ontology	ACT 10
-23	23	Ontology	ACT 10
-24	24	Ontology	ACT 10
-25	25	Ontology	ACT 10
-26	26	Ontology	ACT 10
-27	27	Ontology	ACT 10
-28	1	TYPE	Interior
-29	2	TYPE	Interior
-30	3	TYPE	Interior
-31	4	TYPE	Interior
-32	5	TYPE	Interior
-33	8	TYPE	Interior
-34	10	TYPE	Interior
-35	11	TYPE	Interior
-36	12	TYPE	Interior
-37	13	TYPE	Interior
-38	14	TYPE	Categorical
-39	15	TYPE	Categorical
-40	6	TYPE	Categorical
-41	7	TYPE	Categorical
-42	9	TYPE	Categorical
-43	16	TYPE	Interior
-44	17	TYPE	Interior
-45	18	TYPE	Interior
-46	19	TYPE	Interior
-47	21	TYPE	Interior
-48	22	TYPE	Interior
-49	23	TYPE	Interior
-50	24	TYPE	Interior
-51	27	TYPE	Interior
-52	25	TYPE	FreeText
-53	26	TYPE	FreeText
-54	20	TYPE	Continuous
-55	20	MIN	0
-56	20	MAX	100
-57	14	VALUES	true,false
-58	15	VALUES	true,false
-59	6	VALUES	true,false
-60	7	VALUES	true,false
-61	9	VALUES	true,false
+62	49	MIN	0
+63	50	MIN	0
+64	57	MIN	0
+65	58	MIN	0
+66	49	MAX	0
+67	50	MAX	0
+68	57	MAX	0
+69	58	MAX	0
+70	44	VALUES	0,1
+71	45	VALUES	X,Z
+72	46	VALUES	X,Y
+73	47	VALUES	foo,bar
+74	48	VALUES	foo,bar,baz
+75	51	VALUES	0,2
+76	52	VALUES	X,Y,Z
+77	53	VALUES	Y,Z
+78	54	VALUES	bar,baz
+79	55	VALUES	bar,baz,qux
+80	56	VALUES	foo,bar,baz,qux
+81	54	STIGMATIZING	true
+82	55	STIGMATIZING	true
+83	56	STIGMATIZING	true
 \.
 
 
@@ -377,6 +340,9 @@ COPY public.dataset_meta (dataset_meta_id, dataset_id, key, value) FROM stdin;
 COPY public.facet (facet_id, facet_category_id, name, display, description, parent_id) FROM stdin;
 1	1	bch	BCH	Boston Childrens Hospital	\N
 2	1	narnia	Narnia	Narnia	\N
+3	2	imaging	Imaging	Data derived from an image	\N
+4	2	questionaire	questionaire	Data derived from a questionaire	\N
+5	2	lab_test	Lab Test	Data derived from a lab test	\N
 \.
 
 
@@ -385,10 +351,30 @@ COPY public.facet (facet_id, facet_category_id, name, display, description, pare
 --
 
 COPY public.facet__concept_node (facet__concept_node_id, facet_id, concept_node_id) FROM stdin;
-1	1	9
-2	2	9
-3	1	7
-4	1	6
+5	1	44
+6	1	45
+7	1	46
+8	1	47
+9	1	48
+10	1	49
+11	1	50
+12	2	51
+13	2	52
+14	2	53
+15	2	54
+16	2	55
+17	2	56
+18	2	57
+19	2	58
+20	3	47
+21	3	48
+22	4	49
+23	4	50
+24	5	54
+25	5	55
+26	3	56
+27	3	57
+28	3	58
 \.
 
 
@@ -398,6 +384,7 @@ COPY public.facet__concept_node (facet__concept_node_id, facet_id, concept_node_
 
 COPY public.facet_category (facet_category_id, name, display, description) FROM stdin;
 1	site	Site	Filter variables by site
+2	data_source	Data Source	What does this data relate to (image, questionaire...)
 \.
 
 
@@ -405,14 +392,14 @@ COPY public.facet_category (facet_category_id, name, display, description) FROM 
 -- Name: concept_node_concept_node_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
-SELECT pg_catalog.setval('public.concept_node_concept_node_id_seq', 27, true);
+SELECT pg_catalog.setval('public.concept_node_concept_node_id_seq', 58, true);
 
 
 --
 -- Name: concept_node_meta_concept_node_meta_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
-SELECT pg_catalog.setval('public.concept_node_meta_concept_node_meta_id_seq', 61, true);
+SELECT pg_catalog.setval('public.concept_node_meta_concept_node_meta_id_seq', 83, true);
 
 
 --
@@ -440,21 +427,21 @@ SELECT pg_catalog.setval('public.dataset_meta_dataset_meta_id_seq', 6, true);
 -- Name: facet__concept_node_facet__concept_node_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
-SELECT pg_catalog.setval('public.facet__concept_node_facet__concept_node_id_seq', 4, true);
+SELECT pg_catalog.setval('public.facet__concept_node_facet__concept_node_id_seq', 28, true);
 
 
 --
 -- Name: facet_category_facet_category_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
-SELECT pg_catalog.setval('public.facet_category_facet_category_id_seq', 1, true);
+SELECT pg_catalog.setval('public.facet_category_facet_category_id_seq', 2, true);
 
 
 --
 -- Name: facet_facet_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
-SELECT pg_catalog.setval('public.facet_facet_id_seq', 2, true);
+SELECT pg_catalog.setval('public.facet_facet_id_seq', 5, true);
 
 
 --

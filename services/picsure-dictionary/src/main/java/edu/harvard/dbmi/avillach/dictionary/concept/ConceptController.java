@@ -4,6 +4,10 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
@@ -28,8 +32,17 @@ public class ConceptController {
 
 
     @PostMapping(path = "/concepts/")
-    public ResponseEntity<List<Concept>> listConcepts(@RequestBody Filter filter) {
-        return ResponseEntity.ok(conceptService.listConcepts(filter));
+    public Page<Concept> listConcepts(
+        @RequestBody Filter filter,
+        @RequestParam(name = "page_number", defaultValue = "1", required = false) int page,
+        @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
+    ) {
+        PageRequest pagination = PageRequest.of(page, size);
+        return new PageImpl<>(
+            conceptService.listConcepts(filter, pagination),
+            pagination,
+            conceptService.countConcepts(filter)
+        );
     }
 
     @GetMapping(path = "/concepts/detail/{dataset}/{conceptPath}")

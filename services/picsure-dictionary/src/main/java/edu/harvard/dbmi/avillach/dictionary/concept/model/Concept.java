@@ -16,12 +16,9 @@ import java.util.Map;
 @JsonSubTypes({
     @JsonSubTypes.Type(value = ContinuousConcept.class, name = "Continuous"),
     @JsonSubTypes.Type(value = CategoricalConcept.class, name = "Categorical"),
-    @JsonSubTypes.Type(value = InteriorConcept.class, name = "Interior"),
-    @JsonSubTypes.Type(value = FreeTextConcept.class, name = "FreeText"),
-
 })
 public sealed interface Concept
-    permits CategoricalConcept, ContinuousConcept, FreeTextConcept, InteriorConcept {
+    permits CategoricalConcept, ContinuousConcept {
 
     /**
      * @return The complete concept path for this concept (// delimited)

@@ -12,14 +12,4 @@ public enum ConceptType {
      */
     Continuous,
 
-    /**
-     * A catch-all concept
-     */
-    FreeText,
-
-    /**
-     * In an ontology of concepts, all interior nodes will be this type
-     */
-    Interior,
-
 }

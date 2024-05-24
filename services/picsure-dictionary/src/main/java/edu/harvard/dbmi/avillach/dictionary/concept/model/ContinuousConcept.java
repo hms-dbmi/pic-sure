@@ -11,6 +11,10 @@ public record ContinuousConcept(
     Map<String, String> meta
 ) implements Concept {
 
+    public ContinuousConcept(ContinuousConcept core, Map<String, String> meta) {
+        this(core.conceptPath, core.name, core.display, core.dataset, core.min, core.max, meta);
+    }
+
     @Override
     public ConceptType type() {
         return ConceptType.Continuous;
