@@ -341,7 +341,7 @@ COPY public.facet (facet_id, facet_category_id, name, display, description, pare
 1	1	bch	BCH	Boston Childrens Hospital	\N
 2	1	narnia	Narnia	Narnia	\N
 3	2	imaging	Imaging	Data derived from an image	\N
-4	2	questionaire	questionaire	Data derived from a questionaire	\N
+4	2	questionnaire	questionnaire	Data derived from a questionnaire	\N
 5	2	lab_test	Lab Test	Data derived from a lab test	\N
 \.
 
@@ -384,7 +384,7 @@ COPY public.facet__concept_node (facet__concept_node_id, facet_id, concept_node_
 
 COPY public.facet_category (facet_category_id, name, display, description) FROM stdin;
 1	site	Site	Filter variables by site
-2	data_source	Data Source	What does this data relate to (image, questionaire...)
+2	data_source	Data Source	What does this data relate to (image, questionnaire...)
 \.
 
 

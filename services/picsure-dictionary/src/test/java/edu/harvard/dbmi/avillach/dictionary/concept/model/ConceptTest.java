@@ -19,6 +19,7 @@ class ConceptTest {
         Concept actual = objectMapper.readValue(json, Concept.class);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(ConceptType.Categorical, actual.type());
     }
 
     @Test
@@ -40,6 +41,7 @@ class ConceptTest {
         Concept actual = new ObjectMapper().readValue(json, Concept.class);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(ConceptType.Categorical, actual.type());
     }
 
     @Test
@@ -62,5 +64,6 @@ class ConceptTest {
         Concept actual = new ObjectMapper().readValue(json, Concept.class);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(ConceptType.Continuous, actual.type());
     }
 }
