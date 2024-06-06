@@ -2,3 +2,4 @@
 target
 .git
 .idea
+.env

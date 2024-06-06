@@ -16,4 +16,4 @@ COPY --from=build target/dictionary-*.jar /dictionary.jar
 # Time zone
 ENV TZ="US/Eastern"
 
-ENTRYPOINT java $DEBUG_VARS $PROXY_VARS -Xmx8192m -jar /dataupload.jar
+ENTRYPOINT java $DEBUG_VARS $PROXY_VARS -Xmx8192m -jar /dictionary.jar

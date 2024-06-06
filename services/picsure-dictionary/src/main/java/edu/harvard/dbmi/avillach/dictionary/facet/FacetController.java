@@ -19,7 +19,7 @@ public class FacetController {
         this.facetService = facetService;
     }
 
-    @PostMapping(path = "/facets/")
+    @PostMapping(path = "/facets")
     public ResponseEntity<List<FacetCategory>> getFacets(@RequestBody Filter filter) {
         return ResponseEntity.ok(facetService.getFacets(filter));
     }

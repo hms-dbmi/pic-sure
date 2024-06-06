@@ -27,18 +27,20 @@ public class ConceptController {
     }
 
 
-    @PostMapping(path = "/concepts/")
-    public Page<Concept> listConcepts(
+    @PostMapping(path = "/concepts")
+    public ResponseEntity<Page<Concept>> listConcepts(
         @RequestBody Filter filter,
-        @RequestParam(name = "page_number", defaultValue = "1", required = false) int page,
+        @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);
-        return new PageImpl<>(
+        PageImpl<Concept> pageResp = new PageImpl<>(
             conceptService.listConcepts(filter, pagination),
             pagination,
             conceptService.countConcepts(filter)
         );
+
+        return ResponseEntity.ok(pageResp);
     }
 
     @GetMapping(path = "/concepts/detail/{dataset}/{conceptPath}")

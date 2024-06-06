@@ -45,7 +45,7 @@ class ConceptControllerTest {
         Mockito.when(conceptService.countConcepts(filter))
             .thenReturn(100L);
 
-        Page<Concept> actual = subject.listConcepts(filter, 1, 10);
+        Page<Concept> actual = subject.listConcepts(filter, 1, 10).getBody();
 
         Assertions.assertEquals(expected, actual.get().toList());
         Assertions.assertEquals(100L, actual.getTotalElements());
