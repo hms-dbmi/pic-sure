@@ -1,0 +1,45 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
+        string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'psama')
+    }
+
+    environment {
+        DOCKER_BUILD_ARGS = "-f ./pic-sure-auth-services/Dockerfile --build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg no_proxy=\"$no_proxy\" --build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy --build-arg NO_PROXY=\"$no_proxy\""
+        GIT_BRANCH_SHORT = sh(script: 'echo ${GIT_BRANCH} | cut -d "/" -f 2', returnStdout: true).trim()
+        GIT_COMMIT_SHORT = sh(script: 'echo ${GIT_COMMIT} | cut -c1-7', returnStdout: true).trim()
+        IMAGE_TAG = "${GIT_BRANCH_SHORT}_${GIT_COMMIT_SHORT}"
+        LATEST_TAG = "latest"
+        EMAIL_TEMPLATE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/emailTemplates:/opt/jboss/wildfly/standalone/configuration/emailTemplates "
+        TRUSTSTORE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/application.truststore:/opt/jboss/wildfly/standalone/configuration/application.truststore"
+        PSAMA_OPTS="-Xms1g -Xmx2g -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
+        TRUSTSTORE_JAVA_OPTS="-Djavax.net.ssl.trustStore=/opt/jboss/wildfly/standalone/configuration/application.truststore -Djavax.net.ssl.trustStorePassword=password"
+    }
+
+    stages {
+        stage('build') {
+            steps {
+                sh "docker build ${DOCKER_BUILD_ARGS} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
+            }
+        }
+        stage('deploy') {
+            steps {
+                script {
+                    env.PROXY_OPTS = env.PROXY_OPTS == null ?: ''
+                }
+                sh "docker stop psama || true"
+                sh "docker rm psama || true"
+                sh """docker run --name=psama --restart always \
+                      --network=picsure \
+                      --env-file /usr/local/docker-config/psama/.env \
+                      $EMAIL_TEMPLATE_VOLUME \
+                      $TRUSTSTORE_VOLUME \
+                      -e JAVA_OPTS="$PSAMA_OPTS $TRUSTSTORE_JAVA_OPTS" \
+                      -d ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG}"""
+            }
+        }
+    }
+}

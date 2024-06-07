@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
-import static edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration.objectMapper;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -9,6 +8,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -36,11 +36,12 @@ public class JsonUtilsTest {
     }
 
     @Test
-    public void testmergeTemplateMap() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMap() throws IOException {
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"numericFilters\":{},\"categoryFilters\":{\"\\\\demographics\\\\SEX\\\\\":[\"male\"]},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
-    	
+
     	//template with one numeric filter and one required field
     	String template2Str = "{\"categoryFilters\":{},\"numericFilters\":{\"\\\\demographics\\\\AGE\\\\\":{\"max\":\"50\"}},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template2 = objectMapper.readValue(template2Str, Map.class);
@@ -71,7 +72,8 @@ public class JsonUtilsTest {
      * @throws IOException
      */
     @Test
-    public void testmergeTemplateMapEmptyMap() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMapEmptyMap() throws IOException {
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"numericFilters\":{},\"categoryFilters\":{\"\\\\demographics\\\\SEX\\\\\":[\"male\"]},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
@@ -106,7 +108,8 @@ public class JsonUtilsTest {
      * @throws IOException
      */
     @Test
-    public void testmergeTemplateMapEmptyMapInverse() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMapEmptyMapInverse() throws IOException {
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"numericFilters\":{},\"categoryFilters\":{\"\\\\demographics\\\\SEX\\\\\":[\"male\"]},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
@@ -136,7 +139,8 @@ public class JsonUtilsTest {
     }
     
     @Test
-    public void testmergeTemplateMapMergeFilters() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMapMergeFilters() throws IOException{
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"numericFilters\":{},\"categoryFilters\":{\"\\\\demographics\\\\SEX\\\\\":[\"male\"]},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
@@ -174,7 +178,8 @@ public class JsonUtilsTest {
     }
     
     @Test
-    public void testmergeTemplateMapMultipleNumericFilters() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMapMultipleNumericFilters() throws IOException{
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"categoryFilters\":{},\"numericFilters\":{\"\\\\demographics\\\\AGE\\\\\":{\"min\":\"20\"}},\"requiredFields\":[\"\\\\_Study Accession with Patient ID\\\\\"],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
@@ -216,7 +221,8 @@ public class JsonUtilsTest {
     
     
     @Test
-    public void testmergeTemplateMapVariantInfo() throws JsonParseException, JsonMappingException, IOException{
+    public void testmergeTemplateMapVariantInfo() throws IOException{
+		ObjectMapper objectMapper = new ObjectMapper();
     	//template with one category filter and one required field
     	String template1Str = "{\"numericFilters\":{},\"categoryFilters\":{},\"requiredFields\":[],\"anyRecordOf\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{\"variant_severity\":[\"HIGH\"]},\"numericVariantInfoFilters\":{}}],\"expectedResultType\":\"COUNT\"}";
     	Map template1 = objectMapper.readValue(template1Str, Map.class);
@@ -242,27 +248,7 @@ public class JsonUtilsTest {
     	assertNotNull(mergedTemplate.get("variantInfoFilters"));
     	assertTrue(mergedTemplate.get("variantInfoFilters") instanceof Collection);
     	Collection variantInfoFilters = (Collection)mergedTemplate.get("variantInfoFilters");
-    	
-    	// We do not support merging lists of maps; it doesn't make sense to combine or 
-    	// merge the variant info filters
-    	
-//    	assertEquals(1, variantInfoFilters.size());
-//    	Object filter = variantInfoFilters.iterator().next();
-//    	assertTrue( filter instanceof Map);
-//    	assertEquals(2, ((Map)filter).size());
-//    	
-//    	assertTrue(((Map)filter).containsKey("categoryVariantInfoFilters"));
-//    	assertTrue(((Map)filter).containsKey("numericVariantInfoFilters"));
-//    	
-//    	assertTrue(((Map)filter).get("categoryVariantInfoFilters") instanceof Map);
-//    	Map catVarInfoFilter = (Map)((Map)filter).get("categoryVariantInfoFilters");
-//    	
-//    	assertEquals(1, catVarInfoFilter.size());
-//    	assertTrue(catVarInfoFilter.get("variant_severity") instanceof Collection);
-//    	
-//    	assertTrue(((Collection)catVarInfoFilter.get("variant_severity")).contains("LOW"));
-//    	assertTrue(((Collection)catVarInfoFilter.get("variant_severity")).contains("HIGH"));
-    	
+
     	assertNotNull(mergedTemplate.get("expectedResultType"));
     }
 }

@@ -1,4 +1,4 @@
-FROM mysql:5.7.24
+FROM mysql:8.2.0
 
 RUN mkdir /tempsql/
 COPY db/picsure-auth-dump-initial.sql /tempsql/picsure-auth-dump-initial.sql

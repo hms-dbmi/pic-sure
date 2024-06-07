@@ -1,11 +1,7 @@
 FROM maven:3.9.6-amazoncorretto-21 as build
 
-COPY ./pom.xml /app/pom.xml
-
-RUN mvn -f /app/pom.xml dependency:go-offline
-
 # Copy the source code into the container
-COPY ./ /app
+COPY ../ /app
 
 # Change the working directory
 WORKDIR /app
@@ -16,12 +12,9 @@ RUN mvn clean install -DskipTests
 FROM amazoncorretto:21.0.1-alpine3.18
 
 # Copy jar and access token from maven build
+#COPY target/pic-sure-auth-services.jar /pic-sure-auth-service.jar
 COPY --from=build /app/pic-sure-auth-services/target/pic-sure-auth-services.jar /pic-sure-auth-service.jar
 
-# Copy the AWS certificate
-COPY  pic-sure-auth-services/aws_certs/certificate.der /certificate.der
-
-# Import the certificate into the Java trust store
-RUN keytool -noprompt -import -alias aws_cert -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -file /certificate.der
+EXPOSE 8090
 
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /pic-sure-auth-service.jar"]

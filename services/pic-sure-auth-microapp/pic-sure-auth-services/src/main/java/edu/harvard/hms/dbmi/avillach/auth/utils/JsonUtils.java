@@ -1,21 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.type.MapType;
-import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
-import edu.harvard.hms.dbmi.avillach.auth.JAXRSConfiguration;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.*;
-import javax.validation.constraints.NotNull;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -140,69 +128,14 @@ public class JsonUtils {
 	}
 
 	
-	/*
-	 * Taking this method out for now, as we don't do index-based comparisons anymore.  This may have been to
-	 * allow merging of variant info filters; I don't think that's necessary for query templates -NC 4/2020
-	 */
-	
-//	/**
-//	 * will merge the two elements in the same location.
-//	 * meaning baseList(0) will merge with incomingList(0) ...
-//	 * And if two same-location elements are not in the same type, only the element in baseList will be kept
-//	 *
-//	 * @param baseList
-//	 * @param incomingList
-//	 * @return
-//	 */
-//	public static List mergeListToList(List baseList, List incomingList){    	
-//		List mergedList = new ArrayList();
-//
-//		if (incomingList.size()==0) {
-//			addElementsOfListToMergedList(mergedList, baseList);
-//		}else if(incomingList.get(0) instanceof String) {
-//			addElementsOfListToMergedList(mergedList, incomingList);
-//			addElementsOfListToMergedList(mergedList, baseList);        		
-//		} else {
-//			List sourceList = baseList.size()>incomingList.size()?baseList:incomingList;
-//			List targetList = baseList.size()<=incomingList.size()?baseList:incomingList;
-//			for (int i = 0 ; i < sourceList.size() ; i++) {
-//				Object sourceElement = sourceList.get(i);
-//				if(targetList.size()<=i) {
-//					mergedList.add(sourceList.get(i));
-//				}else {
-//					Object targetElement = targetList.get(i);
-//					if (sourceElement.getClass() == targetElement.getClass() ) {
-//						if (sourceElement instanceof List){
-//							mergedList.add(mergeListToList((List)sourceElement, (List)targetElement));
-//						} else if (sourceElement instanceof Map){
-//							mergedList.add(mergeTemplateMap((Map)sourceElement, (Map)targetElement));
-//						} else {
-//							logJsonTypeException(sourceElement);
-//						}
-//					} else {
-//						mergedList.add(sourceElement);
-//					}
-//				}
-//			}
-//		}
-//
-//		return mergedList;
-//	}
-//
-//	private static void addElementsOfListToMergedList(List mergedList, List baseList) {
-//		if(baseList!=null&&baseList.size()>0) {
-//			mergedList.addAll(baseList);
-//		}
-//	}
-
 	/**
 	 *  attach or merge a map to a list, the list might contain many elements that are string, list or map that are converted from JSONs.
 	 *  The logic here is first check if there is any map element that has the same structure based on the method <code>isMapMergeable<code/>,
 	 *  if true, merge, if false, simply attach.
 	 *
-	 * @param map
-	 * @param list
-	 * @return
+	 * @param map a map that is converted from a JSON.
+	 * @param collection a list that contains many elements that are string, list or map that are converted from JSONs.
+	 * @return a new list that contains the merged map.
 	 */
 	public static Set mergeMapToSet(Map map, Collection collection){
 		Set mergedSet = new HashSet(collection.size());
@@ -249,7 +182,7 @@ public class JsonUtils {
 
 	private static void logJsonTypeException(Object value){
 		logger.error("Incoming JSON Object is a type: " + value.getClass() + ", can only merge String, List and Map!");
-		throw new ApplicationException("Inner application error, please contact admin.");
+		throw new IllegalArgumentException("Inner application error, please contact admin.");
 	}
 
 }

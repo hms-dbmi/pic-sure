@@ -1,0 +1,118 @@
+{
+  "properties": [
+    {
+      "name": "application.client.id",
+      "type": "java.lang.String",
+      "description": "Description for application.client.id."
+    },
+    {
+      "name": "application.client.secret",
+      "type": "java.lang.String",
+      "description": "Description for application.client.secret."
+    },
+    {
+      "name": "application.client.secret.base64",
+      "type": "java.lang.String",
+      "description": "Description for application.client.secret.base64."
+    },
+    {
+      "name": "application.user.id.claim",
+      "type": "java.lang.String",
+      "description": "Description for application.user.id.claim."
+    },
+    {
+      "name": "application.auth0.host",
+      "type": "java.lang.String",
+      "description": "Description for application.auth0.host."
+    },
+    {
+      "name": "application.tos.enabled",
+      "type": "java.lang.String",
+      "description": "Description for application.tos.enabled."
+    },
+    {
+      "name": "application.system.name",
+      "type": "java.lang.String",
+      "description": "Description for application.system.name."
+    },
+    {
+      "name": "application.template.path",
+      "type": "java.lang.String",
+      "description": "Description for application.template.path."
+    },
+    {
+      "name": "application.access.grant.email.subject",
+      "type": "java.lang.String",
+      "description": "Description for application.access.grant.email.subject."
+    },
+    {
+      "name": "application.user.activation.reply.to",
+      "type": "java.lang.String",
+      "description": "Description for application.user.activation.reply.to."
+    },
+    {
+      "name": "application.admin.users",
+      "type": "java.lang.String",
+      "description": "Description for application.admin.users."
+    },
+    {
+      "name": "application.denied.email.enabled",
+      "type": "java.lang.String",
+      "description": "Description for application.denied.email.enabled."
+    },
+    {
+      "name": "application.idp.provider",
+      "type": "java.lang.String",
+      "description": "Description for application.idp.provider."
+    },
+    {
+      "name": "application.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for application.idp.provider.uri."
+    },
+    {
+      "name": "application.fence.client.id",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.client.id."
+    },
+    {
+      "name": "application.fence.client.secret",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.client.secret."
+    },
+    {
+      "name": "application.fence.redirect.url",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.redirect.url."
+    },
+    {
+      "name": "application.fence.consent.group.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.consent.group.concept.path."
+    },
+    {
+      "name": "application.fence.standard.access.rules",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.standard.access.rules."
+    },
+    {
+      "name": "application.fence.harmonized.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for application.fence.harmonized.concept.path."
+    },
+    {
+      "name": "application.token.expiration.time",
+      "type": "java.lang.String",
+      "description": "Description for application.token.expiration.time."
+    },
+    {
+      "name": "application.long.term.token.expiration.time",
+      "type": "java.lang.String",
+      "description": "Description for application.long.term.token.expiration.time."
+    },
+    {
+      "name": "application.default.uuid",
+      "type": "java.lang.String",
+      "description": "Description for application.default.uuid."
+    }
+  ] }
