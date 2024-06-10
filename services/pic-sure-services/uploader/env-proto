@@ -15,6 +15,7 @@ DATA_UPLOAD_DB_USER=datauploaduser
 DATA_UPLOAD_DB_ROOT_PASS=mycoolpassword
 
 FILE_SHARING_ROOT=/gic_query_results
+DOCKER_CONFIG_DIR=/usr/local/picsure/config/
 
 INSTITUTIONS=bch-dev
 HOME_INSTITUTION_NAME=bch-dev

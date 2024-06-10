@@ -12,7 +12,7 @@ services:
       - uploader-db
     restart: always
     volumes:
-      - /usr/local/docker-config/aws_uploads/:/gic_query_results/
+      - $DOCKER_CONFIG_DIR/aws_uploads/:/gic_query_results/
     networks:
       - hpdsNet
       - picsure
