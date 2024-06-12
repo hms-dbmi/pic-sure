@@ -13,12 +13,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
+          ssh-key: ${{secrets.SECRET_KEY}}
           fetch-depth: 0
 
       - name: Setup Git User
         run: |
-          git config user.name "GitHub Action"
-          git config user.email "<EMAIL>"
+          git config user.name "Luke Sikina"
+          git config user.email "lucas.sikina@gmail.com"
 
       - name: Update Test Branch
         run: |
