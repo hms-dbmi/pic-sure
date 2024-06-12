@@ -56,3 +56,4 @@ pull in the artifact by including the following in your pom:
 
 When implementing the info endpoint, you can assume your service's resource ID will
 be available inside your container via the environment variable `RESOURCE_UUID`
+
