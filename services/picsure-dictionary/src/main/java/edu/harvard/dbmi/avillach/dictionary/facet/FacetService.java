@@ -22,6 +22,7 @@ public class FacetService {
     }
 
     public Optional<Facet> facetDetails(String facetCategory, String facet) {
-        return repository.getFacet(facetCategory, facet);
+        return repository.getFacet(facetCategory, facet)
+            .map(f -> new Facet(f, repository.getFacetMeta(facetCategory, facet)));
     }
 }

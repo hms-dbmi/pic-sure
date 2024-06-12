@@ -93,7 +93,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldFilterConceptsByFacet() {
         List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site")), ""), Pageable.unpaged());
+            subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site", null)), ""), Pageable.unpaged());
         List<? extends Record> expected = List.of(
             new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", List.of("0", "1"), null, null),
             new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", List.of("X", "Z"), null, null),
@@ -122,7 +122,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldFilterByBothSearchAndFacet() {
         List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site")), "X"), Pageable.unpaged());
+            subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site", null)), "X"), Pageable.unpaged());
         List<? extends Record> expected = List.of(
             new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null),
             new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", 0, 0, null)
@@ -140,7 +140,7 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldGetCountWithFilter() {
-        Long actual = subject.countConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site")), "X"));
+        Long actual = subject.countConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site", null)), "X"));
         Assertions.assertEquals(2L, actual);
     }
 

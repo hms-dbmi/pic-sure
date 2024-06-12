@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 16.2
--- Dumped by pg_dump version 16.2
+-- Dumped from database version 16.3
+-- Dumped by pg_dump version 16.3
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -235,11 +235,63 @@ ALTER TABLE public.facet_category ALTER COLUMN facet_category_id ADD GENERATED A
 
 
 --
+-- Name: facet_category_meta; Type: TABLE; Schema: public; Owner: picsure
+--
+
+CREATE TABLE public.facet_category_meta (
+    facet_category_meta_id integer NOT NULL,
+    facet_category_id integer NOT NULL,
+    key character varying(256) NOT NULL,
+    value text NOT NULL
+);
+
+
+--
+-- Name: facet_category_meta_facet_category_meta_id_seq; Type: SEQUENCE; Schema: public; Owner: picsure
+--
+
+ALTER TABLE public.facet_category_meta ALTER COLUMN facet_category_meta_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.facet_category_meta_facet_category_meta_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: facet_facet_id_seq; Type: SEQUENCE; Schema: public; Owner: picsure
 --
 
 ALTER TABLE public.facet ALTER COLUMN facet_id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.facet_facet_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: facet_meta; Type: TABLE; Schema: public; Owner: picsure
+--
+
+CREATE TABLE public.facet_meta (
+    facet_meta_id integer NOT NULL,
+    facet_id integer NOT NULL,
+    key character varying(256) NOT NULL,
+    value text NOT NULL
+);
+
+
+--
+-- Name: facet_meta_facet_meta_id_seq; Type: SEQUENCE; Schema: public; Owner: picsure
+--
+
+ALTER TABLE public.facet_meta ALTER COLUMN facet_meta_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.facet_meta_facet_meta_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -389,6 +441,24 @@ COPY public.facet_category (facet_category_id, name, display, description) FROM 
 
 
 --
+-- Data for Name: facet_category_meta; Type: TABLE DATA; Schema: public; Owner: picsure
+--
+
+COPY public.facet_category_meta (facet_category_meta_id, facet_category_id, key, value) FROM stdin;
+\.
+
+
+--
+-- Data for Name: facet_meta; Type: TABLE DATA; Schema: public; Owner: picsure
+--
+
+COPY public.facet_meta (facet_meta_id, facet_id, key, value) FROM stdin;
+1	1	spicy	TRUE
+2	2	spicy	FALSE
+\.
+
+
+--
 -- Name: concept_node_concept_node_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
@@ -438,10 +508,24 @@ SELECT pg_catalog.setval('public.facet_category_facet_category_id_seq', 2, true)
 
 
 --
+-- Name: facet_category_meta_facet_category_meta_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
+--
+
+SELECT pg_catalog.setval('public.facet_category_meta_facet_category_meta_id_seq', 1, false);
+
+
+--
 -- Name: facet_facet_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
 --
 
 SELECT pg_catalog.setval('public.facet_facet_id_seq', 5, true);
+
+
+--
+-- Name: facet_meta_facet_meta_id_seq; Type: SEQUENCE SET; Schema: public; Owner: picsure
+--
+
+SELECT pg_catalog.setval('public.facet_meta_facet_meta_id_seq', 2, true);
 
 
 --
@@ -525,6 +609,14 @@ ALTER TABLE ONLY public.facet__concept_node
 
 
 --
+-- Name: facet_category_meta facet_category_meta_key_facet_category_id_key; Type: CONSTRAINT; Schema: public; Owner: picsure
+--
+
+ALTER TABLE ONLY public.facet_category_meta
+    ADD CONSTRAINT facet_category_meta_key_facet_category_id_key UNIQUE (key, facet_category_id);
+
+
+--
 -- Name: facet_category facet_category_name_key; Type: CONSTRAINT; Schema: public; Owner: picsure
 --
 
@@ -538,6 +630,14 @@ ALTER TABLE ONLY public.facet_category
 
 ALTER TABLE ONLY public.facet_category
     ADD CONSTRAINT facet_category_pkey PRIMARY KEY (facet_category_id);
+
+
+--
+-- Name: facet_meta facet_meta_key_facet_id_key; Type: CONSTRAINT; Schema: public; Owner: picsure
+--
+
+ALTER TABLE ONLY public.facet_meta
+    ADD CONSTRAINT facet_meta_key_facet_id_key UNIQUE (key, facet_id);
 
 
 --
@@ -625,6 +725,22 @@ ALTER TABLE ONLY public.dataset_meta
 
 ALTER TABLE ONLY public.concept_node
     ADD CONSTRAINT fk_study FOREIGN KEY (dataset_id) REFERENCES public.dataset(dataset_id);
+
+
+--
+-- Name: facet_meta fk_study; Type: FK CONSTRAINT; Schema: public; Owner: picsure
+--
+
+ALTER TABLE ONLY public.facet_meta
+    ADD CONSTRAINT fk_study FOREIGN KEY (facet_id) REFERENCES public.facet(facet_id);
+
+
+--
+-- Name: facet_category_meta fk_study; Type: FK CONSTRAINT; Schema: public; Owner: picsure
+--
+
+ALTER TABLE ONLY public.facet_category_meta
+    ADD CONSTRAINT fk_study FOREIGN KEY (facet_category_id) REFERENCES public.facet_category(facet_category_id);
 
 
 --
