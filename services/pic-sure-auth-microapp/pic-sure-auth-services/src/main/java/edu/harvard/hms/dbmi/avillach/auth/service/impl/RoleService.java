@@ -1,12 +1,12 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
+import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -86,10 +86,10 @@ public class RoleService {
         }
 
         SecurityContext context = SecurityContextHolder.getContext();
-        Set<String> roles = context.getAuthentication().getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
+        CustomUserDetails current_user = (CustomUserDetails) context.getAuthentication().getPrincipal();
+        Set<String> roleNames = current_user.getUser().getRoles().stream().map(Role::getName).collect(Collectors.toSet());
 
-        if (!roles.contains(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole())){
+        if (!roleNames.contains(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole())){
             logger.info("User doesn't have PIC-SURE Top Admin role, can't remove any role");
             return Optional.empty();
         }
@@ -108,8 +108,24 @@ public class RoleService {
         roles.add(t);
     }
 
+    public Role getRoleByName(String fenceOpenAccessRoleName) {
+        return this.roleRepository.findByName(fenceOpenAccessRoleName);
+    }
+
+    public Role save(Role r) {
+        return this.roleRepository.save(r);
+    }
+
     public Set<Role> getRolesByIds(Set<UUID> roleUuids) {
         return this.roleRepository.findByUuidIn(roleUuids);
+    }
+
+    public void persistAll(List<Role> newRoles) {
+        this.roleRepository.saveAll(newRoles);
+    }
+
+    public Role findByName(String roleName) {
+        return this.roleRepository.findByName(roleName);
     }
 }
 

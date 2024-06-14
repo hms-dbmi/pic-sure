@@ -11,7 +11,6 @@ import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
@@ -24,6 +23,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -114,6 +115,12 @@ public class UserService {
         logger.info("getUserProfileResponse() expirationDate is set");
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
         responseMap.put("expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
+
+        // This is required for open access, but optional otherwise
+        if (claims.get("uuid") != null) {
+            logger.debug("getUserProfileResponse() uuid field is set");
+            responseMap.put("uuid", claims.get("uuid").toString());
+        }
 
         logger.info("getUserProfileResponse() finished");
         return responseMap;
@@ -267,7 +274,6 @@ public class UserService {
     @Transactional
     public List<User> updateUser(List<User> users) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
-        logger.info("Security context: {}", securityContext.getAuthentication().getPrincipal());
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
         if (customUserDetails == null || customUserDetails.getUser() == null && customUserDetails.getUser().getUuid() == null) {
             logger.error("Security context didn't have a user stored.");
@@ -316,8 +322,6 @@ public class UserService {
     @Transactional
     public User.UserForDisplay getCurrentUser(String authorizationHeader, Boolean hasToken) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
-        logger.info("Security context: {}", securityContext);
-
         Optional<CustomUserDetails> customUserDetails = Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
         if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
             logger.error("Security context didn't have a user stored.");
@@ -400,12 +404,13 @@ public class UserService {
         return Map.of("queryTemplate", mergedTemplate.orElse(null));
     }
 
-    private String mergeTemplate(User user, Application application) {
+    @Cacheable(value = "mergedTemplateCache", key = "#user.getEmail()")
+    public String mergeTemplate(User user, Application application) {
         String resultJSON;
         Map mergedTemplateMap = null;
         for (Privilege privilege : user.getPrivilegesByApplication(application)) {
             String template = privilege.getQueryTemplate();
-            logger.debug("mergeTemplate() processing template:" + template);
+            logger.debug("mergeTemplate() processing template:{}", template);
             if (template == null || template.trim().isEmpty()) {
                 continue;
             }
@@ -437,7 +442,11 @@ public class UserService {
         }
 
         return resultJSON;
+    }
 
+    @CacheEvict(value = "mergedTemplateCache", key = "#user.getEmail()")
+    public void evictFromCache(User user) {
+        logger.info("evictMergedTemplate() evicting cache for user: {}", user.getUuid());
     }
 
     @Transactional
@@ -497,10 +506,10 @@ public class UserService {
                 this.longTermTokenExpirationTime);
     }
 
-    public void changeRole(User currentUser, Set<Role> roles) {
+    public User changeRole(User currentUser, Set<Role> roles) {
         // set the users roles and merge the user
         currentUser.setRoles(roles);
-        this.userRepository.save(currentUser);
+        return this.userRepository.save(currentUser);
     }
 
     public User findBySubject(String username) {
@@ -510,4 +519,60 @@ public class UserService {
     public User save(User user) {
         return this.userRepository.save(user);
     }
+
+    public User findOrCreate(User newUser) {
+        logger.info("findOrCreate(), trying to find user: {subject: {}}, and found a user with uuid: {}, subject: {}", newUser.getSubject(), newUser.getUuid(), newUser.getSubject());
+        // check if the user exist by subject
+        User user = findBySubject(newUser.getSubject());
+        if (user != null) {
+            return user;
+        }
+
+        // check if the user exist by email and connection
+        user = userRepository.findByEmailAndConnectionId(newUser.getEmail(), newUser.getConnection().getId());
+        if (user != null) {
+            if (StringUtils.isEmpty(user.getSubject())) {
+                user.setSubject(newUser.getSubject());
+                user.setGeneralMetadata(newUser.getGeneralMetadata());
+            }
+
+            return user;
+        }
+
+        user = save(newUser);
+        logger.info("createUser created user, uuid: {}, subject: {}, role: {}, privilege: {}",
+                user.getUuid(), newUser.getSubject(), user.getRoleString(), user.getPrivilegeString());
+        // create a new user
+        return user;
+    }
+
+    public User findByEmailAndConnection(String email, String connectionId) {
+        return this.userRepository.findByEmailAndConnectionId(email, connectionId);
+    }
+
+    public User findUserByUUID(String userUUID) {
+        return this.userRepository.findById(UUID.fromString(userUUID)).orElse(null);
+    }
+
+    public User createOpenAccessUser(Role openAccessRole) {
+        User user = new User();
+
+        // Save the user to get a UUID
+        user = save(user);
+        user.setSubject("open_access|" + user.getUuid().toString());
+        if (openAccessRole != null) {
+            user.setRoles(Set.of(openAccessRole));
+        } else {
+            logger.error("createOpenAccessUser() openAccessRole is null");
+            user.setRoles(new HashSet<>());
+        }
+
+        user.setEmail(user.getUuid() + "@open_access.com");
+        user = save(user);
+
+        logger.info("createOpenAccessUser() created user, uuid: {}, subject: {}, role: {}, privilege: {}",
+                user.getUuid(), user.getSubject(), user.getRoleString(), user.getPrivilegeString());
+        return user;
+    }
+
 }

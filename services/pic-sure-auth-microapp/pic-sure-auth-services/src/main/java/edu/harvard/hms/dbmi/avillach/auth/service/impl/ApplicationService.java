@@ -158,5 +158,9 @@ public class ApplicationService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return null;
     }
+
+    public Application getApplicationByName(String picsure) {
+        return applicationRepo.findByName(picsure);
+    }
 }
 

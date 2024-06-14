@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
@@ -62,5 +62,13 @@ public class PrivilegeService {
 
     public Privilege getPrivilegeById(String privilegeId) {
         return this.privilegeRepository.findById(UUID.fromString(privilegeId)).orElse(null);
+    }
+
+    public Privilege findByName(String privilegeName) {
+        return this.privilegeRepository.findByName(privilegeName);
+    }
+
+    public Privilege save(Privilege privilege) {
+        return this.privilegeRepository.save(privilege);
     }
 }

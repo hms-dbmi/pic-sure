@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.junit.Before;

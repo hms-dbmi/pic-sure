@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
@@ -64,6 +65,10 @@ public class CustomUserDetailServiceTest {
         Role role = new Role();
         role.setName(SecurityRoles.ADMIN.getRole());
         user.setRoles(Set.of(role));
+
+        Privilege privilege = new Privilege();
+        privilege.setName("testPrivilege");
+        role.setPrivileges(Set.of(privilege));
 
         when(userService.findBySubject(username)).thenReturn(user);
 

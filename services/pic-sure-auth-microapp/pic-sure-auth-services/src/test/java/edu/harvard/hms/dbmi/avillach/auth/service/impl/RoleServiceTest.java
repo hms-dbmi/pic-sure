@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
@@ -7,7 +7,6 @@ import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.Before;
 import org.junit.Test;
@@ -150,6 +149,7 @@ public class RoleServiceTest {
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
         when(roleRepository.findAll()).thenReturn(Collections.singletonList(role));
+
         Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
 
         assertTrue(result.isPresent());
@@ -172,13 +172,12 @@ public class RoleServiceTest {
 
     @Test
     public void testRemoveRoleById_InsufficientPrivileges() {
-        User user = createTestUser();
-        user.setRoles(new HashSet<>());
-        configureUserSecurityContext(user);
-
         UUID roleId = UUID.randomUUID();
         Role role = new Role();
         role.setUuid(roleId);
+
+        User user = createTestUserWithoutPrivileges();
+        configureUserSecurityContext(user);
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
 
@@ -222,13 +221,14 @@ public class RoleServiceTest {
 
     private Privilege createSuperAdminPrivilege() {
         Privilege privilege = new Privilege();
-        privilege.setName(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole());
+        privilege.setName(AuthNaming.AuthRoleNaming.SUPER_ADMIN);
         privilege.setUuid(UUID.randomUUID());
         return privilege;
     }
 
     private void configureUserSecurityContext(User user) {
         CustomUserDetails customUserDetails = new CustomUserDetails(user);
+
         // configure security context
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
         when(securityContext.getAuthentication()).thenReturn(authentication);
@@ -244,5 +244,24 @@ public class RoleServiceTest {
         user.setActive(true);
 
         return user;
+    }
+
+    private User createTestUserWithoutPrivileges() {
+        User user = new User();
+        user.setUuid(UUID.randomUUID());
+        user.setRoles(new HashSet<>());
+        user.setSubject("TEST_SUBJECT");
+        user.setEmail("test@email.com");
+        user.setAcceptedTOS(new Date());
+        user.setActive(true);
+        return user;
+    }
+
+    private Role createTopAdminRoleWithoutPrivs() {
+        Role role = new Role();
+        role.setName(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole());
+        role.setUuid(UUID.randomUUID());
+        role.setPrivileges(Collections.emptySet());
+        return role;
     }
 }

@@ -1,12 +1,13 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AuthenticationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AuthorizationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.FENCEAuthenticationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.Auth0AuthenticationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.FENCEAuthenticationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,13 +35,13 @@ public class AuthController {
 
     public final AuthorizationService authorizationService;
 
-    public final AuthenticationService authenticationService;
+    public final Auth0AuthenticationService authenticationService;
     public final FENCEAuthenticationService fenceAuthenticationService;
 
     private final String idp_provider;
 
     @Autowired
-    public AuthController(AuthorizationService authorizationService, AuthenticationService authenticationService, FENCEAuthenticationService fenceAuthenticationService, @Value("${application.idp.provider}") String idpProvider) {
+    public AuthController(AuthorizationService authorizationService, Auth0AuthenticationService authenticationService, FENCEAuthenticationService fenceAuthenticationService, @Value("${application.idp.provider}") String idpProvider) {
         this.authorizationService = authorizationService;
         this.authenticationService = authenticationService;
         this.fenceAuthenticationService = fenceAuthenticationService;
@@ -51,8 +52,10 @@ public class AuthController {
     @PostMapping(path = "/authentication", consumes = "application/json", produces = "application/json")
     public ResponseEntity<?> authentication(
             @Parameter(required = true, description = "A json object that includes all Oauth authentication needs, for example, access_token and redirectURI")
-            @RequestBody Map<String, String> authRequest) throws IOException {
+            @RequestBody Map<String, String> authRequest, HttpServletRequest request) throws IOException {
         logger.debug("authentication() starting...");
+        String requestHost = request.getServerName();
+        logger.debug("authentication() requestHost: {}", requestHost);
 
         if(authRequest == null) {
             logger.error("authentication() authRequest is null");
@@ -61,7 +64,7 @@ public class AuthController {
 
         if (this.idp_provider.equalsIgnoreCase("fence")) {
             logger.debug("authentication() FENCE authentication");
-            HashMap<String, String> fenceProfile = fenceAuthenticationService.getFENCEProfile(authRequest);
+            HashMap<String, String> fenceProfile = fenceAuthenticationService.getFENCEProfile("https://" + requestHost + "/psamaui/login/", authRequest);
             return PICSUREResponse.success(fenceProfile);
         } else {
             logger.debug("authentication() default authentication");

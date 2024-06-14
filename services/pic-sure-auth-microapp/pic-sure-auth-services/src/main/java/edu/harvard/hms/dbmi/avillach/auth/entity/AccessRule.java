@@ -63,6 +63,8 @@ public class AccessRule extends BaseEntity {
         public static final int ANY_REG_MATCH = 12;
         public static final int IS_EMPTY = 13;
         public static final int IS_NOT_EMPTY = 14;
+        public static final int ALL_CONTAINS_OR_EMPTY = 15;
+        public static final int ALL_CONTAINS_OR_EMPTY_IGNORE_CASE = 16;
 
         public static Map<String, Integer> getTypeNameMap(){
             Map<String, Integer> map = new LinkedHashMap<>();
@@ -111,7 +113,6 @@ public class AccessRule extends BaseEntity {
      * This field should neither be saved to database
      * nor seen by a user
      */
-    @JsonIgnore
     @Transient
     private Set<String> mergedValues = new HashSet<>();
 
@@ -120,7 +121,6 @@ public class AccessRule extends BaseEntity {
      * It is a intermediate product that generated on the fly for supporting
      * auto-merging functionality of accessRules when doing authorization.
      */
-    @JsonIgnore
     @Transient
     private String mergedName = "";
 
@@ -159,13 +159,13 @@ public class AccessRule extends BaseEntity {
     @Column(name = "isEvaluateOnlyByGates")
     private Boolean evaluateOnlyByGates;
 
-    @ManyToOne
-    private AccessRule subAccessRuleParent;
-
     /**
-     * introduce sub-accessRule to enable the ability of more complex problem
+     * introduce sub-accessRule to enable the ability of more complex problem, essentially it is an AND relationship.
      */
-    @OneToMany(mappedBy = "subAccessRuleParent")
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "accessRule_subRule",
+            joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "subRule_id", nullable = false)})
     private Set<AccessRule> subAccessRule;
 
     /**
@@ -220,16 +220,6 @@ public class AccessRule extends BaseEntity {
 
     public void setDescription(String description) {
         this.description = description;
-    }
-
-    @JsonIgnore
-    public AccessRule getSubAccessRuleParent() {
-        return subAccessRuleParent;
-    }
-
-    @JsonProperty("subAccessRuleParent")
-    public void setSubAccessRuleParent(AccessRule subAccessRuleParent) {
-        this.subAccessRuleParent = subAccessRuleParent;
     }
 
     public Set<AccessRule> getGates() {

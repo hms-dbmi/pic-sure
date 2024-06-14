@@ -1,8 +1,7 @@
-package edu.harvard.hms.dbmi.avillach.auth.service;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.PrivilegeService;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;

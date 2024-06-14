@@ -98,8 +98,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 	}
 
 	/**
-	 * return all privileges in the roles as a set
-	 * @return
+	 * @return set of privileges
 	 */
 	@JsonIgnore
 	public Set<Privilege> getTotalPrivilege(){
@@ -113,7 +112,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	/**
 	 * return all privileges in the roles as a set
-	 * @return
+	 * @return set of privileges
 	 */
 	@JsonIgnore
 	public Set<AccessRule> getTotalAccessRule(){
@@ -128,7 +127,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 	/**
 	 * return all privilege name in each role as a set.
 	 *
-	 * @return
+	 * @return set of privilege names
 	 */
 	@JsonIgnore
 	public Set<String> getPrivilegeNameSet(){
@@ -138,14 +137,14 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return null;
 
 		Set<String> nameSet = new HashSet<>();
-		totalPrivilegeSet.stream().forEach(p -> nameSet.add(p.getName()));
+		totalPrivilegeSet.forEach(p -> nameSet.add(p.getName()));
 		return nameSet;
 	}
 
 	/**
 	 * return privilege names in each role as a set based on Application given.
 	 *
-	 * @return
+	 * @return set of privilege names
 	 */
 	@JsonIgnore
 	public Set<String> getPrivilegeNameSetByApplication(Application application){
@@ -170,7 +169,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 	/**
 	 * return privileges in each role as a set based on Application given.
 	 *
-	 * @return
+	 * @return set of privileges
 	 */
 	@JsonIgnore
 	public Set<Privilege> getPrivilegesByApplication(Application application){
@@ -182,8 +181,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 			return null;
 
 		Set<Privilege> privileges = new HashSet<>();
-		roles.stream().
-				forEach(r -> privileges.addAll(r.getPrivileges()
+		roles.forEach(r -> privileges.addAll(r.getPrivileges()
 						.stream()
 						.filter(p -> application.getUuid()
                                 .equals((p.getApplication()==null)?

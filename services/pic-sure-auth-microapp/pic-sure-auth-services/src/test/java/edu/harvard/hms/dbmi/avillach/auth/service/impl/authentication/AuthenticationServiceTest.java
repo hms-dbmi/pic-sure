@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.auth.service.impl;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
@@ -6,7 +6,9 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.Auth0AuthenticationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.BasicMailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.OauthUserMatchingService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.Before;
 import org.junit.Test;

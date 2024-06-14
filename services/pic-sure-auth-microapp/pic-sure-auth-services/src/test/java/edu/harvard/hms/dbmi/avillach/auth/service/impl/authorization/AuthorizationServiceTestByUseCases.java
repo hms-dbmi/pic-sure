@@ -1,10 +1,8 @@
-package edu.harvard.hms.dbmi.avillach;
+package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AccessRuleService;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -41,7 +39,7 @@ import java.util.UUID;
  * We also have a class testing from the aspect of design, which means each test case is just testing one feature.
  * @see AuthorizationServiceTest
  */
-public class AuthorizationServiceTestByUseCases extends AuthorizationService{
+public class AuthorizationServiceTestByUseCases extends AuthorizationService {
 
 
     ObjectMapper mapper = new ObjectMapper();
@@ -477,12 +475,6 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseC.setUuid(UUID.randomUUID());
         rule_caseC.setName("rule_caseC");
 
-//        AccessRule rule_caseC_gate = new AccessRule();
-//        rule_caseC_gate.setName("rule_caseC_gate");
-//        rule_caseC_gate.setRule("$.query.expectedResultType");
-//        rule_caseC_gate.setType(AccessRule.TypeNaming.NOT_EQUALS);
-//        rule_caseC_gate.setValue("COUNT");
-
         AccessRule rule_caseC_gate2 = new AccessRule();
         rule_caseC_gate2.setUuid(UUID.randomUUID());
         rule_caseC_gate2.setName("rule_caseC_gate2");
@@ -491,7 +483,6 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
         rule_caseC_gate2.setValue("DATAFRAME");
 
         Set<AccessRule> rule_caseC_gates = new HashSet<>();
-//        rule_caseC_gates.add(rule_caseC_gate);
         rule_caseC_gates.add(rule_caseC_gate2);
         rule_caseC.setGates(rule_caseC_gates);
 

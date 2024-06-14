@@ -10,7 +10,6 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -28,7 +27,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.security.SecureRandom;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -526,7 +524,7 @@ public class UserServiceTest {
     public void testChangeRole() {
         User user = createTestUser();
         configureUserSecurityContext(user);
-        when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
+        when(userRepository.save(user)).thenReturn(user);
 
         // new roles
         Role role = createTestRole();
@@ -535,7 +533,10 @@ public class UserServiceTest {
         Set<Role> newRoles = new HashSet<>();
         newRoles.add(role);
 
-        userService.changeRole(user, newRoles);
+        User user1 = userService.changeRole(user, newRoles);
+        assertNotNull(user1);
+
+        assertEquals(newRoles, user1.getRoles());
     }
 
     @Test

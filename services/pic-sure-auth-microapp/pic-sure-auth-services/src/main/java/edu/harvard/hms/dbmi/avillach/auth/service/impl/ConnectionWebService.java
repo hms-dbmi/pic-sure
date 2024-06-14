@@ -53,4 +53,8 @@ public class ConnectionWebService {
         this.connectionRepo.deleteById(connectionId);
         return this.getAllConnections();
     }
+
+    public Connection getConnectionByLabel(String fence) {
+        return this.connectionRepo.findByLabel(fence);
+    }
 }

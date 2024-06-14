@@ -1,12 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.Before;
 import org.junit.Test;
@@ -27,13 +26,19 @@ public class AuthorizationServiceTest {
     @Mock
     private SecurityContext securityContext;
 
-    @InjectMocks
     private AuthorizationService authorizationService;
+    private AccessRuleService accessRuleService;
+
+    @Mock
+    private AccessRuleRepository accessRuleRepository;
 
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
         SecurityContextHolder.setContext(securityContext);
+
+        accessRuleService = new AccessRuleService(accessRuleRepository);
+        authorizationService = new AuthorizationService(accessRuleService, "fence,okta,open");
     }
 
     @Test
@@ -47,14 +52,12 @@ public class AuthorizationServiceTest {
         accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
         accessRule.setValue("value");
 
-
         // set application and access_rule for all user privileges
         for (Privilege privilege1 : user.getRoles().iterator().next().getPrivileges()) {
             privilege1.setAccessRules(Collections.singleton(accessRule));
             privilege1.setApplication(application);
         }
         configureUserSecurityContext(user);
-
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
@@ -88,7 +91,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -103,7 +106,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertFalse(result);
     }
@@ -118,7 +121,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
 
-        boolean result = authorizationService.extractAndCheckRule(accessRule, requestBody);
+        boolean result = accessRuleService.extractAndCheckRule(accessRule, requestBody);
 
         assertTrue(result);
     }
@@ -133,7 +136,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.extractAndCheckRule(accessRule, requestBody);
+        boolean result = accessRuleService.extractAndCheckRule(accessRule, requestBody);
 
         assertFalse(result);
     }
@@ -144,7 +147,7 @@ public class AuthorizationServiceTest {
         accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
         accessRule.setValue("value");
 
-        boolean result = authorizationService.decisionMaker(accessRule, "value");
+        boolean result = accessRuleService.decisionMaker(accessRule, "value");
 
         assertTrue(result);
     }
@@ -155,7 +158,7 @@ public class AuthorizationServiceTest {
         accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
         accessRule.setValue("value");
 
-        boolean result = authorizationService.decisionMaker(accessRule, "differentValue");
+        boolean result = accessRuleService.decisionMaker(accessRule, "differentValue");
 
         assertFalse(result);
     }
@@ -193,7 +196,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -217,7 +220,7 @@ public class AuthorizationServiceTest {
         requestBody.put("test", "value");
         requestBody.put("test2", "value2");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -241,7 +244,7 @@ public class AuthorizationServiceTest {
         requestBody.put("test", "value");
         requestBody.put("test2", "differentValue");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertFalse(result);
     }
@@ -266,7 +269,7 @@ public class AuthorizationServiceTest {
         requestBody.put("test", "value");
         requestBody.put("test2", "differentValue");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -291,7 +294,7 @@ public class AuthorizationServiceTest {
         requestBody.put("test", "differentValue");
         requestBody.put("test2", "differentValue");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertFalse(result);
     }
@@ -310,7 +313,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -332,7 +335,7 @@ public class AuthorizationServiceTest {
         requestBody.put("test", "value");
         requestBody.put("test2", "value2");
 
-        boolean result = authorizationService.evaluateAccessRule(requestBody, accessRule);
+        boolean result = accessRuleService.evaluateAccessRule(requestBody, accessRule);
 
         assertTrue(result);
     }
@@ -381,7 +384,14 @@ public class AuthorizationServiceTest {
         user.setEmail("test@email.com");
         user.setAcceptedTOS(new Date());
         user.setActive(true);
+        user.setConnection(createTestConnection());
         return user;
+    }
+
+    private Connection createTestConnection() {
+        Connection connection = new Connection();
+        connection.setLabel("TEST_CONNECTION");
+        return connection;
     }
 
     private Application createTestApplication() {

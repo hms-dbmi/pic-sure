@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AccessRuleService;
 import io.swagger.v3.oas.annotations.*;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;

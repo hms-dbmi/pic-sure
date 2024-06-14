@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AuthorizationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
-import edu.harvard.hms.dbmi.avillach.auth.service.RoleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
