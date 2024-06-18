@@ -19,7 +19,7 @@ public class MapExtractor implements ResultSetExtractor<Map<String, String>> {
     @Override
     public Map<String, String> extractData(ResultSet rs) throws SQLException, DataAccessException {
         Map<String, String> map = new HashMap<>();
-        while (rs.next()) {
+        while (rs.next() && rs.getString(keyName) != null) {
             map.put(rs.getString(keyName), rs.getString(valueName));
         }
         return map;

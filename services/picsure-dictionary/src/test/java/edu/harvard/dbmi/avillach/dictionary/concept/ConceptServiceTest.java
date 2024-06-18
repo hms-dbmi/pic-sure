@@ -29,7 +29,7 @@ class ConceptServiceTest {
     @Test
     void shouldListConcepts() {
         List<Concept> expected = List.of(
-            new CategoricalConcept("A", "a", "A", "invalid.invalid", List.of(), null, null)
+            new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), null, null)
         );
         Filter filter = new Filter(List.of(), "");
         Pageable page = Pageable.ofSize(10).first();
@@ -54,7 +54,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldShowDetailForContinuous() {
-        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", 0, 1, null);
+        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, 0, 1, null);
         Map<String, String> meta = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
@@ -69,7 +69,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldShowDetailForCategorical() {
-        CategoricalConcept concept = new CategoricalConcept("path", "", "", "dataset", List.of("a"), List.of(), null);
+        CategoricalConcept concept = new CategoricalConcept("path", "", "", "dataset", null, List.of("a"), List.of(), null);
         Map<String, String> meta = Map.of("VALUES", "a", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));

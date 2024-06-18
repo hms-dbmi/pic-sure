@@ -46,7 +46,7 @@ public class FacetRepository {
                 facet
                 LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
                 LEFT JOIN facet as parent_facet ON facet.parent_id = parent_facet.facet_id
-                LEFT JOIN (
+                INNER JOIN (
                     SELECT
                         count(*) as facet_count, inner_facet_q.facet_id AS inner_facet_id
                     FROM

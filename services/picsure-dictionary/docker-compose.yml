@@ -18,8 +18,6 @@ services:
       - dictionary-db
     restart: always
     env_file: .env
-    ports:
-      - "8080:8080"
     networks:
       - dictionary
       - hpdsNet

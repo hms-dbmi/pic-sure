@@ -43,20 +43,20 @@ public class ConceptController {
         return ResponseEntity.ok(pageResp);
     }
 
-    @GetMapping(path = "/concepts/detail/{dataset}/{conceptPath}")
+    @PostMapping(path = "/concepts/detail/{dataset}")
     public ResponseEntity<Concept> conceptDetail(
         @PathVariable(name = "dataset") String dataset,
-        @PathVariable(name = "conceptPath") String conceptPath
+        @RequestBody() String conceptPath
     ) {
         return conceptService.conceptDetail(dataset, conceptPath)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping(path = "/concepts/tree/{dataset}/{conceptPath}")
+    @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
         @PathVariable(name = "dataset") String dataset,
-        @PathVariable(name = "conceptPath") String conceptPath,
+        @RequestBody() String conceptPath,
         @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth
     ) {
         if (depth < 0 || depth > MAX_DEPTH) {

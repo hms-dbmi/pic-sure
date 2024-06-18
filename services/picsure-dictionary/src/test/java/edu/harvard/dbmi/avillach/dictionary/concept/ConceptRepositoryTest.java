@@ -48,21 +48,21 @@ class ConceptRepositoryTest {
     void shouldListAllConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", List.of("0", "1"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", List.of("X", "Z"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", List.of("X", "Y"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", List.of("foo", "bar", "baz"), null, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", 0, 0, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", 0, 0, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\", "b", "B", "invalid.invalid", List.of("0", "2"), null, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", List.of("X", "Y", "Z"), null, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\", "2", "2", "invalid.invalid", List.of("Y", "Z"), null, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("bar", "baz"), null, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", List.of("bar", "baz", "qux"), null, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", List.of("foo", "bar", "baz", "qux"), null, null),
-            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", 0, 0, null),
-            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", 0, 0, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", null, List.of("0", "1"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", null, List.of("X", "Z"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", null, List.of("X", "Y"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("foo", "bar"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", null, List.of("foo", "bar", "baz"), null, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, 0, 0, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", null, 0, 0, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\", "b", "B", "invalid.invalid", null, List.of("0", "2"), null, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", null, List.of("X", "Y", "Z"), null, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\", "2", "2", "invalid.invalid", null, List.of("Y", "Z"), null, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("bar", "baz"), null, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", null, List.of("bar", "baz", "qux"), null, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", null, List.of("foo", "bar", "baz", "qux"), null, null),
+            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", null, 0, 0, null),
+            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", null, 0, 0, null)
         );
         
         Assertions.assertEquals(expected, actual);
@@ -72,8 +72,8 @@ class ConceptRepositoryTest {
     void shouldListFirstTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.ofSize(2).first());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", List.of("0", "1"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", List.of("X", "Z"), null, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", null, List.of("0", "1"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", null, List.of("X", "Z"), null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -83,8 +83,8 @@ class ConceptRepositoryTest {
     void shouldListNextTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.ofSize(2).first().next());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", List.of("X", "Y"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", null, List.of("X", "Y"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("foo", "bar"), null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -95,13 +95,13 @@ class ConceptRepositoryTest {
         List<Concept> actual =
             subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site", null)), ""), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", List.of("0", "1"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", List.of("X", "Z"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", List.of("X", "Y"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null),
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", List.of("foo", "bar", "baz"), null, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", 0, 0, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", 0, 0, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\", "a", "A", "invalid.invalid", null, List.of("0", "1"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\", "1", "1", "invalid.invalid", null, List.of("X", "Z"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\", "0", "0", "invalid.invalid", null, List.of("X", "Y"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("foo", "bar"), null, null),
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\Y\\\\\\\\", "y", "Y", "invalid.invalid", null, List.of("foo", "bar", "baz"), null, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, 0, 0, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", null, 0, 0, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -111,9 +111,9 @@ class ConceptRepositoryTest {
     void shouldFilterBySearch() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "X"), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", 0, 0, null),
-            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("bar", "baz"), null, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("foo", "bar"), null, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, 0, 0, null),
+            new CategoricalConcept("\\\\\\\\B\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("bar", "baz"), null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -124,8 +124,8 @@ class ConceptRepositoryTest {
         List<Concept> actual =
             subject.getConcepts(new Filter(List.of(new Facet("bch", "", "", 1, null, "site", null)), "X"), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", List.of("foo", "bar"), null, null),
-            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", 0, 0, null)
+            new CategoricalConcept("\\\\\\\\A\\\\\\\\0\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, List.of("foo", "bar"), null, null),
+            new ContinuousConcept("\\\\\\\\A\\\\\\\\1\\\\\\\\X\\\\\\\\", "x", "X", "invalid.invalid", null, 0, 0, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -147,7 +147,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetDetailForConcept() {
         ContinuousConcept expected =
-            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", 0, 0, null);
+            new ContinuousConcept("\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\", "z", "Z", "invalid.invalid", null, 0, 0, null);
         Optional<Concept> actual = subject.getConcept(expected.dataset(), expected.conceptPath());
 
         Assertions.assertEquals(Optional.of(expected), actual);

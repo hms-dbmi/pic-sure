@@ -34,9 +34,23 @@ public class FilterQueryGenerator {
         if (StringUtils.hasText(filter.search())) {
             clauses.add(createSearchFilter(filter.search(), params));
         }
-        if (clauses.isEmpty()) {
-            clauses = List.of("\tSELECT concept_node.concept_node_id FROM concept_node\n");
-        }
+        clauses.add("""
+            (
+                SELECT
+                    concept_node.concept_node_id, 0 as rank
+                FROM
+                    concept_node
+                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                WHERE
+                    continuous_min.value <> '' OR
+                    continuous_max.value <> '' OR
+                    categorical_values.value <> ''
+            )
+            """
+        );
+
 
         String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n) ORDER BY concept_node_id\n";
         if (pageable.isPaged()) {
@@ -48,20 +62,25 @@ public class FilterQueryGenerator {
                 .addValue("offset", pageable.getOffset());
         }
 
+        String superQuery = """
+            WITH q AS (%s) SELECT concept_node_id FROM q GROUP BY concept_node_id ORDER BY sum(rank) DESC"
+            """.formatted(query);
 
-        return new QueryParamPair(query, params);
+
+        return new QueryParamPair(superQuery, params);
     }
 
     private String createSearchFilter(String search, MapSqlParameterSource params) {
-        params.addValue("search", "%" + search + "%");
+        params.addValue("search", search);
         return """
             (
                 SELECT
-                    concept_node.concept_node_id AS concept_node_id
+                    concept_node.concept_node_id AS concept_node_id,
+                    ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery) as rank
                 FROM
                     concept_node
                 WHERE
-                    concept_node.concept_path LIKE :search
+                    concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
             )
             """;
     }
@@ -78,7 +97,7 @@ public class FilterQueryGenerator {
                 return """
                 (
                     SELECT
-                        facet__concept_node.concept_node_id AS concept_node_id
+                        facet__concept_node.concept_node_id AS concept_node_id , 0 as rank
                     FROM facet
                         LEFT JOIN facet__concept_node ON facet__concept_node.facet_id = facet.facet_id
                         LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id

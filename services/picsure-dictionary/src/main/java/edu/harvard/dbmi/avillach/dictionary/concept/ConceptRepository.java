@@ -40,13 +40,15 @@ public class ConceptRepository {
                 concept_node.*,
                 ds.REF as dataset,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
-                categorical_values.VALUE as values
+                categorical_values.VALUE as values,
+                meta_description.VALUE AS description
             FROM
                 concept_node
                 LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'MIN'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'MAX'
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'VALUES'
+                LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE concept_node.concept_node_id IN
             """;
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
@@ -69,13 +71,15 @@ public class ConceptRepository {
                 concept_node.*,
                 ds.REF as dataset,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
-                categorical_values.VALUE as values
+                categorical_values.VALUE as values,
+                meta_description.VALUE AS description
             FROM
                 concept_node
                 LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'MIN'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'MAX'
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'VALUES'
+                LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
                 concept_node.concept_path = :conceptPath
                 AND ds.REF = :dataset
