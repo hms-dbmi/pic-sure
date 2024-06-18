@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.FENCEAuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -34,9 +35,9 @@ public class StudyAccessService {
             return "Error: Study identifier cannot be blank";
         }
 
-        Map fenceMappingForStudy;
+        StudyMetaData fenceMappingForStudy;
         try {
-            Map<String, Map> fenceMapping = fenceMappingUtility.getFENCEMapping();
+            Map<String, StudyMetaData> fenceMapping = fenceMappingUtility.getFENCEMapping();
             if (fenceMapping == null) {
                 throw new Exception("Fence mapping is null");
             }
@@ -47,17 +48,16 @@ public class StudyAccessService {
             return "Error: occurred while fetching FENCE mapping";
         }
 
-        if (fenceMappingForStudy == null || fenceMappingForStudy.isEmpty()) {
+        if (fenceMappingForStudy == null) {
             logger.error("addStudyAccess - Could not find study: {} in FENCE mapping", studyIdentifier);
             return "Error: Could not find study with the provided identifier";
         }
 
-        String projectId = (String) fenceMappingForStudy.get(STUDY_IDENTIFIER);
-        String consentCode = (String) fenceMappingForStudy.get(CONSENT_GROUP_CODE);
+        String projectId = fenceMappingForStudy.getStudyIdentifier();
+        String consentCode = fenceMappingForStudy.getConsentGroupCode();
         String newRoleName = StringUtils.isNotBlank(consentCode) ? MANUAL+projectId+"_"+consentCode : MANUAL+projectId;
 
         logger.debug("addStudyAccess - New manual PSAMA role name: {}", newRoleName);
-
         if (fenceAuthenticationService.upsertRole(null, newRoleName, MANUAL + " role "+newRoleName)) {
             logger.info("addStudyAccess - Updated user role. Now it includes `{}`", newRoleName);
             return "Role '" + newRoleName + "' successfully created";

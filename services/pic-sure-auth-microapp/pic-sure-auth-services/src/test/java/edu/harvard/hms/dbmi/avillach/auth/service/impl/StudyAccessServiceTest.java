@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.FENCEAuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.junit.Before;
@@ -40,7 +41,11 @@ public class StudyAccessServiceTest {
     @Test
     public void testAddStudyAccess() {
         String studyIdentifier = "testStudy";
-        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(studyIdentifier, Map.of(StudyAccessService.STUDY_IDENTIFIER, studyIdentifier,StudyAccessService.CONSENT_GROUP_CODE, "")));
+        StudyMetaData studyMetaData = new StudyMetaData();
+        studyMetaData.setStudyIdentifier(studyIdentifier);
+        studyMetaData.setConsentGroupCode("");
+
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(studyIdentifier, studyMetaData));
         when(fenceAuthenticationService.upsertRole(null, "MANUAL_testStudy", "MANUAL_ role MANUAL_testStudy")).thenReturn(true);
 
         String status = studyAccessService.addStudyAccess(studyIdentifier);
@@ -50,8 +55,13 @@ public class StudyAccessServiceTest {
     @Test
     public void testAddStudyAccessWithConsent() {
         String studyIdentifier = "testStudy2.c2";
-        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(studyIdentifier, Map.of(StudyAccessService.STUDY_IDENTIFIER, "testStudy2", StudyAccessService.CONSENT_GROUP_CODE, "c2")));
+        StudyMetaData studyMetaData = new StudyMetaData();
+        studyMetaData.setStudyIdentifier("testStudy2");
+        studyMetaData.setConsentGroupCode("c2");
+
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of(studyIdentifier, studyMetaData));
         when(fenceAuthenticationService.upsertRole(null, "MANUAL_testStudy2_c2", "MANUAL_ role MANUAL_testStudy2_c2")).thenReturn(true);
+
         String status = studyAccessService.addStudyAccess(studyIdentifier);
         assertEquals("Role 'MANUAL_testStudy2_c2' successfully created", status);
     }
