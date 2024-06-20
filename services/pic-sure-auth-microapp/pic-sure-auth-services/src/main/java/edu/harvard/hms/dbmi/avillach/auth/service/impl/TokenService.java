@@ -198,8 +198,7 @@ public class TokenService {
         // attach all privileges associated with the application to the responseMap
         tokenInspection.addField("privileges", user.getPrivilegeNameSetByApplication(application));
 
-
-        logger.info("_inspectToken() Successfully inspect and return response map: {}", tokenInspection.getResponseMap().entrySet()
+        logger.debug("_inspectToken() Successfully inspect and return response map: {}", tokenInspection.getResponseMap().entrySet()
                 .stream()
                 .map(entry -> entry.getKey() + " - " + entry.getValue())
                 .collect(Collectors.joining(", ")));
