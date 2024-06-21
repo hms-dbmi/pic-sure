@@ -120,8 +120,8 @@ public class RoleService {
         return this.roleRepository.findByUuidIn(roleUuids);
     }
 
-    public void persistAll(List<Role> newRoles) {
-        this.roleRepository.saveAll(newRoles);
+    public List<Role> persistAll(List<Role> newRoles) {
+        return this.roleRepository.saveAll(newRoles);
     }
 
     public void persistAll(Set<Role> newRoles) {

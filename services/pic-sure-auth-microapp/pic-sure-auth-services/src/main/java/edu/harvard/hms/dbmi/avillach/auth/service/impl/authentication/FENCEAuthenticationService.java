@@ -271,7 +271,7 @@ public class FENCEAuthenticationService {
                 .collect(Collectors.toList());
 
         if (!newRoles.isEmpty()) {
-            roleService.persistAll(newRoles);
+            newRoles = roleService.persistAll(newRoles);
             current_user.getRoles().addAll(newRoles);
         }
 
