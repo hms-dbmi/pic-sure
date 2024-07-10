@@ -5,9 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import jakarta.persistence.NoResultException;
 import org.apache.commons.lang3.StringUtils;
@@ -15,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 
 @Service
-public class OktaOAuthAuthenticationService {
+public class OktaOAuthAuthenticationService implements AuthenticationService {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -35,6 +35,7 @@ public class OktaOAuthAuthenticationService {
     private final String connectionId;
     private final String clientId;
     private final String spClientSecret;
+    private final boolean isOktaEnabled;
     private final AccessRuleService accessRuleService;
     private final RestClientUtil restClientUtil;
 
@@ -48,23 +49,28 @@ public class OktaOAuthAuthenticationService {
      * @param spClientSecret The client secret
      */
     @Autowired
-    public OktaOAuthAuthenticationService(UserService userService, RoleService roleService,
-                                          @Value("${okta.idp.provider.uri}") String idp_provider_uri,
-                                          @Value("${okta.connection.id}") String connectionId,
-                                          @Value("${okta.client.id}") String clientId,
-                                          @Value("${okta.client.secret}") String spClientSecret, AccessRuleService accessRuleService, RestClientUtil restClientUtil) {
+    public OktaOAuthAuthenticationService(UserService userService,
+                                          RoleService roleService,
+                                          AccessRuleService accessRuleService,
+                                          RestClientUtil restClientUtil,
+                                          @Value("${a4.okta.idp.provider.is.enabled}") boolean isOktaEnabled,
+                                          @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
+                                          @Value("${a4.okta.connection.id}") String connectionId,
+                                          @Value("${a4.okta.client.id}") String clientId,
+                                          @Value("${a4.okta.client.secret}") String spClientSecret) {
         this.userService = userService;
         this.roleService = roleService;
         this.idp_provider_uri = idp_provider_uri;
         this.connectionId = connectionId;
         this.clientId = clientId;
         this.spClientSecret = spClientSecret;
+        this.isOktaEnabled = isOktaEnabled;
 
+        logger.info("OktaOAuthAuthenticationService is enabled: {}", isOktaEnabled);
         logger.info("OktaOAuthAuthenticationService initialized");
         logger.info("idp_provider_uri: {}", idp_provider_uri);
         logger.info("connectionId: {}", connectionId);
-        logger.info("clientId: {}", clientId);
-        logger.info("spClientSecret: {}", spClientSecret);
+
         this.accessRuleService = accessRuleService;
         this.restClientUtil = restClientUtil;
     }
@@ -78,7 +84,10 @@ public class OktaOAuthAuthenticationService {
      * @param authRequest The request body
      * @return The response from the authentication attempt
      */
-    public HashMap<String, String> authenticate(String host, Map<String, String> authRequest) {
+    @Override
+    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
+        logger.info("OKTA LOGIN ATTEMPT ___ {} ___", authRequest.get("code"));
+
         String code = authRequest.get("code");
         if (StringUtils.isNotBlank(code)) {
             JsonNode userToken = handleCodeTokenExchange(host, code);
@@ -97,6 +106,16 @@ public class OktaOAuthAuthenticationService {
 
         logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___");
         return null;
+    }
+
+    @Override
+    public String getProvider() {
+        return "aimAheadOkta";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return this.isOktaEnabled;
     }
 
     private User initializeUser(JsonNode introspectResponse) {
@@ -135,8 +154,8 @@ public class OktaOAuthAuthenticationService {
     }
 
     private void clearCache(User user) {
-        userService.evictFromCache(user);
-        accessRuleService.evictFromCache(user);
+        userService.evictFromCache(user.getEmail());
+        accessRuleService.evictFromCache(user.getEmail());
     }
 
     /**

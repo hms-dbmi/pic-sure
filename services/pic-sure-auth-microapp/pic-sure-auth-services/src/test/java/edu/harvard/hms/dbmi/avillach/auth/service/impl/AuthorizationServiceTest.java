@@ -4,12 +4,10 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -37,7 +35,7 @@ public class AuthorizationServiceTest {
         MockitoAnnotations.initMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
-        accessRuleService = new AccessRuleService(accessRuleRepository);
+        accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
         authorizationService = new AuthorizationService(accessRuleService, "fence,okta,open");
     }
 

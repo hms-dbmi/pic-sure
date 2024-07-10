@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.FENCEAuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.apache.commons.lang3.StringUtils;
@@ -14,19 +13,17 @@ import java.util.Map;
 
 @Service
 public class StudyAccessService {
+    private final Logger logger = LoggerFactory.getLogger(StudyAccessService.class);
+
     private final FenceMappingUtility fenceMappingUtility;
-    Logger logger = LoggerFactory.getLogger(StudyAccessService.class);
+    private final RoleService roleService;
 
     public static final String MANUAL = "MANUAL_";
-    public static final String STUDY_IDENTIFIER = "study_identifier";
-    public static final String CONSENT_GROUP_CODE = "consent_group_code";
-
-    private final FENCEAuthenticationService fenceAuthenticationService;
 
     @Autowired
-    public StudyAccessService(FENCEAuthenticationService fenceAuthenticationService, FenceMappingUtility fenceMappingUtility) {
-        this.fenceAuthenticationService = fenceAuthenticationService;
+    public StudyAccessService(FenceMappingUtility fenceMappingUtility, RoleService roleService) {
         this.fenceMappingUtility = fenceMappingUtility;
+        this.roleService = roleService;
     }
 
     public String addStudyAccess(@Parameter(description="The Study Identifier of the new study from the metadata.json")
@@ -58,7 +55,7 @@ public class StudyAccessService {
         String newRoleName = StringUtils.isNotBlank(consentCode) ? MANUAL+projectId+"_"+consentCode : MANUAL+projectId;
 
         logger.debug("addStudyAccess - New manual PSAMA role name: {}", newRoleName);
-        if (fenceAuthenticationService.upsertRole(null, newRoleName, MANUAL + " role "+newRoleName)) {
+        if (roleService.upsertRole(null, newRoleName, MANUAL + " role "+newRoleName)) {
             logger.info("addStudyAccess - Updated user role. Now it includes `{}`", newRoleName);
             return "Role '" + newRoleName + "' successfully created";
         } else {

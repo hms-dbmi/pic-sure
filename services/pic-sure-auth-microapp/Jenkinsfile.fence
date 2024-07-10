@@ -4,10 +4,13 @@ pipeline {
     parameters {
         string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
         string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'psama')
+        string(name: 'DATASOURCE_URL', description: 'Datasource URL', defaultValue: '${database_host_address}')
+        string(name: 'DATASOURCE_USERNAME', description: 'Datasource username', defaultValue: '${database_app_user_secret_name}')
+        string(name: 'STACK_SPECIFIC_APPLICATION_ID', description: 'Application ID for base query', defaultValue: '${application_id_for_base_query}')
     }
 
     environment {
-        DOCKER_BUILD_ARGS = "-f ./pic-sure-auth-services/Dockerfile"
+        DOCKER_BUILD_ARGS = "-f ./pic-sure-auth-services/bdc.Dockerfile"
         GIT_BRANCH_SHORT = sh(script: 'echo ${GIT_BRANCH} | cut -d "/" -f 2', returnStdout: true).trim()
         GIT_COMMIT_SHORT = sh(script: 'echo ${GIT_COMMIT} | cut -c1-7', returnStdout: true).trim()
         IMAGE_TAG = "${GIT_BRANCH_SHORT}_${GIT_COMMIT_SHORT}"
@@ -15,16 +18,23 @@ pipeline {
     }
 
     stages {
-        stage('build') {
+        stage('Build Docker Image') {
             steps {
-                sh "docker build ${DOCKER_BUILD_ARGS} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
+                script {
+                    // Define the build args
+                    def buildArgs = " --build-arg DATASOURCE_URL=${env.DATASOURCE_URL} " +
+                                    " --build-arg DATASOURCE_USERNAME=${env.DATASOURCE_USERNAME} " +
+                                    " --build-arg STACK_SPECIFIC_APPLICATION_ID=${env.STACK_SPECIFIC_APPLICATION_ID} "
+
+                    sh "docker build ${DOCKER_BUILD_ARGS} ${buildArgs} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
+                    sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
+                }
             }
         }
-        stage('deploy') {
+        stage('Deploy Docker Image') {
             steps {
                 sh "docker save ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG} | gzip > psama.tar.gz"
-                sh "aws s3 --sse=AES256 cp psama.tar.gz s3://$S3_BUCKET_NAME/releases/jenkins_pipeline_build_${pipeline_build_id}/psama.tar.gz"
+                sh "aws s3 --sse=AES256 cp psama.tar.gz s3://$S3_BUCKET_NAME/releases/psama/psama.tar.gz"
             }
         }
     }

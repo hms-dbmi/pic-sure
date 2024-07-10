@@ -21,11 +21,6 @@
       "description": "Description for application.user.id.claim."
     },
     {
-      "name": "application.auth0.host",
-      "type": "java.lang.String",
-      "description": "Description for application.auth0.host."
-    },
-    {
       "name": "application.tos.enabled",
       "type": "java.lang.String",
       "description": "Description for application.tos.enabled."
@@ -54,11 +49,6 @@
       "name": "application.admin.users",
       "type": "java.lang.String",
       "description": "Description for application.admin.users."
-    },
-    {
-      "name": "application.denied.email.enabled",
-      "type": "java.lang.String",
-      "description": "Description for application.denied.email.enabled."
     },
     {
       "name": "application.idp.provider",
@@ -131,18 +121,53 @@
       "description": "Description for fence.allowed.query.types."
     },
     {
-      "name": "okta.client.id",
+      "name": "a4.okta.client.id",
       "type": "java.lang.String",
       "description": "Description for okta.client.id."
     },
     {
-      "name": "okta.client.secret",
+      "name": "a4.okta.client.secret",
       "type": "java.lang.String",
       "description": "Description for okta.client.secret."
     },
     {
-      "name": "okta.connection.id",
+      "name": "a4.okta.connection.id",
       "type": "java.lang.String",
       "description": "Description for okta.connection.id."
+    },
+    {
+      "name": "fence.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "If set to true, the Fence IDP provider is enabled."
+    },
+    {
+      "name": "open.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "If set to true, the Open IDP provider is enabled."
+    },
+    {
+      "name": "auth0.host",
+      "type": "java.lang.String",
+      "description": "Description for auth0.host."
+    },
+    {
+      "name": "auth0.denied.email.enabled",
+      "type": "java.lang.String",
+      "description": "Description for auth0.denied.email.enabled."
+    },
+    {
+      "name": "fence.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for fence.idp.provider.uri."
+    },
+    {
+      "name": "a4.okta.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "Description for a4.okta.idp.provider.is.enabled."
+    },
+    {
+      "name": "a4.okta.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for a4.okta.idp.provider.uri."
     }
   ] }

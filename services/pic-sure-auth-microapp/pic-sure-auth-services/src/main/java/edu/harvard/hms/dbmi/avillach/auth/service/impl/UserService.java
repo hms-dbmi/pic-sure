@@ -404,7 +404,7 @@ public class UserService {
         return Map.of("queryTemplate", mergedTemplate.orElse(null));
     }
 
-    @Cacheable(value = "mergedTemplateCache", key = "#user.getEmail()")
+    @Cacheable(value = "mergedTemplateCache", keyGenerator = "customKeyGenerator")
     public String mergeTemplate(User user, Application application) {
         String resultJSON;
         Map mergedTemplateMap = null;
@@ -444,9 +444,13 @@ public class UserService {
         return resultJSON;
     }
 
-    @CacheEvict(value = "mergedTemplateCache", key = "#user.getEmail()")
-    public void evictFromCache(User user) {
-        logger.info("evictMergedTemplate() evicting cache for user: {}", user.getUuid());
+    @CacheEvict(value = "mergedTemplateCache")
+    public void evictFromCache(String email) {
+        if (email == null || email.isEmpty()) {
+            logger.warn("evictFromCache() was called with a null or empty email");
+            return;
+        }
+        logger.info("evictFromCache() evicting cache for user: {}", email);
     }
 
     @Transactional

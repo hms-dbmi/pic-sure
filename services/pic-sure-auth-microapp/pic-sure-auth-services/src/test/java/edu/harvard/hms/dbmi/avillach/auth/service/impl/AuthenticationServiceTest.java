@@ -10,7 +10,6 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication.Auth0Authe
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpHeaders;
@@ -44,7 +43,6 @@ public class AuthenticationServiceTest {
     @Mock
     private RestClientUtil restClientUtil;
 
-    @InjectMocks
     private Auth0AuthenticationService authenticationService;
 
     private final String accessToken = "dummyAccessToken";
@@ -59,12 +57,14 @@ public class AuthenticationServiceTest {
         authRequest = new HashMap<>();
         authRequest.put("access_token", accessToken);
         authRequest.put("redirectURI", redirectURI);
+
+        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost");
     }
 
     // Tests missing parameters in the authentication request
     @Test(expected = IllegalArgumentException.class)
     public void testGetToken_MissingParameters() throws IOException {
-        authenticationService.getToken(new HashMap<>()); // Empty map should trigger the exception
+        authenticationService.authenticate(new HashMap<>(), "localhost"); // Empty map should trigger the exception
     }
 
     // Tests the failure in retrieving user information, expecting an IOException to be converted into a NotAuthorizedException
@@ -72,7 +72,7 @@ public class AuthenticationServiceTest {
     public void testGetToken_UserInfoRetrievalFails() throws IOException {
         when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), any(ClientHttpRequestFactory.class)))
                 .thenThrow(new NotAuthorizedException("Failed to retrieve user info"));
-        authenticationService.getToken(authRequest);
+        authenticationService.authenticate(authRequest, "localhost");
     }
 
     // Tests the scenario where the user ID is not found in the user info retrieved
@@ -80,7 +80,7 @@ public class AuthenticationServiceTest {
     public void testGetToken_NoUserIdInUserInfo() throws IOException {
         when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), any()))
                 .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
-        authenticationService.getToken(authRequest);
+        authenticationService.authenticate(authRequest, "localhost");
     }
 
     // Tests a successful token retrieval scenario
@@ -91,7 +91,7 @@ public class AuthenticationServiceTest {
         // return null for matching user
         when(matchingService.matchTokenToUser(any())).thenReturn(null);
 
-        HashMap<String, String> token = authenticationService.getToken(authRequest);
+        HashMap<String, String> token = authenticationService.authenticate(authRequest, "localhost");
         assertNotNull(token);
     }
 
@@ -110,23 +110,23 @@ public class AuthenticationServiceTest {
     @Test(expected = NotAuthorizedException.class)
     public void testGetToken_NoUserMatchingAndCreationFails() throws Exception {
         setupNoUserMatchScenario();
-        authenticationService.getToken(authRequest);
+        authenticationService.authenticate(authRequest, "localhost");
     }
 
     // Test scenario where denied access email is triggered
     @Test
     public void testGetToken_SendDeniedAccessEmail() throws Exception {
         setupDeniedEmailScenario();
-        this.authenticationService.setDeniedEmailEnabled("true");
+        this.authenticationService.setDeniedEmailEnabled(true);
         try {
-            authenticationService.getToken(authRequest);
+            authenticationService.authenticate(authRequest, "localhost");
         } catch (Exception e) {
             verify(basicMailService).sendDeniedAccessEmail(any());
         }
     }
 
     private void setupSuccessfulTokenRetrievalScenario() throws IOException {
-        this.authenticationService.setDeniedEmailEnabled("false");
+        this.authenticationService.setDeniedEmailEnabled(false);
         JsonNode mockUserInfo = mock(JsonNode.class);
         when(mockUserInfo.get("user_id")).thenReturn(mock(JsonNode.class));
         when(mockUserInfo.get("user_id").asText()).thenReturn(userId);
