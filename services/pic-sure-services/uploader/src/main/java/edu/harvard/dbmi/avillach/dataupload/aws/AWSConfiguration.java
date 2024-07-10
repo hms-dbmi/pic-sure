@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.StringUtils;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.http.SdkHttpClient;
@@ -26,15 +27,6 @@ import java.util.stream.Stream;
 @Configuration
 public class AWSConfiguration {
     private static final Logger LOG = LoggerFactory.getLogger(AWSConfiguration.class);
-
-    @Value("${aws.s3.access_key_secret:}")
-    private String secret;
-
-    @Value("${aws.s3.access_key_id:}")
-    private String key;
-
-    @Value("${aws.s3.session_token:}")
-    private String token;
 
     @Value("${aws.s3.institution:}")
     private List<String> institutions;
@@ -56,51 +48,6 @@ public class AWSConfiguration {
 
     @Autowired(required = false)
     private SdkHttpClient sdkHttpClient;
-
-    @Value("${http.proxyUser:}")
-    private String proxyUser;
-
-    @Bean
-    @ConditionalOnProperty(name = "production", havingValue = "true")
-    public StsClient stsClients(
-        @Autowired AwsCredentials credentials,
-        @Autowired StsClientBuilder stsClientBuilder
-    ) {
-        StsClientBuilder builder = stsClientBuilder
-            .region(Region.US_EAST_1)
-            .credentialsProvider(StaticCredentialsProvider.create(credentials));
-
-        if (StringUtils.hasLength(proxyUser)) {
-            builder.httpClient(sdkHttpClient);
-        }
-
-        return builder.build();
-    }
-
-    @Bean
-    @ConditionalOnProperty(name = "aws.authentication.method", havingValue = "user")
-    AwsCredentials credentials() {
-        LOG.info("Authentication method is user. Attempting to resolve user credentials.");
-        if (Strings.isBlank(key)) {
-            LOG.error("No AWS key. Can't create client. Exiting");
-            context.close();
-        }
-        if (Strings.isBlank(secret)) {
-            LOG.error("No AWS secret. Can't create client. Exiting");
-            context.close();
-        }
-        if (Strings.isBlank(token)) {
-            return AwsBasicCredentials.create(key, secret);
-        } else {
-            return AwsSessionCredentials.create(key, secret, token);
-        }
-    }
-    @Bean
-    @ConditionalOnProperty(name = "aws.authentication.method", havingValue = "instance-profile")
-    AwsCredentials ipCredentials() {
-        LOG.info("Authentication method is instance-profile. Attempting to resolve instance profile credentials.");
-        return InstanceProfileCredentialsProvider.create().resolveCredentials();
-    }
 
     @Bean
     @ConditionalOnProperty(name = "production", havingValue = "true")

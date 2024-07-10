@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.SdkHttpClient;
@@ -16,6 +18,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
 import software.amazon.awssdk.services.sts.model.Credentials;
@@ -48,9 +51,6 @@ public class SelfRefreshingS3Client {
     private ConfigurableApplicationContext context;
 
     @Autowired
-    private StsClient stsClient;
-
-    @Autowired
     private Map<String, SiteAWSInfo> roleARNs;
 
     @Autowired
@@ -59,11 +59,32 @@ public class SelfRefreshingS3Client {
     @Autowired(required = false)
     private SdkHttpClient sdkHttpClient;
 
+    @Autowired
+    private AWSCredentialsService credentialsService;
+
+    @Autowired
+    private StsClientBuilder stsClientBuilder;
+
+    @Value("${http.proxyUser:}")
+    private String proxyUser;
+
     @PostConstruct
     private void refreshClient() {
         locks = roleARNs.keySet().stream()
             .collect(Collectors.toMap(Function.identity(), (s) -> new ReentrantReadWriteLock()));
         roleARNs.keySet().stream().parallel().forEach(this::refreshClient);
+    }
+
+    private StsClient createStsClient() {
+        StsClientBuilder builder = stsClientBuilder
+            .region(Region.US_EAST_1)
+            .credentialsProvider(StaticCredentialsProvider.create(credentialsService.constructCredentials()));
+
+        if (StringUtils.hasLength(proxyUser)) {
+            builder.httpClient(sdkHttpClient);
+        }
+
+        return builder.build();
     }
 
     // exposed for testing
@@ -83,7 +104,7 @@ public class SelfRefreshingS3Client {
             .externalId(roleARNs.get(siteName).externalId())
             .durationSeconds(60*60) // 1 hour
             .build();
-        AssumeRoleResponse assumeRoleResponse = stsClient.assumeRole(roleRequest);
+        AssumeRoleResponse assumeRoleResponse = createStsClient().assumeRole(roleRequest);
         if (assumeRoleResponse.credentials() == null ) {
             LOG.error("Error assuming role, no credentials returned! Exiting!");
             statusService.setClientStatus("error");

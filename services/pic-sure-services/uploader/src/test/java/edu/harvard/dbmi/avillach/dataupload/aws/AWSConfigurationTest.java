@@ -34,44 +34,6 @@ class AWSConfigurationTest {
     AWSConfiguration subject;
 
     @Test
-    void shouldCreateCredentials() {
-        ReflectionTestUtils.setField(subject, "secret", "s1");
-        ReflectionTestUtils.setField(subject, "key", "k1");
-        ReflectionTestUtils.setField(subject, "token", "t1");
-
-        AwsCredentials actual = subject.credentials();
-        AwsSessionCredentials expected = AwsSessionCredentials.create("k1", "s1", "t1");
-
-        Assertions.assertEquals(expected, actual);
-    }
-
-    @Test
-    void shouldNotCreateCredentials() {
-        ReflectionTestUtils.setField(subject, "secret", "");
-        ReflectionTestUtils.setField(subject, "key", "k1");
-        ReflectionTestUtils.setField(subject, "token", "t1");
-
-        subject.credentials();
-
-        Mockito.verify(context, Mockito.times(1)).close();
-    }
-
-    @Test
-    void shouldCreateClients() {
-        AwsSessionCredentials credentials = AwsSessionCredentials.create("k1", "s1", "t1");
-        Mockito.when(stsClientBuilder.region(Region.US_EAST_1))
-            .thenReturn(stsClientBuilder);
-        Mockito.when(stsClientBuilder.credentialsProvider(Mockito.any()))
-            .thenReturn(stsClientBuilder);
-        Mockito.when(stsClientBuilder.build())
-            .thenReturn(stsClient);
-
-        StsClient actual = subject.stsClients(credentials, stsClientBuilder);
-
-        Assertions.assertEquals(stsClient, actual);
-    }
-
-    @Test
     void shouldCreateRoles() {
         ReflectionTestUtils.setField(subject, "institutions", List.of("i1", "i2"));
         ReflectionTestUtils.setField(subject, "roleArns", List.of(":)", ">:|"));
