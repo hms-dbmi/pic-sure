@@ -362,6 +362,8 @@ public class AccessRuleService {
         if (rule == null || rule.isEmpty())
             return true;
 
+        rule = rule.stripLeading();
+
         Object requestBodyValue;
         int accessRuleType = accessRule.getType();
 
