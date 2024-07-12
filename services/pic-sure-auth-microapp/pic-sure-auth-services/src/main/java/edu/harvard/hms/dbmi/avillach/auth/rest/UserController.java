@@ -120,7 +120,6 @@ public class UserController {
     public ResponseEntity<?> getQueryTemplate(
             @Parameter(description = "Application Id for the returning queryTemplate")
             @PathVariable("applicationId") String applicationId) {
-        logger.info("getQueryTemplate() applicationId: {}", applicationId);
         Optional<String> mergedTemplate = this.userService.getQueryTemplate(applicationId);
 
         if (mergedTemplate.isEmpty()) {
@@ -132,7 +131,7 @@ public class UserController {
     }
 
     @Operation(description = "Retrieve the queryTemplate of default application")
-    @GetMapping(path = "/me/queryTemplate", produces = "application/json")
+    @GetMapping(value = {"/me/queryTemplate", "/me/queryTemplate/"}, produces = "application/json")
     public ResponseEntity<?> getQueryTemplate() {
         Map<String, String> defaultQueryTemplate = userService.getDefaultQueryTemplate();
 

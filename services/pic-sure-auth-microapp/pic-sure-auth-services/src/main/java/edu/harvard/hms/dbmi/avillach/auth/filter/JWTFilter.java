@@ -93,7 +93,6 @@ public class JWTFilter extends OncePerRequestFilter {
         } else {
             // If the header is present, we need to check the token
             String token = authorizationHeader.substring(6).trim();
-            logger.debug(" token: {}", token);
 
             // Parse the token
             Jws<Claims> jws = this.jwtUtil.parseToken(token);
@@ -102,9 +101,7 @@ public class JWTFilter extends OncePerRequestFilter {
             if (userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
                 // For profile information, we do indeed allow long term token
                 // to be a valid token.
-                if (request.getRequestURI().startsWith("/user/me")) {
-                    // Get the subject claim, remove the LONG_TERM_TOKEN_PREFIX, and use that String value to
-                    // look up the existing user.
+                if (request.getRequestURI().startsWith("/auth/user/me")) {
                     String realClaimsSubject = jws.getPayload().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length() + 1);
 
                     setSecurityContextForUser(request, response, realClaimsSubject);
@@ -112,10 +109,7 @@ public class JWTFilter extends OncePerRequestFilter {
                     logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
                 }
-
-            }
-
-            if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
+            } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
                 logger.info("User Authentication Starts with {}", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
 
                 // Check if user is attempting to access the correct introspect endpoint. If not reject the request
@@ -147,7 +141,7 @@ public class JWTFilter extends OncePerRequestFilter {
                 // Set the security context for the application
                 setSecurityContextForApplication(request, customApplicationDetails);
             } else {
-                logger.debug("UserID: {} is not a long term token and not a PSAMA application token.", userId);
+                logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
                 // Authenticate as User
                 setSecurityContextForUser(request, response, jws.getPayload().getSubject());
             }
@@ -157,10 +151,10 @@ public class JWTFilter extends OncePerRequestFilter {
     }
 
     private void setSecurityContextForApplication(HttpServletRequest request, CustomApplicationDetails authenticatedApplication) {
-        logger.info("Setting security context for application: {}", authenticatedApplication.getApplication().getName());
+        logger.debug("Setting security context for application: {}", authenticatedApplication.getApplication().getName());
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(authenticatedApplication, null, authenticatedApplication.getAuthorities());
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-        logger.info("Created authenticationToken object {} for application: {}", authentication, authenticatedApplication.getApplication().getName());
+        logger.debug("Created authenticationToken object {} for application: {}", authentication, authenticatedApplication.getApplication().getName());
         SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 
@@ -175,7 +169,7 @@ public class JWTFilter extends OncePerRequestFilter {
      * @param realClaimsSubject the subject of the user's claims in the JWT token
      */
     private void setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject) {
-        logger.info("Setting security context for user: {}", realClaimsSubject);
+        logger.debug("Setting security context for user: {}", realClaimsSubject);
 
         CustomUserDetails authenticatedUser = (CustomUserDetails) this.customUserDetailService.loadUserByUsername(realClaimsSubject);
 
@@ -184,15 +178,15 @@ public class JWTFilter extends OncePerRequestFilter {
             throw new IllegalArgumentException("Cannot validate user claims, based on information stored in the JWT token.");
         }
 
-        logger.info("User with email: {} is found.", authenticatedUser.getUser().getEmail());
+        logger.debug("User with email: {} is found.", authenticatedUser.getUser().getEmail());
 
         if (!authenticatedUser.getUser().isActive()) {
             logger.warn("User with ID: {} is deactivated.", authenticatedUser.getUser().getUuid());
             throw new NotAuthorizedException("User is deactivated");
         }
 
-        logger.info("User with ID: {} is active.", authenticatedUser.getUser().getUuid());
-        logger.info("Checking if user has accepted the latest terms of service.");
+        logger.debug("User with ID: {} is active.", authenticatedUser.getUser().getUuid());
+        logger.debug("Checking if user has accepted the latest terms of service.");
         if (!tosService.hasUserAcceptedLatest(authenticatedUser.getUser().getSubject())) {
             logger.info("User with ID: {} has not accepted the latest terms of service.", authenticatedUser.getUser().getUuid());
             //If user has not accepted terms of service and is attempted to get information other than the terms of service, don't authenticate
@@ -216,7 +210,7 @@ public class JWTFilter extends OncePerRequestFilter {
             }
         }
 
-        logger.info("User with email {} has privileges {}.", authenticatedUser.getUser().getEmail(), authenticatedUser.getUser().getTotalPrivilege().stream().map(Privilege::getName).collect(Collectors.joining(",")));
+        logger.debug("User with email {} has privileges {}.", authenticatedUser.getUser().getEmail(), authenticatedUser.getUser().getTotalPrivilege().stream().map(Privilege::getName).collect(Collectors.joining(",")));
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(authenticatedUser, null, authenticatedUser.getAuthorities());
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);

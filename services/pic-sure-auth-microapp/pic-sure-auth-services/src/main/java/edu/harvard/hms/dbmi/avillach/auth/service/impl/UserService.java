@@ -79,7 +79,6 @@ public class UserService {
 
         long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30; //
         this.longTermTokenExpirationTime = longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
-
     }
 
     public HashMap<String, String> getUserProfileResponse(Map<String, Object> claims) {
