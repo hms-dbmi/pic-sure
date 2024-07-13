@@ -31,30 +31,27 @@ public class FilterQueryGenerator {
         if (!CollectionUtils.isEmpty(filter.facets())) {
             clauses.addAll(createFacetFilter(filter.facets(), params));
         }
+        clauses.add(createValuelessNodeFilter());
+
+
+        String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n)";
+        String havingClause = "";
         if (StringUtils.hasText(filter.search())) {
-            clauses.add(createSearchFilter(filter.search(), params));
+            String searchQuery = createSearchFilter(filter.search(), params);
+            query = "(" + query + "\n\tUNION \n\t" + searchQuery + ")";
+            havingClause = "HAVING max(rank) > 0\n";
         }
-        clauses.add("""
-            (
-                SELECT
-                    concept_node.concept_node_id, 0 as rank
-                FROM
-                    concept_node
-                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
-                WHERE
-                    continuous_min.value <> '' OR
-                    continuous_max.value <> '' OR
-                    categorical_values.value <> ''
+        String superQuery = """
+            WITH q AS (
+                %s
             )
-            """
-        );
-
-
-        String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n) ORDER BY concept_node_id\n";
+            SELECT concept_node_id
+            FROM q
+            GROUP BY concept_node_id %s
+            ORDER BY max(rank) DESC
+            """.formatted(query, havingClause);
         if (pageable.isPaged()) {
-            query = query + """
+            superQuery = superQuery + """
                 LIMIT :limit
                 OFFSET :offset
                 """;
@@ -62,12 +59,25 @@ public class FilterQueryGenerator {
                 .addValue("offset", pageable.getOffset());
         }
 
-        String superQuery = """
-            WITH q AS (%s) SELECT concept_node_id FROM q GROUP BY concept_node_id ORDER BY sum(rank) DESC"
-            """.formatted(query);
-
 
         return new QueryParamPair(superQuery, params);
+    }
+
+    private String createValuelessNodeFilter() {
+        // concept nodes that have no values and no min/max should not get returned by search
+        return """
+            SELECT
+                concept_node.concept_node_id, 0 as rank
+            FROM
+                concept_node
+                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+            WHERE
+                continuous_min.value <> '' OR
+                continuous_max.value <> '' OR
+                categorical_values.value <> ''
+            """;
     }
 
     private String createSearchFilter(String search, MapSqlParameterSource params) {
@@ -79,8 +89,16 @@ public class FilterQueryGenerator {
                     ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery) as rank
                 FROM
                     concept_node
+                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                 WHERE
-                    concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
+                    concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND
+                    (
+                        continuous_min.value <> '' OR
+                        continuous_max.value <> '' OR
+                        categorical_values.value <> ''
+                    )
             )
             """;
     }

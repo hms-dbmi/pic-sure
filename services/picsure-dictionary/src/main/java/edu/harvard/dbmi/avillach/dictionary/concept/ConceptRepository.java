@@ -49,10 +49,11 @@ public class ConceptRepository {
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
-            WHERE concept_node.concept_node_id IN
+            WHERE concept_node.concept_node_id IN (
+            
             """;
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
-        sql = sql + filterQ.query();
+        sql = sql + filterQ.query() + "\n)";
         MapSqlParameterSource params = filterQ.params();
 
         return template.query(sql, params, mapper);

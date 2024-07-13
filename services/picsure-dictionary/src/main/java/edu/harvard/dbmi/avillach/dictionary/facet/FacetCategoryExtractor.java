@@ -33,7 +33,10 @@ public class FacetCategoryExtractor implements ResultSetExtractor<List<FacetCate
         // group facets by category, then add them to their respective category
         Map<String, List<Facet>> grouped = facets.stream().collect(Collectors.groupingBy(Facet::category));
         return categories.entrySet().stream()
-            .map(e -> new FacetCategory(e.getValue(), grouped.getOrDefault(e.getKey(), List.of())))
+            .map(e -> new FacetCategory(
+                e.getValue(),
+                grouped.getOrDefault(e.getKey(), List.of()).stream().sorted(Comparator.comparingInt(Facet::count).reversed()).toList()
+            ))
             .toList();
     }
 }
