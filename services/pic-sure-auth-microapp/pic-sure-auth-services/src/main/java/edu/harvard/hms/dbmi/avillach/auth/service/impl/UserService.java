@@ -563,11 +563,13 @@ public class UserService {
         // Save the user to get a UUID
         user = save(user);
         user.setSubject("open_access|" + user.getUuid().toString());
-        if (openAccessRole != null) {
-            user.setRoles(Set.of(openAccessRole));
-        } else {
-            logger.error("createOpenAccessUser() openAccessRole is null");
+
+        if (user.getRoles() == null) {
             user.setRoles(new HashSet<>());
+        }
+
+        if (openAccessRole != null) {
+            user.getRoles().add(openAccessRole);
         }
 
         user.setEmail(user.getUuid() + "@open_access.com");

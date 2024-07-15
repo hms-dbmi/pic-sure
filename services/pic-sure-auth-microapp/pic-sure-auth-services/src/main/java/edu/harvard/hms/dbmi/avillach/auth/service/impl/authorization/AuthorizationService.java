@@ -87,7 +87,6 @@ public class AuthorizationService {
      */
     public boolean isAuthorized(Application application, Object requestBody, User user) {
         // create timer
-        long startTime = System.currentTimeMillis();
         String applicationName = application.getName();
         String resourceId = "null";
         String targetService = "null";
@@ -98,7 +97,6 @@ public class AuthorizationService {
             return true;
         }
 
-        long parseTimeFrame = System.currentTimeMillis();
         try {
             Map requestBodyMap = (Map) requestBody;
             Map queryMap = (Map) requestBodyMap.get("query");
@@ -122,10 +120,14 @@ public class AuthorizationService {
             logger.debug("isAuthorized() Stack Trace: ", e1);
             return false;
         }
-        logger.info("Parse timeframe {} ms", (System.currentTimeMillis() - parseTimeFrame));
 
         Set<AccessRule> accessRules;
-        String label = user.getConnection().getLabel();
+        String label = "";
+        if (user.getConnection() != null) {
+            // Open Access doesn't currently use a connection
+            label = user.getConnection().getLabel();
+        }
+
         if (!this.strictConnections.contains(label)) {
             Set<Privilege> privileges = user.getPrivilegesByApplication(application);
             if (privileges == null || privileges.isEmpty()) {
@@ -174,7 +176,6 @@ public class AuthorizationService {
                 .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
                 .collect(Collectors.joining(", ")) + "]");
 
-        logger.info("Login time: {}ms", System.currentTimeMillis() - startTime);
         return result;
     }
 
