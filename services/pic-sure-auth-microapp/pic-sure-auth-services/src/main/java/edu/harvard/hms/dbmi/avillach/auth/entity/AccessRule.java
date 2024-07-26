@@ -162,7 +162,7 @@ public class AccessRule extends BaseEntity {
     /**
      * introduce sub-accessRule to enable the ability of more complex problem, essentially it is an AND relationship.
      */
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "accessRule_subRule",
             joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
             inverseJoinColumns = {@JoinColumn(name = "subRule_id", nullable = false)})
