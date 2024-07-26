@@ -261,7 +261,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 throw new NotAuthorizedException("Token invalid or expired");
             }
 
-            if (responseContent.get("tokenRefreshed").asBoolean()) {
+            if (responseContent.has("tokenRefreshed") && responseContent.get("tokenRefreshed").asBoolean()) {
                 requestContext.setProperty("refreshedToken", responseContent.get("token"));
             }
 
