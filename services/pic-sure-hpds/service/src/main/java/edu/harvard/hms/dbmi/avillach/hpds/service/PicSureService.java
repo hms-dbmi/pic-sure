@@ -146,8 +146,20 @@ public class PicSureService {
 		}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) : allColumns;
 
 		// Info Values
-		Map<String, Map> infoResults = new HashMap<>();
-		log.warn("Info values no longer supported for this resource");
+		Map<String, Map> infoResults = new TreeMap<String, Map>();
+		abstractProcessor.getInfoStoreMeta().stream().forEach(infoColumnMeta -> {
+			//FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
+			String query = searchJson.getQuery().toString();
+			String lowerCase = query.toLowerCase();
+			boolean storeIsNumeric = infoColumnMeta.isContinuous();
+			if (infoColumnMeta.getDescription().toLowerCase().contains(lowerCase)
+					|| infoColumnMeta.getKey().toLowerCase().contains(lowerCase)) {
+				infoResults.put(infoColumnMeta.getKey(),
+						ImmutableMap.of("description", infoColumnMeta.getDescription(), "values",
+								storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.getKey(), ""), "continuous",
+								storeIsNumeric));
+			}
+		});
 
 		return new SearchResults()
 				.setResults(
