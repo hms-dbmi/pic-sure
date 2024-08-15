@@ -18,12 +18,16 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
 @Produces("application/json")
 @Consumes("application/json")
 public class PicsureRS {
+
+    private final Logger logger = LoggerFactory.getLogger(PicsureRS.class);
 
     @Inject
     PicsureInfoService infoService;
@@ -162,7 +166,10 @@ public class PicsureRS {
                 + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
         ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
-        return queryService.queryResult(queryId, credentialsQueryRequest, headers);
+        Response response = queryService.queryResult(queryId, credentialsQueryRequest, headers);
+        logger.info(response.getMediaType().toString());
+        logger.info(response.getEntity().toString());
+        return response;
     }
 
     @POST
