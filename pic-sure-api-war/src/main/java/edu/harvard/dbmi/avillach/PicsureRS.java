@@ -167,8 +167,6 @@ public class PicsureRS {
         ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
         Response response = queryService.queryResult(queryId, credentialsQueryRequest, headers);
-        logger.info(response.getMediaType().toString());
-        logger.info(response.getEntity().toString());
         return response;
     }
 
