@@ -13,6 +13,33 @@ The Dictionary Project's goal is to create a unified process for enabling the fi
 of a query. It needs to work across our current projects, and, in anticipation of our push to productize PIC-SURE, it
 needs to be workable for new PIC-SURE installations.
 
+## Usage
+
+### Create Env File
+
+```shell
+cp env.example .env
+vi .env
+```
+
+### Start DB
+
+```shell
+docker compose up -d --build dictionary-db
+```
+
+Once up, do some sanity checks in the database:
+
+```shell
+docker exec -ti dictionary-db psql -U picsure dictionary
+```
+
+### Start API
+
+```shell
+docker compose up -d --build
+```
+
 ## Solution
 
 ### UI
