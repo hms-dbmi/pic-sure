@@ -166,8 +166,7 @@ public class PicsureRS {
                 + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
         ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
-        Response response = queryService.queryResult(queryId, credentialsQueryRequest, headers);
-        return response;
+        return queryService.queryResult(queryId, credentialsQueryRequest, headers);
     }
 
     @POST
