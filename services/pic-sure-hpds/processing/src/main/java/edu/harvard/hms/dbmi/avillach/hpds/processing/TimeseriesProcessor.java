@@ -127,11 +127,11 @@ public class TimeseriesProcessor implements HpdsProcessor {
 				}
 				//batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
 				if(dataEntries.size() >= ID_BATCH_SIZE) {
-					result.stream.appendResults(dataEntries);
+					result.appendResults(dataEntries);
 					dataEntries = new ArrayList<String[]>();
 				}
 			}
-			result.stream.appendResults(dataEntries);
+			result.appendResults(dataEntries);
 			exportedConceptPaths.add(conceptPath);
 		}
 	}

@@ -53,11 +53,11 @@ public class QueryProcessor implements HpdsProcessor {
 
 	public void runQuery(Query query, AsyncResult result) {
 		Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
-		log.info("Processing " + idList.size() + " rows for result " + result.id);
+		log.info("Processing " + idList.size() + " rows for result " + result.getId());
 		Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE).parallelStream()
 			.map(list -> buildResult(result, query, new TreeSet<>(list)))
 			.sequential()
-			.forEach(result.stream::appendResultStore);
+			.forEach(result::appendResultStore);
 	}
 
 	
@@ -72,7 +72,7 @@ public class QueryProcessor implements HpdsProcessor {
 		int columnCount = paths.size() + 1;
 
 		ArrayList<Integer> columnIndex = abstractProcessor.useResidentCubesFirst(paths, columnCount);
-		ResultStore results = new ResultStore(result.id, columns, ids);
+		ResultStore results = new ResultStore(result.getId(), columns, ids);
 
 		columnIndex.parallelStream().forEach((column)->{
 			clearColumn(paths, ids, results, column);

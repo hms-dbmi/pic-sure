@@ -124,7 +124,7 @@ public class ResultStore {
 	 * @param row
 	 * @throws IOException
 	 */
-	public void readRowIntoStringArray(int rowNumber, int[] columnWidths, String[] row) throws IOException {
+	public void readRowIntoStringArray(int rowNumber, int[] columnWidths, String[] row) {
 		if(wrappedResultArray == null) {
 			wrappedResultArray = ByteBuffer.wrap(resultArray);
 		}

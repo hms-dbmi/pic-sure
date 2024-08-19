@@ -49,12 +49,7 @@ public enum ResultType {
 	 * Return the number of observations for included patients and
 	 * included fields, broken up across the included cross count fields.
 	 */
-	OBSERVATION_CROSS_COUNT, 
-	/**
-	 * This was developed for UDN, but is completely useless and should
-	 * be deleted.
-	 */
-	DATAFRAME_MERGED, 
+	OBSERVATION_CROSS_COUNT,
 	/**
 	 * Not completely implemented and currently dead code. Someone with 
 	 * statistics experience needs to develop a p-value based filter for
@@ -94,5 +89,10 @@ public enum ResultType {
 	 * is suitable to time series analysis and/or loading into another 
 	 * instance of HPDS.
 	 */
-	DATAFRAME_TIMESERIES
+	DATAFRAME_TIMESERIES,
+	/**
+     * Exports data as PFB, using avro
+     * <a href="https://uc-cdis.github.io/pypfb/">https://uc-cdis.github.io/pypfb/</a>
+     */
+	DATAFRAME_PFB
 }
