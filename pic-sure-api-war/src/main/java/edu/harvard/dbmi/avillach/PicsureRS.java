@@ -18,12 +18,16 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
 @Produces("application/json")
 @Consumes("application/json")
 public class PicsureRS {
+
+    private final Logger logger = LoggerFactory.getLogger(PicsureRS.class);
 
     @Inject
     PicsureInfoService infoService;
@@ -155,6 +159,7 @@ public class PicsureRS {
             responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
         )}
     )
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
     public Response queryResult(
         @Parameter(
             description = "The UUID of the query to fetch the status of. The UUID is "
