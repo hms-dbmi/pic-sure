@@ -30,3 +30,6 @@ pic-sure-auth-services.war.deployed
 *.war
 *.deployed
 *.failed
+
+.m2
+!.m2/README.md
