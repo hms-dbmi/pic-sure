@@ -2,7 +2,6 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import edu.harvard.dbmi.avillach.dictionary.filter.FilterQueryGenerator;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,11 +21,11 @@ public class ConceptRepository {
 
     private final ConceptRowMapper mapper;
 
-    private final FilterQueryGenerator filterGen;
+    private final ConceptFilterQueryGenerator filterGen;
 
     @Autowired
     public ConceptRepository(
-        NamedParameterJdbcTemplate template, ConceptRowMapper mapper, FilterQueryGenerator filterGen
+        NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen
     ) {
         this.template = template;
         this.mapper = mapper;
