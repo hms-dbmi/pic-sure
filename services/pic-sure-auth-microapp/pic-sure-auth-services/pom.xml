@@ -15,6 +15,12 @@
         <xml.bind.version>2.3.0</xml.bind.version>
     </properties>
     <dependencies>
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>5.2.1</version>
+        </dependency>
+
         <!-- https://mvnrepository.com/artifact/org.springframework/spring-web -->
         <!--   Web version has been explicitly set to fix security finding in spring-boot-starter-web    -->
         <dependency>
