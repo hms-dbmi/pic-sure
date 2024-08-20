@@ -9,6 +9,9 @@ WORKDIR /app
 # Build the jar
 RUN mvn clean install -DskipTests
 
+# Pull in global maven settings
+COPY ./.m2/*.xml /root/.m2/
+
 FROM amazoncorretto:21.0.1-alpine3.18
 
 # Copy jar and access token from maven build
