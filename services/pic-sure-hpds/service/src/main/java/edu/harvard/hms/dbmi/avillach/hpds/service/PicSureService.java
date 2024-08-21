@@ -296,6 +296,19 @@ public class PicSureService {
 
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:
+			QueryStatus status = query(resultRequest).getBody();
+			while (status.getResourceStatus().equalsIgnoreCase("RUNNING")
+					|| status.getResourceStatus().equalsIgnoreCase("PENDING")) {
+				status = queryStatus(UUID.fromString(status.getResourceResultId()), null);
+			}
+			log.info(status.toString());
+
+			AsyncResult result = queryService.getResultFor(status.getResourceResultId());
+			if (result.getStatus() == AsyncResult.Status.SUCCESS) {
+				result.getStream().open();
+				return queryOkResponse(new String(result.getStream().readAllBytes(), StandardCharsets.UTF_8), incomingQuery, MediaType.TEXT_PLAIN);
+			}
+			return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body("Status : " + result.getStatus().name());
 
 		case CROSS_COUNT:
 			return queryOkResponse(countProcessor.runCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
