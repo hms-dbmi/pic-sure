@@ -24,8 +24,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -156,7 +154,7 @@ public class Auth0AuthenticationService implements AuthenticationService {
                 ResponseEntity<String> response = this.restClientUtil.retrieveGetResponseWithRequestConfiguration(
                         auth0UserInfoURI,
                         headers,
-                        RestClientUtil.createRequestConfigWithCustomTimeout(2000)
+                        2000
                 );
 
                 auth0Response = objectMapper.readTree(response.getBody());

@@ -17,7 +17,6 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.ClientHttpRequestFactory;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -27,6 +26,7 @@ import java.util.UUID;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -72,7 +72,7 @@ public class AuthenticationServiceTest {
     // Tests the failure in retrieving user information, expecting an IOException to be converted into a NotAuthorizedException
     @Test(expected = NotAuthorizedException.class)
     public void testGetToken_UserInfoRetrievalFails() throws IOException {
-        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), any(ClientHttpRequestFactory.class)))
+        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), anyInt()))
                 .thenThrow(new NotAuthorizedException("Failed to retrieve user info"));
         authenticationService.authenticate(authRequest, "localhost");
     }
@@ -80,7 +80,7 @@ public class AuthenticationServiceTest {
     // Tests the scenario where the user ID is not found in the user info retrieved
     @Test(expected = NotAuthorizedException.class)
     public void testGetToken_NoUserIdInUserInfo() throws IOException {
-        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), any()))
+        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), anyInt()))
                 .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
         authenticationService.authenticate(authRequest, "localhost");
     }
@@ -100,7 +100,7 @@ public class AuthenticationServiceTest {
     // Additional test to handle retries in user info retrieval
     @Test
     public void testRetrieveUserInfo_WithRetries() throws Exception {
-        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), any()))
+        when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), anyInt()))
                 .thenThrow(new RuntimeException("Network error"))
                 .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
         // Assuming retrieveUserInfo is accessible, or using reflection if it is private
@@ -144,7 +144,7 @@ public class AuthenticationServiceTest {
                 + "]"
                 + "}";
 
-        when(restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), any(ClientHttpRequestFactory.class)))
+        when(restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), anyInt()))
                 .thenReturn(new ResponseEntity<>(validJson, HttpStatus.OK));
 
         // Create a test user

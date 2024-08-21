@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.auth.utils;
 
 
 import org.apache.hc.client5.http.classic.HttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.slf4j.Logger;
@@ -36,16 +35,15 @@ public class RestClientConfig {
         manager.setMaxTotal(100);
         return HttpClients
             .custom()
-            .setConnectionManager(new PoolingHttpClientConnectionManager())
+            .setConnectionManager(manager)
             .useSystemProperties()
             .build();
     }
 
     @Bean
     public RestTemplate getRestTemplate(@Autowired HttpClient client) {
-        HttpComponentsClientHttpRequestFactory clientHttpRequestFactory = new HttpComponentsClientHttpRequestFactory();
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
-        clientHttpRequestFactory.setHttpClient(client);
+        factory.setHttpClient(client);
         return new RestTemplate(factory);
     }
 }
