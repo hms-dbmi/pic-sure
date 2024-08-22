@@ -1,6 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.config;
 
 import edu.harvard.hms.dbmi.avillach.auth.filter.JWTFilter;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,13 +24,25 @@ import static org.springframework.security.config.http.SessionCreationPolicy.STA
 public class SecurityConfig {
 
     private final JWTFilter jwtFilter;
-
+    private final SessionService sessionService;
     private final AuthenticationProvider authenticationProvider;
+    private final UserService userService;
+    private final AccessRuleService accessRuleService;
+    private final JWTUtil jwtUtil;
 
     @Autowired
-    public SecurityConfig(JWTFilter jwtFilter, AuthenticationProvider authenticationProvider) {
+    public SecurityConfig(JWTFilter jwtFilter, SessionService sessionService, AuthenticationProvider authenticationProvider, UserService userService, AccessRuleService accessRuleService, JWTUtil jwtUtil) {
         this.jwtFilter = jwtFilter;
+        this.sessionService = sessionService;
         this.authenticationProvider = authenticationProvider;
+        this.userService = userService;
+        this.accessRuleService = accessRuleService;
+        this.jwtUtil = jwtUtil;
+    }
+
+    @Bean
+    public CustomLogoutHandler customLogoutHandler() {
+        return new CustomLogoutHandler(sessionService, userService, accessRuleService, jwtUtil);
     }
 
     @Bean
@@ -47,8 +63,9 @@ public class SecurityConfig {
                 )
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
-                .logout(AbstractHttpConfigurer::disable)
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .logout((logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler()));
+
 
         return http.build();
     }

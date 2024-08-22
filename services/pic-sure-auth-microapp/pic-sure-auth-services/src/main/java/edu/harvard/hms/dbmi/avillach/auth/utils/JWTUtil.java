@@ -1,11 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.JwtBuilder;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.Ga4ghPassportV1;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.apache.tomcat.util.codec.binary.Base64;
 import org.slf4j.Logger;
@@ -14,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
@@ -34,8 +34,10 @@ public class JWTUtil {
 
     private final boolean clientSecretIsBase64;
 
+    private final static ObjectMapper objectMapper = new ObjectMapper();
+
     public JWTUtil(@Value("${application.client.secret}") String clientSecret,
-                    @Value("${application.client.secret.base64}") boolean clientSecretIsBase64) {
+                   @Value("${application.client.secret.base64}") boolean clientSecretIsBase64) {
         this.clientSecret = clientSecret;
         this.clientSecretIsBase64 = clientSecretIsBase64;
     }
@@ -49,9 +51,9 @@ public class JWTUtil {
     }
 
     /**
-     * @param id - id
-     * @param issuer - issuer
-     * @param claims - claims
+     * @param id      - id
+     * @param issuer  - issuer
+     * @param claims  - claims
      * @param subject - subject
      * @return JWT token
      */
@@ -113,10 +115,14 @@ public class JWTUtil {
 
     public static Optional<String> getTokenFromAuthorizationHeader(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            return Optional.empty();
+            return Optional.ofNullable(authorizationHeader);
         }
 
         return Optional.of(authorizationHeader.substring("Bearer".length()).trim());
+    }
+
+    public static boolean isLongTermToken(String sub) {
+        return sub.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX);
     }
 
     public String setClientSecret(String clientSecret) {
@@ -127,5 +133,65 @@ public class JWTUtil {
         return clientSecretIsBase64;
     }
 
+    public boolean shouldRefreshToken(Date expiration, long tokenExpirationTime) {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime >= expiration.getTime()) {
+            return false;
+        }
+
+        long halfExpirationTime = tokenExpirationTime / 2;
+        long refreshTime = expiration.getTime() - halfExpirationTime;
+        return currentTime >= refreshTime;
+    }
+
+    /**
+     * Extract the payload from the ga4gh token and convert it to a Ga4ghPassportV1
+     * @param ga4ghToken The ga4gh_passport_v1 extracted from the Passport
+     * @return Optional of a Ga4ghPassportV1. If empty we could not successfully extract the claims and map them to
+     * the class.
+     */
+    public static Optional<Ga4ghPassportV1> parseGa4ghPassportV1(String ga4ghToken) {
+        try {
+            String[] passports = ga4ghToken.split("\\.");
+            String base64EncodedPayload = passports[1];
+            java.util.Base64.Decoder decoder = java.util.Base64.getDecoder();
+            String payload = new String(decoder.decode(base64EncodedPayload));
+            Ga4ghPassportV1 ga4ghPassportV1 = objectMapper.readValue(payload, Ga4ghPassportV1.class);
+            return Optional.ofNullable(ga4ghPassportV1);
+        } catch (IOException e) {
+            logger.error("parsePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+        }
+
+        return Optional.empty();
+    }
+
+    public static Optional<Passport> parsePassportJWTV11(String passportJWTV11) {
+        try {
+            String[] passports = passportJWTV11.split("\\.");
+            String base64EncodedPayload = passports[1];
+            java.util.Base64.Decoder decoder = java.util.Base64.getDecoder();
+            String payload = new String(decoder.decode(base64EncodedPayload));
+            Passport passport = objectMapper.readValue(payload, Passport.class);
+            return Optional.ofNullable(passport);
+        } catch (IOException e) {
+            logger.error("parsePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+        }
+
+        return Optional.empty();
+    }
+
+    public static Optional<String> decodePassport(String passportJWTV11) {
+        try {
+            String[] passports = passportJWTV11.split("\\.");
+            String base64EncodedPayload = passports[1];
+            java.util.Base64.Decoder decoder = java.util.Base64.getDecoder();
+            String payload = new String(decoder.decode(base64EncodedPayload));
+            return Optional.of(payload);
+        } catch (Exception e) {
+            logger.error("decodePassport() throws: {}, {}", e.getClass().getSimpleName(), e.getMessage());
+        }
+
+        return Optional.empty();
+    }
 
 }

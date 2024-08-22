@@ -5,6 +5,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -264,4 +265,52 @@ public class RoleServiceTest {
         role.setPrivileges(Collections.emptySet());
         return role;
     }
+
+    @Test
+    public void getRoleNamesForDbgapPermissions_PermissionsAreNull() {
+        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(null);
+        assertNotNull(rolesForDbgapPermissions);
+        assertTrue(rolesForDbgapPermissions.isEmpty());
+    }
+
+    @Test
+    public void getRoleNamesForDbgapPermissions_PermissionsEmpty() {
+        Set<RasDbgapPermission> rasDbgapPermissions = new HashSet<>();
+
+        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
+        assertNotNull(rolesForDbgapPermissions);
+        assertTrue(rolesForDbgapPermissions.isEmpty());
+    }
+
+    @Test
+    public void getRoleNamesForDbgapPermissions() {
+//      {consentName='General Research Use', phsId='phs000006', version='v1', participantSet='p1', consentGroup='c1', role='pi', expiration=1641013200},
+//      RasDbgapPermission{consentName='Exchange Area', phsId='phs000300', version='v1', participantSet='p1', consentGroup='c999', role='pi', expiration=1641013200}
+        RasDbgapPermission rasDbgapPermissionV1 = new RasDbgapPermission();
+        rasDbgapPermissionV1.setRole("pi");
+        rasDbgapPermissionV1.setConsentGroup("c1");
+        rasDbgapPermissionV1.setConsentName("General Research Use");
+        rasDbgapPermissionV1.setExpiration(1641013200);
+        rasDbgapPermissionV1.setParticipantSet("p1");
+        rasDbgapPermissionV1.setPhsId("phs000006");
+        rasDbgapPermissionV1.setVersion("v1");
+
+        RasDbgapPermission rasDbgapPermissionV2 = new RasDbgapPermission();
+        rasDbgapPermissionV2.setRole("pi");
+        rasDbgapPermissionV2.setConsentGroup("c1");
+        rasDbgapPermissionV2.setConsentName("Exchange Area");
+        rasDbgapPermissionV2.setExpiration(1641013200);
+        rasDbgapPermissionV2.setParticipantSet("p1");
+        rasDbgapPermissionV2.setPhsId("phs000300");
+        rasDbgapPermissionV2.setVersion("v1");
+
+        Set<RasDbgapPermission> rasDbgapPermissions = new HashSet<>();
+        rasDbgapPermissions.add(rasDbgapPermissionV1);
+        rasDbgapPermissions.add(rasDbgapPermissionV2);
+
+        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
+        assertNotNull(rolesForDbgapPermissions);
+        System.out.println(rolesForDbgapPermissions);
+    }
+
 }

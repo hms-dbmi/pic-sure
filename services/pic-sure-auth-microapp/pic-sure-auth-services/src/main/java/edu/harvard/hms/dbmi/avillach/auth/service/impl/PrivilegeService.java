@@ -6,7 +6,6 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
-import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +31,6 @@ public class PrivilegeService {
     private final PrivilegeRepository privilegeRepository;
     private final ApplicationService applicationService;
     private final AccessRuleService accessRuleService;
-    private final FenceMappingUtility fenceMappingUtility;
 
     private Application picSureApp;
     private final String variantAnnotationColumns;
@@ -45,7 +43,7 @@ public class PrivilegeService {
     private static final String topmedAccessionField = "\\\\_Topmed Study Accession with Subject ID\\\\";
 
     @Autowired
-    protected PrivilegeService(PrivilegeRepository privilegeRepository, ApplicationService applicationService, AccessRuleService accessRuleService, FenceMappingUtility fenceMappingUtility,
+    protected PrivilegeService(PrivilegeRepository privilegeRepository, ApplicationService applicationService, AccessRuleService accessRuleService,
                                @Value("${fence.variant.annotation.columns}") String variantAnnotationColumns,
                                @Value("${fence.harmonized.consent.group.concept.path}") String fenceHarmonizedConsentGroupConceptPath,
                                @Value("${fence.parent.consent.group.concept.path}") String fenceParentConceptPath,
@@ -54,7 +52,6 @@ public class PrivilegeService {
         this.privilegeRepository = privilegeRepository;
         this.applicationService = applicationService;
         this.accessRuleService = accessRuleService;
-        this.fenceMappingUtility = fenceMappingUtility;
         this.variantAnnotationColumns = variantAnnotationColumns;
         this.fence_harmonized_consent_group_concept_path = fenceHarmonizedConsentGroupConceptPath;
         this.fence_parent_consent_group_concept_path = fenceParentConceptPath;
@@ -112,7 +109,7 @@ public class PrivilegeService {
         return this.privilegeRepository.save(privilege);
     }
 
-    public Set<Privilege> addPrivileges(Role r) {
+    public Set<Privilege> addPrivileges(Role r, Map<String, StudyMetaData> fenceMapping) {
         String roleName = r.getName();
         logger.info("addFENCEPrivileges() starting, adding privilege(s) to role {}", roleName);
 
@@ -124,19 +121,19 @@ public class PrivilegeService {
             privs = new HashSet<Privilege>();
         }
 
-        //e.g. FENCE_phs0000xx_c2 or FENCE_tutorial-biolinc_camp
+        //e.g. MANAGED_phs0000xx_c2 or MANAGED_tutorial-biolinc_camp
         String project_name = extractProject(roleName);
-        if (project_name.length() <= 0) {
+        if (project_name.isEmpty()) {
             logger.warn("addFENCEPrivileges() role name: {} returned an empty project name", roleName);
         }
         String consent_group = extractConsentGroup(roleName);
-        if (consent_group.length() <= 0) {
+        if (!consent_group.isEmpty()) {
             logger.warn("addFENCEPrivileges() role name: {} returned an empty consent group", roleName);
         }
         logger.info("addFENCEPrivileges() project name: {} consent group: {}", project_name, consent_group);
 
         // Look up the metadata by consent group.
-        StudyMetaData projectMetadata = getFENCEMappingforProjectAndConsent(project_name, consent_group);
+        StudyMetaData projectMetadata = getStudyMappingForProjectAndConsent(project_name, consent_group, fenceMapping);
 
         if (projectMetadata == null) {
             //no privileges means no access to this project.  just return existing set of privs.
@@ -398,10 +395,10 @@ public class PrivilegeService {
         return consentGroup;
     }
 
-    private StudyMetaData getFENCEMappingforProjectAndConsent(String projectId, String consent_group) {
+    private StudyMetaData getStudyMappingForProjectAndConsent(String projectId, String consent_group, Map<String, StudyMetaData> fenceMapping) {
         String consentVal = (consent_group != null && !consent_group.isEmpty()) ? projectId + "." + consent_group : projectId;
         logger.info("getFENCEMappingforProjectAndConsent() looking up {}", consentVal);
 
-        return this.fenceMappingUtility.getFENCEMapping().get(consentVal);
+        return fenceMapping.get(consentVal);
     }
 }

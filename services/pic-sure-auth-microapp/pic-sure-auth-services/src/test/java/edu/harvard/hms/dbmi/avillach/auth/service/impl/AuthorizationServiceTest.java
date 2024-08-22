@@ -28,6 +28,9 @@ public class AuthorizationServiceTest {
     private AccessRuleService accessRuleService;
 
     @Mock
+    private SessionService sessionService;
+
+    @Mock
     private AccessRuleRepository accessRuleRepository;
 
     @Before
@@ -36,7 +39,7 @@ public class AuthorizationServiceTest {
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
-        authorizationService = new AuthorizationService(accessRuleService, "fence,okta,open");
+        authorizationService = new AuthorizationService(accessRuleService, sessionService, "fence,okta,open");
     }
 
     @Test

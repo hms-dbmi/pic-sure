@@ -20,7 +20,7 @@ public class Privilege extends BaseEntity {
 
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "application_id")
     private Application application;
 

@@ -12,16 +12,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class FenceMappingUtility {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
     private Map<String, StudyMetaData> fenceMappingByConsent;
     private Map<String, StudyMetaData> fenceMappingByAuthZ;
     private final String templatePath;
@@ -44,6 +42,7 @@ public class FenceMappingUtility {
                 objectMapper = new ObjectMapper();
                 initializeFENCEMappings();
             }
+
         } else {
             logger.error("FenceMappingUtility: templatePath is not set or does not end with a file separator");
         }

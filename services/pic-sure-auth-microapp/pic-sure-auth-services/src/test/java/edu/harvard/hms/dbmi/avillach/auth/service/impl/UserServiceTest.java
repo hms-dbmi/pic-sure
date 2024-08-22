@@ -6,6 +6,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
@@ -35,7 +36,6 @@ public class UserServiceTest {
 
     @Mock
     private SecurityContext securityContext;
-
     @Mock
     private BasicMailService basicMailService;
     @Mock
@@ -48,17 +48,13 @@ public class UserServiceTest {
     private ApplicationRepository applicationRepository;
     @Mock
     private RoleService roleService;
-
-    private JWTUtil jwtUtil;
-
+    @Mock
+    private SessionService sessionService;
     @Mock
     private JWTUtil mockJwtUtil;
-
-    @Mock
-    private RoleRepository roleRepository;
+    private JWTUtil jwtUtil;
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
-    private String applicationUUID;
     private final long longTermTokenExpirationTime = 2592000000L;
 
     private UserService userService;
@@ -72,7 +68,7 @@ public class UserServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
 
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
-        applicationUUID = UUID.randomUUID().toString();
+        String applicationUUID = UUID.randomUUID().toString();
         userService = new UserService(
                 basicMailService,
                 tosService,
@@ -83,7 +79,8 @@ public class UserServiceTest {
                 defaultTokenExpirationTime,
                 applicationUUID,
                 longTermTokenExpirationTime,
-                mockJwtUtil);
+                mockJwtUtil,
+                sessionService);
     }
 
     @Test

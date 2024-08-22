@@ -40,11 +40,9 @@ import java.util.UUID;
  * We also have a class testing from the aspect of design, which means each test case is just testing one feature.
  * @see AuthorizationServiceTest
  */
-public class AuthorizationServiceTestByUseCases extends AuthorizationService {
-
+public class AuthorizationServiceTestByUseCases {
 
     ObjectMapper mapper = new ObjectMapper();
-
 
     private static AccessRule rule_caseA;
     private static AccessRule rule_caseB;
@@ -53,8 +51,6 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService {
     private static AccessRule rule_caseE;
     private static AccessRule rule_caseE_2;
     private static AccessRule rule_caseF;
-
-
 
     private static AccessRule AR_CategoryFilter_String_contains;
     private static AccessRule AR_CategoryFilter_Array_Contains;
@@ -405,6 +401,8 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService {
             "  },\n" +
             "  \"resourceCredentials\": {}\n" +
             "}";
+
+    private AccessRuleService  accessRuleService;
 
     @BeforeClass
     public static void init() {

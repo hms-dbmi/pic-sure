@@ -6,6 +6,7 @@ import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.Assert;
 import org.junit.Before;
@@ -31,6 +32,9 @@ public class AuthorizationServiceTest {
     private AuthorizationService authorizationService;
 
     private AccessRuleService accessRuleService;
+
+    @Mock
+    private SessionService sessionService;
 
     @Mock
     private AccessRuleRepository accessRuleRepository;
@@ -312,8 +316,9 @@ public class AuthorizationServiceTest {
         MockitoAnnotations.initMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
+        when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
-        authorizationService = new AuthorizationService(accessRuleService, "fence,okta");
+        authorizationService = new AuthorizationService(accessRuleService, sessionService, "fence,okta");
     }
 
     @Test

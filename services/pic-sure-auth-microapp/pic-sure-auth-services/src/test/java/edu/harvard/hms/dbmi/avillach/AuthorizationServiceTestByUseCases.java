@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import org.junit.Assert;
@@ -406,6 +407,10 @@ public class AuthorizationServiceTestByUseCases extends AuthorizationService{
             "  },\n" +
             "  \"resourceCredentials\": {}\n" +
             "}";
+
+    public AuthorizationServiceTestByUseCases(AccessRuleService accessRuleService, SessionService sessionService, String strictConnections) {
+        super(accessRuleService, sessionService, strictConnections);
+    }
 
     @BeforeClass
     public static void init() {

@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TokenService;
@@ -47,13 +50,17 @@ public class TokenController {
     @Operation(description = "To refresh current user's token if the user is an active user")
     @GetMapping(path = "/refresh", produces = "application/json")
     public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String authorizationHeader) {
-        Map<String, String> stringStringMap = this.tokenService.refreshToken(authorizationHeader);
+        RefreshToken refreshTokenResp = this.tokenService.refreshToken(authorizationHeader);
 
-        if (stringStringMap.containsKey("error")) {
-            return PICSUREResponse.protocolError(stringStringMap.get("error"));
+        if (refreshTokenResp instanceof InvalidRefreshToken invalidRefreshToken) {
+            return PICSUREResponse.protocolError(invalidRefreshToken.error());
         }
 
-        return PICSUREResponse.success(stringStringMap);
+        if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
+            return PICSUREResponse.success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
+        }
+
+        return PICSUREResponse.success();
     }
 
 }

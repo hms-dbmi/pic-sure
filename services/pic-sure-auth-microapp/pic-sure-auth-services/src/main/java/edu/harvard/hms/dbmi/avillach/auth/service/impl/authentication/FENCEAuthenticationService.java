@@ -11,16 +11,14 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
+import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,6 +29,8 @@ import org.springframework.util.MultiValueMap;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.managed_open_access_role_name;
 
 @Service
 public class FENCEAuthenticationService implements AuthenticationService {
@@ -45,15 +45,12 @@ public class FENCEAuthenticationService implements AuthenticationService {
 
     private Connection fenceConnection;
 
-    private final Set<String> openAccessIdpValues = Set.of("fence", "ras");
-
     private final boolean isFenceEnabled;
     private final String idp_provider_uri;
     private final String fence_client_id;
     private final String fence_client_secret;
 
 
-    public static final String fence_open_access_role_name = "MANAGED_ROLE_OPEN_ACCESS";
     private final RestClientUtil restClientUtil;
 
     @Autowired
@@ -79,44 +76,11 @@ public class FENCEAuthenticationService implements AuthenticationService {
         this.isFenceEnabled = isFenceEnabled;
     }
 
-    @EventListener(ContextRefreshedEvent.class)
+    @PostConstruct
     public void initializeFenceService() {
         fenceConnection = connectionService.getConnectionByLabel("FENCE");
-
-        // log all the properties
         logger.info("isFenceEnabled: {}", isFenceEnabled);
         logger.info("idp_provider_uri: {}", idp_provider_uri);
-
-        if (fenceMappingUtility.getFENCEMapping() != null && fenceMappingUtility.getFenceMappingByAuthZ() != null
-                && !fenceMappingUtility.getFENCEMapping().isEmpty() && !fenceMappingUtility.getFenceMappingByAuthZ().isEmpty()) {
-            // Create all potential access rules using the fence mapping
-            Set<Role> roles = fenceMappingUtility.getFenceMappingByAuthZ().values().parallelStream().map(projectMetadata -> {
-                if (projectMetadata == null) {
-                    logger.error("initializeFenceService() -> createAndUpsertRole could not find study in FENCE mapping SKIPPING: {}", projectMetadata);
-                    return null;
-                }
-
-                if (projectMetadata.getStudyIdentifier() == null || projectMetadata.getStudyIdentifier().isEmpty()) {
-                    logger.error("initializeFenceService() -> createAndUpsertRole could not find study identifier in FENCE mapping SKIPPING: {}", projectMetadata);
-                    return null;
-                }
-
-                if (projectMetadata.getAuthZ() == null || projectMetadata.getAuthZ().isEmpty()) {
-                    logger.error("initializeFenceService() -> createAndUpsertRole could not find authZ in FENCE mapping SKIPPING: {}", projectMetadata);
-                    return null;
-                }
-
-                String projectId = projectMetadata.getStudyIdentifier();
-                String consentCode = projectMetadata.getConsentGroupCode();
-                String newRoleName = StringUtils.isNotBlank(consentCode) ? "MANAGED_" + projectId + "_" + consentCode : "MANAGED_" + projectId;
-
-                return this.roleService.createRole(newRoleName, "MANAGED role " + newRoleName);
-            }).filter(Objects::nonNull).collect(Collectors.toSet());
-
-            roleService.persistAll(roles);
-        } else {
-            logger.error("initializeFenceService() -> createAndUpsertRole could not find any studies in FENCE mapping");
-        }
     }
 
     @Override
@@ -137,7 +101,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         try {
             logger.debug("getFENCEProfile() query FENCE for user profile with code");
             fence_user_profile = getFENCEUserProfile(getFENCEAccessToken(callBackUrl, fence_code).get("access_token").asText());
-            logger.info(fence_user_profile.toPrettyString());
+
             if (logger.isTraceEnabled()) {
                 // create object mapper instance
                 ObjectMapper mapper = new ObjectMapper();
@@ -155,17 +119,17 @@ public class FENCEAuthenticationService implements AuthenticationService {
                     "from the Gen3 authentication provider." + ex.getMessage());
         }
 
-        User current_user;
+        User currentUser;
         try {
             // Create or retrieve the user profile from our database, based on the the key
             // in the Gen3/FENCE profile
-            current_user = createUserFromFENCEProfile(fence_user_profile);
-            logger.info("getFENCEProfile() saved details for user with e-mail:{} and subject:{}", current_user.getEmail(), current_user.getSubject());
+            currentUser = createUserFromFENCEProfile(fence_user_profile);
+            logger.info("getFENCEProfile() saved details for user with e-mail:{} and subject:{}", currentUser.getEmail(), currentUser.getSubject());
 
-            if (!current_user.getEmail().isEmpty()) {
-                String email = current_user.getEmail();
-                accessRuleService.evictFromCache(email);
-                userService.evictFromCache(email);
+            if (!currentUser.getEmail().isEmpty()) {
+                String subject = currentUser.getSubject();
+                accessRuleService.evictFromCache(subject);
+                userService.evictFromCache(subject);
             }
         } catch (Exception ex) {
             logger.error("getFENCEToken() Could not persist the user information, because {}", ex.getMessage());
@@ -174,8 +138,6 @@ public class FENCEAuthenticationService implements AuthenticationService {
 
         // Update the user's roles (or create them if none exists)
         Iterator<String> project_access_names = fence_user_profile.get("authz").fieldNames();
-
-        // I want to parallelize this, but I'm not sure if it's safe to do so.
         Set<String> roleNames = new HashSet<>();
         project_access_names.forEachRemaining(roleName -> {
             // We need to add/remove the users roles based on what is in the project_access_names list
@@ -192,60 +154,20 @@ public class FENCEAuthenticationService implements AuthenticationService {
             roleNames.add(newRoleName);
         });
 
-        // convert roles to string list
-        String roles = current_user.getRoles().stream().map(Role::getName).collect(Collectors.joining(","));
-        logger.info("Current User Roles: " + roles);
-
-        // find roles that are in the user's roles but not in the project_access_names. These are the roles that need to be removed.
-        // exclude userRole -> "PIC-SURE Top Admin".equals(userRole.getName()) || "Admin".equals(userRole.getName()) || userRole.getName().startsWith("MANUAL_")
-        Set<Role> rolesToRemove = current_user.getRoles().parallelStream()
-                .filter(role -> !roleNames.contains(role.getName()) && !role.getName().equals(fence_open_access_role_name) && !role.getName().startsWith("MANUAL_") && !role.getName().equals("PIC-SURE Top Admin") && !role.getName().equals("Admin"))
-                .collect(Collectors.toSet());
-
-        if (!rolesToRemove.isEmpty()) {
-            current_user.getRoles().removeAll(rolesToRemove);
-            logger.debug("upsertRole() removed {} roles from user", rolesToRemove.size());
-            logger.debug("User roles after removal: {}", current_user.getRoles().size());
-        }
-
-        // find roles that are in the project_access_names but not in the user's roles. These are the roles that need to be added.
-        List<Role> newRoles = roleNames.parallelStream()
-                .map(roleName -> this.roleService.createRole(roleName, "MANAGED role " + roleName))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-
-        if (!newRoles.isEmpty()) {
-            newRoles = roleService.persistAll(newRoles);
-            current_user.getRoles().addAll(newRoles);
-        }
-
-        final String idp = extractIdp(current_user);
-        if (current_user.getRoles() != null && (!current_user.getRoles().isEmpty() || openAccessIdpValues.contains(idp))) {
-            Role openAccessRole = roleService.findByName(fence_open_access_role_name);
-            if (openAccessRole != null) {
-                current_user.getRoles().add(openAccessRole);
-            } else {
-                logger.warn("Unable to find fence OPEN ACCESS role");
-            }
-        }
-
-        try {
-            current_user = userService.changeRole(current_user, current_user.getRoles());
-            logger.debug("upsertRole() updated user, who now has {} roles.", current_user.getRoles().size());
-        } catch (Exception ex) {
-            logger.error("upsertRole() Could not add roles to user, because {}", ex.getMessage());
-        }
+        currentUser = userService.updateUserRoles(currentUser, roleNames);
         HashMap<String, Object> claims = new HashMap<String, Object>();
         claims.put("name", fence_user_profile.get("name"));
-        claims.put("email", current_user.getEmail());
-        claims.put("sub", current_user.getSubject());
+        claims.put("email", currentUser.getEmail());
+        claims.put("sub", currentUser.getSubject());
         HashMap<String, String> responseMap = userService.getUserProfileResponse(claims);
-        logger.info("LOGIN SUCCESS ___ {}:{}:{} ___ Authorization will expire at  ___ {}___", current_user.getEmail(), current_user.getUuid().toString(), current_user.getSubject(), responseMap.get("expirationDate"));
+        logger.info("LOGIN SUCCESS ___ {}:{}:{} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(), currentUser.getUuid().toString(), currentUser.getSubject(), responseMap.get("expirationDate"));
         logger.debug("getFENCEProfile() UserProfile response object has been generated");
         logger.debug("getFENCEToken() finished");
 
         return responseMap;
     }
+
+
 
     @Override
     public String getProvider() {
@@ -314,17 +236,6 @@ public class FENCEAuthenticationService implements AuthenticationService {
         return respJson;
     }
 
-    private String extractIdp(User current_user) {
-        try {
-            final ObjectNode node;
-            node = new ObjectMapper().readValue(current_user.getGeneralMetadata(), ObjectNode.class);
-            return node.get("idp").asText();
-        } catch (JsonProcessingException e) {
-            logger.warn("Error parsing idp value from medatada", e);
-            return "";
-        }
-    }
-
     /**
      * Create or update a user record, based on the FENCE user profile, which is in JSON format.
      *
@@ -334,19 +245,19 @@ public class FENCEAuthenticationService implements AuthenticationService {
     private User createUserFromFENCEProfile(JsonNode node) {
         logger.debug("createUserFromFENCEProfile() starting...");
 
-        User new_user = new User();
-        new_user.setSubject("fence|" + node.get("user_id").asText());
+        User newUser = new User();
+        newUser.setSubject("fence|" + node.get("user_id").asText());
         // This is not always an email address, but it is the only attribute other than the sub claim
         // that is guaranteed to be populated by Fence and which makes sense as a display name for a
         // user.
-        new_user.setEmail(node.get("username").asText());
-        new_user.setGeneralMetadata(node.toString());
+        newUser.setEmail(node.get("username").asText());
+        newUser.setGeneralMetadata(node.toString());
         // This is a hack, but someone has to do it.
-        new_user.setAcceptedTOS(new Date());
-        new_user.setConnection(fenceConnection);
+        newUser.setAcceptedTOS(new Date());
+        newUser.setConnection(fenceConnection);
         logger.debug("createUserFromFENCEProfile() finished setting fields");
 
-        User actual_user = userService.findOrCreate(new_user);
+        User actual_user = userService.findOrCreate(newUser);
 
         if (actual_user.getRoles() == null) {
             actual_user.setRoles(new HashSet<>());

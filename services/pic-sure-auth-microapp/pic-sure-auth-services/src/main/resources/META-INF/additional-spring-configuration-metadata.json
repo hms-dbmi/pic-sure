@@ -169,5 +169,10 @@
       "name": "a4.okta.idp.provider.uri",
       "type": "java.lang.String",
       "description": "Description for a4.okta.idp.provider.uri."
+    },
+    {
+      "name": "application.max.session.length",
+      "type": "java.lang.String",
+      "description": "If a user has been signed in for this length of time they will be logged out."
     }
   ] }

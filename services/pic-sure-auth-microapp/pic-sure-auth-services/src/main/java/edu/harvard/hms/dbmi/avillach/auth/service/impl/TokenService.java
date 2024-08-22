@@ -4,9 +4,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
-import edu.harvard.hms.dbmi.avillach.auth.model.TokenInspection;
+import edu.harvard.hms.dbmi.avillach.auth.model.*;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
@@ -41,14 +39,18 @@ public class TokenService {
 
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final JWTUtil jwtUtil;
+    private final SessionService sessionService;
 
     @Autowired
     public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
-                        @Value("${application.token.expiration.time}") long tokenExpirationTime, JWTUtil jwtUtil) {
+                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
+                        JWTUtil jwtUtil,
+                        SessionService sessionService) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         this.jwtUtil = jwtUtil;
+        this.sessionService = sessionService;
     }
 
     public Map<String, Object> inspectToken(Map<String, Object> inputMap) {
@@ -188,69 +190,72 @@ public class TokenService {
                 roles.add(p.getName());
             }
             tokenInspection.addField("roles", String.join(",", roles));
+
+            // Refresh Token
+            Date expiration = jws.getPayload().getExpiration();
+            if (jwtUtil.shouldRefreshToken(expiration, tokenExpirationTime)) {
+                RefreshToken refreshResponse = refreshToken(token);
+                if (refreshResponse instanceof ValidRefreshToken validRefreshToken) {
+                    tokenInspection.addField("token", validRefreshToken.token());
+                    tokenInspection.addField("tokenRefreshed", true);
+                } else if (refreshResponse instanceof InvalidRefreshToken invalidRefreshToken) {
+                    tokenInspection.setMessage(invalidRefreshToken.error());
+                    tokenInspection.addField("active", false);
+                }
+            } else {
+                tokenInspection.addField("tokenRefreshed", false);
+            }
         } else {
             tokenInspection.setMessage(errorMsg);
-            return tokenInspection;
+            tokenInspection.addField("active", false);
         }
 
+        // Attach additional fields regardless of the authorization outcome
         tokenInspection.addAllFields(jws.getPayload());
-
-        // attach all privileges associated with the application to the responseMap
         tokenInspection.addField("privileges", user.getPrivilegeNameSetByApplication(application));
 
         logger.debug("_inspectToken() Successfully inspect and return response map: {}", tokenInspection.getResponseMap().entrySet()
                 .stream()
                 .map(entry -> entry.getKey() + " - " + entry.getValue())
                 .collect(Collectors.joining(", ")));
+
         return tokenInspection;
+
     }
 
-    public Map<String, String> refreshToken(String authorizationHeader) {
+    public RefreshToken refreshToken(String authorizationHeader) {
         logger.debug("RefreshToken starting...");
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Object principal = authentication.getPrincipal();
-        if (!(principal instanceof CustomUserDetails customUserDetails)) {
-            logger.error("refreshToken() Principal is not an instance of User.");
-            throw new NotAuthorizedException("User not found");
-        }
-
-        User user = customUserDetails.getUser();
-        if (user == null || user.getUuid() == null) {
-            logger.error("refreshToken() Stored user doesn't have a uuid.");
-            return Map.of("error", "Inner application error, please contact admin.");
-        }
-
-        Optional<User> loadUser = this.userRepository.findById(user.getUuid());
-        if (loadUser.isEmpty()) {
-            logger.error("refreshToken() When retrieving current user, it returned null, the user might be removed from database");
-            throw new NotAuthorizedException("User doesn't exist anymore");
-        }
-
-        if (!loadUser.get().isActive()) {
-            logger.error("refreshToken() The user has just been deactivated.");
-            throw new NotAuthorizedException("User has been deactivated.");
-        }
-
-        String subject = loadUser.get().getSubject();
-        if (subject == null || subject.isEmpty()) {
-            logger.error("refreshToken() subject doesn't exist in the user.");
-            return Map.of("error", "Inner application error, please contact admin.");
-        }
-
-        // parse origin token
+        String subject;
         Jws<Claims> jws;
         try {
             String token = JWTUtil.getTokenFromAuthorizationHeader(authorizationHeader).orElseThrow(() -> new NotAuthorizedException("Token not found"));
             jws = this.jwtUtil.parseToken(token);
         } catch (NotAuthorizedException ex) {
-            return Map.of("error", "Cannot parse original token");
+            return new InvalidRefreshToken("Cannot parse original token.");
         }
 
         Claims claims = jws.getPayload();
-        if (!subject.equals(claims.getSubject())) {
-            logger.error("refreshToken() user subject is not the same as the subject of the input token");
-            return Map.of("error", "Inner application error, try again or contact admin.");
+        subject = claims.getSubject();
+        if (subject == null || subject.isEmpty()) {
+            logger.error("refreshToken() subject doesn't exist in the user.");
+            return new InvalidRefreshToken("Inner application error, please contact admin.");
+        }
+
+        User loadUser = this.userRepository.findBySubject(subject);
+        if (loadUser == null) {
+            logger.error("refreshToken() When retrieving current user, it returned null, the user might be removed from database");
+            return new InvalidRefreshToken("User doesn't exist anymore.");
+        }
+
+        if (!loadUser.isActive()) {
+            logger.error("refreshToken() The user has just been deactivated.");
+            return new InvalidRefreshToken("User has been deactivated.");
+        }
+
+        if (!JWTUtil.isLongTermToken(claims.getSubject()) && sessionService.isSessionExpired(claims.getSubject())) {
+            logger.info("refreshToken() The user has just is being logged out. The user's session has expired.");
+            return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
@@ -262,10 +267,7 @@ public class TokenService {
                 this.tokenExpirationTime);
 
         logger.debug("Finished RefreshToken and new token has been generated.");
-        return Map.of(
-                "token", refreshedToken,
-                "expirationDate", ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString()
-        );
+        return new ValidRefreshToken(refreshedToken, ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());
     }
 
 

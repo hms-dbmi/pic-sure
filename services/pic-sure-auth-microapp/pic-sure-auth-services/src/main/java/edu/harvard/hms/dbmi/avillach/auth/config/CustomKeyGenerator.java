@@ -11,7 +11,7 @@ public class CustomKeyGenerator implements KeyGenerator {
     public Object generate(Object target, Method method, Object... params) {
         for (Object param : params) {
             if (param instanceof User user) {
-                return user.getEmail();
+                return user.getSubject();
             }
         }
 

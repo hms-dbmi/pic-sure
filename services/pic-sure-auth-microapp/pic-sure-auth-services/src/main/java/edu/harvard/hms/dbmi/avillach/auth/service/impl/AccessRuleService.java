@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
+import io.micrometer.common.util.StringUtils;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,21 +155,21 @@ public class AccessRuleService {
 
     /**
      * Evicts the user from all AccessRule caches
-     * @param email the email to evict
+     * @param userSubject the email to evict
      */
-    public void evictFromCache(String email) {
-        logger.info("evictFromCache called for user.email: {}", email);
-        evictFromMergedAccessRuleCache(email);
-        evictFromPreProcessedAccessRules(email);
+    public void evictFromCache(String userSubject) {
+        logger.info("evictFromCache called for user.email: {}", userSubject);
+        evictFromMergedAccessRuleCache(userSubject);
+        evictFromPreProcessedAccessRules(userSubject);
     }
 
     @CacheEvict(value = "mergedRulesCache")
-    public void evictFromMergedAccessRuleCache(String email) {
-        if (email == null || email.isEmpty()) {
+    public void evictFromMergedAccessRuleCache(String userSubject) {
+        if (StringUtils.isBlank(userSubject)) {
             logger.warn("evictFromMergedAccessRuleCache() was called with a null or empty email");
             return;
         }
-        logger.info("evictFromMergedAccessRuleCache() evicting cache for user: {}", email);
+        logger.info("evictFromMergedAccessRuleCache() evicting cache for user: {}", userSubject);
     }
 
     @Cacheable(value = "preProcessedAccessRules", keyGenerator = "customKeyGenerator")
@@ -190,13 +191,13 @@ public class AccessRuleService {
         return preProcessARBySortedKeys(accessRules);
     }
 
-    @CacheEvict(value = "preProcessedAccessRules", key = "#email", condition = "#email!=null")
-    public void evictFromPreProcessedAccessRules(String email) {
-        if (email == null || email.isEmpty()) {
+    @CacheEvict(value = "preProcessedAccessRules", keyGenerator = "customKeyGenerator")
+    public void evictFromPreProcessedAccessRules(String userSubject) {
+        if (userSubject == null || userSubject.isEmpty()) {
             logger.warn("evictFromPreProcessedAccessRules() was called with a null or empty email");
             return;
         }
-        logger.info("evictFromPreProcessedAccessRules() evicting cache for user: {}", email);
+        logger.info("evictFromPreProcessedAccessRules() evicting cache for user: {}", userSubject);
     }
 
     public Set<AccessRule> preProcessARBySortedKeys(Set<AccessRule> accessRules) {

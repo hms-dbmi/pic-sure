@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
@@ -17,6 +19,7 @@ import edu.harvard.hms.dbmi.avillach.auth.utils.JsonUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
+import jakarta.persistence.NoResultException;
 import jakarta.validation.constraints.NotNull;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -37,6 +40,8 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.managed_open_access_role_name;
+
 @Service
 public class UserService {
 
@@ -50,12 +55,15 @@ public class UserService {
     private final RoleService roleService;
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
+    private final SessionService sessionService;
 
     public long longTermTokenExpirationTime;
 
     private final String applicationUUID;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JWTUtil jwtUtil;
+
+    private final Set<String> openAccessIdpValues = Set.of("fence", "ras");
 
     @Autowired
     public UserService(BasicMailService basicMailService, TOSService tosService,
@@ -66,19 +74,21 @@ public class UserService {
                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
                        @Value("${application.default.uuid}") String applicationUUID,
                        @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime,
-                       JWTUtil jwtUtil) {
+                       JWTUtil jwtUtil, SessionService sessionService) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
         this.userRepository = userRepository;
         this.connectionRepository = connectionRepository;
         this.roleService = roleService;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
+        logger.info("Token Expiration Time : {}", tokenExpirationTime);
         this.applicationRepository = applicationRepository;
         this.applicationUUID = applicationUUID;
         this.jwtUtil = jwtUtil;
 
-        long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30; //
+        long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30;
         this.longTermTokenExpirationTime = longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
+        this.sessionService = sessionService;
     }
 
     public HashMap<String, String> getUserProfileResponse(Map<String, Object> claims) {
@@ -302,15 +312,15 @@ public class UserService {
     public String sendUserUpdateEmailsFromResponse(List<User> addedUsers) {
         logger.debug("Sending email");
         try {
-                for (User user : addedUsers) {
-                    try {
-                        basicMailService.sendUsersAccessEmail(user);
-                    } catch (MessagingException e) {
-                        logger.error("Failed to send email! {}", e.getLocalizedMessage());
-                        logger.debug("Exception Trace: ", e);
-                       return "  WARN - could not send email to user " + user.getEmail() + " see logs for more info";
-                    }
+            for (User user : addedUsers) {
+                try {
+                    basicMailService.sendUsersAccessEmail(user);
+                } catch (MessagingException e) {
+                    logger.error("Failed to send email! {}", e.getLocalizedMessage());
+                    logger.debug("Exception Trace: ", e);
+                    return "  WARN - could not send email to user " + user.getEmail() + " see logs for more info";
                 }
+            }
         } catch (Exception e) {
             logger.error("Failed to send email - unhandled exception: ", e);
         }
@@ -377,7 +387,7 @@ public class UserService {
 
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Optional<CustomUserDetails> customUserDetails = Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
-        if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null){
+        if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
             logger.error("Security context didn't have a user stored.");
             return Optional.empty();
         }
@@ -444,12 +454,12 @@ public class UserService {
     }
 
     @CacheEvict(value = "mergedTemplateCache")
-    public void evictFromCache(String email) {
-        if (email == null || email.isEmpty()) {
+    public void evictFromCache(String userSubject) {
+        if (userSubject == null || userSubject.isEmpty()) {
             logger.warn("evictFromCache() was called with a null or empty email");
             return;
         }
-        logger.info("evictFromCache() evicting cache for user: {}", email);
+        logger.info("evictFromCache() evicting cache for user: {}", userSubject);
     }
 
     @Transactional
@@ -526,30 +536,30 @@ public class UserService {
     public User findOrCreate(User newUser) {
         logger.info("findOrCreate(), trying to find user: {subject: {}}, and found a user with uuid: {}, subject: {}", newUser.getSubject(), newUser.getUuid(), newUser.getSubject());
         // check if the user exist by subject
-        User user = findBySubject(newUser.getSubject());
-        if (user != null) {
-            return user;
+        Optional<User> user = Optional.ofNullable(findBySubject(newUser.getSubject()));
+        if (user.isPresent()) {
+            return user.orElse(null);
         }
 
         // check if the user exist by email and connection
         user = userRepository.findByEmailAndConnectionId(newUser.getEmail(), newUser.getConnection().getId());
-        if (user != null) {
-            if (StringUtils.isEmpty(user.getSubject())) {
-                user.setSubject(newUser.getSubject());
-                user.setGeneralMetadata(newUser.getGeneralMetadata());
+        if (user.isPresent()) {
+            if (StringUtils.isEmpty(user.get().getSubject())) {
+                user.get().setSubject(newUser.getSubject());
+                user.get().setGeneralMetadata(newUser.getGeneralMetadata());
             }
 
-            return user;
+            return user.orElse(null);
         }
 
-        user = save(newUser);
+        user = Optional.ofNullable(save(newUser));
         logger.info("createUser created user, uuid: {}, subject: {}, role: {}, privilege: {}",
-                user.getUuid(), newUser.getSubject(), user.getRoleString(), user.getPrivilegeString());
+                user.get().getUuid(), newUser.getSubject(), user.get().getRoleString(), user.get().getPrivilegeString());
         // create a new user
-        return user;
+        return user.orElse(null);
     }
 
-    public User findByEmailAndConnection(String email, String connectionId) {
+    public Optional<User> findByEmailAndConnection(String email, String connectionId) {
         return this.userRepository.findByEmailAndConnectionId(email, connectionId);
     }
 
@@ -580,4 +590,130 @@ public class UserService {
         return user;
     }
 
+    /**
+     * Using the introspection token response, load the user from the database. If the user does not exist, we
+     * will reject their login attempt. For the RAS integration here is a sample payload.
+     *
+     * @param node The response from the introspect endpoint
+     * @return The user
+     */
+    public Optional<User> createRasUser(JsonNode node, Connection connection) {
+        try {
+            String userEmail = node.get("preferred_username").asText();
+            logger.info("Loading user for sub: {}", userEmail);
+
+            User new_user = new User();
+            new_user.setSubject(connection.getSubPrefix() + userEmail);
+            new_user.setEmail(userEmail);
+            new_user.setConnection(connection);
+            User actual_user = this.findOrCreate(new_user);
+
+            if (actual_user.getRoles() == null) {
+                actual_user.setRoles(new HashSet<>());
+            }
+
+            actual_user.setAcceptedTOS(new Date());
+            logger.info("LOGIN SUCCESS ___ USER DATA: {}", actual_user);
+            return Optional.of(actual_user);
+        } catch (Exception e) {
+            logger.error("Failed to create user from introspect response", e);
+            return Optional.empty();
+        }
+    }
+
+    public Set<User> getAllUsersWithAPassport() {
+        return this.userRepository.findByPassportIsNotNull();
+    }
+
+    /**
+     * Clears users session and merge template which effectively logs them out.
+     *
+     * @param user
+     */
+    public void logoutUser(User user) {
+        evictFromCache(user.getSubject());
+        this.removeUserPassport(user.getSubject());
+        this.sessionService.endSession(user.getSubject());
+    }
+
+    /**
+     * Update the provided users roles based on the list of roleNames provided. This method will update the roles
+     * in place. Adding and removing roles from the current list of roles.
+     *
+     * @param current_user User to be updated
+     * @param roleNames    Roles that should be assigned to the user.
+     */
+    public User updateUserRoles(User current_user, Set<String> roleNames) {
+        Set<String> currentRoleNames = current_user.getRoles().stream()
+                .map(Role::getName)
+                .collect(Collectors.toSet());
+
+        Set<Role> rolesToRemove = current_user.getRoles().stream()
+                .filter(role -> !roleNames.contains(role.getName()) && !role.getName().equals(managed_open_access_role_name)
+                        && !role.getName().startsWith("MANUAL_") && !role.getName().equals("PIC-SURE Top Admin")
+                        && !role.getName().equals("Admin"))
+                .collect(Collectors.toSet());
+
+        if (!rolesToRemove.isEmpty()) {
+            current_user.getRoles().removeAll(rolesToRemove);
+            logger.debug("upsertRole() removed {} roles from user", rolesToRemove.size());
+            logger.debug("User roles after removal: {}", current_user.getRoles().size());
+        }
+
+        // Bulk lookup for existing roles. By using a hashmap we avoid having to iterate over the set of roles each time.
+        Map<String, Role> existingRoles = roleService.findByNames(roleNames);
+        List<Role> newRoles = roleNames.stream()
+                .filter(roleName -> !currentRoleNames.contains(roleName))
+                .map(roleName -> existingRoles.getOrDefault(roleName, this.roleService.createNewRole(roleName, "MANAGED role " + roleName)))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        if (!newRoles.isEmpty()) {
+            newRoles = roleService.persistAll(newRoles);
+            current_user.getRoles().addAll(newRoles);
+        }
+
+        final String idp = extractIdp(current_user);
+        if (!current_user.getRoles().isEmpty() || openAccessIdpValues.contains(idp.toLowerCase())) {
+            Role openAccessRole = roleService.findByName(managed_open_access_role_name);
+            if (openAccessRole != null) {
+                current_user.getRoles().add(openAccessRole);
+            } else {
+                logger.warn("Unable to find fence OPEN ACCESS role");
+            }
+        }
+
+        // Every user has access to public datasets by default.
+        current_user.getRoles().addAll(roleService.getPublicAccessRoles());
+
+        try {
+            current_user = this.changeRole(current_user, current_user.getRoles());
+            logger.debug("upsertRole() updated user, who now has {} roles.", current_user.getRoles().size());
+            return current_user;
+        } catch (Exception ex) {
+            logger.error("upsertRole() Could not add roles to user, because {}", ex.getMessage());
+        }
+
+        return null;
+    }
+
+
+    private String extractIdp(User current_user) {
+        try {
+            final ObjectNode node;
+            node = new ObjectMapper().readValue(current_user.getGeneralMetadata(), ObjectNode.class);
+            return node.get("idp").asText();
+        } catch (JsonProcessingException e) {
+            logger.warn("Error parsing idp value from medatada", e);
+            return "";
+        }
+    }
+
+    public void removeUserPassport(String subject) {
+        User user = this.findBySubject(subject);
+        if (user != null) {
+            user.setPassport(null);
+            this.save(user);
+        }
+    }
 }

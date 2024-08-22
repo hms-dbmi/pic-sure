@@ -75,6 +75,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Column(name = "long_term_token")
 	private String token;
 
+	@Column(name = "passport")
+	private String passport;
+
 	public User() {
 
 	}
@@ -278,6 +281,14 @@ public class User extends BaseEntity implements Serializable, Principal {
 
 	public void setToken(String token) {
 		this.token = token;
+	}
+
+	public String getPassport() {
+		return passport;
+	}
+
+	public void setPassport(String passport) {
+		this.passport = passport;
 	}
 
 	/**

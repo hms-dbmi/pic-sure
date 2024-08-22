@@ -46,24 +46,14 @@ public class RestClientUtil {
     }
 
 
-    public ResponseEntity<String> retrievePostResponse(String uri, HttpHeaders headers, String body) {
-        try {
-            logger.debug("HttpClientUtilSpring retrievePostResponse()");
-            HttpEntity<String> entity = new HttpEntity<>(body, headers);
-            return restTemplate.postForEntity(uri, entity, String.class);
-        } catch (HttpClientErrorException ex) {
-            logger.error("HttpClientErrorException: {}", ex.getMessage());
-            throw ex;
-        }
+    public ResponseEntity<String> retrievePostResponse(String uri, HttpHeaders headers, String body) throws HttpClientErrorException {
+        logger.debug("HttpClientUtilSpring retrievePostResponse()");
+        HttpEntity<String> entity = new HttpEntity<>(body, headers);
+        return restTemplate.postForEntity(uri, entity, String.class);
     }
 
-    public ResponseEntity<String> retrievePostResponse(String uri, HttpEntity<MultiValueMap<String, String>> requestEntity) {
-        try {
-            return restTemplate.postForEntity(uri, requestEntity, String.class);
-        } catch (HttpClientErrorException ex) {
-            logger.error("HttpClientErrorException: {}", ex.getMessage());
-            throw ex;
-        }
+    public ResponseEntity<String> retrievePostResponse(String uri, HttpEntity<MultiValueMap<String, String>> requestEntity) throws HttpClientErrorException {
+        return restTemplate.postForEntity(uri, requestEntity, String.class);
     }
 
     public static ClientHttpRequestFactory createRequestConfigWithCustomTimeout(int timeoutMs) {

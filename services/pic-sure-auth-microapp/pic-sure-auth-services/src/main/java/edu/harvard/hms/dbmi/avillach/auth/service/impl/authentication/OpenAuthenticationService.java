@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.Map;
 
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.managed_open_access_role_name;
+
 @Service
 public class OpenAuthenticationService implements AuthenticationService {
 
@@ -38,35 +40,35 @@ public class OpenAuthenticationService implements AuthenticationService {
     @Override
     public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
         String userUUID = authRequest.get("UUID");
-        User current_user = null;
+        User currentUser = null;
 
         // Try to get the user by UUID
         if (StringUtils.isNotBlank(userUUID)) {
             try {
-                current_user = userService.findUserByUUID(userUUID);
+                currentUser = userService.findUserByUUID(userUUID);
             } catch (IllegalArgumentException e) {
                 logger.error("Invalid UUID: {}", userUUID);
             }
         }
 
         // If we can't find the user by UUID, create a new one
-        if (current_user == null) {
-            Role openAccessRole = roleService.getRoleByName(FENCEAuthenticationService.fence_open_access_role_name);
-            current_user = userService.createOpenAccessUser(openAccessRole);
+        if (currentUser == null) {
+            Role openAccessRole = roleService.getRoleByName(managed_open_access_role_name);
+            currentUser = userService.createOpenAccessUser(openAccessRole);
 
             //clear some cache entries if we register a new login
             // I don't see a clear need to caching here.
-            accessRuleService.evictFromCache(current_user.getEmail());
-            userService.evictFromCache(current_user.getEmail());
+            accessRuleService.evictFromCache(currentUser.getSubject());
+            userService.evictFromCache(currentUser.getSubject());
         }
 
         HashMap<String, Object> claims = new HashMap<>();
-        claims.put("sub", current_user.getSubject());
-        claims.put("email", current_user.getUuid() + "@open_access.com");
-        claims.put("uuid", current_user.getUuid().toString());
+        claims.put("sub", currentUser.getSubject());
+        claims.put("email", currentUser.getUuid() + "@open_access.com");
+        claims.put("uuid", currentUser.getUuid().toString());
         HashMap<String, String> responseMap = userService.getUserProfileResponse(claims);
 
-        logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", current_user.getEmail(), current_user.getUuid().toString(), responseMap.get("expirationDate"));
+        logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(), currentUser.getUuid().toString(), responseMap.get("expirationDate"));
 
         return responseMap;
     }

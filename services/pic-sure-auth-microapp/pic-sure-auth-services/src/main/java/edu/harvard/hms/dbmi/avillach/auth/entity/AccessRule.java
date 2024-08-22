@@ -130,7 +130,7 @@ public class AccessRule extends BaseEntity {
      * which means if only part of the gate set is passed, the gate still
      * not passed
      */
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "accessRule_gate",
             joinColumns = {@JoinColumn(name = "accessRule_id", nullable = false)},
             inverseJoinColumns = {@JoinColumn(name = "gate_id", nullable = false)})
