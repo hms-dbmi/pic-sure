@@ -15,6 +15,7 @@ public class FacetMapper implements RowMapper<Facet> {
             rs.getString("name"),
             rs.getString("display"),
             rs.getString("description"),
+            rs.getString("full_name"),
             null,
             null,
             rs.getString("category"),

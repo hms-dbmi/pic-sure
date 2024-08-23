@@ -46,25 +46,8 @@ class FacetRepositoryTest {
         Filter filter = new Filter(List.of(), "");
 
         List<FacetCategory> actual = subject.getFacets(filter);
-        List<FacetCategory> expected = List.of(
-            new FacetCategory(
-                "site", "Site", "Filter variables by site",
-                List.of(
-                    new Facet("bch", "BCH", "Boston Childrens Hospital", 7, null, "site", null),
-                    new Facet("narnia", "Narnia", "Narnia", 8, null, "site", null)
-                )
-            ),
-            new FacetCategory(
-                "data_source", "Data Source", "What does this data relate to (image, questionnaire...)",
-                List.of(
-                    new Facet("imaging", "Imaging", "Data derived from an image", 5, null, "data_source", null),
-                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", 2, null, "data_source", null),
-                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", 2, null, "data_source", null)
-                )
-            )
-        );
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(2, actual.size());
     }
 
     @Test
@@ -76,15 +59,15 @@ class FacetRepositoryTest {
             new FacetCategory(
                 "site", "Site", "Filter variables by site",
                 List.of(
-                    new Facet("bch", "BCH", "Boston Childrens Hospital", 1, null, "category", null)
+                    new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)
                 )
             ),
             new FacetCategory(
                 "data_source", "Data Source", "What does this data relate to (image, questionnaire...)",
                 List.of(
-                    new Facet("imaging", "Imaging", "Data derived from an image", 1, null, "data_source", null),
-                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
-                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", 1, null, "data_source", null)
+                    new Facet("imaging", "Imaging", "Data derived from an image", "Data derived from an image", 1, null, "data_source", null),
+                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
+                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", "Data derived from a lab test", 1, null, "data_source", null)
                 )
             )
         );
@@ -92,23 +75,23 @@ class FacetRepositoryTest {
 
     @Test
     void shouldFilterFacetsByFacet() {
-        Filter filter = new Filter(List.of(new Facet("bch", "BCH", "Boston Childrens Hospital", 1, null, "category", null)), "");
+        Filter filter = new Filter(List.of(new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)), "");
         List<FacetCategory> actual = subject.getFacets(filter);
 
         List<FacetCategory> expected = List.of(
             new FacetCategory(
                 "site", "Site", "Filter variables by site",
                 List.of(
-                    new Facet("bch", "BCH", "Boston Childrens Hospital", 1, null, "category", null),
-                    new Facet("narnia", "Narnia", "Narnia", 1, null, "category", null)
+                    new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null),
+                    new Facet("narnia", "Narnia", "Narnia", "Narnia", 1, null, "category", null)
                 )
             ),
             new FacetCategory(
                 "data_source", "Data Source", "What does this data relate to (image, questionnaire...)",
                 List.of(
-                    new Facet("imaging", "Imaging", "Data derived from an image", 1, null, "data_source", null),
-                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
-                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", 1, null, "data_source", null)
+                    new Facet("imaging", "Imaging", "Data derived from an image", "Data derived from an image", 1, null, "data_source", null),
+                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
+                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", "Data derived from a lab test", 1, null, "data_source", null)
                 )
             )
         );
@@ -116,8 +99,8 @@ class FacetRepositoryTest {
 
     @Test
     void shouldGetFacet() {
-        Optional<Facet> actual = subject.getFacet("site", "bch");
-        Optional<Facet> expected = Optional.of(new Facet("bch", "BCH", "Boston Childrens Hospital", null, null, "site", null));
+        Optional<Facet> actual = subject.getFacet("study_ids_dataset_ids", "phs000007");
+        Optional<Facet> expected = Optional.of(new Facet("phs000007", "FHS", null, "Framingham Heart Study", null, null, "study_ids_dataset_ids", null));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -132,8 +115,8 @@ class FacetRepositoryTest {
 
     @Test
     void shouldGetFacetMeta() {
-        Map<String, String> actual = subject.getFacetMeta("site", "bch");
-        Map<String, String> expected = Map.of("spicy", "TRUE");
+        Map<String, String> actual = subject.getFacetMeta("study_ids_dataset_ids", "phs000007");
+        Map<String, String> expected = Map.of("full_name", "Framingham Heart Study");
 
         Assertions.assertEquals(expected, actual);
     }

@@ -43,12 +43,14 @@ public class FacetRepository {
                 facet_counts_q.facet_count AS facet_count,
                 facet_category.display as category_display,
                 facet_category.description as category_description,
-                facet.name, facet.display, facet.description
+                facet.name, facet.display, facet.description,
+                facet_meta_full_name.value AS full_name
             FROM
                 facet
                 LEFT JOIN facet_counts_q ON facet.facet_id = facet_counts_q.facet_id
                 LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
                 LEFT JOIN facet as parent_facet ON facet.parent_id = parent_facet.facet_id
+                LEFT JOIN facet_meta AS facet_meta_full_name ON facet.facet_id = facet_meta_full_name.facet_id AND facet_meta_full_name.KEY = 'full_name'
                 
             """.formatted(innerSQL);
 
@@ -59,10 +61,12 @@ public class FacetRepository {
         String sql = """
             SELECT
                 facet_category.name AS category,
-                facet.name, facet.display, facet.description
+                facet.name, facet.display, facet.description,
+                facet_meta_full_name.value AS full_name
             FROM
                 facet
                 LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
+                LEFT JOIN facet_meta AS facet_meta_full_name ON facet.facet_id = facet_meta_full_name.facet_id AND facet_meta_full_name.KEY = 'full_name'
             WHERE
                 facet.name = :facetName
                 AND facet_category.name = :facetCategory

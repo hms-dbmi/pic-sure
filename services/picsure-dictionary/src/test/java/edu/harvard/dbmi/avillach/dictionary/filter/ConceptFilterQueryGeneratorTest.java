@@ -46,7 +46,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFacetAndSearchNoMatch() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", null, null, "study_ids_dataset_ids", null)), "smoke");
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke");
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -57,7 +57,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacet() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", null, null, "study_ids_dataset_ids", null)), "");
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "");
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -68,7 +68,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFacetAndSearchMatch() {
-        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", null, null, "study_ids_dataset_ids", null)), "smoke");
+        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke");
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -79,7 +79,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForNSRRFacet() {
-        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", null, null, "study_ids_dataset_ids", null)), "");
+        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "");
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);

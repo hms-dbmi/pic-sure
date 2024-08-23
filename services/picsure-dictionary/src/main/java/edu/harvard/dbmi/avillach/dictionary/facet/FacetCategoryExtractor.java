@@ -20,7 +20,7 @@ public class FacetCategoryExtractor implements ResultSetExtractor<List<FacetCate
             String category = rs.getString("category_name");
             Facet facet = new Facet(
                 rs.getString("name"), rs.getString("display"),
-                rs.getString("description"), rs.getInt("facet_count"),
+                rs.getString("description"), rs.getString("full_name"), rs.getInt("facet_count"),
                 null, category, null
             );
             FacetCategory facetCategory = new FacetCategory(

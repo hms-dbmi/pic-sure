@@ -37,7 +37,7 @@ class ConceptControllerTest {
             new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", 0, 100, Map.of())
         );
         Filter filter = new Filter(
-            List.of(new Facet("questionare", "Questionare", "?", 1, null, "category", null)),
+            List.of(new Facet("questionare", "Questionare", "?", "Questionare", 1, null, "category", null)),
             "foo"
         );
         Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1)))

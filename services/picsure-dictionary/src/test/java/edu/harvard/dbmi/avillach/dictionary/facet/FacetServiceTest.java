@@ -24,7 +24,7 @@ class FacetServiceTest {
     void shouldGetFacets() {
         Filter filter = new Filter(List.of(), "");
         List<FacetCategory> expected =
-            List.of(new FacetCategory("n", "d", "", List.of(new Facet("f_n", "f_d", "", 1, null, "n", null))));
+            List.of(new FacetCategory("n", "d", "", List.of(new Facet("f_n", "f_d", "", "", 1, null, "n", null))));
         Mockito.when(repository.getFacets(filter))
             .thenReturn(expected);
 
@@ -35,7 +35,7 @@ class FacetServiceTest {
 
     @Test
     void shouldGetFacet() {
-        Optional<Facet> expected = Optional.of(new Facet("n", "d", "", null, null, "c", Map.of("foo", "bar")));
+        Optional<Facet> expected = Optional.of(new Facet("n", "d", "", "", null, null, "c", Map.of("foo", "bar")));
         Mockito.when(repository.getFacet("c", "n"))
             .thenReturn(expected);
         Mockito.when(repository.getFacetMeta("c", "n"))

@@ -24,13 +24,13 @@ class FacetControllerTest {
 
     @Test
     void shouldListFacets() {
-        Facet questionnaire = new Facet("questionnaire", "Questionnaire", "questionnaire", 1, null, "category", null);
-        Facet examination = new Facet("examination", "Examination", "examination", 1, null, "category", null);
+        Facet questionnaire = new Facet("questionnaire", "Questionnaire", "questionnaire", "Questionnaire", 1, null, "category", null);
+        Facet examination = new Facet("examination", "Examination", "examination", "Examination", 1, null, "category", null);
         FacetCategory expected =
             new FacetCategory("category", "Category", "categories!", List.of(questionnaire, examination));
 
         Filter filter = new Filter(
-            List.of(new Facet("questionare", "Questionare", "?", 1, null, "category", null)),
+            List.of(new Facet("questionare", "Questionare", "?", "Examination", 1, null, "category", null)),
             "foo"
         );
         Mockito.when(facetService.getFacets(filter))
@@ -44,7 +44,7 @@ class FacetControllerTest {
 
     @Test
     void shouldGetFacetDetails() {
-        Facet expected = new Facet("questionnaire", "Questionnaire", "questionnaire", 1, null, "category", null);
+        Facet expected = new Facet("questionnaire", "Questionnaire", "questionnaire", "Questionare", 1, null, "category", null);
         Mockito.when(facetService.facetDetails("category", "questionnaire"))
             .thenReturn(Optional.of(expected));
 
@@ -56,7 +56,7 @@ class FacetControllerTest {
 
     @Test
     void shouldNotGetFacetDetails() {
-        Facet questionnaire = new Facet("questionnaire", "Questionnaire", "questionnaire", 1, null, "category", null);
+        Facet questionnaire = new Facet("questionnaire", "Questionnaire", "questionnaire", "Questionare", 1, null, "category", null);
         Mockito.when(facetService.facetDetails("category", "questionnaire"))
             .thenReturn(Optional.of(questionnaire));
 

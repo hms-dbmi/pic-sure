@@ -738,6 +738,9 @@ COPY public.facet_category_meta (facet_category_meta_id, facet_category_id, key,
 --
 
 COPY public.facet_meta (facet_meta_id, facet_id, key, value) FROM stdin;
+1	25	full_name	National Sleep Research Resource
+2	26	full_name	Chronic Fatigue Syndrome
+3	27	full_name	Framingham Heart Study
 \.
 
 
