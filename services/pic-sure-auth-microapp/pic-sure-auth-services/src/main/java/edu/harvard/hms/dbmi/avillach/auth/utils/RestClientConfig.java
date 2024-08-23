@@ -1,9 +1,12 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
 
+import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.http.HttpHost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +22,12 @@ public class RestClientConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(RestClientConfig.class);
 
+    @Value("${http.proxyHost:}")
+    private String proxyHost;
+
+    @Value("${http.proxyPort:}")
+    private int proxyPort;
+
     @Value("${http.proxyUser:}")
     private String proxyUser;
 
@@ -27,17 +36,26 @@ public class RestClientConfig {
 
     @Bean
     public HttpClient getHttpClient() {
-        if (!StringUtils.hasLength(proxyUser)) {
+        if (!StringUtils.hasLength(proxyHost)) {
             return HttpClients.createDefault();
+        } else if (!StringUtils.hasLength(proxyUser)) {
+            LOG.info("Utilizing unauthenticated proxy: host={}", proxyHost);
+            return HttpClients.custom()
+                .setProxy(new HttpHost(proxyHost, proxyPort))
+                .build();
+        } else {
+            LOG.info("Utilizing authenticated proxy: host={}, user={}", proxyHost, proxyUser);
+
+            BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+            credentialsProvider.setCredentials(
+                new AuthScope(proxyHost, proxyPort),
+                new UsernamePasswordCredentials(proxyUser, proxyPassword.toCharArray()));
+
+            return HttpClients.custom()
+                .setDefaultCredentialsProvider(credentialsProvider)
+                .setProxy(new HttpHost(proxyHost, proxyPort))
+                .build();
         }
-        LOG.info("Found proxy user {}, will configure proxy", proxyUser);
-        PoolingHttpClientConnectionManager manager = new PoolingHttpClientConnectionManager();
-        manager.setMaxTotal(100);
-        return HttpClients
-            .custom()
-            .setConnectionManager(manager)
-            .useSystemProperties()
-            .build();
     }
 
     @Bean
