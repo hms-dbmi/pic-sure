@@ -154,19 +154,36 @@ public class PicsureRS {
     @POST
     @Path("/query/{queryId}/result")
     @Operation(
-        summary = "Returns result for given query",
-        responses = {@ApiResponse(
-            responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
-        )}
+            summary = "Returns result for given query",
+            responses = {@ApiResponse(
+                    responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+            )}
     )
     @Produces(MediaType.APPLICATION_OCTET_STREAM)
     public Response queryResult(
-        @Parameter(
-            description = "The UUID of the query to fetch the status of. The UUID is "
-                + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
-        ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+            @Parameter(
+                    description = "The UUID of the query to fetch the status of. The UUID is "
+                            + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
+            ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
         return queryService.queryResult(queryId, credentialsQueryRequest, headers);
+    }
+    @POST
+    @Path("/query/{queryId}/signed-url")
+    @Operation(
+            summary = "Returns a signed url for given query",
+            responses = {@ApiResponse(
+                    responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+            )}
+    )
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response queryResultSignedUrl(
+            @Parameter(
+                    description = "The UUID of the query to fetch the status of. The UUID is "
+                            + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
+            ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+    ) {
+        return queryService.queryResultSignedUrl(queryId, credentialsQueryRequest, headers);
     }
 
     @POST

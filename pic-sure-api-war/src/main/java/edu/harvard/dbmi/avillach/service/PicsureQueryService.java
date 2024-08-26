@@ -149,13 +149,54 @@ public class PicsureQueryService {
         }
 
         logger.info(
-            "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
-            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+                "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
+                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+    }
+
+    /**
+     * Streams the result for a given queryId by looking up the target resource from the database and calling the target resource for a
+     * result. The queryStatus method should be used to verify that the result is available prior to retrieving it.
+     *
+     * @param queryId - id of target resource
+     * @param credentialsQueryRequest - contains resource specific credentials object
+     * @return Response
+     */
+    @Transactional
+    public Response queryResultSignedUrl(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
+        if (queryId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_QUERY_ID);
+        }
+        Query query = queryRepo.getById(queryId);
+        if (query == null) {
+            throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
+        }
+        Resource resource = query.getResource();
+        if (resource == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+        if (credentialsQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        if (credentialsQueryRequest.getResourceCredentials() == null) {
+            credentialsQueryRequest.setResourceCredentials(new HashMap<>());
+        }
+
+        logger.info(
+                "path=/query/{queryId}/signed-url, resourceId={}, requestSource={}, queryRequest={}", queryId,
+                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+        );
+
+
+        credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+        return resourceWebClient.queryResultSignedUrl(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
     }
 
     /**
