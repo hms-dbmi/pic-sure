@@ -22,7 +22,7 @@ public class WeightUpdateCreator {
             .collect(Collectors.joining(", ' ',\n            "));
         return """
             UPDATE concept_node
-            SET SEARCHABLE_FIELDS = to_tsvector(data_table.search_str)
+            SET SEARCHABLE_FIELDS = to_tsvector(replace(data_table.search_str, '_', '/'))
             FROM
             (
                 SELECT
@@ -43,6 +43,8 @@ public class WeightUpdateCreator {
                             concept_node.concept_node_id
                     ) AS concept_node_meta_str ON concept_node_meta_str.id = concept_node.concept_node_id
                     LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+                    LEFT JOIN concept_node AS parent ON concept_node.parent_id = parent.concept_node_id
+                    LEFT JOIN concept_node AS grandparent ON parent.parent_id = grandparent.concept_node_id
             ) AS data_table
             WHERE concept_node.concept_node_id = data_table.search_key;
             """.formatted(searchableFields);
