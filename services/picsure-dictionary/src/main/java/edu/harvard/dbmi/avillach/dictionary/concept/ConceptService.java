@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,7 +10,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class ConceptService {
@@ -25,6 +29,16 @@ public class ConceptService {
         return conceptRepository.getConcepts(filter, page);
     }
 
+    public List<Concept> listDetailedConcepts(Filter filter, Pageable page) {
+        List<Concept> concepts = conceptRepository.getConcepts(filter, page);
+        Map<Concept, Map<String, String>> metas = conceptRepository.getConceptMetaForConcepts(concepts);
+        return concepts.stream().map(concept -> (Concept) switch (concept) {
+            case ContinuousConcept cont -> new ContinuousConcept(cont, metas.getOrDefault(cont, Map.of()));
+            case CategoricalConcept cat -> new CategoricalConcept(cat, metas.getOrDefault(cat, Map.of()));
+            case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
+        }).toList();
+    }
+
     public long countConcepts(Filter filter) {
         return conceptRepository.countConcepts(filter);
     }
@@ -36,6 +50,7 @@ public class ConceptService {
                 return switch (core) {
                     case ContinuousConcept cont -> new ContinuousConcept(cont, meta);
                     case CategoricalConcept cat -> new CategoricalConcept(cat, meta);
+                    case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
                 };
             }
         );

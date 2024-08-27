@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Controller
 public class ConceptController {
 
@@ -38,6 +40,21 @@ public class ConceptController {
             conceptService.listConcepts(filter, pagination),
             pagination,
             conceptService.countConcepts(filter)
+        );
+
+        return ResponseEntity.ok(pageResp);
+    }
+
+    @GetMapping(path = "/concepts/dump")
+    public ResponseEntity<Page<Concept>> dumpConcepts(
+        @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
+        @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
+    ) {
+        PageRequest pagination = PageRequest.of(page, size);
+        PageImpl<Concept> pageResp = new PageImpl<>(
+            conceptService.listDetailedConcepts(new Filter(List.of(), ""), pagination),
+            pagination,
+            conceptService.countConcepts(new Filter(List.of(), ""))
         );
 
         return ResponseEntity.ok(pageResp);

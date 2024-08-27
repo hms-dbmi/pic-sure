@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
@@ -78,6 +79,35 @@ class ConceptServiceTest {
 
         Optional<Concept> actual = subject.conceptDetail("dataset", "path");
         Optional<Concept> expected = Optional.of(new CategoricalConcept(concept, meta));
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldShowDetailForMultiple() {
+        ConceptShell shellA = new ConceptShell("pathA", "dataset");
+        CategoricalConcept conceptA = new CategoricalConcept("pathA", "", "", "dataset", null, List.of("a"), List.of(), null);
+        Map<String, String> metaA = Map.of("VALUES", "a", "stigmatizing", "true");
+
+        ConceptShell shellB = new ConceptShell("pathB", "dataset");
+        ContinuousConcept conceptB = new ContinuousConcept("pathB", "", "", "dataset", null, 0, 1, null);
+        Map<String, String> metaB = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
+
+        Map<Concept, Map<String, String>> metas = Map.of(shellA, metaA, shellB, metaB);
+        List<Concept> concepts = List.of(conceptA, conceptB);
+        Filter emptyFilter = new Filter(List.of(), "");
+
+
+        Mockito.when(repository.getConceptMetaForConcepts(concepts))
+            .thenReturn(metas);
+        Mockito.when(repository.getConcepts(emptyFilter, Pageable.unpaged()))
+            .thenReturn(concepts);
+
+        List<Concept> actual = subject.listDetailedConcepts(emptyFilter, Pageable.unpaged());
+        List<Concept> expected = List.of(
+            new CategoricalConcept(conceptA, metaA),
+            new ContinuousConcept(conceptB, metaB)
+        );
 
         Assertions.assertEquals(expected, actual);
     }

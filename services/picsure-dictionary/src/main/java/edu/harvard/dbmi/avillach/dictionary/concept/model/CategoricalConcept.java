@@ -5,6 +5,7 @@ import jakarta.annotation.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public record CategoricalConcept(
     String conceptPath, String name, String display, String dataset, String description,
@@ -28,5 +29,15 @@ public record CategoricalConcept(
     @Override
     public ConceptType type() {
         return ConceptType.Categorical;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        return conceptEquals(object);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(conceptPath, dataset);
     }
 }

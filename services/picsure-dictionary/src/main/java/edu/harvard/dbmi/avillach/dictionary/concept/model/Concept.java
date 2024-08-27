@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.util.Map;
+import java.util.Objects;
 
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -18,7 +19,7 @@ import java.util.Map;
     @JsonSubTypes.Type(value = CategoricalConcept.class, name = "Categorical"),
 })
 public sealed interface Concept
-    permits CategoricalConcept, ContinuousConcept {
+    permits CategoricalConcept, ConceptShell, ContinuousConcept {
 
     /**
      * @return The complete concept path for this concept (// delimited)
@@ -48,5 +49,10 @@ public sealed interface Concept
 
     Map<String, String> meta();
 
-
+    default boolean conceptEquals(Object object) {
+        if (this == object) return true;
+        if (!(object instanceof Concept)) return false;
+        Concept that = (Concept) object;
+        return Objects.equals(dataset(), that.dataset()) && Objects.equals(conceptPath(), that.conceptPath());
+    }
 }

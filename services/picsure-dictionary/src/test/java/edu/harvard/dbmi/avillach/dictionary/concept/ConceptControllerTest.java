@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -142,5 +143,26 @@ class ConceptControllerTest {
         ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/asdsadasd", 1);
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
+    }
+
+    @Test
+    void shouldDumpConcepts() {
+        Concept fooBar = new CategoricalConcept(
+            "/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), List.of(),
+            Map.of("key", "value")
+        );
+        Concept fooBaz = new ContinuousConcept(
+            "/foo//baz", "baz", "Baz", "my_dataset", "foo!", 0, 100,
+            Map.of("key", "value")
+        );
+        List<Concept> concepts = List.of(fooBar, fooBaz);
+        PageRequest page = PageRequest.of(0, 10);
+        Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), ""), page))
+            .thenReturn(concepts);
+
+        ResponseEntity<Page<Concept>> actual = subject.dumpConcepts(0, 10);
+
+        Assertions.assertEquals(concepts, actual.getBody().getContent());
+        Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
     }
 }

@@ -22,14 +22,18 @@ public class ConceptRepository {
     private final ConceptRowMapper mapper;
 
     private final ConceptFilterQueryGenerator filterGen;
+    private final ConceptMetaExtractor conceptMetaExtractor;
+
 
     @Autowired
     public ConceptRepository(
-        NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen
+        NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen,
+        ConceptMetaExtractor conceptMetaExtractor
     ) {
         this.template = template;
         this.mapper = mapper;
         this.filterGen = filterGen;
+        this.conceptMetaExtractor = conceptMetaExtractor;
     }
 
 
@@ -106,5 +110,27 @@ public class ConceptRepository {
             .addValue("conceptPath", conceptPath)
             .addValue("dataset", dataset);
         return template.query(sql, params, new MapExtractor("KEY", "VALUE"));
+    }
+
+    public Map<Concept, Map<String, String>> getConceptMetaForConcepts(List<Concept> concepts) {
+        String sql = """
+            SELECT
+                concept_node_meta.KEY, concept_node_meta.VALUE,
+                concept_node.CONCEPT_PATH AS concept_path, dataset.REF AS dataset_name
+            FROM
+                concept_node
+                LEFT JOIN concept_node_meta ON concept_node.concept_node_id = concept_node_meta.concept_node_id
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+            WHERE
+                (concept_node.CONCEPT_PATH, dataset.REF) IN (:pairs)
+            ORDER BY concept_node.CONCEPT_PATH, dataset.REF
+            """;
+        List<String[]> pairs = concepts.stream()
+            .map(c -> new String[]{c.conceptPath(), c.dataset()})
+            .toList();
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("pairs", pairs);
+
+        return template.query(sql, params, conceptMetaExtractor);
+
     }
 }

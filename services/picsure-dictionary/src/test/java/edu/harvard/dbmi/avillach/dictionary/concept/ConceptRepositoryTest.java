@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
@@ -145,7 +146,36 @@ class ConceptRepositoryTest {
         Optional<Concept> actual = subject.getConcept("invalid.invalid", "fake");
         Assertions.assertEquals(Optional.empty(), actual);
 
-        actual = subject.getConcept("fake", "\\\\\\\\B\\\\\\\\2\\\\\\\\Z\\\\\\\\");
+        actual = subject.getConcept("fake", "\\\\B\\\\2\\\\Z\\\\");
         Assertions.assertEquals(Optional.empty(), actual);
+    }
+
+    @Test
+    void shouldGetMetaForMultipleConcepts() {
+        List<Concept> concepts = List.of(
+            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", null, null, Map.of()),
+            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "", "", "phs000007", "", null, null, Map.of())
+        );
+
+        Map<Concept, Map<String, String>> actual = subject.getConceptMetaForConcepts(concepts);
+        Map<Concept, Map<String, String>> expected = Map.of(
+            new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"), Map.of(
+                "unique_identifier", "no",
+                "stigmatizing", "no",
+                "bdc_open_access", "yes",
+                "values", "[0, 1]",
+                "description", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY",
+                "free_text", "no"
+            ),
+            new ConceptShell("\\phs000007\\pht000033\\phv00008849\\D080\\", "phs000007"), Map.of(
+                "unique_identifier", "no",
+                "stigmatizing", "no",
+                "bdc_open_access", "yes",
+                "values", "[0, 5]",
+                "description", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
+                "free_text", "no"
+            )
+        );
+        Assertions.assertEquals(expected, actual);
     }
 }
