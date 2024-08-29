@@ -47,14 +47,14 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldListAllConcepts() {
-        List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.unpaged());
+        List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
         
         Assertions.assertEquals(29, actual.size());
     }
 
     @Test
     void shouldListFirstTwoConcepts() {
-        List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.ofSize(2).first());
+        List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first());
         List<? extends Record> expected = List.of(
             new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 3, null),
             new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), null, null)
@@ -65,7 +65,7 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldListNextTwoConcepts() {
-        List<Concept> actual = subject.getConcepts(new Filter(List.of(), ""), Pageable.ofSize(2).first().next());
+        List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first().next());
         List<? extends Record> expected = List.of(
             new CategoricalConcept("\\phs002385\\RACEG\\", "RACEG", "RACEG", "phs002385", "Race (regrouped)", List.of("Not Reported"), null, null),
             new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), null, null)
@@ -77,7 +77,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldFilterConceptsByFacet() {
         List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("phs000007", "", "", "", 1, null, "study_ids_dataset_ids", null)), ""), Pageable.unpaged());
+            subject.getConcepts(new Filter(List.of(new Facet("phs000007", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
             new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 1, null),
             new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 3, null),
@@ -89,7 +89,7 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldFilterBySearch() {
-        List<Concept> actual = subject.getConcepts(new Filter(List.of(), "COLA"), Pageable.unpaged());
+        List<Concept> actual = subject.getConcepts(new Filter(List.of(), "COLA", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
             new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 1, null),
             new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 3, null),
@@ -102,7 +102,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldFilterByBothSearchAndFacet() {
         List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "phs002715"), Pageable.unpaged());
+            subject.getConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "phs002715", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
             new CategoricalConcept("\\phs002715\\age\\", "AGE_CATEGORY", "age", "phs002715", "Participant's age (category)", List.of("21"), null, null),
             new CategoricalConcept("\\phs002715\\nsrr_ever_smoker\\", "nsrr_ever_smoker", "nsrr_ever_smoker", "phs002715", "Smoker status", List.of("yes"), null, null)
@@ -113,14 +113,14 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldGetCount() {
-        long actual = subject.countConcepts(new Filter(List.of(), ""));
+        long actual = subject.countConcepts(new Filter(List.of(), "", List.of()));
 
         Assertions.assertEquals(29L, actual);
     }
 
     @Test
     void shouldGetCountWithFilter() {
-        Long actual = subject.countConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), ""));
+        Long actual = subject.countConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()));
         Assertions.assertEquals(2L, actual);
     }
 

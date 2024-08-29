@@ -39,7 +39,7 @@ class ConceptControllerTest {
         );
         Filter filter = new Filter(
             List.of(new Facet("questionare", "Questionare", "?", "Questionare", 1, null, "category", null)),
-            "foo"
+            "foo", List.of()
         );
         Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1)))
             .thenReturn(expected);
@@ -157,7 +157,7 @@ class ConceptControllerTest {
         );
         List<Concept> concepts = List.of(fooBar, fooBaz);
         PageRequest page = PageRequest.of(0, 10);
-        Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), ""), page))
+        Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), page))
             .thenReturn(concepts);
 
         ResponseEntity<Page<Concept>> actual = subject.dumpConcepts(0, 10);

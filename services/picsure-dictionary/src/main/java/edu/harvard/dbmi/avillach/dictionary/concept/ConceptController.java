@@ -52,9 +52,9 @@ public class ConceptController {
     ) {
         PageRequest pagination = PageRequest.of(page, size);
         PageImpl<Concept> pageResp = new PageImpl<>(
-            conceptService.listDetailedConcepts(new Filter(List.of(), ""), pagination),
+            conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), pagination),
             pagination,
-            conceptService.countConcepts(new Filter(List.of(), ""))
+            conceptService.countConcepts(new Filter(List.of(), "", List.of()))
         );
 
         return ResponseEntity.ok(pageResp);

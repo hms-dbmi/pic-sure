@@ -10,32 +10,44 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 @Component
 public class FacetQueryGenerator {
 
+    private static final String CONSENT_QUERY = """
+                dataset.dataset_id IN (
+                    SELECT consent.dataset_id
+                    FROM consent
+                    WHERE consent.consent_code IN (:consents)
+                ) AND
+                """;
+
     public String createFacetSQLAndPopulateParams(Filter filter, MapSqlParameterSource params) {
         Map<String, List<Facet>> groupedFacets = (filter.facets() == null ? Stream.<Facet>of() : filter.facets().stream())
             .collect(Collectors.groupingBy(Facet::category));
+        String consentWhere = "";
+        if (!CollectionUtils.isEmpty(filter.consents())) {
+            params.addValue("consents", filter.consents());
+            consentWhere = CONSENT_QUERY;
+        }
         if (CollectionUtils.isEmpty(filter.facets())) {
             if (StringUtils.hasLength(filter.search())) {
-                return createNoFacetSQLWithSearch(filter.search(), params);
+                return createNoFacetSQLWithSearch(filter.search(), consentWhere, params);
             } else {
-                return createNoFacetSQLNoSearch(params);
+                return createNoFacetSQLNoSearch(params, consentWhere);
             }
         } else if (groupedFacets.size() == 1) {
             if (StringUtils.hasLength(filter.search())) {
-                return createSingleCategorySQLWithSearch(filter.facets(), filter.search(), params);
+                return createSingleCategorySQLWithSearch(filter.facets(), filter.search(), consentWhere, params);
             } else {
-                return createSingleCategorySQLNoSearch(filter.facets(), params);
+                return createSingleCategorySQLNoSearch(filter.facets(), consentWhere, params);
             }
         } else {
             if (StringUtils.hasLength(filter.search())) {
-                return createMultiCategorySQLWithSearch(groupedFacets, filter.search(), params);
+                return createMultiCategorySQLWithSearch(groupedFacets, filter.search(), consentWhere, params);
             } else {
-                return createMultiCategorySQLNoSearch(groupedFacets, params);
+                return createMultiCategorySQLNoSearch(groupedFacets, consentWhere, params);
             }
         }
     }
@@ -48,7 +60,7 @@ public class FacetQueryGenerator {
         return keys;
     }
 
-    private String createMultiCategorySQLWithSearch(Map<String, List<Facet>> facets, String search, MapSqlParameterSource params) {
+    private String createMultiCategorySQLWithSearch(Map<String, List<Facet>> facets, String search, String consentWhere, MapSqlParameterSource params) {
         Map<String, String> categoryKeys = createSQLSafeCategoryKeys(facets.keySet().stream().toList());
         params.addValue("search", search);
 
@@ -104,15 +116,20 @@ public class FacetQueryGenerator {
                             facet.facet_id, count(*) as facet_count
                         FROM
                             facet
+                            LEFT JOIN facet_category fc ON fc.facet_category_id = facet.facet_category_id
                             JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                            LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                            LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         WHERE
-                            fcn.concept_node_id IN (%s)
+                            %s
+                            fcn.concept_node_id IN (%s) AND
+                            fc.name = :facet_category_%s
                         GROUP BY
                             facet.facet_id
                         ORDER BY
                             facet_count DESC
                     )
-                    """.formatted(allConceptsForCategory);
+                    """.formatted(consentWhere, allConceptsForCategory, categoryKeys.get(category));
             })
             .collect(Collectors.joining("\n\tUNION\n"));
 
@@ -132,7 +149,10 @@ public class FacetQueryGenerator {
                     facet
                     JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                     JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                    LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                    LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 WHERE
+                    %s
                     fc.name NOT IN (:all_selected_facet_categories)
                     AND fcn.concept_node_id IN (%s)
                 GROUP BY
@@ -140,12 +160,12 @@ public class FacetQueryGenerator {
                 ORDER BY
                     facet_count DESC
             )
-            """.formatted(allConceptsForUnselectedCategories);
+            """.formatted(consentWhere, allConceptsForUnselectedCategories);
 
         return conceptsQuery + selectedFacetsQuery + unselectedFacetsQuery;
     }
 
-    private String createMultiCategorySQLNoSearch(Map<String, List<Facet>> facets, MapSqlParameterSource params) {
+    private String createMultiCategorySQLNoSearch(Map<String, List<Facet>> facets, String consentWhere, MapSqlParameterSource params) {
         Map<String, String> categoryKeys = createSQLSafeCategoryKeys(facets.keySet().stream().toList());
 
         /*
@@ -187,13 +207,13 @@ public class FacetQueryGenerator {
            and INTERSECT them. This creates the concepts for this category
          */
         String selectedFacetsQuery = facets.keySet().stream().map(category -> {
-            params.addValue("facet_category_" + categoryKeys.get(category), category);
-            String allConceptsForCategory = categoryKeys.values().stream()
-                .filter(key -> !categoryKeys.get(category).equals(key))
-                .map(key -> "SELECT * FROM facet_category_" + key + "_concepts")
-                .collect(Collectors.joining(" INTERSECT "));
-            params.addValue("", "");
-            return """
+                params.addValue("facet_category_" + categoryKeys.get(category), category);
+                String allConceptsForCategory = categoryKeys.values().stream()
+                    .filter(key -> !categoryKeys.get(category).equals(key))
+                    .map(key -> "SELECT * FROM facet_category_" + key + "_concepts")
+                    .collect(Collectors.joining(" INTERSECT "));
+                params.addValue("", "");
+                return """
                 (
                     SELECT
                         facet.facet_id, count(*) as facet_count
@@ -201,7 +221,10 @@ public class FacetQueryGenerator {
                         facet
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
+                        LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                     WHERE
+                        %s
                         fcn.concept_node_id IN (%s)
                         AND fc.name = :facet_category_%s
                     GROUP BY
@@ -209,7 +232,7 @@ public class FacetQueryGenerator {
                     ORDER BY
                         facet_count DESC
                 )
-                """.formatted(allConceptsForCategory, categoryKeys.get(category));
+                """.formatted(consentWhere, allConceptsForCategory, categoryKeys.get(category));
             })
             .collect(Collectors.joining("\n\tUNION\n"));
 
@@ -229,7 +252,10 @@ public class FacetQueryGenerator {
                     facet
                     JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                     JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                    LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                    LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 WHERE
+                    %s
                     fc.name NOT IN (:all_selected_facet_categories)
                     AND fcn.concept_node_id IN (%s)
                 GROUP BY
@@ -237,12 +263,12 @@ public class FacetQueryGenerator {
                 ORDER BY
                     facet_count DESC
             )
-            """.formatted(allConceptsForUnselectedCategories);
+            """.formatted(consentWhere, allConceptsForUnselectedCategories);
 
         return conceptsQuery + selectedFacetsQuery + unselectedFacetsQuery;
     }
 
-    private String createSingleCategorySQLWithSearch(List<Facet> facets, String search, MapSqlParameterSource params) {
+    private String createSingleCategorySQLWithSearch(List<Facet> facets, String search, String consentWhere, MapSqlParameterSource params) {
         params.addValue("facet_category_name", facets.getFirst().category());
         params.addValue("facets", facets.stream().map(Facet::name).toList());
         params.addValue("search", search);
@@ -262,11 +288,13 @@ public class FacetQueryGenerator {
                         facet
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
-                        JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                         LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
+                        %s
                         fc.name = :facet_category_name
                         AND concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
                         AND (
@@ -287,7 +315,8 @@ public class FacetQueryGenerator {
                         FROM
                             facet
                             JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
-                            JOIN concept_node ON concept_node.concept_node_id = facet__concept_node.concept_node
+                            JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                            JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                             LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                             LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                             LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
@@ -306,19 +335,22 @@ public class FacetQueryGenerator {
                     FROM
                         facet
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                        LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN matching_concepts ON fcn.concept_node_id = matching_concepts.concept_node_id
                     WHERE
+                        %s
                         fc.name <> :facet_category_name
                     GROUP BY
                         facet.facet_id
                     ORDER BY
                         facet_count DESC
                 )
-                """;
+                """.formatted(consentWhere, consentWhere);
     }
 
-    private String createSingleCategorySQLNoSearch(List<Facet> facets, MapSqlParameterSource params) {
+    private String createSingleCategorySQLNoSearch(List<Facet> facets, String consentWhere, MapSqlParameterSource params) {
         params.addValue("facet_category_name", facets.getFirst().category());
         params.addValue("facets", facets.stream().map(Facet::name).toList());
         // return all the facets in the matched category that are displayable
@@ -332,11 +364,13 @@ public class FacetQueryGenerator {
                         facet
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
-                        JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                         LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
+                        %s
                         fc.name = :facet_category_name
                         AND (
                             continuous_min.value <> '' OR
@@ -375,19 +409,22 @@ public class FacetQueryGenerator {
                     FROM
                         facet
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
+                        LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN matching_concepts ON fcn.concept_node_id = matching_concepts.concept_node_id
                     WHERE
+                        %s
                         fc.name <> :facet_category_name
                     GROUP BY
                         facet.facet_id
                     ORDER BY
                         facet_count DESC
                 )
-                """;
+                """.formatted(consentWhere, consentWhere);
     }
 
-    private String createNoFacetSQLWithSearch(String search, MapSqlParameterSource params) {
+    private String createNoFacetSQLWithSearch(String search, String consentWhere, MapSqlParameterSource params) {
         // return all the facets that match concepts that
         //      match search
         //      are displayable
@@ -400,10 +437,12 @@ public class FacetQueryGenerator {
                 JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
+                %s
                 concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
                 AND (
                     continuous_min.value <> '' OR
@@ -414,11 +453,11 @@ public class FacetQueryGenerator {
                 facet.facet_id
             ORDER BY
                 facet_count DESC
-            """;
+            """.formatted(consentWhere);
 
     }
 
-    private String createNoFacetSQLNoSearch(MapSqlParameterSource params) {
+    private String createNoFacetSQLNoSearch(MapSqlParameterSource params, String consents) {
         // return all the facets that match displayable concepts
         // this is the easy one!
         return """
@@ -429,17 +468,21 @@ public class FacetQueryGenerator {
                 JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
-                continuous_min.value <> '' OR
-                continuous_max.value <> '' OR
-                categorical_values.value <> ''
+                %s
+                (
+                    continuous_min.value <> '' OR
+                    continuous_max.value <> '' OR
+                    categorical_values.value <> ''
+                )
             GROUP BY
                 facet.facet_id
             ORDER BY
                 facet_count DESC
-            """;
+            """.formatted(consents);
     }
 }

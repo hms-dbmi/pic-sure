@@ -22,7 +22,7 @@ class FacetServiceTest {
 
     @Test
     void shouldGetFacets() {
-        Filter filter = new Filter(List.of(), "");
+        Filter filter = new Filter(List.of(), "", List.of());
         List<FacetCategory> expected =
             List.of(new FacetCategory("n", "d", "", List.of(new Facet("f_n", "f_d", "", "", 1, null, "n", null))));
         Mockito.when(repository.getFacets(filter))

@@ -31,7 +31,7 @@ class FacetControllerTest {
 
         Filter filter = new Filter(
             List.of(new Facet("questionare", "Questionare", "?", "Examination", 1, null, "category", null)),
-            "foo"
+            "foo", List.of()
         );
         Mockito.when(facetService.getFacets(filter))
             .thenReturn(List.of(expected));

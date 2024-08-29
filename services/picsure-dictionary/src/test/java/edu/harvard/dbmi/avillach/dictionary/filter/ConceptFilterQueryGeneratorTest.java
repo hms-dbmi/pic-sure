@@ -46,7 +46,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFacetAndSearchNoMatch() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke");
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -57,7 +57,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacet() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "");
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -67,8 +67,41 @@ class ConceptFilterQueryGeneratorTest {
     }
 
     @Test
+    void shouldGenerateForFHSFacetWithConsent1() {
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c1"));
+        QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
+
+        List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
+        List<Integer> expected = List.of(229, 232, 235);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldGenerateForFHSFacetWithConsent1And2() {
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c1", "c2"));
+        QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
+
+        List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
+        List<Integer> expected = List.of(229, 232, 235);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldGenerateForFHSFacetWithConsent3() {
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c3"));
+        QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
+
+        List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
+        List<Integer> expected = List.of();
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
     void shouldGenerateForFacetAndSearchMatch() {
-        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke");
+        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -79,7 +112,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForNSRRFacet() {
-        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "");
+        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);

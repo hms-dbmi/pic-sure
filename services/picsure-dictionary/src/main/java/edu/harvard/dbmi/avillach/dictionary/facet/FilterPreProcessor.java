@@ -34,7 +34,7 @@ public class FilterPreProcessor implements RequestBodyAdvice {
         Type targetType, Class<? extends HttpMessageConverter<?>> converterType
     ) {
         if (body instanceof Filter filter && StringUtils.hasLength(filter.search())) {
-            return new Filter(filter.facets(), filter.search().replaceAll("_", "/"));
+            return new Filter(filter.facets(), filter.search().replaceAll("_", "/"), filter.consents());
         }
         return body;
     }

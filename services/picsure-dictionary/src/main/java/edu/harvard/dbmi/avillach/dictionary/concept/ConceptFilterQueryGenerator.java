@@ -15,6 +15,14 @@ import java.util.stream.Collectors;
 @Component
 public class ConceptFilterQueryGenerator {
 
+    private static final String CONSENT_QUERY = """
+                dataset.dataset_id IN (
+                    SELECT consent.dataset_id
+                    FROM consent
+                    WHERE consent.consent_code IN (:consents)
+                ) AND
+                """;
+
     /**
      * This generates a query that will return a list of concept_node IDs for the given filter.
      * <p>
@@ -31,12 +39,15 @@ public class ConceptFilterQueryGenerator {
         MapSqlParameterSource params = new MapSqlParameterSource();
         List<String> clauses = new java.util.ArrayList<>(List.of());
         if (!CollectionUtils.isEmpty(filter.facets())) {
-            clauses.addAll(createFacetFilter(filter.facets(), params, filter.search()));
+            clauses.addAll(createFacetFilter(filter, params));
         }
         if (StringUtils.hasLength(filter.search())) {
             params.addValue("search", filter.search().trim());
         }
-        clauses.add(createValuelessNodeFilter(filter.search()));
+        if (!CollectionUtils.isEmpty(filter.consents())) {
+            params.addValue("consents", filter.consents());
+        }
+        clauses.add(createValuelessNodeFilter(filter.search(), filter.consents()));
 
 
         String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n)";
@@ -63,13 +74,14 @@ public class ConceptFilterQueryGenerator {
         return new QueryParamPair(superQuery, params);
     }
 
-    private String createValuelessNodeFilter(String search) {
+    private String createValuelessNodeFilter(String search, List<String> consents) {
         String rankQuery = "0 as rank";
         String rankWhere = "";
         if (StringUtils.hasLength(search)) {
             rankQuery = "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery) as rank";
             rankWhere = "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND";
         }
+        String consentWhere = CollectionUtils.isEmpty(consents) ? "" : CONSENT_QUERY;
         // concept nodes that have no values and no min/max should not get returned by search
         return """
             SELECT
@@ -77,21 +89,24 @@ public class ConceptFilterQueryGenerator {
                 %s
             FROM
                 concept_node
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
+                %s
                 %s
                 (
                     continuous_min.value <> '' OR
                     continuous_max.value <> '' OR
                     categorical_values.value <> ''
                 )
-            """.formatted(rankQuery, rankWhere);
+            """.formatted(rankQuery, rankWhere, consentWhere);
     }
 
-    private List<String> createFacetFilter(List<Facet> facets, MapSqlParameterSource params, String search) {
-        return facets.stream()
+    private List<String> createFacetFilter(Filter filter, MapSqlParameterSource params) {
+        String consentWhere = CollectionUtils.isEmpty(filter.consents()) ? "" : CONSENT_QUERY;
+        return filter.facets().stream()
             .collect(Collectors.groupingBy(Facet::category))
             .entrySet().stream()
             .map(facetsForCategory ->  {
@@ -101,7 +116,7 @@ public class ConceptFilterQueryGenerator {
                     .addValue("category_%s".formatted(facetsForCategory.getKey()), facetsForCategory.getKey());
                 String rankQuery = "0";
                 String rankWhere = "";
-                if (StringUtils.hasLength(search)) {
+                if (StringUtils.hasLength(filter.search())) {
                     rankQuery = "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery)";
                     rankWhere = "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND";
                 }
@@ -114,13 +129,15 @@ public class ConceptFilterQueryGenerator {
                         LEFT JOIN facet__concept_node ON facet__concept_node.facet_id = facet.facet_id
                         JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = facet__concept_node.concept_node_id
+                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                     WHERE
+                        %s
                         %s
                         facet.name IN (:facets_for_category_%s ) AND facet_category.name = :category_%s
                     GROUP BY
                         facet__concept_node.concept_node_id
                 )
-                """.formatted(rankQuery, rankWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
+                """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
             })
             .toList();
     }

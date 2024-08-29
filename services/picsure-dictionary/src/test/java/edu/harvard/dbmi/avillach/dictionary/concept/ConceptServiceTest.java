@@ -32,7 +32,7 @@ class ConceptServiceTest {
         List<Concept> expected = List.of(
             new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), null, null)
         );
-        Filter filter = new Filter(List.of(), "");
+        Filter filter = new Filter(List.of(), "", List.of());
         Pageable page = Pageable.ofSize(10).first();
         Mockito.when(repository.getConcepts(filter, page))
             .thenReturn(expected);
@@ -44,7 +44,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldCountConcepts() {
-        Filter filter = new Filter(List.of(), "");
+        Filter filter = new Filter(List.of(), "", List.of());
         Mockito.when(repository.countConcepts(filter))
             .thenReturn(1L);
 
@@ -95,7 +95,7 @@ class ConceptServiceTest {
 
         Map<Concept, Map<String, String>> metas = Map.of(shellA, metaA, shellB, metaB);
         List<Concept> concepts = List.of(conceptA, conceptB);
-        Filter emptyFilter = new Filter(List.of(), "");
+        Filter emptyFilter = new Filter(List.of(), "", List.of());
 
 
         Mockito.when(repository.getConceptMetaForConcepts(concepts))

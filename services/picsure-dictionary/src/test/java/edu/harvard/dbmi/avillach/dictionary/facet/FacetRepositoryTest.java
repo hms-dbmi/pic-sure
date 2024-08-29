@@ -43,7 +43,7 @@ class FacetRepositoryTest {
 
     @Test
     void shouldGetAllFacets() {
-        Filter filter = new Filter(List.of(), "");
+        Filter filter = new Filter(List.of(), "", List.of());
 
         List<FacetCategory> actual = subject.getFacets(filter);
 
@@ -52,7 +52,7 @@ class FacetRepositoryTest {
 
     @Test
     void shouldFilterFacetsBySearch() {
-        Filter filter = new Filter(List.of(), "X");
+        Filter filter = new Filter(List.of(), "X", List.of());
         List<FacetCategory> actual = subject.getFacets(filter);
 
         List<FacetCategory> expected = List.of(
@@ -75,7 +75,7 @@ class FacetRepositoryTest {
 
     @Test
     void shouldFilterFacetsByFacet() {
-        Filter filter = new Filter(List.of(new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)), "");
+        Filter filter = new Filter(List.of(new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)), "", List.of());
         List<FacetCategory> actual = subject.getFacets(filter);
 
         List<FacetCategory> expected = List.of(
