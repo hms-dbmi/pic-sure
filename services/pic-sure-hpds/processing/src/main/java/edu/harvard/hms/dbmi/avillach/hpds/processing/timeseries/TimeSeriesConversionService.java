@@ -9,6 +9,9 @@ import java.time.format.DateTimeFormatter;
 public class TimeSeriesConversionService {
 
     public String toISOString(Long unixTimeStamp) {
+        if (unixTimeStamp == null) {
+            return "";
+        }
         Instant instant = Instant.ofEpochMilli(unixTimeStamp);
         return DateTimeFormatter.ISO_INSTANT.format(instant);
     }
