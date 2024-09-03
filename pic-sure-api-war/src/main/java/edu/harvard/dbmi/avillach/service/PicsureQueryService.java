@@ -159,12 +159,11 @@ public class PicsureQueryService {
     }
 
     /**
-     * Streams the result for a given queryId by looking up the target resource from the database and calling the target resource for a
-     * result. The queryStatus method should be used to verify that the result is available prior to retrieving it.
+     * Returns a signed URL from HPDS that is a reference to the query result
      *
      * @param queryId - id of target resource
      * @param credentialsQueryRequest - contains resource specific credentials object
-     * @return Response
+     * @return Response containing a signed URL
      */
     @Transactional
     public Response queryResultSignedUrl(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers) {
