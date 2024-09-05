@@ -57,6 +57,6 @@ public class ConceptService {
     }
 
     public Optional<Concept> conceptTree(String dataset, String conceptPath, int depth) {
-        return Optional.empty();
+        return conceptRepository.getConceptTree(dataset, conceptPath, depth);
     }
 }

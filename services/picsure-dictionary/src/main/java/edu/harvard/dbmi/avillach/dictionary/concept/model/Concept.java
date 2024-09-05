@@ -3,7 +3,9 @@ package edu.harvard.dbmi.avillach.dictionary.concept.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import jakarta.annotation.Nullable;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -48,6 +50,11 @@ public sealed interface Concept
     ConceptType type();
 
     Map<String, String> meta();
+
+    @Nullable
+    List<Concept> children();
+
+    Concept withChildren(List<Concept> children);
 
     default boolean conceptEquals(Object object) {
         if (this == object) return true;

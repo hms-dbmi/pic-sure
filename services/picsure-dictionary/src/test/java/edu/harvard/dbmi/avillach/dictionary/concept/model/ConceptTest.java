@@ -75,7 +75,7 @@ class ConceptTest {
         );
 
         String actual = new ObjectMapper().writeValueAsString(concepts);
-        String expected = "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"min\":0,\"max\":1,\"meta\":{},\"type\":\"Continuous\"},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"children\":null,\"meta\":{},\"type\":\"Categorical\"}]";
+        String expected = "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"min\":0,\"max\":1,\"meta\":{},\"children\":null,\"type\":\"Continuous\"},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"children\":null,\"meta\":{},\"type\":\"Categorical\"}]";
 
         Assertions.assertEquals(expected, actual);
     }

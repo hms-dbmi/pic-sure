@@ -178,4 +178,58 @@ class ConceptRepositoryTest {
         );
         Assertions.assertEquals(expected, actual);
     }
+
+    @Test
+    void shouldGetTree() {
+        Concept d0 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\", "1");
+        Concept d1 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", "1");
+        Concept d2 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\", "1");
+        Concept d3 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\", "1");
+        Concept d4A = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\", "1");
+        Concept d4B = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\", "1");
+        d3 = d3.withChildren(List.of(d4A, d4B));
+        d2.withChildren(List.of(d3));
+        d1.withChildren(List.of(d2));
+        d0.withChildren(List.of(d1));
+
+        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 3);
+        Optional<Concept> expected = Optional.of(d0);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldGetTreeForDepthThatExceedsOntology() {
+        Concept d0 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\", "1");
+        Concept d1 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", "1");
+        Concept d2 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\", "1");
+        Concept d3 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\", "1");
+        Concept d4A = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\", "1");
+        Concept d4B = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\", "1");
+        d3 = d3.withChildren(List.of(d4A, d4B));
+        d2.withChildren(List.of(d3));
+        d1.withChildren(List.of(d2));
+        d0.withChildren(List.of(d1));
+
+        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 30);
+        Optional<Concept> expected = Optional.of(d0);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldReturnEmptyTreeForDNE() {
+        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Top Secret ICD-69\\", 30);
+        Optional<Concept> expected = Optional.empty();
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldReturnEmptyForNegativeDepth() {
+        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", -1);
+        Optional<Concept> expected = Optional.empty();
+
+        Assertions.assertEquals(expected, actual);
+    }
 }

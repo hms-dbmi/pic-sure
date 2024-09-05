@@ -24,11 +24,24 @@ public record CategoricalConcept(
         this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, core.children, meta);
     }
 
+    public CategoricalConcept(CategoricalConcept core, List<Concept> children) {
+        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, children, core.meta);
+    }
+
+    public CategoricalConcept(String conceptPath, String dataset) {
+        this(conceptPath, "", "", dataset, "", List.of(), List.of(), null);
+    }
+
 
     @JsonProperty("type")
     @Override
     public ConceptType type() {
         return ConceptType.Categorical;
+    }
+
+    @Override
+    public CategoricalConcept withChildren(List<Concept> children) {
+        return new CategoricalConcept(this, children);
     }
 
     @Override
@@ -40,4 +53,5 @@ public record CategoricalConcept(
     public int hashCode() {
         return Objects.hash(conceptPath, dataset);
     }
+
 }
