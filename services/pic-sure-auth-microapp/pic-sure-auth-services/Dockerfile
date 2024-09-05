@@ -3,14 +3,14 @@ FROM maven:3.9.6-amazoncorretto-21 as build
 # Copy the source code into the container
 COPY ./ /app
 
-# Pull in global maven settings
-COPY ./.m2/*.xml /root/.m2/
-
 # Change the working directory
 WORKDIR /app
 
 # Build the jar
 RUN mvn clean install -DskipTests
+
+# Pull in global maven settings
+COPY ./.m2/*.xml /root/.m2/
 
 FROM amazoncorretto:21.0.1-alpine3.18
 
