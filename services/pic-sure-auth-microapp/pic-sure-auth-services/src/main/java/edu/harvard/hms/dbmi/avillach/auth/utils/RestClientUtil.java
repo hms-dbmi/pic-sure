@@ -23,7 +23,7 @@ public class RestClientUtil {
 
     public ResponseEntity<String> retrieveGetResponse(String uri, HttpHeaders headers) {
         try {
-            HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
+            HttpEntity<String> entity = new HttpEntity<>(null, headers);
             // Pass custom configuration to the RestTemplate
             return restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
         } catch (HttpClientErrorException ex) {
@@ -35,7 +35,7 @@ public class RestClientUtil {
     // Implement: The ability to set the timeout on the rest template for a given request.
     public ResponseEntity<String> retrieveGetResponseWithRequestConfiguration(String uri, HttpHeaders headers, int timeoutMs) {
         try {
-            HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
+            HttpEntity<String> entity = new HttpEntity<>(null, headers);
             // Set timeout settings
             ((HttpComponentsClientHttpRequestFactory)restTemplate.getRequestFactory()).setConnectTimeout(timeoutMs);
             ((HttpComponentsClientHttpRequestFactory)restTemplate.getRequestFactory()).setConnectionRequestTimeout(timeoutMs);
