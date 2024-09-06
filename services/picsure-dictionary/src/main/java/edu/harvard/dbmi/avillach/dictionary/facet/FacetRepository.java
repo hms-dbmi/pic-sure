@@ -74,7 +74,29 @@ public class FacetRepository {
         MapSqlParameterSource params = new MapSqlParameterSource()
             .addValue("facetCategory", facetCategory)
             .addValue("facetName", facet);
-        return template.query(sql, params, mapper).stream().findFirst();
+        return template.query(sql, params, mapper).stream().findFirst()
+            .map(f -> f.withChildren(getFacetChildren(f.category(), f.name())));
+    }
+
+    private List<Facet> getFacetChildren(String facetCategory, String parentFacetName) {
+        String sql = """
+            SELECT
+                facet_category.name AS category,
+                facet.name, facet.display, facet.description,
+                facet_meta_full_name.value AS full_name
+            FROM
+                facet
+                LEFT JOIN facet as parent_facet ON facet.parent_id = parent_facet.facet_id
+                LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
+                LEFT JOIN facet_meta AS facet_meta_full_name ON facet.facet_id = facet_meta_full_name.facet_id AND facet_meta_full_name.KEY = 'full_name'
+            WHERE
+                parent_facet.name = :facetName
+                AND facet_category.name = :facetCategory
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+            .addValue("facetCategory", facetCategory)
+            .addValue("facetName", parentFacetName);
+        return template.query(sql, params, mapper);
     }
 
     public Map<String, String> getFacetMeta(String facetCategory, String facet) {

@@ -16,20 +16,7 @@ public class ConceptResultSetExtractor implements ResultSetExtractor<Concept> {
     @Autowired
     private ConceptResultSetUtil conceptResultSetUtil;
 
-    private record ConceptWithId(Concept c, int id) {
-        @Override
-        public boolean equals(Object object) {
-            if (this == object) return true;
-            if (object == null || getClass() != object.getClass()) return false;
-            ConceptWithId conceptWithId = (ConceptWithId) object;
-            return id == conceptWithId.id;
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hashCode(id);
-        }
-    };
+    private record ConceptWithId(Concept c, int id) {};
 
     @Override
     public Concept extractData(ResultSet rs) throws SQLException, DataAccessException {

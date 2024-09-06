@@ -44,63 +44,56 @@ class FacetRepositoryTest {
     @Test
     void shouldGetAllFacets() {
         Filter filter = new Filter(List.of(), "", List.of());
-
         List<FacetCategory> actual = subject.getFacets(filter);
-
-        Assertions.assertEquals(2, actual.size());
-    }
-
-    @Test
-    void shouldFilterFacetsBySearch() {
-        Filter filter = new Filter(List.of(), "X", List.of());
-        List<FacetCategory> actual = subject.getFacets(filter);
-
         List<FacetCategory> expected = List.of(
-            new FacetCategory(
-                "site", "Site", "Filter variables by site",
+            new FacetCategory("study_ids_dataset_ids", "Study IDs/Dataset IDs", "",
                 List.of(
-                    new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)
+                    new Facet("1", "GIC", null, null, 13, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs000284", "CFS", null, "Chronic Fatigue Syndrome", 3, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs000007", "FHS", null, "Framingham Heart Study", 3, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs002385", "HCT_for_SCD", null, null, 3, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs002808", "nuMoM2b", null, null, 3, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("2", "National Health and Nutrition Examination Survey", null, null, 2, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs002715", "NSRR CFS", null, "National Sleep Research Resource", 2, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("3", "1000 Genomes Project", null, null, 0, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs003463", "RECOVER_Adult", null, null, 0, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs003543", "NSRR_HSHC", null, null, 0, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs003566", "SPRINT", null, null, 0, List.of(), "study_ids_dataset_ids", null),
+                    new Facet("phs001963", "DEMENTIA-SEQ", null, null, 0, List.of(
+                        new Facet("NEST_1", "My Nested Facet 1", null, null, 0, List.of(), "study_ids_dataset_ids", null),
+                        new Facet("NEST_2", "My Nested Facet 2", null, null, 0, List.of(), "study_ids_dataset_ids", null)
+                    ), "study_ids_dataset_ids", null)
                 )
             ),
-            new FacetCategory(
-                "data_source", "Data Source", "What does this data relate to (image, questionnaire...)",
+            new FacetCategory("nsrr_harmonized", "Common Data Element Collection", "",
                 List.of(
-                    new Facet("imaging", "Imaging", "Data derived from an image", "Data derived from an image", 1, null, "data_source", null),
-                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
-                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", "Data derived from a lab test", 1, null, "data_source", null)
+                    new Facet("LOINC", "LOINC", null, null, 1, List.of(), "nsrr_harmonized", null),
+                    new Facet("PhenX", "PhenX", null, null, 1, List.of(), "nsrr_harmonized", null),
+                    new Facet("gad_7", "Generalized Anxiety Disorder Assessment (GAD-7)", null, null, 0, List.of(), "nsrr_harmonized", null),
+                    new Facet("taps_tool", "NIDA CTN Common Data Elements = TAPS Tool", null, null, 0, List.of(), "nsrr_harmonized", null)
                 )
             )
         );
+
+        Assertions.assertEquals(expected, actual);
     }
 
     @Test
-    void shouldFilterFacetsByFacet() {
-        Filter filter = new Filter(List.of(new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null)), "", List.of());
-        List<FacetCategory> actual = subject.getFacets(filter);
+    void shouldGetFacetWithChildren() {
+        Optional<Facet> actual = subject.getFacet("study_ids_dataset_ids", "phs001963");
+        Facet expected = new Facet("phs001963", "DEMENTIA-SEQ", null, null, null, List.of(
+            new Facet("NEST_1", "My Nested Facet 1", null, null, null, List.of(), "study_ids_dataset_ids", null),
+            new Facet("NEST_2", "My Nested Facet 2", null, null, null, List.of(), "study_ids_dataset_ids", null)
+        ), "study_ids_dataset_ids", null);
 
-        List<FacetCategory> expected = List.of(
-            new FacetCategory(
-                "site", "Site", "Filter variables by site",
-                List.of(
-                    new Facet("bch", "BCH", "Boston Childrens Hospital", "Boston Childrens Hospital", 1, null, "category", null),
-                    new Facet("narnia", "Narnia", "Narnia", "Narnia", 1, null, "category", null)
-                )
-            ),
-            new FacetCategory(
-                "data_source", "Data Source", "What does this data relate to (image, questionnaire...)",
-                List.of(
-                    new Facet("imaging", "Imaging", "Data derived from an image", "Data derived from an image", 1, null, "data_source", null),
-                    new Facet("questionnaire", "questionnaire", "Data derived from a questionnaire", "Data derived from a questionnaire", 1, null, "data_source", null),
-                    new Facet("lab_test", "Lab Test", "Data derived from a lab test", "Data derived from a lab test", 1, null, "data_source", null)
-                )
-            )
-        );
+        Assertions.assertTrue(actual.isPresent());
+        Assertions.assertEquals(expected, actual.get());
     }
 
     @Test
     void shouldGetFacet() {
         Optional<Facet> actual = subject.getFacet("study_ids_dataset_ids", "phs000007");
-        Optional<Facet> expected = Optional.of(new Facet("phs000007", "FHS", null, "Framingham Heart Study", null, null, "study_ids_dataset_ids", null));
+        Optional<Facet> expected = Optional.of(new Facet("phs000007", "FHS", null, "Framingham Heart Study", null, List.of(), "study_ids_dataset_ids", null));
 
         Assertions.assertEquals(expected, actual);
     }

@@ -608,6 +608,8 @@ COPY public.facet (facet_id, facet_category_id, name, display, description, pare
 31	1	phs002808	nuMoM2b	\N	\N
 32	1	phs003566	SPRINT	\N	\N
 33	1	phs001963	DEMENTIA-SEQ	\N	\N
+55	1	NEST_1	My Nested Facet 1	\N	33
+56	1	NEST_2	My Nested Facet 2	\N	33
 19	2	gad_7	Generalized Anxiety Disorder Assessment (GAD-7)	\N	\N
 18	2	taps_tool	NIDA CTN Common Data Elements = TAPS Tool	\N	\N
 \.

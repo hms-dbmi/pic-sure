@@ -17,4 +17,8 @@ public record Facet(
     public Facet(String name, String category) {
         this(name, "", "", "", null, null, category, null);
     }
+
+    public Facet withChildren(List<Facet> children) {
+        return new Facet(this.name, this.display, this.description, this.fullName, this.count, children, this.category, this.meta);
+    }
 }
