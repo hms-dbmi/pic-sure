@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.io;
 
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
-import org.apache.avro.file.Codec;
 import org.apache.avro.file.CodecFactory;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -21,10 +20,15 @@ import java.util.stream.Collectors;
 
 public class PfbWriter implements ResultWriter {
 
+    public static final String PATIENT_TABLE_PREFIX = "pic-sure-";
     private Logger log = LoggerFactory.getLogger(PfbWriter.class);
 
     private final Schema metadataSchema;
     private final Schema nodeSchema;
+
+    private final String queryId;
+
+    private final String patientTableName;
     private SchemaBuilder.FieldAssembler<Schema> entityFieldAssembler;
 
     private List<String> fields;
@@ -32,11 +36,14 @@ public class PfbWriter implements ResultWriter {
     private File file;
     private Schema entitySchema;
     private Schema patientDataSchema;
+    private Schema relationSchema;
 
     private static final Set<String> SINGULAR_FIELDS = Set.of("patient_id");
 
-    public PfbWriter(File tempFile) {
-        file = tempFile;
+    public PfbWriter(File tempFile, String queryId) {
+        this.file = tempFile;
+        this.queryId = queryId;
+        this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         entityFieldAssembler = SchemaBuilder.record("entity")
                 .namespace("edu.harvard.dbmi")
                 .fields();
@@ -53,12 +60,19 @@ public class PfbWriter implements ResultWriter {
         metadataRecord.requiredString("misc");
         metadataRecord = metadataRecord.name("nodes").type(SchemaBuilder.array().items(nodeSchema)).noDefault();
         metadataSchema = metadataRecord.endRecord();
+
+
+        SchemaBuilder.FieldAssembler<Schema> relationRecord = SchemaBuilder.record("Relation")
+                .fields()
+                .requiredString("dst_name")
+                .requiredString("dst_id");
+        relationSchema = relationRecord.endRecord();
     }
 
     @Override
     public void writeHeader(String[] data) {
         fields = Arrays.stream(data.clone()).map(this::formatFieldName).collect(Collectors.toList());
-        SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record("patientData")
+        SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record(patientTableName)
                 .fields();
 
         fields.forEach(field -> {
@@ -76,6 +90,7 @@ public class PfbWriter implements ResultWriter {
         entityFieldAssembler = entityFieldAssembler.name("object").type(objectSchema).noDefault();
         entityFieldAssembler.nullableString("id", "null");
         entityFieldAssembler.requiredString("name");
+        entityFieldAssembler = entityFieldAssembler.name("relations").type(SchemaBuilder.array().items(relationSchema)).noDefault();
         entitySchema = entityFieldAssembler.endRecord();
 
         DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<GenericRecord>(entitySchema);
@@ -126,6 +141,7 @@ public class PfbWriter implements ResultWriter {
         entityRecord.put("object", metadata);
         entityRecord.put("name", "metadata");
         entityRecord.put("id", "null");
+        entityRecord.put("relations", List.of());
 
         try {
             dataFileWriter.append(entityRecord);
@@ -163,8 +179,9 @@ public class PfbWriter implements ResultWriter {
 
             GenericRecord entityRecord = new GenericData.Record(entitySchema);
             entityRecord.put("object", patientData);
-            entityRecord.put("name", "patientData");
+            entityRecord.put("name", patientTableName);
             entityRecord.put("id", patientId);
+            entityRecord.put("relations", List.of());
 
             try {
                 dataFileWriter.append(entityRecord);

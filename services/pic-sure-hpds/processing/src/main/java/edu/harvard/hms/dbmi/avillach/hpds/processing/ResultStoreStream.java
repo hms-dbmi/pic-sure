@@ -117,4 +117,8 @@ public class ResultStoreStream extends InputStream {
 	public void closeWriter() {
 		writer.close();
 	}
+
+	public File getFile() {
+		return writer.getFile();
+	}
 }

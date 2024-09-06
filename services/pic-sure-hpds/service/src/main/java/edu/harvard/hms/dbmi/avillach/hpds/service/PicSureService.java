@@ -1,14 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
-import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +28,6 @@ import com.google.common.collect.ImmutableMap;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
@@ -41,13 +40,15 @@ public class PicSureService {
 
 	@Autowired
 	public PicSureService(QueryService queryService, TimelineProcessor timelineProcessor, CountProcessor countProcessor,
-						  VariantListProcessor variantListProcessor, AbstractProcessor abstractProcessor, Paginator paginator) {
+						  VariantListProcessor variantListProcessor, AbstractProcessor abstractProcessor, Paginator paginator,
+						  SignUrlService signUrlService) {
 		this.queryService = queryService;
 		this.timelineProcessor = timelineProcessor;
 		this.countProcessor = countProcessor;
 		this.variantListProcessor = variantListProcessor;
 		this.abstractProcessor = abstractProcessor;
 		this.paginator = paginator;
+		this.signUrlService = signUrlService;
 		Crypto.loadDefaultKey();
 	}
 
@@ -66,6 +67,8 @@ public class PicSureService {
 	private final AbstractProcessor abstractProcessor;
 
 	private final Paginator paginator;
+
+	private final SignUrlService signUrlService;
 
 	private static final String QUERY_METADATA_FIELD = "queryMetadata";
 	private static final int RESPONSE_CACHE_SIZE = 50;
@@ -213,25 +216,32 @@ public class PicSureService {
 	public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) throws IOException {
 		AsyncResult result = queryService.getResultFor(queryId.toString());
 		if (result == null) {
-			// This happens sometimes when users immediately request the status for a query
-			// before it can be initialized. We wait a bit and try again before throwing an
-			// error.
-			try {
-				Thread.sleep(100);
-			} catch (InterruptedException e) {
-				return ResponseEntity.status(500).build();
-			}
-
-			result = queryService.getResultFor(queryId.toString());
-			if (result == null) {
-				return ResponseEntity.status(404).build();
-			}
+			return ResponseEntity.status(404).build();
 		}
 		if (result.getStatus() == AsyncResult.Status.SUCCESS) {
 			result.open();
 			return ResponseEntity.ok()
 					.contentType(result.getResponseType())
 					.body(new InputStreamResource(result.getStream()));
+		} else {
+			return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
+		}
+	}
+
+	@PostMapping(value = "/query/{resourceQueryId}/signed-url")
+	public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) throws IOException {
+		AsyncResult result = queryService.getResultFor(queryId.toString());
+		if (result == null) {
+			return ResponseEntity.status(404).build();
+		}
+		if (result.getStatus() == AsyncResult.Status.SUCCESS) {
+			File file = result.getFile();
+			signUrlService.uploadFile(file, file.getName());
+			String presignedGetUrl = signUrlService.createPresignedGetUrl(file.getName());
+			log.info("Presigned url: " + presignedGetUrl);
+			return ResponseEntity.ok()
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(new SignedUrlResponse(presignedGetUrl));
 		} else {
 			return ResponseEntity.status(400).body("Status : " + result.getStatus().name());
 		}

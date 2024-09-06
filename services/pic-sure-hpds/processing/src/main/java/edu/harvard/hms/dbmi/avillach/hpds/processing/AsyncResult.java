@@ -43,6 +43,10 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult>{
 		return responseType;
 	}
 
+	public File getFile() {
+		return stream.getFile();
+	}
+
 	public static enum Status{
 		SUCCESS {
 			@Override

@@ -135,9 +135,10 @@ public class QueryService {
 				throw new RuntimeException("UNSUPPORTED RESULT TYPE");
 		}
 
+		String queryId = UUIDv5.UUIDFromString(query.toString()).toString();
 		ResultWriter writer;
         if (ResultType.DATAFRAME_PFB.equals(query.getExpectedResultType())) {
-            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"));
+            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId);
         } else {
             writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
         }
@@ -145,7 +146,7 @@ public class QueryService {
 		AsyncResult result = new AsyncResult(query, p, writer)
 				.setStatus(AsyncResult.Status.PENDING)
 				.setQueuedTime(System.currentTimeMillis())
-				.setId(UUIDv5.UUIDFromString(query.toString()).toString());
+				.setId(queryId);
 		query.setId(result.getId());
 		results.put(result.getId(), result);
 		return result;
