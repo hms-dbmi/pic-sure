@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.managed_open_access_role_name;
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME;
 
 @Service
 public class AimAheadAuthenticationService extends OktaAuthenticationService implements AuthenticationService  {
@@ -171,7 +171,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
             }
 
             // All users that login through OKTA should have the fence_open_access role, or they will not be able to interact with the UI
-            Role fenceOpenAccessRole = roleService.getRoleByName(managed_open_access_role_name);
+            Role fenceOpenAccessRole = roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
             if (!user.get().getRoles().contains(fenceOpenAccessRole)) {
                 logger.info("Adding fence_open_access role to user: {}", user.get().getUuid());
                 Set<Role> roles = user.get().getRoles();

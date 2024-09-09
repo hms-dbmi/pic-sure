@@ -33,8 +33,9 @@ public class AccessRuleService {
 
     private final ConcurrentHashMap<String, AccessRule> accessRuleCache = new ConcurrentHashMap<>();
     private Set<AccessRule> allowQueryTypeRules;
+    private Set<AccessRule> standardAccessRules;
 
-    private static final String parentAccessionField = "\\\\_Parent Study Accession with Subject ID\\\\";
+    public static final String parentAccessionField = "\\\\_Parent Study Accession with Subject ID\\\\";
     private static final String topmedAccessionField = "\\\\_Topmed Study Accession with Subject ID\\\\";
     private final String fence_harmonized_consent_group_concept_path;
     private final String fence_parent_consent_group_concept_path;
@@ -76,7 +77,7 @@ public class AccessRuleService {
                 "\\\\_studies\\\\",
                 "\\\\_studies_consents\\\\",  //used to provide consent-level counts for open access
                 "\\\\_parent_consents\\\\",  //parent consents not used for auth (use combined _consents)
-                "\\\\_Consents\\\\"   ///old _Consents\Short Study... path no longer used, but still present in examples.
+                "\\\\_Consents\\\\"
         };
 
         logger.info("fence_standard_access_rules: {}", fence_standard_access_rules);
@@ -125,6 +126,10 @@ public class AccessRuleService {
     }
 
     public AccessRule save(AccessRule accessRule) {
+        // if the access rule exists in the AccessRule cache, update it
+        if (accessRuleCache.containsKey(accessRule.getName())) {
+            accessRuleCache.put(accessRule.getName(), accessRule);
+        }
         return this.accessRuleRepo.save(accessRule);
     }
 
@@ -287,8 +292,8 @@ public class AccessRuleService {
     }
 
     public boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
-        logger.debug("evaluateAccessRule() starting with: {}", parsedRequestBody);
-        logger.debug("evaluateAccessRule() access rule: {}", accessRule.getName());
+        logger.trace("evaluateAccessRule() starting with: {}", parsedRequestBody);
+        logger.trace("evaluateAccessRule() access rule: {}", accessRule.getName());
 
         Set<AccessRule> gates = accessRule.getGates();
         boolean gatesPassed = true;
@@ -340,7 +345,9 @@ public class AccessRuleService {
                 return false;
             } else {
                 if (accessRule.getSubAccessRule() != null) {
-                    for (AccessRule subAccessRule : accessRule.getSubAccessRule()) {
+                    // We need to check all the sub rules as merged rules; they can overlap
+                    Set<AccessRule> mergedSubRules = preProcessARBySortedKeys(accessRule.getSubAccessRule());
+                    for (AccessRule subAccessRule : mergedSubRules) {
                         if (!extractAndCheckRule(subAccessRule, parsedRequestBody)) {
                             logger.debug("Query Rejected by rule(2) {} :: {} :: {}", subAccessRule.getRule(), subAccessRule.getType(), subAccessRule.getValue());
                             return false;
@@ -369,17 +376,19 @@ public class AccessRuleService {
         int accessRuleType = accessRule.getType();
 
         try {
+            logger.debug("extractAndCheckRule() -> JsonPath.parse().read() with parsedRequestBody - {} - {}", parsedRequestBody, rule);
             requestBodyValue = JsonPath.parse(parsedRequestBody).read(rule);
 
-            // Json parse will always return a list even when we want a map (to check keys)
-            if (requestBodyValue instanceof JsonArray && ((JsonArray) requestBodyValue).size() == 1) {
-                requestBodyValue = ((JsonArray) requestBodyValue).get(0);
+            if (accessRule.getCheckMapNode() != null && accessRule.getCheckMapNode()) {
+                // Json parse will always return a list even when we want a map (to check keys)
+                if (requestBodyValue instanceof JsonArray && ((JsonArray) requestBodyValue).size() == 1) {
+                    requestBodyValue = ((JsonArray) requestBodyValue).get(0);
+                }
             }
-
         } catch (PathNotFoundException ex) {
             if (accessRuleType == AccessRule.TypeNaming.IS_EMPTY) {
                 // We could return accessRuleType == AccessRule.TypeNaming.IS_EMPTY directly, but we want to log the reason
-                logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing IS_EMPTY rule");
+                logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing IS_EMPTY rule {}", rule);
                 return true;
             }
             logger.debug("extractAndCheckRule() -> JsonPath.parse().read() throws exception with parsedRequestBody - {} : {} - {}", parsedRequestBody, ex.getClass().getSimpleName(), ex.getMessage());
@@ -417,6 +426,9 @@ public class AccessRuleService {
     }
 
     private boolean evaluateMap(Object requestBodyValue, AccessRule accessRule) {
+        logger.trace("evaluateMap() access rule:{}", accessRule.getName());
+        logger.trace("evaluateMap() request body value:{}", requestBodyValue);
+
         switch (accessRule.getType()) {
             case (AccessRule.TypeNaming.ANY_EQUALS):
             case (AccessRule.TypeNaming.ANY_CONTAINS):
@@ -459,6 +471,9 @@ public class AccessRuleService {
     }
 
     private Boolean evaluateCollection(Collection requestBodyValue, AccessRule accessRule) {
+        logger.trace("evaluateCollection() access rule:{}", accessRule.getName());
+        logger.trace("evaluateCollection() request body value:{}", requestBodyValue);
+
         switch (accessRule.getType()) {
             case (AccessRule.TypeNaming.ANY_EQUALS):
             case (AccessRule.TypeNaming.ANY_CONTAINS):
@@ -543,10 +558,11 @@ public class AccessRuleService {
     }
 
     private boolean _decisionMaker(AccessRule accessRule, String requestBodyValue, String value) {
-        logger.debug("_decisionMaker() starting");
-        logger.debug("_decisionMaker() access rule:{}", accessRule.getName());
-        logger.debug(requestBodyValue);
-        logger.debug(value);
+        logger.trace("_decisionMaker() starting");
+        logger.trace("_decisionMaker() access rule:{}", accessRule.getName());
+        logger.trace("_decisionMaker() request body value:{}", requestBodyValue);
+        logger.trace("_decisionMaker() value:{}", value);
+        logger.trace("_decisionMaker() access rule type:{}", accessRule.getType());
 
         return switch (accessRule.getType()) {
             case AccessRule.TypeNaming.NOT_CONTAINS -> !requestBodyValue.contains(value);
@@ -573,14 +589,11 @@ public class AccessRuleService {
      * @param consent_group   The consent group.
      * @param conceptPath     The concept path.
      * @param projectAlias    The project alias.
-     * @param parent          Whether to include parent gates.
-     * @param harmonized      Whether to include harmonized gates.
-     * @param topmed          Whether to include Topmed gates.
      */
-    protected void configureAccessRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias, boolean parent, boolean harmonized, boolean topmed) {
+    protected void configureAccessRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias) {
         if (ar.getGates() == null) {
             ar.setGates(new HashSet<>());
-            ar.getGates().addAll(getGates(parent, harmonized, topmed));
+            ar.getGates().addAll(getGates(true, false, false));
 
             if (ar.getSubAccessRule() == null) {
                 ar.setSubAccessRule(new HashSet<>());
@@ -588,7 +601,6 @@ public class AccessRuleService {
             ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
             ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
             ar.getSubAccessRule().addAll(getTopmedRestrictedSubRules());
-            this.save(ar);
         }
     }
 
@@ -597,11 +609,11 @@ public class AccessRuleService {
      *
      * @param ar              The AccessRule to configure.
      * @param studyIdentifier The study identifier.
-     * @param consent_group   The consent group.
      * @param conceptPath     The concept path.
      * @param projectAlias    The project alias.
+     * @return
      */
-    protected void configureHarmonizedAccessRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias) {
+    protected void configureHarmonizedAccessRule(AccessRule ar, String studyIdentifier, String conceptPath, String projectAlias) {
         if (ar.getGates() == null) {
             ar.setGates(new HashSet<>());
             ar.getGates().add(upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data"));
@@ -612,11 +624,26 @@ public class AccessRuleService {
             ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
             ar.getSubAccessRule().addAll(getHarmonizedSubRules());
             ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
-            this.save(ar);
         }
     }
 
-    private Set<AccessRule> getAllowedQueryTypeRules() {
+    protected AccessRule configureClinicalAccessRuleWithPhenoSubRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias) {
+        if (ar.getGates() == null) {
+            ar.setGates(new HashSet<>());
+            ar.getGates().addAll(getGates(true, false, true));
+
+            if (ar.getSubAccessRule() == null) {
+                ar.setSubAccessRule(new HashSet<>());
+            }
+            ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
+            ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
+            ar.getSubAccessRule().add(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        }
+
+        return ar;
+    }
+
+    protected Set<AccessRule> getAllowedQueryTypeRules() {
         if (allowQueryTypeRules == null) {
             allowQueryTypeRules = loadAllowedQueryTypeRules();
         }
@@ -659,6 +686,8 @@ public class AccessRuleService {
         // Return the set of AccessRules
         return rules;
     }
+
+
 
     private Collection<? extends AccessRule> getTopmedRestrictedSubRules() {
         Set<AccessRule> rules = new HashSet<AccessRule>();
@@ -791,19 +820,23 @@ public class AccessRuleService {
         return gates;
     }
 
-    protected void populateAccessRule(AccessRule rule, boolean includeParent, boolean includeHarmonized, boolean includeTopmed) {
+    protected AccessRule populateTopmedAccessRule(AccessRule rule, boolean includeParent) {
         if (rule.getGates() == null) {
-            rule.setGates(new HashSet<>(getGates(includeParent, includeHarmonized, includeTopmed)));
+            rule.setGates(new HashSet<>(getGates(includeParent, false, true)));
+        } else {
+            rule.getGates().addAll(getGates(includeParent, false, true));
         }
 
         if (rule.getSubAccessRule() == null) {
             rule.setSubAccessRule(new HashSet<>(getAllowedQueryTypeRules()));
+        } else {
+            rule.getSubAccessRule().addAll(getAllowedQueryTypeRules());
         }
 
-        this.save(rule);
+        return rule;
     }
 
-    protected void populateHarmonizedAccessRule(AccessRule rule, String parentConceptPath, String studyIdentifier, String projectAlias) {
+    protected AccessRule populateHarmonizedAccessRule(AccessRule rule, String parentConceptPath, String studyIdentifier, String projectAlias) {
         if (rule.getGates() == null) {
             rule.setGates(new HashSet<>(Collections.singletonList(
                     upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data")
@@ -816,32 +849,37 @@ public class AccessRuleService {
             rule.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
         }
 
-        this.save(rule);
+        return rule;
     }
 
-    // A set of standard access rules that are added to all privileges
-    // to cache the standard access rules
-    private Set<AccessRule> standardAccessRules;
 
-    protected void addStandardAccessRules(Set<AccessRule> accessRules) {
+    /**
+     * The set of standard access rules that are added to all privileges.
+     * This set is cached to avoid loading the rules multiple times.
+     *
+     * @return The set of standard access rules.
+     */
+    protected Set<AccessRule> addStandardAccessRules() {
         if (standardAccessRules != null && !standardAccessRules.isEmpty()) {
-            accessRules.addAll(standardAccessRules);
-        } else {
-            standardAccessRules = new HashSet<>();
-            for (String arName : fence_standard_access_rules.split(",")) {
-                if (arName.startsWith("AR_")) {
-                    logger.info("Adding AccessRule {} to privilege", arName);
-                    AccessRule ar = this.getAccessRuleByName(arName);
-                    if (ar != null) {
-                        standardAccessRules.add(ar);
-                    } else {
-                        logger.warn("Unable to find an access rule with name {}", arName);
-                    }
-                }
-            }
-
-            accessRules.addAll(standardAccessRules);
+            return standardAccessRules;
         }
+
+        standardAccessRules = new HashSet<>();
+        for (String arName : fence_standard_access_rules.split(",")) {
+            if (arName.startsWith("AR_")) {
+                AccessRule ar = this.getAccessRuleByName(arName);
+                if (ar != null) {
+                    standardAccessRules.add(ar);
+                } else {
+                    logger.warn("Unable to find an access rule with name {}", arName);
+                }
+            } else {
+                logger.info("Skipping AccessRule {} as it does not start with AR_", arName);
+            }
+        }
+
+        logger.info("Added {} standard access rules to privilege", standardAccessRules.size());
+        return standardAccessRules;
     }
 
 
@@ -887,7 +925,15 @@ public class AccessRuleService {
     protected AccessRule upsertTopmedAccessRule(String project_name, String consent_group, String label) {
         String ar_name = (consent_group != null && !consent_group.isEmpty()) ? "AR_TOPMED_" + project_name + "_" + consent_group + "_" + label : "AR_TOPMED_" + project_name + "_" + label;
         String description = "MANAGED AR for " + project_name + "." + consent_group + " Topmed data";
-        String ruleText = "$.query.query.categoryFilters." + fence_topmed_consent_group_concept_path + "[*]";
+
+        String conceptPath = fence_topmed_consent_group_concept_path;
+        // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
+        if(conceptPath != null && conceptPath.contains("\\\\")) {
+            // This will convert all `\\\\` to `\\`.
+            conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
+        }
+
+        String ruleText = "$.query.query.categoryFilters." + conceptPath + "[*]";
         String arValue = (consent_group != null && !consent_group.isEmpty()) ? project_name + "." + consent_group : project_name;
 
         return getOrCreateAccessRule(
@@ -909,12 +955,11 @@ public class AccessRuleService {
      *
      * @param project_name  The name of the project.
      * @param consent_group The consent group.
-     * @param label         The label for the rule.
      * @return The created AccessRule.
      */
-    protected AccessRule upsertHarmonizedAccessRule(String project_name, String consent_group, String label) {
-        String ar_name = "AR_TOPMED_" + project_name + "_" + consent_group + "_" + label;
-        logger.info("upsertHarmonizedAccessRule() Creating new access rule {}", ar_name);
+    protected AccessRule upsertHarmonizedAccessRule(String project_name, String consent_group) {
+        String ar_name = "AR_TOPMED_" + project_name + "_" + consent_group + "_" + "HARMONIZED";
+        logger.debug("upsertHarmonizedAccessRule() Creating new access rule {}", ar_name);
         String description = "MANAGED AR for " + project_name + "." + consent_group + " Topmed data";
         String ruleText = "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]";
         String arValue = project_name + "." + consent_group;
@@ -945,6 +990,9 @@ public class AccessRuleService {
      */
     private AccessRule upsertConsentGate(String gateName, String rule, boolean is_present, String description) {
         gateName = "GATE_" + gateName + "_" + (is_present ? "PRESENT" : "MISSING");
+
+        escapePath(rule);
+
         return getOrCreateAccessRule(
                 gateName,
                 "MANAGED GATE for " + description + " consent " + (is_present ? "present" : "missing"),
@@ -958,9 +1006,16 @@ public class AccessRuleService {
         );
     }
 
-    private AccessRule createPhenotypeSubRule(String conceptPath, String alias, String rule, int ruleType, String label, boolean useMapKey) {
+    protected AccessRule createPhenotypeSubRule(String conceptPath, String alias, String rule, int ruleType, String label, boolean useMapKey) {
         String ar_name = "AR_PHENO_" + alias + "_" + label;
-        logger.info("createPhenotypeSubRule() Creating new access rule {}", ar_name);
+        logger.debug("createPhenotypeSubRule() Creating new access rule {}", ar_name);
+
+        // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
+        if(conceptPath != null && conceptPath.contains("\\\\")) {
+           // This will convert all `\\\\` to `\\`.
+            conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
+        }
+
         return getOrCreateAccessRule(
                 ar_name,
                 "MANAGED SUB AR for " + alias + " " + label + " clinical concepts",
@@ -974,11 +1029,11 @@ public class AccessRuleService {
         );
     }
 
-    private AccessRule getOrCreateAccessRule(String name, String description, String rule, int type, String value, boolean checkMapKeyOnly, boolean checkMapNode, boolean evaluateOnlyByGates, boolean gateAnyRelation) {
+    protected AccessRule getOrCreateAccessRule(String name, String description, String rule, int type, String value, boolean checkMapKeyOnly, boolean checkMapNode, boolean evaluateOnlyByGates, boolean gateAnyRelation) {
         return accessRuleCache.computeIfAbsent(name, key -> {
             AccessRule ar = this.getAccessRuleByName(key);
             if (ar == null) {
-                logger.info("Creating new access rule {}", key);
+                logger.debug("Creating new access rule {}", key);
                 ar = new AccessRule();
                 ar.setName(name);
                 ar.setDescription(description);
@@ -989,10 +1044,21 @@ public class AccessRuleService {
                 ar.setCheckMapNode(checkMapNode);
                 ar.setEvaluateOnlyByGates(evaluateOnlyByGates);
                 ar.setGateAnyRelation(gateAnyRelation);
-                this.save(ar);
+                ar = this.save(ar);
             }
 
             return ar;
         });
+    }
+
+    private String escapePath(String path) {
+        if (path != null && !path.contains("\\\\")) {
+            return path.replaceAll("\\\\", "\\\\\\\\");
+        }
+        return path;
+    }
+
+    public List<AccessRule> getAccessRulesByPrivilegeIds(List<UUID> privilegeIds) {
+        return this.accessRuleRepo.getAccessRulesByPrivilegeIds(privilegeIds);
     }
 }

@@ -147,24 +147,30 @@ public class AuthorizationService {
 
         if (!this.strictConnections.contains(label)) {
             Set<Privilege> privileges = user.getPrivilegesByApplication(application);
+            // List all privileges of the user
+            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following privileges: {}", user.getUuid().toString(), user.getEmail(), user.getName(), privileges.stream().map(Privilege::getName).collect(Collectors.joining(", ")));
             if (privileges == null || privileges.isEmpty()) {
                 logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
                 return false;
             }
 
             accessRules = this.accessRuleService.cachedPreProcessAccessRules(user, privileges);
-            if (accessRules == null || accessRules.isEmpty()) {
+            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::getName).collect(Collectors.joining(", ")));
+            if (accessRules.isEmpty()) {
                 logger.info("ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
                 return true;
             }
         } else {
             accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
-            if (accessRules == null || accessRules.isEmpty()) {
+
+            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", ")));
+            if (accessRules.isEmpty()) {
                 logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
                 return false;
             }
         }
 
+        logger.debug("Request: {}", requestBody);
         // Current logic here is: among all accessRules, they are OR relationship
         Set<AccessRule> failedRules = new HashSet<>();
         AccessRule passByRule = null;
@@ -187,10 +193,10 @@ public class AuthorizationService {
                 passRuleName = passByRule.getMergedName();
         }
 
-        logger.debug("ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}", user.getUuid().toString(), user.getEmail(), user.getName(), result ? "granted" : "denied", formattedQuery, applicationName, result ? "passed by " + passRuleName : "failed by rules: ["
-                + failedRules.stream()
-                .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
-                .collect(Collectors.joining(", ")) + "]");
+            logger.info("ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}", user.getUuid().toString(), user.getEmail(), user.getName(), result ? "granted" : "denied", formattedQuery, applicationName, result ? "passed by " + passRuleName : "failed by rules: ["
+                    + failedRules.stream()
+                    .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
+                    .collect(Collectors.joining(", ")) + "]");
 
         return result;
     }

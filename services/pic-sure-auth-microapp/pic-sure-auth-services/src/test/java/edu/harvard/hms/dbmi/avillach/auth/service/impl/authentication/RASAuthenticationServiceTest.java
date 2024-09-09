@@ -45,7 +45,7 @@ public class RASAuthenticationServiceTest {
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        RoleService roleService = new RoleService(mock(RoleRepository.class), mock(PrivilegeRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class));
+        RoleService roleService = new RoleService(mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class));
         this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, ""));
         doReturn(false).when(rasPassPortService).isExpired(any());
 

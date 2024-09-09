@@ -7,7 +7,6 @@ import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
-import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.apache.commons.lang3.StringUtils;
@@ -30,16 +29,15 @@ public class RoleService {
 
     private final Logger logger = LoggerFactory.getLogger(RoleService.class);
     private final RoleRepository roleRepository;
-    private final PrivilegeRepository privilegeRepo;
     private final PrivilegeService privilegeService;
     private final FenceMappingUtility fenceMappingUtility;
-    public static final String managed_open_access_role_name = "MANAGED_ROLE_OPEN_ACCESS";
+    public static final String MANAGED_OPEN_ACCESS_ROLE_NAME = "MANUAL_ROLE_OPEN_ACCESS";
+    public static final String MANAGED_ROLE_NAMED_DATASET = "MANUAL_ROLE_NAMED_DATASET";
     private final Set<Role> publicAccessRoles = new HashSet<>();
 
     @Autowired
-    public RoleService(RoleRepository roleRepository, PrivilegeRepository privilegeRepo, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility) {
+    public RoleService(RoleRepository roleRepository, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility) {
         this.roleRepository = roleRepository;
-        this.privilegeRepo = privilegeRepo;
         this.privilegeService = privilegeService;
         this.fenceMappingUtility = fenceMappingUtility;
     }
@@ -120,7 +118,7 @@ public class RoleService {
             if (role.getPrivileges() != null) {
                 Set<Privilege> privileges = new HashSet<>();
                 for (Privilege p : role.getPrivileges()) {
-                    Optional<Privilege> privilege = privilegeRepo.findById(p.getUuid());
+                    Optional<Privilege> privilege = this.privilegeService.findById(p.getUuid());
                     if (privilege.isEmpty()) {
                         throw new RuntimeException("Privilege not found - uuid: " + p.getUuid().toString());
                     }

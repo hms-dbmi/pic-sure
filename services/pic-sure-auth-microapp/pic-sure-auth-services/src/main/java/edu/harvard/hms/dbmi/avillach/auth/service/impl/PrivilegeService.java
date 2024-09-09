@@ -11,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.ApplicationContextEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -63,6 +66,12 @@ public class PrivilegeService {
     private void init() {
         picSureApp = applicationService.getApplicationByName("PICSURE");
         logger.info("variantAnnotationColumns: {}", variantAnnotationColumns);
+    }
+
+    @Transactional
+    @EventListener(ApplicationContextEvent.class)
+    protected void onContextRefreshedEvent() {
+        updateAllPrivilegesOnStartup();
     }
 
     @Transactional
@@ -208,56 +217,25 @@ public class PrivilegeService {
             priv.setApplication(picSureApp);
             priv.setName(privilegeName);
 
-            // Set consent concept path
+            // In BioData Catalyst this is either  \\_harmonized_consent\\_ or \\_consents\\ we need to escape the slashes
             String consent_concept_path = isHarmonized ? fence_harmonized_consent_group_concept_path : fence_parent_consent_group_concept_path;
-            if (!consent_concept_path.contains("\\\\")) {
-                consent_concept_path = consent_concept_path.replaceAll("\\\\", "\\\\\\\\");
-                logger.debug("Escaped consent concept path: {}", consent_concept_path);
-            }
+            consent_concept_path = escapePath(consent_concept_path);
+            fence_harmonized_concept_path = escapePath(fence_harmonized_concept_path);
 
-            if (fence_harmonized_concept_path != null && !fence_harmonized_concept_path.contains("\\\\")) {
-                //these have to be escaped again so that jaxson can convert it correctly
-                fence_harmonized_concept_path = fence_harmonized_concept_path.replaceAll("\\\\", "\\\\\\\\");
-                logger.debug("upsertTopmedPrivilege(): escaped harmonized consent path" + fence_harmonized_concept_path);
-            }
-
-
-            String studyIdentifierField = (consent_group != null && !consent_group.isEmpty()) ? studyIdentifier + "." + consent_group : studyIdentifier;
-            String queryTemplateText = String.format(
-                    "{\"categoryFilters\": {\"%s\":[\"%s\"]},\"numericFilters\":{},\"requiredFields\":[],\"fields\":[],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}",
-                    consent_concept_path, studyIdentifierField
-            );
-
-            priv.setQueryTemplate(queryTemplateText);
+            priv.setQueryTemplate(createClinicalQueryTemplate(studyIdentifier, consent_group, consent_concept_path));
             priv.setQueryScope(isHarmonized ? String.format("[\"%s\",\"_\",\"%s\"]", conceptPath, fence_harmonized_concept_path) : String.format("[\"%s\",\"_\"]", conceptPath));
 
-            // Initialize the set of AccessRules
-            Set<AccessRule> accessrules = new HashSet<>();
-
-            // Create and add the parent consent access rule
-            AccessRule ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consent_group, "PARENT", fence_parent_consent_group_concept_path);
-            this.accessRuleService.configureAccessRule(ar, studyIdentifier, consent_group, conceptPath, projectAlias, true, false, false);
-            accessrules.add(ar);
-
-            // Create and add the Topmed+Parent access rule
-            ar = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consent_group, "TOPMED+PARENT");
-            this.accessRuleService.configureAccessRule(ar, studyIdentifier, consent_group, conceptPath, projectAlias, true, false, true);
-            accessrules.add(ar);
-
-            // If harmonized, create and add the harmonized access rule
+            Set<AccessRule> accessRules = new HashSet<>();
+            accessRules.add(createClinicalParentAccessRule(studyIdentifier, consent_group, conceptPath, projectAlias));
+            accessRules.add(createClinicalTopmedParentAccessRule(studyIdentifier, consent_group, conceptPath, projectAlias));
             if (isHarmonized) {
-                ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consent_group, "HARMONIZED", fence_harmonized_consent_group_concept_path);
-                this.accessRuleService.configureHarmonizedAccessRule(ar, studyIdentifier, consent_group, conceptPath, projectAlias);
-                accessrules.add(ar);
+                accessRules.add(createClinicalHarmonizedAccessRule(studyIdentifier, consent_group, conceptPath, projectAlias));
             }
+            accessRules.addAll(this.accessRuleService.addStandardAccessRules());
+            priv.setAccessRules(accessRules);
+            logger.info("Added {} access_rules to privilege", accessRules.size());
 
-            // Add standard access rules
-            this.accessRuleService.addStandardAccessRules(accessrules);
-
-            priv.setAccessRules(accessrules);
-            logger.info("Added {} access_rules to privilege", accessrules.size());
-
-            this.save(priv);
+            priv = this.save(priv);
             logger.info("Added new privilege {} to DB", priv.getName());
         } catch (Exception ex) {
             logger.error("Could not save privilege", ex);
@@ -265,15 +243,41 @@ public class PrivilegeService {
         return priv;
     }
 
+    private static String createClinicalQueryTemplate(String studyIdentifier, String consent_group, String consent_concept_path) {
+        String studyIdentifierField = (consent_group != null && !consent_group.isEmpty()) ? studyIdentifier + "." + consent_group : studyIdentifier;
+        return String.format(
+                "{\"categoryFilters\": {\"%s\":[\"%s\"]},\"numericFilters\":{},\"requiredFields\":[],\"fields\":[\"%s\"],\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],\"expectedResultType\": \"COUNT\"}",
+                consent_concept_path, studyIdentifierField, AccessRuleService.parentAccessionField
+        );
+    }
+
+    private AccessRule createClinicalHarmonizedAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
+        AccessRule ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consentGroup, "HARMONIZED", fence_harmonized_consent_group_concept_path);
+        this.accessRuleService.configureHarmonizedAccessRule(ar, studyIdentifier, conceptPath, projectAlias);
+        return this.accessRuleService.save(ar);
+    }
+
+    private AccessRule createClinicalTopmedParentAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
+        AccessRule ar = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED+PARENT");
+        ar = this.accessRuleService.configureClinicalAccessRuleWithPhenoSubRule(ar, studyIdentifier, consentGroup, conceptPath, projectAlias);
+        return this.accessRuleService.save(ar);
+    }
+
+    private AccessRule createClinicalParentAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
+        AccessRule ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consentGroup, "PARENT", fence_parent_consent_group_concept_path);
+        this.accessRuleService.configureAccessRule(ar, studyIdentifier, consentGroup, conceptPath, projectAlias);
+        return this.accessRuleService.save(ar);
+    }
+
     /**
      * Creates a privilege for Topmed access. This has (up to) three access rules:
      * 1) topmed only 2) topmed + parent 3) topmed + harmonized.
      *
-     * @param studyIdentifier
-     * @param projectAlias
-     * @param consentGroup
-     * @param parentConceptPath
-     * @param isHarmonized
+     * @param studyIdentifier   The study identifier
+     * @param projectAlias      The project alias
+     * @param consentGroup      The consent group
+     * @param parentConceptPath The parent concept path
+     * @param isHarmonized      Whether the study is harmonized
      * @return Privilege
      */
     private Privilege upsertTopmedPrivilege(String studyIdentifier, String projectAlias, String consentGroup, String parentConceptPath, boolean isHarmonized) {
@@ -291,37 +295,50 @@ public class PrivilegeService {
             buildPrivilegeObject(priv, privilegeName, studyIdentifier, consentGroup);
 
             Set<AccessRule> accessRules = new HashSet<>();
-            AccessRule topmedRule = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED");
-
-            this.accessRuleService.populateAccessRule(topmedRule, false, false, true);
-            topmedRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeRestrictedSubRules(studyIdentifier, consentGroup, projectAlias));
-            accessRules.add(topmedRule);
+            accessRules.add(createTopmedAccessRules(studyIdentifier, projectAlias, consentGroup));
 
             if (parentConceptPath != null) {
-                AccessRule topmedParentRule = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED+PARENT");
-                this.accessRuleService.populateAccessRule(topmedParentRule, true, false, true);
-                topmedParentRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
-                accessRules.add(topmedParentRule);
+                accessRules.add(createTopmedParentAccessRule(studyIdentifier, consentGroup, parentConceptPath, projectAlias));
 
                 if (isHarmonized) {
-                    AccessRule harmonizedRule = this.accessRuleService.upsertHarmonizedAccessRule(studyIdentifier, consentGroup, "HARMONIZED");
-                    this.accessRuleService.populateHarmonizedAccessRule(harmonizedRule, parentConceptPath, studyIdentifier, projectAlias);
-                    accessRules.add(harmonizedRule);
+                    accessRules.add(createHarmonizedTopmedAccessRule(studyIdentifier, projectAlias, consentGroup, parentConceptPath));
                 }
             }
 
-            this.accessRuleService.addStandardAccessRules(accessRules);
+            accessRules.addAll(this.accessRuleService.addStandardAccessRules());
 
             priv.setAccessRules(accessRules);
             logger.info("upsertTopmedPrivilege() Added {} access_rules to privilege", accessRules.size());
 
-            this.save(priv);
+            priv = this.save(priv);
             logger.info("upsertTopmedPrivilege() Added new privilege {} to DB", priv.getName());
         } catch (Exception ex) {
             logger.error("upsertTopmedPrivilege() could not save privilege", ex);
         }
 
         return priv;
+    }
+
+    private AccessRule createHarmonizedTopmedAccessRule(String studyIdentifier, String projectAlias, String consentGroup, String parentConceptPath) {
+        AccessRule harmonizedRule = this.accessRuleService.upsertHarmonizedAccessRule(studyIdentifier, consentGroup);
+        harmonizedRule = this.accessRuleService.populateHarmonizedAccessRule(harmonizedRule, parentConceptPath, studyIdentifier, projectAlias);
+        this.accessRuleService.save(harmonizedRule);
+        return harmonizedRule;
+    }
+
+    private AccessRule createTopmedParentAccessRule(String studyIdentifier, String consentGroup, String parentConceptPath, String projectAlias) {
+        AccessRule topmedParentRule = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED+PARENT");
+        this.accessRuleService.populateTopmedAccessRule(topmedParentRule, true);
+        topmedParentRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
+        topmedParentRule.getSubAccessRule().add(this.accessRuleService.createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        return this.accessRuleService.save(topmedParentRule);
+    }
+
+    private AccessRule createTopmedAccessRules(String studyIdentifier, String projectAlias, String consentGroup) {
+        AccessRule topmedRule = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED");
+        topmedRule = this.accessRuleService.populateTopmedAccessRule(topmedRule, false);
+        topmedRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeRestrictedSubRules(studyIdentifier, consentGroup, projectAlias));
+        return this.accessRuleService.save(topmedRule);
     }
 
     private void buildPrivilegeObject(Privilege priv, String privilegeName, String studyIdentifier, String consentGroup) {
@@ -400,5 +417,45 @@ public class PrivilegeService {
         logger.info("getFENCEMappingforProjectAndConsent() looking up {}", consentVal);
 
         return fenceMapping.get(consentVal);
+    }
+
+    public Optional<Privilege> findById(UUID uuid) {
+        return privilegeRepository.findById(uuid);
+    }
+
+    /**
+     * This method will update all existing privileges with the standard access rules and allowed query types.
+     * This method will not remove any existing standard access rules If you need to remove a standard access rule,
+     * you will need to create a migration script.
+     */
+    protected void updateAllPrivilegesOnStartup() {
+        List<Privilege> privileges = this.getPrivilegesAll();
+        Set<AccessRule> standardAccessRules = this.accessRuleService.addStandardAccessRules();
+        if (standardAccessRules.isEmpty()) {
+            logger.error("No standard access rules found.");
+            return;
+        } else {
+            privileges.forEach(privilege ->
+            {
+                privilege.getAccessRules().addAll(standardAccessRules);
+                this.save(privilege);
+            });
+        }
+
+        List<UUID> privilegeIds = privileges.stream().map(Privilege::getUuid).toList();
+        List<AccessRule> accessRules = this.accessRuleService.getAccessRulesByPrivilegeIds(privilegeIds);
+
+        // find each access rule that has sub access rules that allow query types an update them
+        accessRules.parallelStream()
+                .filter(accessRule -> accessRule.getSubAccessRule().stream().anyMatch(subAccessRule -> subAccessRule.getName().startsWith("AR_ALLOW_")))
+                .forEach(accessRule -> {
+                    Set<AccessRule> subAccessRules = accessRule.getSubAccessRule();
+                    subAccessRules.removeIf(subAccessRule -> subAccessRule.getName().startsWith("AR_ALLOW_"));
+
+                    // Add the currently allowed query types
+                    subAccessRules.addAll(this.accessRuleService.getAllowedQueryTypeRules());
+                    accessRule.setSubAccessRule(subAccessRules);
+                    this.accessRuleService.save(accessRule);
+                });
     }
 }
