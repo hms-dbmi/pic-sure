@@ -28,6 +28,11 @@ public class PicSureWarInit {
     @Resource(mappedName = "java:global/defaultApplicationUUID")
     private String default_application_uuid;
 
+    @Resource(mappedName = "java:global/openAccessEnabled")
+    private boolean open_access_enabled;
+    @Resource(mappedName = "java:global/openAccessValidateUrl")
+    private String open_access_validate_url;
+
     // to be able to pre modified
     public static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -45,6 +50,7 @@ public class PicSureWarInit {
         CLOSEABLE_HTTP_CLIENT = HttpClients.custom().setConnectionManager(HTTP_CLIENT_CONNECTION_MANAGER).useSystemProperties().build();
     }
 
+
     public String getToken_introspection_url() {
         return token_introspection_url;
     }
@@ -61,4 +67,13 @@ public class PicSureWarInit {
     public String getDefaultApplicationUUID() {
         return this.default_application_uuid;
     }
+
+    public boolean isOpenAccessEnabled() {
+        return open_access_enabled;
+    }
+
+    public String getOpenAccessValidateUrl() {
+        return this.open_access_validate_url;
+    }
+
 }
