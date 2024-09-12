@@ -76,7 +76,6 @@ public class JWTFilter implements ContainerRequestFilter {
             return;
         }
 
-        boolean isOpenAccessEnabled = picSureWarInit.isOpenAccessEnabled();
         if (
             requestContext.getUriInfo().getPath().contentEquals("/system/status")
                 && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)
@@ -86,6 +85,7 @@ public class JWTFilter implements ContainerRequestFilter {
         } else {
             // Everything else goes through PSAMA token introspection
             String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+            boolean isOpenAccessEnabled = picSureWarInit.isOpenAccessEnabled();
             if (
                 (StringUtils.isBlank(authorizationHeader) && isOpenAccessEnabled)
                     || (StringUtils.isNotBlank(authorizationHeader) && authorizationHeader.length() <= 7 && isOpenAccessEnabled)
