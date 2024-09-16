@@ -586,6 +586,24 @@ COPY public.dataset_meta (dataset_meta_id, dataset_id, key, value) FROM stdin;
 23	25	description	Lewy body dementia, amyotrophic lateral sclerosis/frontotemporal dementia, and multiple system atrophy are age-related, neurodegenerative syndromes that are poorly understood. Delineating the genetic risk that is driving the pathophysiology of these neurological diseases is fundamental for understanding disease mechanisms and for developing disease-modifying treatments. <br>\\n\\n\\n\\n In version 1 of the study/dbGaP deposition, we performed a whole-genome sequencing study consisting of 7,403 total samples, including 2,633 genomes from patients with Lewy body dementia, 2,641 frontotemporal dementia patients, and 1,980 neurologically healthy controls. Of these, 6,907 were uploaded to dbGaP as the basis of the DementiaSeq, phs001963 dataset. The data relating to these samples are available on dbGaP.\\n\\n\\n\\n In version 2 of this study/dbGaP deposition, we made much of these data available on Anvil. More specifically, data for 6,254 of these samples were also uploaded to the ALS Compute platform on AnVIL. The data for the remaining 653 samples are only available on dbGaP. The dbGaP/AnVIL Table lists the availability of dbGaP and AnVIL for each individual sample: <a style=\\font-family: sans-serif;\\>phd008475</a>.\\n\\nIn version 3 of the study/dbGaP deposition, we added whole-genome sequence data generated using DNA samples obtained from 683 patients diagnosed with multiple system atrophy.\\n
 24	25	sponsor display	National Institute on Aging
 25	20	additional information	Cure SCi Metadata Catalog
+26	17	clinvars	500
+27	18	clinvars	12321
+28	19	clinvars	12546
+29	20	clinvars	7567
+30	21	clinvars	654645
+31	22	clinvars	434
+32	23	clinvars	2
+33	24	clinvars	333
+34	25	clinvars	653
+36	17	participants	23432
+37	18	participants	867876
+38	19	participants	3435
+39	20	participants	33
+40	21	participants	6654
+41	22	participants	53435
+42	23	participants	111
+43	24	participants	2222
+44	25	participants	65
 \.
 
 
