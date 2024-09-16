@@ -45,7 +45,7 @@ public class DashboardRepository {
             ORDER BY name ASC, abbreviation ASC
             """;
         List<String> keys = columns.stream()
-            .map(DashboardColumn::label)
+            .map(DashboardColumn::dataElement)
             .filter(Predicate.not(nonMetaColumns::contains))
             .toList();
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("keys", keys);

@@ -28,22 +28,37 @@ public class DashboardRowResultSetExtractor implements ResultSetExtractor<List<M
 
     @Override
     public List<Map<String, String>> extractData(ResultSet rs) throws SQLException, DataAccessException {
-        String currentRow = "";
+        String currentName = "";
+        String currentAbbreviation = "";
+        boolean beforeStart = true;
         Map<String, String> row = new HashMap<>(template);
         List<Map<String, String>> rows = new ArrayList<>();
         while (rs.next()) {
             String abbreviation = rs.getString("abbreviation");
             String name = rs.getString("name");
-            if (!currentRow.equals(name + abbreviation)) {
-                currentRow = name + abbreviation;
-                if (!row.isEmpty()) {
-                    row.put("abbreviation", abbreviation);
-                    row.put("name", name);
-                    rows.add(row);
-                    row = new HashMap<>(template);
-                }
+            if (beforeStart) {
+                currentName = name;
+                currentAbbreviation = abbreviation;
+                beforeStart = false;
+            }
+            // start of new row
+            if (!currentAbbreviation.equals(abbreviation) || !currentName.equals(name)) {
+                // finish up the old row by adding non-meta fields
+                row.put("abbreviation", currentAbbreviation);
+                row.put("name", currentName);
+                rows.add(row);
+                // start new row
+                currentName = name;
+                currentAbbreviation = abbreviation;
+                row = new HashMap<>(template);
             }
             row.put(rs.getString("key"), rs.getString("value"));
+        }
+        // add the last row to the response only if there has been at least one set in the result set
+        if (!beforeStart) {
+            row.put("abbreviation", currentAbbreviation);
+            row.put("name", currentName);
+            rows.add(row);
         }
         return rows;
     }
