@@ -42,7 +42,7 @@ public class VisualizationService {
             logger.info("Initializing properties");
         }
         properties.init("pic-sure-visualization-resource");
-        logger.info("VisualizationResource initialized ->", properties.getOrigin());
+        logger.info("VisualizationResource initialized -> {}", properties.getOrigin());
 
         threshold = "< " + properties.getTargetPicsureObfuscationThreshold();
         variance = "±" + properties.getTargetPicsureObfuscationVariance();
@@ -51,7 +51,7 @@ public class VisualizationService {
     /**
      * Handles a query request from the UI. This method is called from the VisualizationResource class.
      *
-     * @param query         QueryRequest - the query request
+     * @param query QueryRequest - the query request
      * @param requestSource String - the request source, Authorized or Open
      * @return ProcessedCrossCountsResponse
      */
@@ -62,7 +62,7 @@ public class VisualizationService {
         } catch (Exception e) {
             // The exception is caught here because I don't want to modify the method signature to throw the
             // exception.
-            logger.error("Error parsing query:  \n" + query, e);
+            logger.error("Error parsing query:  \n{}", query, e);
             return Response.status(Response.Status.BAD_REQUEST).entity("Could not parse query.").build();
         }
 
@@ -79,24 +79,29 @@ public class VisualizationService {
         }
     }
 
-    private Response getProcessedCrossCountResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap) {
-        if ((categoryCrossCountsMap == null || categoryCrossCountsMap.isEmpty()) && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty()))
-            return Response.ok().build();
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false, false, false);
+    private Response getProcessedCrossCountResponse(
+        Map<String, Map<String, Integer>> categoryCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap
+    ) {
+        if (
+            (categoryCrossCountsMap == null || categoryCrossCountsMap.isEmpty())
+                && (continuousCrossCountsMap == null || continuousCrossCountsMap.isEmpty())
+        ) return Response.ok().build();
+        ProcessedCrossCountsResponse response =
+            buildProcessedCrossCountsResponse(categoryCrossCountsMap, continuousCrossCountsMap, false, false, false);
         return Response.ok(response).build();
     }
 
     /**
-     * This method determines if the data is obfuscated and if so, converts the string values to integers by removing
-     * the obfuscation types. If the value was obfuscated the response will be marked as obfuscated so the UI can
-     * display the data accordingly.
+     * This method determines if the data is obfuscated and if so, converts the string values to integers by removing the obfuscation types.
+     * If the value was obfuscated the response will be marked as obfuscated so the UI can display the data accordingly.
      *
-     * @param categoryCrossCountsMap   - the categorical cross counts
+     * @param categoryCrossCountsMap - the categorical cross counts
      * @param continuousCrossCountsMap - the continuous cross counts
      * @return Response - the processed cross counts response
      */
-    private Response getOpenProcessedCrossCountResponse(Map<String, Map<String, String>> categoryCrossCountsMap,
-                                                        Map<String, Map<String, String>> continuousCrossCountsMap) {
+    private Response getOpenProcessedCrossCountResponse(
+        Map<String, Map<String, String>> categoryCrossCountsMap, Map<String, Map<String, String>> continuousCrossCountsMap
+    ) {
         Map<String, Map<String, Integer>> cleanedCategoricalData = new HashMap<>();
         boolean isCategoricalObfuscated = false;
         if (categoryCrossCountsMap != null && !categoryCrossCountsMap.isEmpty()) {
@@ -111,13 +116,15 @@ public class VisualizationService {
             cleanedContinuousData = cleanCrossCountData(continuousCrossCountsMap);
         }
 
-        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(cleanedCategoricalData, cleanedContinuousData, isCategoricalObfuscated, isContinuousObfuscated, true);
+        ProcessedCrossCountsResponse response = buildProcessedCrossCountsResponse(
+            cleanedCategoricalData, cleanedContinuousData, isCategoricalObfuscated, isContinuousObfuscated, true
+        );
         return Response.ok(response).build();
     }
 
     /**
-     * This method removes the obfuscation types from the categorical data. The obfuscation types are the threshold
-     * and variance values that are appended to the cross counts when the data is obfuscated.
+     * This method removes the obfuscation types from the categorical data. The obfuscation types are the threshold and variance values that
+     * are appended to the cross counts when the data is obfuscated.
      *
      * @param crossCounts - the categorical cross counts
      * @return Map<String, Map < String, Integer>> - the cleaned categorical data
@@ -164,20 +171,25 @@ public class VisualizationService {
         return isObfuscated;
     }
 
-    private ProcessedCrossCountsResponse buildProcessedCrossCountsResponse(Map<String, Map<String, Integer>> categoryCrossCountsMap,
-                                                                           Map<String, Map<String, Integer>> continuousCrossCountsMap,
-                                                                           boolean isCategoricalObfuscated, boolean isContinuousObfuscated, boolean isOpenAccess) {
+    private ProcessedCrossCountsResponse buildProcessedCrossCountsResponse(
+        Map<String, Map<String, Integer>> categoryCrossCountsMap, Map<String, Map<String, Integer>> continuousCrossCountsMap,
+        boolean isCategoricalObfuscated, boolean isContinuousObfuscated, boolean isOpenAccess
+    ) {
 
         ProcessedCrossCountsResponse response = new ProcessedCrossCountsResponse();
-        response.getCategoricalData().addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isCategoricalObfuscated, isOpenAccess));
-        response.getContinuousData().addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isContinuousObfuscated, isOpenAccess));
+        response.getCategoricalData()
+            .addAll(dataProcessingServices.getCategoricalData(categoryCrossCountsMap, isCategoricalObfuscated, isOpenAccess));
+        response.getContinuousData()
+            .addAll(dataProcessingServices.getContinuousData(continuousCrossCountsMap, isContinuousObfuscated, isOpenAccess));
         return response;
     }
 
     private Map<String, Map<String, Integer>> getCategoryCrossCountsMap(QueryRequest query, Query queryJson) {
         Map<String, Map<String, Integer>> categoryCrossCountsMap;
-        if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) ||
-                (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+        if (
+            (queryJson.categoryFilters != null && !queryJson.categoryFilters.isEmpty())
+                || (queryJson.requiredFields != null && !queryJson.requiredFields.isEmpty())
+        ) {
             categoryCrossCountsMap = hpdsServices.getAuthCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
         } else {
             categoryCrossCountsMap = new HashMap<>();
@@ -186,13 +198,13 @@ public class VisualizationService {
     }
 
     /**
-     * @param query     QueryRequest
+     * @param query QueryRequest
      * @param queryJson Query
      * @return Map<String, Map < String, Integer>> - the continuous cross counts
      */
     private Map<String, Map<String, Integer>> getContinuousCrossCount(QueryRequest query, Query queryJson) {
         Map<String, Map<String, Integer>> continuousCrossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
+        if ((queryJson.numericFilters != null && !queryJson.numericFilters.isEmpty())) {
             continuousCrossCountsMap = hpdsServices.getAuthCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
         } else {
             continuousCrossCountsMap = new HashMap<>();
@@ -202,8 +214,10 @@ public class VisualizationService {
 
     private Map<String, Map<String, String>> getOpenCategoricalCrossCounts(QueryRequest query, Query queryJson) {
         Map<String, Map<String, String>> crossCountsMap;
-        if ((queryJson.categoryFilters != null && queryJson.categoryFilters.size() > 0) ||
-                (queryJson.requiredFields != null && queryJson.requiredFields.size() > 0)) {
+        if (
+            (queryJson.categoryFilters != null && !queryJson.categoryFilters.isEmpty())
+                || (queryJson.requiredFields != null && !queryJson.requiredFields.isEmpty())
+        ) {
             crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, ResultType.CATEGORICAL_CROSS_COUNT);
         } else {
             crossCountsMap = new HashMap<>();
@@ -214,7 +228,7 @@ public class VisualizationService {
 
     private Map<String, Map<String, String>> getOpenContinuousCrossCounts(QueryRequest query, Query queryJson) {
         Map<String, Map<String, String>> crossCountsMap;
-        if ((queryJson.numericFilters != null && queryJson.numericFilters.size() > 0)) {
+        if ((queryJson.numericFilters != null && !queryJson.numericFilters.isEmpty())) {
             crossCountsMap = hpdsServices.getOpenCrossCountsMap(query, ResultType.CONTINUOUS_CROSS_COUNT);
         } else {
             crossCountsMap = new HashMap<>();
@@ -236,8 +250,7 @@ public class VisualizationService {
         }
 
         logger.info("Continuous data: " + continuousData.getQuery());
-        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {
-        });
+        Map<String, Map<String, Integer>> continuousDataMap = mapper.convertValue(continuousData.getQuery(), new TypeReference<>() {});
         Map<String, Map<String, Integer>> continuousProcessedData = dataProcessingServices.binContinuousData(continuousDataMap);
         return Response.ok(continuousProcessedData).build();
     }
