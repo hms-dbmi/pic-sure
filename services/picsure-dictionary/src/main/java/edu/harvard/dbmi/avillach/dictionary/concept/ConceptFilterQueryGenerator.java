@@ -17,9 +17,13 @@ public class ConceptFilterQueryGenerator {
 
     private static final String CONSENT_QUERY = """
                 dataset.dataset_id IN (
-                    SELECT consent.dataset_id
+                    SELECT
+                        consent.dataset_id
                     FROM consent
-                    WHERE consent.consent_code IN (:consents)
+                        LEFT JOIN dataset ON dataset.dataset_id = consent.dataset_id
+                    WHERE
+                        concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
+                        (dataset.ref IN (:consents) AND consent.consent_code = '')
                 ) AND
                 """;
 

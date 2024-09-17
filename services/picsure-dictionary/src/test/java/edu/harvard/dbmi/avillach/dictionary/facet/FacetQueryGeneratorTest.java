@@ -74,7 +74,7 @@ class FacetQueryGeneratorTest {
 
     @Test
     void shouldCountFacetsWithNoSearchAndNoSelectedFacetsAndConsents() {
-        Filter filter = new Filter(List.of(), "", List.of("c2"));
+        Filter filter = new Filter(List.of(), "", List.of("LOINC.c2", "PhenX.c2", "phs000007.c2"));
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
@@ -107,7 +107,7 @@ class FacetQueryGeneratorTest {
 
     @Test
     void shouldCountFacetsWithSearchAndNoSelectedFacetsAndConsents() {
-        Filter filter = new Filter(List.of(), "age", List.of("c1"));
+        Filter filter = new Filter(List.of(), "age", List.of("phs002715.c1", "phs000284.c1", "phs002385.c1"));
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
@@ -147,7 +147,7 @@ class FacetQueryGeneratorTest {
     void shouldCountFacetsWithSearchAndOneSelectedFacetsAndConsents() {
         Filter filter = new Filter(
             List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "age", List.of("c1")
+            "age", List.of("phs002715.c1", "phs000284.c1", "phs002385.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
@@ -191,7 +191,7 @@ class FacetQueryGeneratorTest {
     void shouldCountFacetsNoSearchAndOneSelectedFacetsAndConsents() {
         Filter filter = new Filter(
             List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "", List.of("c2")
+            "", List.of("phs000007.c2")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
@@ -235,7 +235,7 @@ class FacetQueryGeneratorTest {
                 new Facet("phs000007", "study_ids_dataset_ids"),
                 new Facet("LOINC", "nsrr_harmonized")
             ),
-            "cola", List.of("c1")
+            "cola", List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
@@ -281,7 +281,7 @@ class FacetQueryGeneratorTest {
                 new Facet("phs000007", "study_ids_dataset_ids"),
                 new Facet("LOINC", "nsrr_harmonized")
             ),
-            "", List.of("c1")
+            "", List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();

@@ -68,7 +68,10 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent1() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c1"));
+        Filter f = new Filter(List.of(new Facet(
+            "phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)),
+            "", List.of("phs000007.c1")
+        );
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -79,7 +82,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent1And2() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c1", "c2"));
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("phs000007.c1", "phs000007.c2"));
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
@@ -90,7 +93,7 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent3() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("c3"));
+        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("dne.c3"));
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
 
         List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
