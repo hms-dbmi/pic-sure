@@ -84,11 +84,12 @@ public class AuthorizationService {
      *
      * @param application
      * @param requestBody
+     * @param isLongTermToken
      * @return
      * @see Privilege
      * @see AccessRule
      */
-    public boolean isAuthorized(Application application, Object requestBody, User user) {
+    public boolean isAuthorized(Application application, Object requestBody, User user, boolean isLongTermToken) {
         String applicationName = application.getName();
         String resourceId = "null";
         String targetService = "null";
@@ -103,7 +104,7 @@ public class AuthorizationService {
             return false;
         }
 
-        if (sessionService.isSessionExpired(user.getSubject())) {
+        if (!isLongTermToken && sessionService.isSessionExpired(user.getSubject())) {
             logger.error("isAuthorized() Session expired {}", user.getSubject());
             return false;
         }

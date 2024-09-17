@@ -174,7 +174,7 @@ public class TokenService {
                 // The protocol between applications and PSAMA is application will
                 // attach everything that needs to be verified in request field of inputMap
                 // besides token. So here we should attach everything in request.
-                && authorizationService.isAuthorized(application, inputMap.get("request"), user)) {
+                && authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken)) {
             isAuthorizationPassed = true;
         } else {
             // if isLongTermTokenCompromised flag is true,
