@@ -11,7 +11,7 @@ pipeline {
         GIT_BRANCH_SHORT = sh(script: 'echo ${GIT_BRANCH} | cut -d "/" -f 2', returnStdout: true).trim()
         GIT_COMMIT_SHORT = sh(script: 'echo ${GIT_COMMIT} | cut -c1-7', returnStdout: true).trim()
         IMAGE_TAG = "${GIT_BRANCH_SHORT}_${GIT_COMMIT_SHORT}"
-        LATEST_TAG = "latest"
+        LATEST_TAG = "LATEST"
         EMAIL_TEMPLATE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/emailTemplates:/opt/jboss/wildfly/standalone/configuration/emailTemplates "
         TRUSTSTORE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/application.truststore:/opt/jboss/wildfly/standalone/configuration/application.truststore"
         PSAMA_OPTS="-Xms1g -Xmx2g -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
