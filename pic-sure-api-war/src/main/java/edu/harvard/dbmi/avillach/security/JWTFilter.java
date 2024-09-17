@@ -304,7 +304,7 @@ public class JWTFilter implements ContainerRequestFilter {
         } catch (IOException e1) {
             logger.error("IOException caught trying to build requestMap for auditing.", e1);
             throw new NotAuthorizedException(
-                "The request could not be properly audited. If you recieve this error multiple times, please contact an administrator."
+                "The request could not be properly audited. If you receive this error multiple times, please contact an administrator."
             );
         }
     }
@@ -353,18 +353,16 @@ public class JWTFilter implements ContainerRequestFilter {
                         "callOpenAccessValidateEndpoint() Open access validate endpoint return invalid response, content: {}",
                         responseContent
                     );
-                    throw new ApplicationException("Open access validate endpoint return invalid response");
+                    throw new ApplicationException("Open access validate endpoint returned an invalid response");
                 }
 
                 isValid = responseContent.asBoolean();
             } else {
                 logger.error(
-                    "callOpenAccessValidateEndpoint() error back from open access validate host server [{}]: {}", openAccessValidateUrl,
+                    "callOpenAccessValidateEndpoint() error returned from psama [{}]: {}", openAccessValidateUrl,
                     EntityUtils.toString(response.getEntity())
                 );
-                throw new ApplicationException(
-                    "Open access validate host server returned " + response.getStatusLine().getStatusCode() + ". Please see the log"
-                );
+                throw new ApplicationException("Not able to validate open access request");
             }
 
         } catch (IOException ex) {
