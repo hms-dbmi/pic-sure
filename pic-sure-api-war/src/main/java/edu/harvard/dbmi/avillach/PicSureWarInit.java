@@ -4,14 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.apache.http.impl.conn.SystemDefaultRoutePlanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.ejb.Singleton;
 import javax.enterprise.context.ApplicationScoped;
-import java.net.ProxySelector;
 
 @Singleton
 @ApplicationScoped
@@ -27,6 +26,19 @@ public class PicSureWarInit {
 
     @Resource(mappedName = "java:global/defaultApplicationUUID")
     private String default_application_uuid;
+
+    @Resource(mappedName = "java:global/openAccessEnabled")
+    private String open_access_enabled_str;
+
+    private boolean open_access_enabled;
+
+    @Resource(mappedName = "java:global/openAccessValidateUrl")
+    private String open_access_validate_url;
+
+    @PostConstruct
+    public void init() {
+        this.open_access_enabled = Boolean.parseBoolean(open_access_enabled_str);
+    }
 
     // to be able to pre modified
     public static final ObjectMapper objectMapper = new ObjectMapper();
@@ -61,4 +73,13 @@ public class PicSureWarInit {
     public String getDefaultApplicationUUID() {
         return this.default_application_uuid;
     }
+
+    public boolean isOpenAccessEnabled() {
+        return open_access_enabled;
+    }
+
+    public String getOpenAccessValidateUrl() {
+        return this.open_access_validate_url;
+    }
+
 }
