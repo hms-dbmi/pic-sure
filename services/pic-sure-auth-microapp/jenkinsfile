@@ -4,7 +4,7 @@ pipeline {
     parameters {
         string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
         string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'psama')
-        bool(name: 'DEPLOY', description: 'Deploy the image to the registry', defaultValue: true)
+        booleanParam(name: 'DEPLOY', description: 'Deploy the image to the registry', defaultValue: true)
     }
 
     environment {
