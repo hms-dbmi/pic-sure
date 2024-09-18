@@ -40,7 +40,7 @@ public class WeightUpdateCreator {
                             concept_node
                             join concept_node_meta on concept_node.concept_node_id = concept_node_meta.concept_node_id
                         WHERE
-                            LENGTH(concept_node_meta.value) > 1000
+                            LENGTH(concept_node_meta.value) < 1000
                         GROUP BY
                             concept_node.concept_node_id
                     ) AS concept_node_meta_str ON concept_node_meta_str.id = concept_node.concept_node_id
