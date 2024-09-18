@@ -46,16 +46,16 @@ public class GenomicProcessorNoOp implements GenomicProcessor {
 
     @Override
     public Set<String> getInfoStoreColumns() {
-        return null;
+        return Set.of();
     }
 
     @Override
     public Set<String> getInfoStoreValues(String conceptPath) {
-        return null;
+        return Set.of();
     }
 
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
-        return null;
+        return List.of();
     }
 }
