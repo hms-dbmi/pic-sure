@@ -34,7 +34,7 @@ public class DashboardRepository {
     public List<Map<String, String>> getRows() {
         String sql = """
             SELECT
-                abbreviation, ref AS name,
+                abbreviation, full_name AS name,
                 dataset_meta.KEY AS key,
                 dataset_meta.VALUE AS value
             FROM
