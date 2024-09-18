@@ -35,7 +35,6 @@ public class FENCEAuthenticationService implements AuthenticationService {
     private final Logger logger = LoggerFactory.getLogger(FENCEAuthenticationService.class);
 
     private final UserService userService;
-    private final RoleService roleService;
     private final ConnectionWebService connectionService; // We will need to investigate if the ConnectionWebService will need to be versioned as well.
     private final AccessRuleService accessRuleService;
     private final FenceMappingUtility fenceMappingUtility;
@@ -52,7 +51,6 @@ public class FENCEAuthenticationService implements AuthenticationService {
 
     @Autowired
     public FENCEAuthenticationService(UserService userService,
-                                      RoleService roleService,
                                       ConnectionWebService connectionService,
                                       RestClientUtil restClientUtil,
                                       @Value("${fence.idp.provider.is.enabled}") boolean isFenceEnabled,
@@ -62,7 +60,6 @@ public class FENCEAuthenticationService implements AuthenticationService {
                                       AccessRuleService accessRuleService,
                                       FenceMappingUtility fenceMappingUtility) {
         this.userService = userService;
-        this.roleService = roleService;
         this.connectionService = connectionService;
         this.idp_provider_uri = idpProviderUri;
         this.fence_client_id = fenceClientId;
@@ -82,7 +79,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
 
     @Override
     public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
-        String callBackUrl = "https://" + host + "/psamaui/login/";
+        String callBackUrl = "https://" + host + "/login/loading/";
 
         logger.debug("getFENCEProfile() starting...");
         String fence_code = authRequest.get("code");

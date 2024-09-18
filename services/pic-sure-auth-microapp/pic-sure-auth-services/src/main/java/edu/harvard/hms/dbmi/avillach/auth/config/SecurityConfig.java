@@ -57,15 +57,21 @@ public class SecurityConfig {
                                     "/authentication",
                                     "/authentication/**",
                                     "/swagger.yaml",
-                                    "/swagger.json"
+                                    "/swagger.json",
+                                    "/user/me/queryTemplate",
+                                    "/user/me/queryTemplate/**",
+                                    "/open/validate"
                             ).permitAll()
                             .anyRequest().authenticated()
                 )
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .logout((logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler()));
-
+                .logout((logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler()).logoutSuccessHandler((request, response, authentication) -> {
+                    // We don't want to redirect to a login page, we just want to return a 200
+                    // We leave it to the client to handle the redirect
+                    response.setStatus(200);
+                }));
 
         return http.build();
     }

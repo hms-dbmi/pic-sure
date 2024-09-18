@@ -56,14 +56,13 @@ public class UserService {
     private final long tokenExpirationTime;
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60; // 1 hour
     private final SessionService sessionService;
+    private final boolean openAccessIsEnabled;
 
     public long longTermTokenExpirationTime;
 
     private final String applicationUUID;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JWTUtil jwtUtil;
-
-    private final Set<String> openAccessIdpValues = Set.of("fence", "ras");
 
     @Autowired
     public UserService(BasicMailService basicMailService, TOSService tosService,
@@ -74,7 +73,8 @@ public class UserService {
                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
                        @Value("${application.default.uuid}") String applicationUUID,
                        @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime,
-                       JWTUtil jwtUtil, SessionService sessionService) {
+                       JWTUtil jwtUtil, SessionService sessionService,
+                       @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
         this.userRepository = userRepository;
@@ -89,6 +89,7 @@ public class UserService {
         long defaultLongTermTokenExpirationTime = 1000L * 60 * 60 * 24 * 30;
         this.longTermTokenExpirationTime = longTermTokenExpirationTime > 0 ? longTermTokenExpirationTime : defaultLongTermTokenExpirationTime;
         this.sessionService = sessionService;
+        this.openAccessIsEnabled = openIdpProviderIsEnabled;
     }
 
     public HashMap<String, String> getUserProfileResponse(Map<String, Object> claims) {
@@ -387,19 +388,46 @@ public class UserService {
 
         SecurityContext securityContext = SecurityContextHolder.getContext();
         Optional<CustomUserDetails> customUserDetails = Optional.ofNullable((CustomUserDetails) securityContext.getAuthentication().getPrincipal());
-        if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
-            logger.error("Security context didn't have a user stored.");
-            return Optional.empty();
+        if ((customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) && openAccessIsEnabled) {
+            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
+            if (application.isEmpty()) {
+                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
+                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
+            }
+
+            return Optional.ofNullable(openMergeTemplate(application.orElse(null)));
+        } else {
+            if (customUserDetails.isEmpty() || customUserDetails.get().getUser() == null) {
+                logger.error("Security context didn't have a user stored.");
+                return Optional.empty();
+            }
+
+            User user = customUserDetails.get().getUser();
+            Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
+            if (application.isEmpty()) {
+                logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
+                throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
+            }
+
+            return Optional.ofNullable(mergeTemplate(user, application.orElse(null)));
+        }
+    }
+
+    private String openMergeTemplate(Application application) {
+        Set<Privilege> applicationPrivileges = application.getPrivileges();
+        Role openAccessRole = roleService.findByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
+        Set<Privilege> privileges = openAccessRole.getPrivileges();
+        privileges.addAll(applicationPrivileges);
+        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
+        String resultJSON;
+        try {
+            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
+        } catch (JsonProcessingException ex) {
+            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
+            throw new IllegalArgumentException("Inner application error, please contact admin.");
         }
 
-        User user = customUserDetails.get().getUser();
-        Optional<Application> application = this.applicationRepository.findById(UUID.fromString(applicationId));
-        if (application.isEmpty()) {
-            logger.error("getQueryTemplate() cannot find corresponding application by UUID: {}", UUID.fromString(applicationId));
-            throw new IllegalArgumentException("Cannot find application by input UUID: " + UUID.fromString(applicationId));
-        }
-
-        return Optional.ofNullable(mergeTemplate(user, application.orElse(null)));
+        return resultJSON;
     }
 
     public Map<String, String> getDefaultQueryTemplate() {
@@ -416,8 +444,22 @@ public class UserService {
     @Cacheable(value = "mergedTemplateCache", keyGenerator = "customKeyGenerator")
     public String mergeTemplate(User user, Application application) {
         String resultJSON;
+        Set<Privilege> privileges = user.getPrivilegesByApplication(application);
+        Map mergedTemplateMap = getMergedQueryTemplateMap(privileges);
+
+        try {
+            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
+        } catch (JsonProcessingException ex) {
+            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
+            throw new IllegalArgumentException("Inner application error, please contact admin.");
+        }
+
+        return resultJSON;
+    }
+
+    private Map getMergedQueryTemplateMap(Set<Privilege> privileges) {
         Map mergedTemplateMap = null;
-        for (Privilege privilege : user.getPrivilegesByApplication(application)) {
+        for (Privilege privilege : privileges) {
             String template = privilege.getQueryTemplate();
             logger.debug("mergeTemplate() processing template:{}", template);
             if (template == null || template.trim().isEmpty()) {
@@ -442,15 +484,7 @@ public class UserService {
 
             mergedTemplateMap = JsonUtils.mergeTemplateMap(mergedTemplateMap, templateMap);
         }
-
-        try {
-            resultJSON = objectMapper.writeValueAsString(mergedTemplateMap);
-        } catch (JsonProcessingException ex) {
-            logger.error("mergeTemplate() cannot convert map to json string. The map mergedTemplate is: {}", mergedTemplateMap);
-            throw new IllegalArgumentException("Inner application error, please contact admin.");
-        }
-
-        return resultJSON;
+        return mergedTemplateMap;
     }
 
     @CacheEvict(value = "mergedTemplateCache")

@@ -2,12 +2,11 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
-import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.*;
+import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
@@ -18,6 +17,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME;
 
 /**
  * This class handles authorization activities in the project. It decides
@@ -44,6 +45,7 @@ public class AuthorizationService {
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
+    private final RoleService roleService;
 
     /**
      * Applications that have strict access control. If the application is strict a user must have both privileges and access rules.
@@ -54,9 +56,11 @@ public class AuthorizationService {
     @Autowired
     public AuthorizationService(AccessRuleService accessRuleService,
                                 SessionService sessionService,
+                                RoleService roleService,
                                 @Value("${strict.authorization.applications.connections}") String strictConnections) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
+        this.roleService = roleService;
         if (strictConnections != null && !strictConnections.isEmpty()) {
             this.strictConnections.addAll(Arrays.asList(strictConnections.split(",")));
         }
@@ -126,9 +130,9 @@ public class AuthorizationService {
 
         String formattedQuery;
         try {
-            formattedQuery = (String) ((Map)requestBody).get("formattedQuery");
+            formattedQuery = (String) ((Map) requestBody).get("formattedQuery");
 
-            if(formattedQuery == null) {
+            if (formattedQuery == null) {
                 //fallback in case no formatted query info present
                 formattedQuery = new ObjectMapper().writeValueAsString(requestBody);
             }
@@ -171,6 +175,20 @@ public class AuthorizationService {
             }
         }
 
+        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, accessRules);
+        boolean result = evaluationResult.result();
+        String passRuleName = evaluationResult.passRuleName();
+        Set<AccessRule> failedRules = evaluationResult.failedRules();
+
+        logger.info("ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}", user.getUuid().toString(), user.getEmail(), user.getName(), (result ? "granted" : "denied"), formattedQuery, applicationName, (result ? "passed by " + passRuleName : "failed by rules: ["
+                + failedRules.stream()
+                .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
+                .collect(Collectors.joining(", ")) + "]"));
+
+        return result;
+    }
+
+    private EvaluateAccessRuleResult passesAccessRuleEvaluation(Object requestBody, Set<AccessRule> accessRules) {
         logger.debug("Request: {}", requestBody);
         // Current logic here is: among all accessRules, they are OR relationship
         Set<AccessRule> failedRules = new HashSet<>();
@@ -194,15 +212,39 @@ public class AuthorizationService {
                 passRuleName = passByRule.getMergedName();
         }
 
-            logger.info("ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}", user.getUuid().toString(), user.getEmail(), user.getName(), result ? "granted" : "denied", formattedQuery, applicationName, result ? "passed by " + passRuleName : "failed by rules: ["
-                    + failedRules.stream()
-                    .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
-                    .collect(Collectors.joining(", ")) + "]");
-
-        return result;
+        return new EvaluateAccessRuleResult(result, failedRules, passRuleName);
     }
 
 
+    public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
 
+        if (inputMap == null || inputMap.isEmpty()) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION");
+            return true;
+        }
 
+        Object requestBody = inputMap.get("request");
+        // If there is no request body, we can assume the request is valid
+        if (requestBody == null) {
+            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION");
+            return true;
+        }
+
+        // Load the open access rules
+        Role fenceOpenAccessRole = this.roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
+        Set<AccessRule> allOpenAccessRules = fenceOpenAccessRole.getPrivileges().stream()
+                .map(Privilege::getAccessRules).collect(Collectors.toSet()).stream().flatMap(Collection::stream).collect(Collectors.toSet());
+
+        EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, allOpenAccessRules);
+        boolean result = evaluationResult.result();
+        String passRuleName = evaluationResult.passRuleName();
+        Set<AccessRule> failedRules = evaluationResult.failedRules();
+
+        logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been {} access to execute query ___ {} ___ in application ___ OPEN ACCESS ___ {}", (result ? "granted" : "denied"), requestBody, (result ? "passed by " + passRuleName : "failed by rules: ["
+                + failedRules.stream()
+                .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
+                .collect(Collectors.joining(", ")) + "]"));
+
+        return result;
+    }
 }

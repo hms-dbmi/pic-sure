@@ -80,7 +80,8 @@ public class UserServiceTest {
                 applicationUUID,
                 longTermTokenExpirationTime,
                 mockJwtUtil,
-                sessionService);
+                sessionService,
+                false);
     }
 
     @Test

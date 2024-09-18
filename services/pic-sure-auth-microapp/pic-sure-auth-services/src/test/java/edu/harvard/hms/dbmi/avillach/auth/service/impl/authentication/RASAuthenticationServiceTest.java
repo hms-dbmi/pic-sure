@@ -80,7 +80,7 @@ public class RASAuthenticationServiceTest {
     public void testAuthorizationCodeFlow_Successful() {
         String data = "{\"access_token\":\"" + testAccessToken + "\", \"active\":true, \"id_token\":\"SomeRandomToken\"}";
         String payload = "token_type_hint=access_token&token=" + testAccessToken;
-        String redirectUri = "https://" + testDomain + "/psamaui/login";
+        String redirectUri = "https://" + testDomain + "/login/loading";
         String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
         String introspectionResponse =
                 "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\",\"passport_jwt_v11\":\""+ exampleRasPassport +"\"}";

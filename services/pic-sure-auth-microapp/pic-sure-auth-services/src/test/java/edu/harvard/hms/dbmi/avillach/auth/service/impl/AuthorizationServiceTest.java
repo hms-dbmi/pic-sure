@@ -33,13 +33,16 @@ public class AuthorizationServiceTest {
     @Mock
     private AccessRuleRepository accessRuleRepository;
 
+    @Mock
+    private RoleService roleService;
+
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
         accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
-        authorizationService = new AuthorizationService(accessRuleService, sessionService, "fence,okta,open");
+        authorizationService = new AuthorizationService(accessRuleService, sessionService, roleService,"fence,okta,open");
     }
 
     @Test

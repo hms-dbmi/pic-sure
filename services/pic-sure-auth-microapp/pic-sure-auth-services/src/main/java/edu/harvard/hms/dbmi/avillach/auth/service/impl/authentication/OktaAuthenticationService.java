@@ -36,7 +36,7 @@ public class OktaAuthenticationService {
      * @return The response from the token endpoint as a JsonNode
      */
     protected JsonNode handleCodeTokenExchange(String host, String code) {
-        String redirectUri = "https://" + host + "/psamaui/login";
+        String redirectUri = "https://" + host + "/login/loading";
         String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
         String oktaTokenUrl = "https://" + this.idp_provider_uri + "/oauth2/default/v1/token";
 

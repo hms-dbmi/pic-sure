@@ -201,7 +201,7 @@ public class RoleService {
         Role role = findByName(roleName);
         if (role != null) {
             // Role already exists
-            logger.info("upsertRole() role already exists");
+            logger.debug("upsertRole() role already exists");
         } else {
             logger.info("createRole() New PSAMA role name:{}", roleName);
             // This is a new Role

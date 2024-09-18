@@ -6,6 +6,7 @@ import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.Assert;
@@ -38,6 +39,9 @@ public class AuthorizationServiceTest {
 
     @Mock
     private AccessRuleRepository accessRuleRepository;
+
+    @Mock
+    private RoleService roleService;
 
     ObjectMapper mapper = new ObjectMapper();
 
@@ -318,7 +322,7 @@ public class AuthorizationServiceTest {
 
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
-        authorizationService = new AuthorizationService(accessRuleService, sessionService, "fence,okta");
+        authorizationService = new AuthorizationService(accessRuleService, sessionService, roleService, "fence,okta");
     }
 
     @Test

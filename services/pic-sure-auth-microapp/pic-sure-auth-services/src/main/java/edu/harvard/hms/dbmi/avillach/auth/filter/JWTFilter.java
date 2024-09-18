@@ -114,7 +114,7 @@ public class JWTFilter extends OncePerRequestFilter {
 
                 // Check if user is attempting to access the correct introspect endpoint. If not reject the request
                 // log an error indicating the user's token may be being used by a malicious actor.
-                if (!request.getRequestURI().endsWith("token/inspect")) {
+                if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User is deactivated");
                 }
