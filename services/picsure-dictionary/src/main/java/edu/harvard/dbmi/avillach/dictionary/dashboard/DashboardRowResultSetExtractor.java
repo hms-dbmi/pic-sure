@@ -23,7 +23,7 @@ public class DashboardRowResultSetExtractor implements ResultSetExtractor<List<M
     @Autowired
     public DashboardRowResultSetExtractor(List<DashboardColumn> columns) {
         template = columns.stream()
-            .collect(Collectors.toMap(DashboardColumn::label, (ignored) -> ""));
+            .collect(Collectors.toMap(DashboardColumn::dataElement, (ignored) -> ""));
     }
 
     @Override

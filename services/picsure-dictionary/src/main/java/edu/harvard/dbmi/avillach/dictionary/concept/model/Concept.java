@@ -49,12 +49,20 @@ public sealed interface Concept
      */
     ConceptType type();
 
+    Concept table();
+
+    Concept study();
+
     Map<String, String> meta();
 
     @Nullable
     List<Concept> children();
 
     Concept withChildren(List<Concept> children);
+
+    Concept withTable(Concept table);
+
+    Concept withStudy(Concept study);
 
     default boolean conceptEquals(Object object) {
         if (this == object) return true;

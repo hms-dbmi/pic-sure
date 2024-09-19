@@ -14,8 +14,21 @@ public record ContinuousConcept(
     @Nullable Integer min, @Nullable Integer max,
     Map<String, String> meta,
     @Nullable
-    List<Concept> children
+    List<Concept> children,
+
+    @Nullable
+    Concept table,
+
+    @Nullable
+    Concept study
 ) implements Concept {
+
+    public ContinuousConcept(
+        String conceptPath, String name, String display, String dataset, String description,
+        @Nullable Integer min, @Nullable Integer max, Map<String, String> meta, @Nullable List<Concept> children
+    ) {
+        this(conceptPath, name, display, dataset, description, min, max, meta, children, null, null);
+    }
 
     public ContinuousConcept(ContinuousConcept core, Map<String, String> meta) {
         this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.min, core.max, meta, core.children);
@@ -45,6 +58,20 @@ public record ContinuousConcept(
     @Override
     public ContinuousConcept withChildren(List<Concept> children) {
         return new ContinuousConcept(this, children);
+    }
+
+    @Override
+    public Concept withTable(Concept table) {
+        return new ContinuousConcept(
+            conceptPath, name, display, dataset, description, min, max, meta, children, table, study
+        );
+    }
+
+    @Override
+    public Concept withStudy(Concept study) {
+        return new ContinuousConcept(
+            conceptPath, name, display, dataset, description, min, max, meta, children, table, study
+        );
     }
 
     @Override

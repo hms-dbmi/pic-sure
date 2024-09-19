@@ -23,6 +23,16 @@ public record ConceptShell(String conceptPath, String dataset) implements Concep
     }
 
     @Override
+    public Concept table() {
+        return null;
+    }
+
+    @Override
+    public Concept study() {
+        return null;
+    }
+
+    @Override
     public Map<String, String> meta() {
         return Map.of();
     }
@@ -34,6 +44,16 @@ public record ConceptShell(String conceptPath, String dataset) implements Concep
 
     @Override
     public ConceptShell withChildren(List<Concept> children) {
+        return this;
+    }
+
+    @Override
+    public Concept withTable(Concept table) {
+        return this;
+    }
+
+    @Override
+    public Concept withStudy(Concept study) {
         return this;
     }
 

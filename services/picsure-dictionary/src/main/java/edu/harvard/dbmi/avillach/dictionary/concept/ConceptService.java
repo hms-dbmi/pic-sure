@@ -12,17 +12,18 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class ConceptService {
 
     private final ConceptRepository conceptRepository;
 
+    private final ConceptDecoratorService conceptDecoratorService;
+
     @Autowired
-    public ConceptService(ConceptRepository conceptRepository) {
+    public ConceptService(ConceptRepository conceptRepository, ConceptDecoratorService conceptDecoratorService) {
         this.conceptRepository = conceptRepository;
+        this.conceptDecoratorService = conceptDecoratorService;
     }
 
     public List<Concept> listConcepts(Filter filter, Pageable page) {
@@ -44,19 +45,28 @@ public class ConceptService {
     }
 
     public Optional<Concept> conceptDetail(String dataset, String conceptPath) {
-        return conceptRepository.getConcept(dataset, conceptPath)
+        return getConcept(dataset, conceptPath, true);
+    }
+
+    private Optional<Concept> getConcept(String dataset, String conceptPath, boolean addAncestors) {
+        Optional<Concept> concept = conceptRepository.getConcept(dataset, conceptPath)
             .map(core -> {
-                var meta = conceptRepository.getConceptMeta(dataset, conceptPath);
-                return switch (core) {
-                    case ContinuousConcept cont -> new ContinuousConcept(cont, meta);
-                    case CategoricalConcept cat -> new CategoricalConcept(cat, meta);
-                    case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
-                };
-            }
-        );
+                    var meta = conceptRepository.getConceptMeta(dataset, conceptPath);
+                    return switch (core) {
+                        case ContinuousConcept cont -> new ContinuousConcept(cont, meta);
+                        case CategoricalConcept cat -> new CategoricalConcept(cat, meta);
+                        case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
+                    };
+                }
+            );
+        return addAncestors ? concept.map(conceptDecoratorService::populateParentConcepts) : concept;
     }
 
     public Optional<Concept> conceptTree(String dataset, String conceptPath, int depth) {
         return conceptRepository.getConceptTree(dataset, conceptPath, depth);
+    }
+
+    public Optional<Concept> conceptDetailWithoutAncestors(String dataset, String conceptPath) {
+        return getConcept(dataset, conceptPath, false);
     }
 }

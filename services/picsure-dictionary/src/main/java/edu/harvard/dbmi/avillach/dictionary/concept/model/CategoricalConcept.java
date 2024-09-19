@@ -16,9 +16,22 @@ public record CategoricalConcept(
     List<Concept> children,
 
     @Nullable
-    Map<String, String> meta
+    Map<String, String> meta,
+
+    @Nullable
+    Concept table,
+
+    @Nullable
+    Concept study
 
 ) implements Concept {
+
+    public CategoricalConcept(
+        String conceptPath, String name, String display, String dataset, String description, List<String> values,
+        @Nullable List<Concept> children, @Nullable Map<String, String> meta
+    ) {
+        this(conceptPath, name, display, dataset, description, values, children, meta, null, null);
+    }
 
     public CategoricalConcept(CategoricalConcept core, Map<String, String> meta) {
         this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, core.children, meta);
@@ -42,6 +55,20 @@ public record CategoricalConcept(
     @Override
     public CategoricalConcept withChildren(List<Concept> children) {
         return new CategoricalConcept(this, children);
+    }
+
+    @Override
+    public Concept withTable(Concept table) {
+        return new CategoricalConcept(
+            conceptPath, name, display, dataset, description, values, children, meta, table, study
+        );
+    }
+
+    @Override
+    public Concept withStudy(Concept study) {
+        return new CategoricalConcept(
+            conceptPath, name, display, dataset, description, values, children, meta, table, study
+        );
     }
 
     @Override

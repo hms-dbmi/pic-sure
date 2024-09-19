@@ -31,8 +31,8 @@ public class DashboardConfig {
     }
 
     private int calculateOrder(DashboardColumn column) {
-        if (columnOrder.contains(column.label())) {
-            return columnOrder.indexOf(column.label());
+        if (columnOrder.contains(column.dataElement())) {
+            return columnOrder.indexOf(column.dataElement());
         } else {
             return Integer.MAX_VALUE;
         }

@@ -24,6 +24,9 @@ class ConceptServiceTest {
     @MockBean
     ConceptRepository repository;
 
+    @MockBean
+    ConceptDecoratorService decoratorService;
+
     @Autowired
     ConceptService subject;
 
@@ -59,6 +62,8 @@ class ConceptServiceTest {
         Map<String, String> meta = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
+        Mockito.when(decoratorService.populateParentConcepts(Mockito.any()))
+            .thenAnswer(i -> i.getArguments()[0]);
         Mockito.when(repository.getConceptMeta("dataset", "path"))
             .thenReturn(meta);
 
@@ -74,6 +79,8 @@ class ConceptServiceTest {
         Map<String, String> meta = Map.of("VALUES", "a", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
+        Mockito.when(decoratorService.populateParentConcepts(Mockito.any()))
+            .thenAnswer(i -> i.getArguments()[0]);
         Mockito.when(repository.getConceptMeta("dataset", "path"))
             .thenReturn(meta);
 
@@ -110,5 +117,19 @@ class ConceptServiceTest {
         );
 
         Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldGetTree() {
+        CategoricalConcept concept = new CategoricalConcept("ds", "\\A\\B\\C\\").withChildren(
+            List.of(new CategoricalConcept("ds", "\\A\\B\\C\\1\\"), new ContinuousConcept("ds", "\\A\\B\\C\\2\\"))
+        );
+        Mockito.when(repository.getConceptTree("ds", "\\A\\B\\C\\", 2))
+            .thenReturn(Optional.of(concept));
+
+        Optional<Concept> actual = subject.conceptTree("ds", "\\A\\B\\C\\", 2);
+
+        Assertions.assertTrue(actual.isPresent());
+        Assertions.assertEquals(concept, actual.get());
     }
 }
