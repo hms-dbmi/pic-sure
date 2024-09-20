@@ -53,4 +53,10 @@ class DashboardRepositoryTest {
         );
         Assertions.assertEquals(expected, actual);
     }
+
+    @Test
+    void shouldDoBDCHack() {
+        List<Map<String, String>> rows = subject.getHackyBDCRows();
+        Assertions.assertNotNull(rows);
+    }
 }

@@ -103,7 +103,10 @@ CREATE TABLE public.consent (
     dataset_id integer NOT NULL,
     consent_code character varying(512) NOT NULL,
     description character varying(512) NOT NULL,
-    authz character varying(512) NOT NULL
+    authz character varying(512) NOT NULL,
+    PARTICIPANT_COUNT INT NOT NULL DEFAULT 12,
+    VARIABLE_COUNT INT NOT NULL DEFAULT 99,
+    SAMPLE_COUNT INT NOT NULL DEFAULT 14
 );
 
 --
