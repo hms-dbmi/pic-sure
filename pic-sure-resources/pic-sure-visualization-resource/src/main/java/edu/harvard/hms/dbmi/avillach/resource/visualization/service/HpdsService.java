@@ -128,7 +128,7 @@ public class HpdsService {
         if (applicationProperties.getOrigin() == null) throw new IllegalArgumentException("picSureUrl is required");
         if (applicationProperties.getAuthHpdsResourceId() == null)
             throw new IllegalArgumentException("picSureUuid is required");
-        if (queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
+        if (AUTHORIZED_ACCESS.getValue().equals(accessType) && queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME) == null)
             throw new IllegalArgumentException("No authorization token found in queryRequest");
         if (requestType == null) throw new IllegalArgumentException("ResultType is required");
         if (requestType != ResultType.CATEGORICAL_CROSS_COUNT && requestType != ResultType.CONTINUOUS_CROSS_COUNT)
