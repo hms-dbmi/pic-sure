@@ -92,9 +92,11 @@ public class HpdsService {
      */
     private HttpHeaders prepareQueryRequest(QueryRequest queryRequest, ResultType resultType, String accessType) {
         HttpHeaders headers = new HttpHeaders();
-        headers.add(AUTH_HEADER_NAME,
+        if (AUTHORIZED_ACCESS.getValue().equals(accessType)) {
+            headers.add(AUTH_HEADER_NAME,
                 queryRequest.getResourceCredentials().get(AUTH_HEADER_NAME)
-        );
+            );
+        }
 
         headers.add("request-source", accessType);
 
