@@ -48,14 +48,14 @@ class ConceptServiceIntegrationTest {
         CategoricalConcept table = new CategoricalConcept(
             "\\phs000007\\pht000021\\", "pht000021", "ex0_19s", "phs000007",
             "Clinic Exam, Original Cohort Exam 19",
-            List.of(), null, Map.of("description", "Clinic Exam, Original Cohort Exam 19"), null, null
+            List.of(), true, null, Map.of("description", "Clinic Exam, Original Cohort Exam 19"), null, null
         );
         CategoricalConcept study = new CategoricalConcept(
-            "\\phs000007\\", "", "", "phs000007", null, List.of(), null, Map.of(), null, null
+            "\\phs000007\\", "", "", "phs000007", null, List.of(), true, null, Map.of(), null, null
         );
         ContinuousConcept expected = new ContinuousConcept(
             "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
-            "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", 0, 3,
+            "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3,
             Map.of(
                 "unique_identifier", "no",
                 "stigmatizing", "no",

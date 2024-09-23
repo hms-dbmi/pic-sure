@@ -58,6 +58,10 @@ public sealed interface Concept
     @Nullable
     List<Concept> children();
 
+    default boolean allowFiltering() {
+        return false;
+    }
+
     Concept withChildren(List<Concept> children);
 
     Concept withTable(Concept table);

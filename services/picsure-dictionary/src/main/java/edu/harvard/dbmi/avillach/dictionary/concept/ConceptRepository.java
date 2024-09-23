@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -17,35 +18,52 @@ import java.util.Optional;
 @Repository
 public class ConceptRepository {
 
+    private static final String ALLOW_FILTERING_Q = """
+        WITH allow_filtering AS (
+            SELECT
+                concept_node.concept_node_id AS concept_node_id,
+                (string_agg(concept_node_meta.value, ' ') NOT LIKE '%yes%') AS allowFiltering
+            FROM
+                concept_node
+                JOIN concept_node_meta ON
+                    concept_node.concept_node_id = concept_node_meta.concept_node_id
+                    AND concept_node_meta.KEY IN (:disallowed_meta_keys)
+            GROUP BY
+                concept_node.concept_node_id
+        )
+        """;
+
     private final NamedParameterJdbcTemplate template;
-
     private final ConceptRowMapper mapper;
-
     private final ConceptFilterQueryGenerator filterGen;
     private final ConceptMetaExtractor conceptMetaExtractor;
     private final ConceptResultSetExtractor conceptResultSetExtractor;
+    private final List<String> disallowedMetaFields;
 
 
     @Autowired
     public ConceptRepository(
         NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen,
-        ConceptMetaExtractor conceptMetaExtractor, ConceptResultSetExtractor conceptResultSetExtractor
+        ConceptMetaExtractor conceptMetaExtractor, ConceptResultSetExtractor conceptResultSetExtractor,
+        @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields
     ) {
         this.template = template;
         this.mapper = mapper;
         this.filterGen = filterGen;
         this.conceptMetaExtractor = conceptMetaExtractor;
         this.conceptResultSetExtractor = conceptResultSetExtractor;
+        this.disallowedMetaFields = disallowedMetaFields;
     }
 
 
     public List<Concept> getConcepts(Filter filter, Pageable pageable) {
-        String sql = """
+        String sql = ALLOW_FILTERING_Q + """
             SELECT
                 concept_node.*,
                 ds.REF as dataset,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
                 categorical_values.VALUE as values,
+                allow_filtering.allowFiltering AS allowFiltering,
                 meta_description.VALUE AS description
             FROM
                 concept_node
@@ -54,12 +72,13 @@ public class ConceptRepository {
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
             WHERE concept_node.concept_node_id IN (
             
             """;
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
         sql = sql + filterQ.query() + "\n)";
-        MapSqlParameterSource params = filterQ.params();
+        MapSqlParameterSource params = filterQ.params().addValue("disallowed_meta_keys", disallowedMetaFields);
 
         return template.query(sql, params, mapper);
     }
@@ -72,12 +91,13 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConcept(String dataset, String conceptPath) {
-        String sql = """
+        String sql = ALLOW_FILTERING_Q + """
             SELECT
                 concept_node.*,
                 ds.REF as dataset,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
                 categorical_values.VALUE as values,
+                allow_filtering.allowFiltering AS allowFiltering,
                 meta_description.VALUE AS description
             FROM
                 concept_node
@@ -86,13 +106,15 @@ public class ConceptRepository {
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
             WHERE
                 concept_node.concept_path = :conceptPath
                 AND ds.REF = :dataset
             """;
         MapSqlParameterSource params = new MapSqlParameterSource()
             .addValue("conceptPath", conceptPath)
-            .addValue("dataset", dataset);
+            .addValue("dataset", dataset)
+            .addValue("disallowed_meta_keys", disallowedMetaFields);
         return template.query(sql, params, mapper).stream().findFirst();
     }
 
@@ -137,8 +159,8 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConceptTree(String dataset, String conceptPath, int depth) {
-        String sql = """
-                WITH core_query AS (
+        String sql = ALLOW_FILTERING_Q + """
+                , core_query AS (
                     WITH RECURSIVE nodes AS (
                         SELECT
                             concept_node_id, parent_id, 0 AS depth
@@ -196,6 +218,7 @@ public class ConceptRepository {
                     continuous_min.VALUE AS min, continuous_max.VALUE AS max,
                     categorical_values.VALUE AS values,
                     meta_description.VALUE AS description,
+                    allow_filtering.allowFiltering AS allowFiltering,
                     core_query.depth AS depth
                 FROM
                     concept_node
@@ -205,11 +228,13 @@ public class ConceptRepository {
                     LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                     LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                     LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                    LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
             """;
         MapSqlParameterSource params = new MapSqlParameterSource()
             .addValue("path", conceptPath)
             .addValue("dataset", dataset)
-            .addValue("depth", depth);
+            .addValue("depth", depth)
+            .addValue("disallowed_meta_keys", disallowedMetaFields);
 
         if (depth < 0) {
             return Optional.empty();

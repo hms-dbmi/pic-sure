@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 public record ContinuousConcept(
-    String conceptPath, String name, String display, String dataset, String description,
+    String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
 
     @Nullable Integer min, @Nullable Integer max,
     Map<String, String> meta,
@@ -24,29 +24,25 @@ public record ContinuousConcept(
 ) implements Concept {
 
     public ContinuousConcept(
-        String conceptPath, String name, String display, String dataset, String description,
+        String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
         @Nullable Integer min, @Nullable Integer max, Map<String, String> meta, @Nullable List<Concept> children
     ) {
-        this(conceptPath, name, display, dataset, description, min, max, meta, children, null, null);
+        this(conceptPath, name, display, dataset, description, allowFiltering, min, max, meta, children, null, null);
     }
 
     public ContinuousConcept(ContinuousConcept core, Map<String, String> meta) {
-        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.min, core.max, meta, core.children);
-    }
-
-    public ContinuousConcept(ContinuousConcept core, List<Concept> children) {
-        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.min, core.max, core.meta, children);
+        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.allowFiltering, core.min, core.max, meta, core.children);
     }
 
     public ContinuousConcept(String conceptPath, String dataset) {
-        this(conceptPath, "", "", dataset, "", null, null, null, List.of());
+        this(conceptPath, "", "", dataset, "", true, null, null, null, List.of());
     }
 
     public ContinuousConcept(
-        String conceptPath, String name, String display, String dataset, String description,
+        String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
         @Nullable Integer min, @Nullable Integer max, Map<String, String> meta
     ) {
-        this(conceptPath, name, display, dataset, description, min, max, meta, null);
+        this(conceptPath, name, display, dataset, description, allowFiltering, min, max, meta, null);
     }
 
     @JsonProperty("type")
@@ -57,20 +53,20 @@ public record ContinuousConcept(
 
     @Override
     public ContinuousConcept withChildren(List<Concept> children) {
-        return new ContinuousConcept(this, children);
+        return new ContinuousConcept(conceptPath, name, display, dataset, description, allowFiltering, min, max, meta, children);
     }
 
     @Override
     public Concept withTable(Concept table) {
         return new ContinuousConcept(
-            conceptPath, name, display, dataset, description, min, max, meta, children, table, study
+            conceptPath, name, display, dataset, description, allowFiltering, min, max, meta, children, table, study
         );
     }
 
     @Override
     public Concept withStudy(Concept study) {
         return new ContinuousConcept(
-            conceptPath, name, display, dataset, description, min, max, meta, children, table, study
+            conceptPath, name, display, dataset, description, allowFiltering, min, max, meta, children, table, study
         );
     }
 

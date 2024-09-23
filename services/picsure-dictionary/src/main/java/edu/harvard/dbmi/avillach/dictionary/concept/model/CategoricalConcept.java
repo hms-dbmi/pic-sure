@@ -10,7 +10,7 @@ import java.util.Objects;
 public record CategoricalConcept(
     String conceptPath, String name, String display, String dataset, String description,
 
-    List<String> values,
+    List<String> values, boolean allowFiltering,
 
     @Nullable
     List<Concept> children,
@@ -28,21 +28,17 @@ public record CategoricalConcept(
 
     public CategoricalConcept(
         String conceptPath, String name, String display, String dataset, String description, List<String> values,
-        @Nullable List<Concept> children, @Nullable Map<String, String> meta
+        boolean allowFiltering, @Nullable List<Concept> children, @Nullable Map<String, String> meta
     ) {
-        this(conceptPath, name, display, dataset, description, values, children, meta, null, null);
+        this(conceptPath, name, display, dataset, description, values, allowFiltering, children, meta, null, null);
     }
 
     public CategoricalConcept(CategoricalConcept core, Map<String, String> meta) {
-        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, core.children, meta);
-    }
-
-    public CategoricalConcept(CategoricalConcept core, List<Concept> children) {
-        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, children, core.meta);
+        this(core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, core.allowFiltering, core.children, meta);
     }
 
     public CategoricalConcept(String conceptPath, String dataset) {
-        this(conceptPath, "", "", dataset, "", List.of(), List.of(), null);
+        this(conceptPath, "", "", dataset, "", List.of(), false, List.of(), null);
     }
 
 
@@ -54,20 +50,20 @@ public record CategoricalConcept(
 
     @Override
     public CategoricalConcept withChildren(List<Concept> children) {
-        return new CategoricalConcept(this, children);
+        return new CategoricalConcept(conceptPath, name, display, dataset, description, values, allowFiltering, children, meta);
     }
 
     @Override
     public Concept withTable(Concept table) {
         return new CategoricalConcept(
-            conceptPath, name, display, dataset, description, values, children, meta, table, study
+            conceptPath, name, display, dataset, description, values, allowFiltering, children, meta, table, study
         );
     }
 
     @Override
     public Concept withStudy(Concept study) {
         return new CategoricalConcept(
-            conceptPath, name, display, dataset, description, values, children, meta, table, study
+            conceptPath, name, display, dataset, description, values, allowFiltering, children, meta, table, study
         );
     }
 

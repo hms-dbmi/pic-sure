@@ -20,6 +20,7 @@ public class ConceptResultSetUtil {
             rs.getString("concept_path"), rs.getString("name"),
             rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
             rs.getString("values") == null ? List.of() : parseValues(rs.getString("values")),
+            rs.getBoolean("allowFiltering"),
             null,
             null
         );
@@ -29,6 +30,7 @@ public class ConceptResultSetUtil {
         return new ContinuousConcept(
             rs.getString("concept_path"), rs.getString("name"),
             rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
+            rs.getBoolean("allowFiltering"),
             parseMin(rs.getString("values")), parseMax(rs.getString("values")),
             null
         );
