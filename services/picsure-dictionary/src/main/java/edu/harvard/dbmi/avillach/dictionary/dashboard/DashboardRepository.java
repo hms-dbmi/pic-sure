@@ -82,7 +82,7 @@ public class DashboardRepository {
                     LEFT JOIN consent ON consent.dataset_id = dataset.dataset_id
                     LEFT JOIN dataset_meta AS study_focus_meta ON study_focus_meta.dataset_id = dataset.dataset_id AND study_focus_meta.KEY = 'study_focus'
                     LEFT JOIN dataset_meta AS study_accession_meta ON study_accession_meta.dataset_id = dataset.dataset_id AND study_accession_meta.KEY = 'study_accession'
-                    LEFT JOIN dataset_meta AS additional_info_meta ON additional_info_meta.dataset_id = dataset.dataset_id AND additional_info_meta.KEY = 'additional_info_link'
+                    LEFT JOIN dataset_meta AS additional_info_meta ON additional_info_meta.dataset_id = dataset.dataset_id AND additional_info_meta.KEY = 'study_link'
                 ORDER BY name ASC, abbreviation ASC
             """;
         return template.query(sql, new ListMapExtractor());
