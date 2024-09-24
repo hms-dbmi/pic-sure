@@ -7,6 +7,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
+import java.util.UUID;
+
 
 @SpringBootTest
 class InfoControllerTest {
@@ -19,6 +22,6 @@ class InfoControllerTest {
         ResponseEntity<InfoResponse> actual = infoController.getInfo(new Object());
 
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
-        Assertions.assertEquals(new InfoResponse(":)"), actual.getBody());
+        Assertions.assertEquals(new InfoResponse(UUID.nameUUIDFromBytes(":)".getBytes()), ":)", List.of()), actual.getBody());
     }
 }
