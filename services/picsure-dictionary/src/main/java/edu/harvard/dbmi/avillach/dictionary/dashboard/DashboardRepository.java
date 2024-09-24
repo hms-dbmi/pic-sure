@@ -55,14 +55,26 @@ public class DashboardRepository {
                 SELECT
                     dataset.abbreviation AS abbreviation,
                     dataset.full_name AS name,
-                    consent.variable_count AS clinvars,
-                    consent.participant_count AS participants,
-                    consent.sample_count AS samples,
+                    CASE
+                        WHEN consent.variable_count > -1 THEN consent.variable_count
+                        ELSE 'N/A'
+                        END
+                        AS clinvars,
+                    CASE
+                        WHEN consent.participant_count > -1 THEN consent.participant_count
+                        ELSE 'N/A'
+                        END
+                        AS participants,
+                    CASE
+                        WHEN consent.sample_count > -1 THEN consent.sample_count
+                        ELSE 'N/A'
+                        END
+                        AS samples,
                     CASE
                         WHEN consent.consent_code <> NULL THEN concat(study_accession_meta.value, '.', consent.consent_code)
                         ELSE study_accession_meta.value
                         END
-                    AS accession,
+                        AS accession,
                     study_focus_meta.value AS study_focus,
                     additional_info_meta.value AS additional_info_link
                 FROM
