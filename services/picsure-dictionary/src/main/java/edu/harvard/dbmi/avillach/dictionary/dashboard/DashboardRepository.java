@@ -71,7 +71,7 @@ public class DashboardRepository {
                         END
                         AS samples,
                     CASE
-                        WHEN consent.consent_code <> NULL THEN concat(study_accession_meta.value, '.', consent.consent_code)
+                        WHEN consent.consent_code IS NOT NULL THEN concat(study_accession_meta.value, '.', consent.consent_code)
                         ELSE study_accession_meta.value
                         END
                         AS accession,
