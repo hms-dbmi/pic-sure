@@ -44,6 +44,8 @@ public sealed interface Concept
      */
     String dataset();
 
+    String studyAcronym();
+
     /**
      * @return The type of this concept
      */

@@ -61,6 +61,7 @@ public class ConceptRepository {
             SELECT
                 concept_node.*,
                 ds.REF as dataset,
+                ds.abbreviation AS studyAcronym,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
                 categorical_values.VALUE as values,
                 allow_filtering.allowFiltering AS allowFiltering,
@@ -95,6 +96,7 @@ public class ConceptRepository {
             SELECT
                 concept_node.*,
                 ds.REF as dataset,
+                ds.abbreviation AS studyAcronym,
                 continuous_min.VALUE as min, continuous_max.VALUE as max,
                 categorical_values.VALUE as values,
                 allow_filtering.allowFiltering AS allowFiltering,
@@ -215,6 +217,7 @@ public class ConceptRepository {
                 SELECT
                     concept_node.*,
                     ds.REF AS dataset,
+                    ds.abbreviation AS studyAcronym,
                     continuous_min.VALUE AS min, continuous_max.VALUE AS max,
                     categorical_values.VALUE AS values,
                     meta_description.VALUE AS description,

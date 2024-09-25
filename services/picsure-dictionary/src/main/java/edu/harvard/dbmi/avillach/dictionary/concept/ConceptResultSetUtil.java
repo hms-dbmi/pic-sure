@@ -20,7 +20,7 @@ public class ConceptResultSetUtil {
             rs.getString("concept_path"), rs.getString("name"),
             rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
             rs.getString("values") == null ? List.of() : parseValues(rs.getString("values")),
-            rs.getBoolean("allowFiltering"),
+            rs.getBoolean("allowFiltering"), rs.getString("studyAcronym"),
             null,
             null
         );
@@ -32,6 +32,7 @@ public class ConceptResultSetUtil {
             rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
             rs.getBoolean("allowFiltering"),
             parseMin(rs.getString("values")), parseMax(rs.getString("values")),
+            rs.getString("studyAcronym"),
             null
         );
     }

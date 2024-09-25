@@ -56,8 +56,8 @@ class ConceptRepositoryTest {
     void shouldListFirstTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first());
         List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, null),
-            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, null, null)
+            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, "FHS", null),
+            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, "GIC", null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -67,8 +67,8 @@ class ConceptRepositoryTest {
     void shouldListNextTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first().next());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\phs002385\\RACEG\\", "RACEG", "RACEG", "phs002385", "Race (regrouped)", List.of("Not Reported"), true, null, null),
-            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, null, null)
+            new CategoricalConcept("\\phs002385\\RACEG\\", "RACEG", "RACEG", "phs002385", "Race (regrouped)", List.of("Not Reported"), true, "HCT_for_SCD", null, null),
+            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, "GIC", null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -79,9 +79,9 @@ class ConceptRepositoryTest {
         List<Concept> actual =
             subject.getConcepts(new Filter(List.of(new Facet("phs000007", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 1, null),
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, null),
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, null)
+            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 1, "FHS", null),
+            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, "FHS", null),
+            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, "FHS", null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -91,9 +91,9 @@ class ConceptRepositoryTest {
     void shouldFilterBySearch() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "COLA", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 1, null),
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, null),
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, null)
+            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 1, "FHS", null),
+            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, "FHS", null),
+            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, "FHS", null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -104,8 +104,8 @@ class ConceptRepositoryTest {
         List<Concept> actual =
             subject.getConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "phs002715", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\phs002715\\age\\", "AGE_CATEGORY", "age", "phs002715", "Participant's age (category)", List.of("21"), true, null, null),
-            new CategoricalConcept("\\phs002715\\nsrr_ever_smoker\\", "nsrr_ever_smoker", "nsrr_ever_smoker", "phs002715", "Smoker status", List.of("yes"), true, null, null)
+            new CategoricalConcept("\\phs002715\\age\\", "AGE_CATEGORY", "age", "phs002715", "Participant's age (category)", List.of("21"), true, "NSRR CFS", null, null),
+            new CategoricalConcept("\\phs002715\\nsrr_ever_smoker\\", "nsrr_ever_smoker", "nsrr_ever_smoker", "phs002715", "Smoker status", List.of("yes"), true, "NSRR CFS", null, null)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -127,7 +127,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetDetailForConcept() {
         ContinuousConcept expected =
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, null);
+            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0, 5, "FHS", null);
         Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
 
         Assertions.assertEquals(Optional.of(expected), actual);
@@ -153,8 +153,8 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetMetaForMultipleConcepts() {
         List<Concept> concepts = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", true, null, null, Map.of()),
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "", "", "phs000007", "", true, null, null, Map.of())
+            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of()),
+            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of())
         );
 
         Map<Concept, Map<String, String>> actual = subject.getConceptMetaForConcepts(concepts);
@@ -236,7 +236,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetStigmatizingConcept() {
         Optional<Concept> actual = subject.getConcept("phs002385", "\\phs002385\\TXNUM\\");
-        ContinuousConcept expected = new ContinuousConcept("\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0, 0, Map.of());
+        ContinuousConcept expected = new ContinuousConcept("\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0, 0, "HCT_for_SCD", Map.of());
 
         Assertions.assertTrue(actual.isPresent());
         Assertions.assertEquals(expected, actual.get());

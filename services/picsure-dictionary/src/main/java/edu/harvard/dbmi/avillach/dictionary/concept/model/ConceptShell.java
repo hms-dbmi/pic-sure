@@ -18,6 +18,11 @@ public record ConceptShell(String conceptPath, String dataset) implements Concep
     }
 
     @Override
+    public String studyAcronym() {
+        return "Shell. Not for external use.";
+    }
+
+    @Override
     public ConceptType type() {
         return ConceptType.Continuous;
     }

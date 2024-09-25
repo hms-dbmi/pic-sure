@@ -33,7 +33,7 @@ class ConceptServiceTest {
     @Test
     void shouldListConcepts() {
         List<Concept> expected = List.of(
-            new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), true, null, null)
+            new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), true, "", null, null)
         );
         Filter filter = new Filter(List.of(), "", List.of());
         Pageable page = Pageable.ofSize(10).first();
@@ -58,7 +58,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldShowDetailForContinuous() {
-        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, true, 0, 1, null);
+        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, true, 0, 1, "", null);
         Map<String, String> meta = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
@@ -75,7 +75,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldShowDetailForCategorical() {
-        CategoricalConcept concept = new CategoricalConcept("path", "", "", "dataset", null, List.of("a"), true, List.of(), null);
+        CategoricalConcept concept = new CategoricalConcept("path", "", "", "dataset", null, List.of("a"), true, "", List.of(), null);
         Map<String, String> meta = Map.of("VALUES", "a", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
@@ -93,11 +93,11 @@ class ConceptServiceTest {
     @Test
     void shouldShowDetailForMultiple() {
         ConceptShell shellA = new ConceptShell("pathA", "dataset");
-        CategoricalConcept conceptA = new CategoricalConcept("pathA", "", "", "dataset", null, List.of("a"), true, List.of(), null);
+        CategoricalConcept conceptA = new CategoricalConcept("pathA", "", "", "dataset", null, List.of("a"), true, "", List.of(), null);
         Map<String, String> metaA = Map.of("VALUES", "a", "stigmatizing", "true");
 
         ConceptShell shellB = new ConceptShell("pathB", "dataset");
-        ContinuousConcept conceptB = new ContinuousConcept("pathB", "", "", "dataset", null, true, 0, 1, null);
+        ContinuousConcept conceptB = new ContinuousConcept("pathB", "", "", "dataset", null, true, 0, 1, "", null);
         Map<String, String> metaB = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
 
         Map<Concept, Map<String, String>> metas = Map.of(shellA, metaA, shellB, metaB);
