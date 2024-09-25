@@ -423,81 +423,81 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 37	225	description	Including living and deceased, were any of {SP's/your} close biological that is, blood relatives including father, mother, sisters or brothers, ever told by a health professional that they had a heart attack or angina (an-gi-na) before the age of 50?
 38	225	values	Yes
 39	229	description	# 12 OZ CUPS OF CAFFEINATED COLA / DAY
-41	229	stigmatizing	no
-42	229	unique_identifier	no
-43	229	free_text	no
-44	229	bdc_open_access	yes
+41	229	stigmatizing	false
+42	229	unique_identifier	false
+43	229	free_text	false
+44	229	bdc_open_access	true
 45	232	description	# 12 OZ CUPS OF CAFFEINATED COLA / DAY
-47	232	stigmatizing	no
-48	232	unique_identifier	no
-49	232	free_text	no
-50	232	bdc_open_access	yes
+47	232	stigmatizing	false
+48	232	unique_identifier	false
+49	232	free_text	false
+50	232	bdc_open_access	true
 51	235	description	# 12 OZ CUPS OF CAFFEINATED COLA/DAY
-53	235	stigmatizing	no
-54	235	unique_identifier	no
-55	235	free_text	no
-56	235	bdc_open_access	yes
+53	235	stigmatizing	false
+54	235	unique_identifier	false
+55	235	free_text	false
+56	235	bdc_open_access	true
 57	239	description	Most recent occupation (A)
 58	239	values	ACCOUNTANT
 59	241	description	Age
-61	241	stigmatizing	no
-62	241	unique_identifier	no
-63	241	free_text	no
-64	241	bdc_open_access	yes
+61	241	stigmatizing	false
+62	241	unique_identifier	false
+63	241	free_text	false
+64	241	bdc_open_access	true
 65	242	description	% of time in artifacts
-67	242	stigmatizing	no
-68	242	unique_identifier	no
-69	242	free_text	no
-70	242	bdc_open_access	yes
+67	242	stigmatizing	false
+68	242	unique_identifier	false
+69	242	free_text	false
+70	242	bdc_open_access	true
 71	244	description	Patient age at transplant, years
 72	244	values	42
-73	244	stigmatizing	no
-74	244	unique_identifier	no
-75	244	free_text	no
-76	244	bdc_open_access	yes
+73	244	stigmatizing	false
+74	244	unique_identifier	false
+75	244	free_text	false
+76	244	bdc_open_access	true
 77	244	hct status	pre-hct
 78	244	computed variable	yes
 79	245	description	Race (regrouped)
 80	245	values	Not Reported
-81	245	stigmatizing	no
-82	245	unique_identifier	no
-83	245	free_text	no
-84	245	bdc_open_access	yes
+81	245	stigmatizing	false
+82	245	unique_identifier	false
+83	245	free_text	false
+84	245	bdc_open_access	true
 85	246	description	Transplant Number
 86	246	values	1
-87	246	stigmatizing	yes
-88	246	unique_identifier	no
-89	246	free_text	no
-90	246	bdc_open_access	no
+87	246	stigmatizing	true
+88	246	unique_identifier	false
+89	246	free_text	false
+90	246	bdc_open_access	false
 91	246	hct status	pre-hct
 92	246	computed variable	yes
 93	248	description	Participant's age (category)
 94	248	values	21
-95	248	stigmatizing	no
-96	248	unique_identifier	no
-97	248	free_text	no
-98	248	bdc_open_access	yes
+95	248	stigmatizing	false
+96	248	unique_identifier	false
+97	248	free_text	false
+98	248	bdc_open_access	true
 99	249	description	Smoker status
-100	249	values	yes
-101	249	stigmatizing	no
-102	249	unique_identifier	no
-103	249	free_text	no
-104	249	bdc_open_access	yes
+100	249	values	true
+101	249	stigmatizing	false
+102	249	unique_identifier	false
+103	249	free_text	false
+104	249	bdc_open_access	true
 105	253	description	(AFC) Reason for ending future contact: Withdrew consent for future nuMoM2b contact
 106	253	values	No
-107	253	unique_identifier	no
-108	253	free_text	no
-109	253	bdc_open_access	yes
+107	253	unique_identifier	false
+108	253	free_text	false
+109	253	bdc_open_access	true
 110	255	description	(V5A) Which of the following problems have a doctor or health care professional told you that you have with your kidney?: Other - Specify Field
 111	255	values	infection
-112	255	unique_identifier	no
-113	255	free_text	yes
-114	255	bdc_open_access	no
+112	255	unique_identifier	false
+113	255	free_text	true
+114	255	bdc_open_access	false
 115	258	description	(T01) Are you currently prescribed medication for your high blood pressure?
 116	258	values	Yes
-117	258	unique_identifier	no
-118	258	free_text	no
-119	258	bdc_open_access	yes
+117	258	unique_identifier	false
+118	258	free_text	false
+119	258	bdc_open_access	true
 120	266	description	Genotype array
 121	266	values	TRUE
 122	267	description	Low coverage WGS

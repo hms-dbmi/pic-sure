@@ -160,20 +160,20 @@ class ConceptRepositoryTest {
         Map<Concept, Map<String, String>> actual = subject.getConceptMetaForConcepts(concepts);
         Map<Concept, Map<String, String>> expected = Map.of(
             new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"), Map.of(
-                "unique_identifier", "no",
-                "stigmatizing", "no",
-                "bdc_open_access", "yes",
+                "unique_identifier", "false",
+                "stigmatizing", "false",
+                "bdc_open_access", "true",
                 "values", "[0, 1]",
                 "description", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY",
-                "free_text", "no"
+                "free_text", "true"
             ),
             new ConceptShell("\\phs000007\\pht000033\\phv00008849\\D080\\", "phs000007"), Map.of(
-                "unique_identifier", "no",
-                "stigmatizing", "no",
-                "bdc_open_access", "yes",
+                "unique_identifier", "false",
+                "stigmatizing", "false",
+                "bdc_open_access", "true",
                 "values", "[0, 5]",
                 "description", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
-                "free_text", "no"
+                "free_text", "false"
             )
         );
         Assertions.assertEquals(expected, actual);

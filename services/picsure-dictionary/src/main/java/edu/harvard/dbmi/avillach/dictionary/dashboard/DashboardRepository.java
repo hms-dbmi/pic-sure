@@ -56,17 +56,17 @@ public class DashboardRepository {
                     dataset.abbreviation AS abbreviation,
                     dataset.full_name AS name,
                     CASE
-                        WHEN consent.variable_count > -1 THEN consent.variable_count
+                        WHEN consent.variable_count > -1 THEN consent.variable_count::text
                         ELSE 'N/A'
                         END
                         AS clinvars,
                     CASE
-                        WHEN consent.participant_count > -1 THEN consent.participant_count
+                        WHEN consent.participant_count > -1 THEN consent.participant_count::text
                         ELSE 'N/A'
                         END
                         AS participants,
                     CASE
-                        WHEN consent.sample_count > -1 THEN consent.sample_count
+                        WHEN consent.sample_count > -1 THEN consent.sample_count::text
                         ELSE 'N/A'
                         END
                         AS samples,

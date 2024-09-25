@@ -22,7 +22,7 @@ public class ConceptRepository {
         WITH allow_filtering AS (
             SELECT
                 concept_node.concept_node_id AS concept_node_id,
-                (string_agg(concept_node_meta.value, ' ') NOT LIKE '%yes%') AS allowFiltering
+                (string_agg(concept_node_meta.value, ' ') NOT LIKE '%true%') AS allowFiltering
             FROM
                 concept_node
                 JOIN concept_node_meta ON
