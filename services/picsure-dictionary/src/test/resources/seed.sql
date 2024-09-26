@@ -423,35 +423,35 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 37	225	description	Including living and deceased, were any of {SP's/your} close biological that is, blood relatives including father, mother, sisters or brothers, ever told by a health professional that they had a heart attack or angina (an-gi-na) before the age of 50?
 38	225	values	Yes
 39	229	description	# 12 OZ CUPS OF CAFFEINATED COLA / DAY
-41	229	stigmatizing	false
+41	229	stigmatized	false
 42	229	unique_identifier	false
 43	229	free_text	false
 44	229	bdc_open_access	true
 45	232	description	# 12 OZ CUPS OF CAFFEINATED COLA / DAY
-47	232	stigmatizing	false
+47	232	stigmatized	false
 48	232	unique_identifier	false
 49	232	free_text	false
 50	232	bdc_open_access	true
 51	235	description	# 12 OZ CUPS OF CAFFEINATED COLA/DAY
-53	235	stigmatizing	false
+53	235	stigmatized	false
 54	235	unique_identifier	false
 55	235	free_text	false
 56	235	bdc_open_access	true
 57	239	description	Most recent occupation (A)
 58	239	values	ACCOUNTANT
 59	241	description	Age
-61	241	stigmatizing	false
+61	241	stigmatized	false
 62	241	unique_identifier	false
 63	241	free_text	false
 64	241	bdc_open_access	true
 65	242	description	% of time in artifacts
-67	242	stigmatizing	false
+67	242	stigmatized	false
 68	242	unique_identifier	false
 69	242	free_text	false
 70	242	bdc_open_access	true
 71	244	description	Patient age at transplant, years
 72	244	values	42
-73	244	stigmatizing	false
+73	244	stigmatized	false
 74	244	unique_identifier	false
 75	244	free_text	false
 76	244	bdc_open_access	true
@@ -459,13 +459,13 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 78	244	computed variable	yes
 79	245	description	Race (regrouped)
 80	245	values	Not Reported
-81	245	stigmatizing	false
+81	245	stigmatized	false
 82	245	unique_identifier	false
 83	245	free_text	false
 84	245	bdc_open_access	true
 85	246	description	Transplant Number
 86	246	values	1
-87	246	stigmatizing	true
+87	246	stigmatized	true
 88	246	unique_identifier	false
 89	246	free_text	false
 90	246	bdc_open_access	false
@@ -473,13 +473,13 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 92	246	computed variable	yes
 93	248	description	Participant's age (category)
 94	248	values	21
-95	248	stigmatizing	false
+95	248	stigmatized	false
 96	248	unique_identifier	false
 97	248	free_text	false
 98	248	bdc_open_access	true
 99	249	description	Smoker status
 100	249	values	true
-101	249	stigmatizing	false
+101	249	stigmatized	false
 102	249	unique_identifier	false
 103	249	free_text	false
 104	249	bdc_open_access	true

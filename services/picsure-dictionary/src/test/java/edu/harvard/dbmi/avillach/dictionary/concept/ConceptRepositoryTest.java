@@ -151,6 +151,14 @@ class ConceptRepositoryTest {
     }
 
     @Test
+    void shouldGetStigmatizedConcept() {
+        Optional<Concept> actual = subject.getConcept("phs002385", "\\phs002385\\TXNUM\\");
+
+        Assertions.assertTrue(actual.isPresent());
+        Assertions.assertFalse(actual.get().allowFiltering());
+    }
+
+    @Test
     void shouldGetMetaForMultipleConcepts() {
         List<Concept> concepts = List.of(
             new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of()),
@@ -159,20 +167,20 @@ class ConceptRepositoryTest {
 
         Map<Concept, Map<String, String>> actual = subject.getConceptMetaForConcepts(concepts);
         Map<Concept, Map<String, String>> expected = Map.of(
-            new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"), Map.of(
-                "unique_identifier", "false",
-                "stigmatizing", "false",
-                "bdc_open_access", "true",
-                "values", "[0, 1]",
-                "description", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY",
-                "free_text", "true"
-            ),
             new ConceptShell("\\phs000007\\pht000033\\phv00008849\\D080\\", "phs000007"), Map.of(
                 "unique_identifier", "false",
-                "stigmatizing", "false",
+                "stigmatized", "false",
                 "bdc_open_access", "true",
                 "values", "[0, 5]",
                 "description", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
+                "free_text", "false"
+            ),
+            new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"), Map.of(
+                "unique_identifier", "false",
+                "stigmatized", "false",
+                "bdc_open_access", "true",
+                "values", "[0, 1]",
+                "description", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY",
                 "free_text", "false"
             )
         );
