@@ -35,12 +35,10 @@ public class WeightUpdateCreator {
                     LEFT JOIN
                     (
                         SELECT
-                            concept_node.concept_node_id AS id, string_agg(value, ' ') AS values
+                            concept_node.concept_node_id AS id, left(string_agg(value, ' '), 20000) AS values
                         FROM
                             concept_node
                             join concept_node_meta on concept_node.concept_node_id = concept_node_meta.concept_node_id
-                        WHERE
-                            LENGTH(concept_node_meta.value) < 1000
                         GROUP BY
                             concept_node.concept_node_id
                     ) AS concept_node_meta_str ON concept_node_meta_str.id = concept_node.concept_node_id
