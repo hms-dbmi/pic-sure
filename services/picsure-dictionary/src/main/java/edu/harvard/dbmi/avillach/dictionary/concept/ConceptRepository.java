@@ -21,7 +21,7 @@ public class ConceptRepository {
     private static final String ALLOW_FILTERING_Q = """
         WITH allow_filtering AS (
             SELECT
-                concept_node.concept_node_id AS concept_node_id,
+                concept_node.concept_node_id AS concept_path,
                 (string_agg(concept_node_meta.value, ' ') NOT LIKE '%true%') AS allowFiltering
             FROM
                 concept_node
