@@ -38,6 +38,9 @@ public class ProxyWebClient {
         if (containerIsNOTAResource(containerId)) {
             return Response.status(400, "container name not trustworthy").build();
         }
+
+        LOG.info("path={}, containerId={}, body={}, queryParams={}", path, containerId, body, queryParams);
+
         try {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
@@ -57,6 +60,9 @@ public class ProxyWebClient {
         if (containerIsNOTAResource(containerId)) {
             return Response.status(400, "container name not trustworthy").build();
         }
+
+        LOG.info("path={}, containerId={}, queryParams={}", path, containerId, queryParams);
+
         try {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
