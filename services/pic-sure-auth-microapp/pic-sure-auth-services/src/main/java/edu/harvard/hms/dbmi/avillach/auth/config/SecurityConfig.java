@@ -60,7 +60,8 @@ public class SecurityConfig {
                                     "/swagger.json",
                                     "/user/me/queryTemplate",
                                     "/user/me/queryTemplate/**",
-                                    "/open/validate"
+                                    "/open/validate",
+                                    "/logout"
                             ).permitAll()
                             .anyRequest().authenticated()
                 )

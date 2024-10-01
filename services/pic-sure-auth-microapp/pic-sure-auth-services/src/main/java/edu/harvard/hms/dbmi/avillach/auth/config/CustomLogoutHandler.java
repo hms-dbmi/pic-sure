@@ -33,7 +33,15 @@ public class CustomLogoutHandler implements LogoutHandler {
     @Override
     public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         String bearer = request.getHeader("Authorization");
+        if (!bearer.startsWith("Bearer ")) {
+            return;
+        }
+
         String token = bearer.substring(7);
+        if (StringUtils.isBlank(token)) {
+            return;
+        }
+
         Claims payload = jwtUtil.parseToken(token).getPayload();
         String subject = payload.getSubject();
 
