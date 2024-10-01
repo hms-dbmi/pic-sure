@@ -55,7 +55,7 @@ class ConceptServiceIntegrationTest {
         );
         ContinuousConcept expected = new ContinuousConcept(
             "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
-            "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0, 3, "FHS",
+            "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS",
             Map.of(
                 "unique_identifier", "no",
                 "stigmatizing", "no",

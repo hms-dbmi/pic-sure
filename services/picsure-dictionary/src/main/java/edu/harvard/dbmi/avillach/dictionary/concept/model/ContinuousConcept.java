@@ -11,7 +11,7 @@ import java.util.Objects;
 public record ContinuousConcept(
     String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
 
-    @Nullable Integer min, @Nullable Integer max,  String studyAcronym,
+    @Nullable Float min, @Nullable Float max,  String studyAcronym,
     Map<String, String> meta,
     @Nullable
     List<Concept> children,
@@ -25,7 +25,7 @@ public record ContinuousConcept(
 
     public ContinuousConcept(
         String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
-        @Nullable Integer min, @Nullable Integer max,  String studyAcronym, Map<String, String> meta, @Nullable List<Concept> children
+        @Nullable Float min, @Nullable Float max,  String studyAcronym, Map<String, String> meta, @Nullable List<Concept> children
     ) {
         this(
             conceptPath, name, display, dataset, description, allowFiltering,
@@ -46,7 +46,7 @@ public record ContinuousConcept(
 
     public ContinuousConcept(
         String conceptPath, String name, String display, String dataset, String description, boolean allowFiltering,
-        @Nullable Integer min, @Nullable Integer max,  String studyAcronym, Map<String, String> meta
+        @Nullable Float min, @Nullable Float max,  String studyAcronym, Map<String, String> meta
     ) {
         this(conceptPath, name, display, dataset, description, allowFiltering, min, max, studyAcronym, meta, null);
     }

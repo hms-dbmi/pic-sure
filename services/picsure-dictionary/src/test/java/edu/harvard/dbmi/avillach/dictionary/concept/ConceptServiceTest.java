@@ -58,7 +58,7 @@ class ConceptServiceTest {
 
     @Test
     void shouldShowDetailForContinuous() {
-        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, true, 0, 1, "", null);
+        ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, true, 0F, 1F, "", null);
         Map<String, String> meta = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
         Mockito.when(repository.getConcept("dataset", "path"))
             .thenReturn(Optional.of(concept));
@@ -97,7 +97,7 @@ class ConceptServiceTest {
         Map<String, String> metaA = Map.of("VALUES", "a", "stigmatizing", "true");
 
         ConceptShell shellB = new ConceptShell("pathB", "dataset");
-        ContinuousConcept conceptB = new ContinuousConcept("pathB", "", "", "dataset", null, true, 0, 1, "", null);
+        ContinuousConcept conceptB = new ContinuousConcept("pathB", "", "", "dataset", null, true, 0F, 1F, "", null);
         Map<String, String> metaB = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
 
         Map<Concept, Map<String, String>> metas = Map.of(shellA, metaA, shellB, metaB);

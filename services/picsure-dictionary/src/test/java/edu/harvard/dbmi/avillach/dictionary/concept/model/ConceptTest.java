@@ -60,7 +60,7 @@ class ConceptTest {
             }
             """;
 
-        ContinuousConcept expected = new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0, 1, "", Map.of());
+        ContinuousConcept expected = new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0F, 1F, "", Map.of());
         Concept actual = new ObjectMapper().readValue(json, Concept.class);
 
         Assertions.assertEquals(expected, actual);
@@ -70,12 +70,12 @@ class ConceptTest {
     @Test
     void shouldIncludeTypeInList() throws JsonProcessingException {
         List<Record> concepts = List.of(
-            new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0, 1, "", Map.of()),
+            new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0F, 1F, "", Map.of()),
             new CategoricalConcept("/foo//bar", "bar", "Bar", "study_a", null, List.of("a", "b"), true, "", null, Map.of())
         );
 
         String actual = new ObjectMapper().writeValueAsString(concepts);
-        String expected = "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"allowFiltering\":true,\"min\":0,\"max\":1,\"studyAcronym\":\"\",\"meta\":{},\"children\":null,\"table\":null,\"study\":null,\"type\":\"Continuous\"},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"allowFiltering\":true,\"studyAcronym\":\"\",\"children\":null,\"meta\":{},\"table\":null,\"study\":null,\"type\":\"Categorical\"}]";
+        String expected = "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"allowFiltering\":true,\"min\":0.0,\"max\":1.0,\"studyAcronym\":\"\",\"meta\":{},\"children\":null,\"table\":null,\"study\":null,\"type\":\"Continuous\"},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"allowFiltering\":true,\"studyAcronym\":\"\",\"children\":null,\"meta\":{},\"table\":null,\"study\":null,\"type\":\"Categorical\"}]";
 
         Assertions.assertEquals(expected, actual);
     }
