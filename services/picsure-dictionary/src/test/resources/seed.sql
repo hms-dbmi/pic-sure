@@ -506,8 +506,8 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 124	268	description	Whole exome sequencing
 40	229	values	[0, 3]
 46	232	values	[0, 1]
-52	235	values	[0, 5]
-60	241	values	["5e-21", "7e+33"]
+52	235	values	[0.57,6.77]
+60	241	values	["5E-21", "7E+33"]
 125	268	values	TRUE
 126	269	description	Whole genome sequencing
 127	269	values	TRUE

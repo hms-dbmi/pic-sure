@@ -171,7 +171,7 @@ class ConceptRepositoryTest {
                 "unique_identifier", "false",
                 "stigmatized", "false",
                 "bdc_open_access", "true",
-                "values", "[0, 5]",
+                "values", "[0.57,6.77]",
                 "description", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
                 "free_text", "false"
             ),
@@ -261,5 +261,15 @@ class ConceptRepositoryTest {
         ContinuousConcept concept = (ContinuousConcept) actual.get();
         Assertions.assertEquals((float) min, concept.min());
         Assertions.assertEquals((float) max, concept.max());
+    }
+
+    @Test
+    void shouldGetContConceptWithDecimalNotation() {
+        Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
+
+        Assertions.assertTrue(actual.isPresent());
+        ContinuousConcept concept = (ContinuousConcept) actual.get();
+        Assertions.assertEquals(0.57f, concept.min());
+        Assertions.assertEquals(6.77f, concept.max());
     }
 }

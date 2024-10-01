@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -64,13 +66,15 @@ public class ConceptResultSetUtil {
             if (arr.length() != 2) {
                 return 0F;
             }
-            String raw = arr.getString(index);
-            if (raw.contains("e")) {
-                // scientific notation
-                return Double.valueOf(raw).floatValue();
-            } else {
-                return Float.parseFloat(raw);
-            }
+            Object raw = arr.get(index);
+            return switch (raw) {
+                case Double d -> d.floatValue();
+                case Integer i -> i.floatValue();
+                case String s -> Double.valueOf(s).floatValue();
+                case BigDecimal d -> d.floatValue();
+                case BigInteger i -> i.floatValue();
+                default -> 0f;
+            };
         } catch (JSONException ex) {
             log.warn("Invalid json array for values: ", ex);
             return 0F;
