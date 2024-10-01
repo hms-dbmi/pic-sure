@@ -49,7 +49,7 @@ class ConceptRepositoryTest {
     void shouldListAllConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
         
-        Assertions.assertEquals(29, actual.size());
+        Assertions.assertEquals(30, actual.size());
     }
 
     @Test
@@ -115,7 +115,7 @@ class ConceptRepositoryTest {
     void shouldGetCount() {
         long actual = subject.countConcepts(new Filter(List.of(), "", List.of()));
 
-        Assertions.assertEquals(29L, actual);
+        Assertions.assertEquals(30L, actual);
     }
 
     @Test

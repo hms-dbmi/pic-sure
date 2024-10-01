@@ -24,6 +24,15 @@ public class ConceptFilterQueryGenerator {
                     WHERE
                         concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
                         (dataset.ref IN (:consents) AND consent.consent_code = '')
+                    UNION
+                    SELECT
+                        dataset_harmonization.harmonized_dataset_id
+                    FROM consent
+                        JOIN dataset_harmonization ON dataset_harmonization.source_dataset_id = consent.dataset_id
+                        LEFT JOIN dataset ON dataset.dataset_id = dataset_harmonization.source_dataset_id
+                    WHERE
+                        concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
+                        (dataset.ref IN (:consents) AND consent.consent_code = '')
                 ) AND
                 """;
 

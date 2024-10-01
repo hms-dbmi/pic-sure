@@ -45,6 +45,17 @@ class ConceptFilterQueryGeneratorTest {
     NamedParameterJdbcTemplate template;
 
     @Test
+    void shouldGenerateForHarmonizedConsents() {
+        Filter filter = new Filter(List.of(), "", List.of("phs001963.c1"));
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+
+        List<Integer> actual = template.queryForList(pair.query(), pair.params(), Integer.class);
+        List<Integer> expected = List.of(270);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
     void shouldGenerateForFacetAndSearchNoMatch() {
         Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
