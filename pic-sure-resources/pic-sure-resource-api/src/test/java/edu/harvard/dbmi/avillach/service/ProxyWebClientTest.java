@@ -20,7 +20,6 @@ import javax.ws.rs.core.Response;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.*;
 
@@ -50,7 +49,7 @@ public class ProxyWebClientTest {
         Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
         subject.client = client;
 
-        Response actual = subject.postProxy("foo", "/my/cool/path", "{}", new MultivaluedHashMap<>());
+        Response actual = subject.postProxy("foo", "/my/cool/path", "{}", new MultivaluedHashMap<>(), null);
 
         Assert.assertEquals(200, actual.getStatus());
     }
@@ -63,7 +62,7 @@ public class ProxyWebClientTest {
         Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
         subject.client = client;
 
-        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>());
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
         Assert.assertEquals(200, actual.getStatus());
     }
@@ -72,10 +71,10 @@ public class ProxyWebClientTest {
     public void shouldRejectNastyHost() {
         Mockito.when(resourceRepository.getByColumn("name", "an.evil.domain")).thenReturn(List.of());
 
-        Response actual = subject.postProxy("an.evil.domain", "hax", null, new MultivaluedHashMap<>());
+        Response actual = subject.postProxy("an.evil.domain", "hax", null, new MultivaluedHashMap<>(), null);
         assertEquals(400, actual.getStatus());
 
-        actual = subject.getProxy("an.evil.domain", "hax", new MultivaluedHashMap<>());
+        actual = subject.getProxy("an.evil.domain", "hax", new MultivaluedHashMap<>(), null);
         assertEquals(400, actual.getStatus());
     }
 
@@ -89,7 +88,7 @@ public class ProxyWebClientTest {
 
         MultivaluedHashMap<String, String> params = new MultivaluedHashMap<>();
         params.put("site", List.of("bch"));
-        Response actual = subject.postProxy("foo", "/my/cool/path", "{}", params);
+        Response actual = subject.postProxy("foo", "/my/cool/path", "{}", params, null);
 
         Assert.assertEquals(200, actual.getStatus());
     }

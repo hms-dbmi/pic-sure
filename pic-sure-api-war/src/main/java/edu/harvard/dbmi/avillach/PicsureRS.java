@@ -7,7 +7,6 @@ import javax.inject.Inject;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
 
-import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.service.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
@@ -154,34 +153,35 @@ public class PicsureRS {
     @POST
     @Path("/query/{queryId}/result")
     @Operation(
-            summary = "Returns result for given query",
-            responses = {@ApiResponse(
-                    responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
-            )}
+        summary = "Returns result for given query",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+        )}
     )
     @Produces(MediaType.APPLICATION_OCTET_STREAM)
     public Response queryResult(
-            @Parameter(
-                    description = "The UUID of the query to fetch the status of. The UUID is "
-                            + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
-            ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+        @Parameter(
+            description = "The UUID of the query to fetch the status of. The UUID is "
+                + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
+        ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
         return queryService.queryResult(queryId, credentialsQueryRequest, headers);
     }
+
     @POST
     @Path("/query/{queryId}/signed-url")
     @Operation(
-            summary = "Returns a signed url for given query",
-            responses = {@ApiResponse(
-                    responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
-            )}
+        summary = "Returns a signed url for given query",
+        responses = {@ApiResponse(
+            responseCode = "200", description = "Query result", content = @Content(schema = @Schema(implementation = Response.class))
+        )}
     )
     @Produces(MediaType.APPLICATION_JSON)
     public Response queryResultSignedUrl(
-            @Parameter(
-                    description = "The UUID of the query to fetch the status of. The UUID is "
-                            + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
-            ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
+        @Parameter(
+            description = "The UUID of the query to fetch the status of. The UUID is "
+                + "returned by the /query endpoint as the \"picsureResultId\" in the response object"
+        ) @PathParam("queryId") UUID queryId, @Parameter QueryRequest credentialsQueryRequest, @Context HttpHeaders headers
     ) {
         return queryService.queryResultSignedUrl(queryId, credentialsQueryRequest, headers);
     }
@@ -229,16 +229,20 @@ public class PicsureRS {
     @Path("/proxy/{container}/{request : .+}")
     @Operation(hidden = true)
     public Response postProxy(
-        @PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo, String body
+        @PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo, String body,
+        @Context HttpHeaders headers
     ) {
-        return proxyWebClient.postProxy(containerId, request, body, uriInfo.getQueryParameters());
+        return proxyWebClient.postProxy(containerId, request, body, uriInfo.getQueryParameters(), headers);
     }
 
     @GET
     @Path("/proxy/{container}/{request : .+}")
     @Operation(hidden = true)
-    public Response getProxy(@PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo) {
-        return proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters());
+    public Response getProxy(
+        @PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo,
+        @Context HttpHeaders headers
+    ) {
+        return proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters(), headers);
     }
 
 }

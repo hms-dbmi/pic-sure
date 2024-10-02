@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.service;
 
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
+import edu.harvard.dbmi.avillach.util.Utilities;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -34,10 +36,18 @@ public class ProxyWebClient {
         client = HttpClientUtil.getConfiguredHttpClient();
     }
 
-    public Response postProxy(String containerId, String path, String body, MultivaluedMap<String, String> queryParams) {
+    public Response postProxy(
+        String containerId, String path, String body, MultivaluedMap<String, String> queryParams, HttpHeaders headers
+    ) {
         if (containerIsNOTAResource(containerId)) {
             return Response.status(400, "container name not trustworthy").build();
         }
+
+        String requestSource = Utilities.getRequestSourceFromHeader(headers);
+        LOG.info(
+            "path={}, requestSource={}, containerId={}, body={}, queryParams={}, ", path, requestSource, containerId, body, queryParams
+        );
+
         try {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
@@ -53,10 +63,14 @@ public class ProxyWebClient {
         }
     }
 
-    public Response getProxy(String containerId, String path, MultivaluedMap<String, String> queryParams) {
+    public Response getProxy(String containerId, String path, MultivaluedMap<String, String> queryParams, HttpHeaders headers) {
         if (containerIsNOTAResource(containerId)) {
             return Response.status(400, "container name not trustworthy").build();
         }
+
+        String requestSource = Utilities.getRequestSourceFromHeader(headers);
+        LOG.info("path={}, requestSource={}, containerId={}, queryParams={}", path, requestSource, containerId, queryParams);
+
         try {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
