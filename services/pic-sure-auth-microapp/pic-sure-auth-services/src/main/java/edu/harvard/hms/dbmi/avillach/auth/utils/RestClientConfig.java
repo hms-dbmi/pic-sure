@@ -25,7 +25,7 @@ public class RestClientConfig {
     @Value("${http.proxyHost:}")
     private String proxyHost;
 
-    @Value("${http.proxyPort:}")
+    @Value("${http.proxyPort:8080}")
     private int proxyPort;
 
     @Value("${http.proxyUser:}")
