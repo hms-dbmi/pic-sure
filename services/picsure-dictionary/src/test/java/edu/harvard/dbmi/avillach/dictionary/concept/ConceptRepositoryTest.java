@@ -55,23 +55,23 @@ class ConceptRepositoryTest {
     @Test
     void shouldListFirstTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first());
-        List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null),
-            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, "GIC", null, null)
+        List<String> expectedPaths = List.of(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\J45.52 Severe persistent asthma with status asthmaticus\\",
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified asthma\\J45.90 Unspecified asthma\\J45.901 Unspecified asthma with (acute) exacerbation\\"
         );
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
     }
 
     @Test
     void shouldListNextTwoConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(2).first().next());
-        List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\phs002385\\RACEG\\", "RACEG", "RACEG", "phs002385", "Race (regrouped)", List.of("Not Reported"), true, "HCT_for_SCD", null, null),
-            new CategoricalConcept("\\Variant Data Type\\Low coverage WGS\\", "Low coverage WGS", "Low coverage WGS", "1", "Low coverage WGS", List.of("TRUE"), true, "GIC", null, null)
+        List<String> expectedPaths = List.of(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified asthma\\J45.90 Unspecified asthma\\J45.902 Unspecified asthma with status asthmaticus\\",
+            "\\Bio Specimens\\HumanFluid\\Blood (Whole)\\SPECIMENS:HF.BLD.000 Quantity\\"
         );
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
     }
 
     @Test

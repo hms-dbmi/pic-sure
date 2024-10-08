@@ -45,10 +45,21 @@ class ConceptFilterQueryGeneratorTest {
     NamedParameterJdbcTemplate template;
 
     @Test
+    void shouldPutStigvarsLastForEmptySearch() {
+        Filter filter = new Filter(List.of(), "", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertEquals(246, actual.getLast());
+    }
+
+    @Test
     void shouldGenerateForHarmonizedConsents() {
         Filter filter = new Filter(List.of(), "", List.of("phs001963.c1"));
         QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(270);
@@ -60,7 +71,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForFacetAndSearchNoMatch() {
         Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of();
@@ -72,7 +83,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForFHSFacet() {
         Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(229, 232, 235);
@@ -87,7 +98,7 @@ class ConceptFilterQueryGeneratorTest {
             "", List.of("phs000007.c1")
         );
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(229, 232, 235);
@@ -99,7 +110,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForFHSFacetWithConsent1And2() {
         Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("phs000007.c1", "phs000007.c2"));
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(229, 232, 235);
@@ -111,7 +122,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForFHSFacetWithConsent3() {
         Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("dne.c3"));
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of();
@@ -123,7 +134,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForFacetAndSearchMatch() {
         Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(249);
@@ -135,7 +146,7 @@ class ConceptFilterQueryGeneratorTest {
     void shouldGenerateForNSRRFacet() {
         Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
-        String query = "WITH " + pair.query() + "\n SELECT * FROM concepts_filtered_sorted;";
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
         List<Integer> expected = List.of(248, 249);

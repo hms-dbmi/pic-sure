@@ -76,6 +76,8 @@ public class ConceptRepository {
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                 LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+            ORDER BY
+                concepts_filtered_sorted.rank DESC, concept_node.concept_node_id ASC
             """;
         MapSqlParameterSource params = filterQ.params().addValue("disallowed_meta_keys", disallowedMetaFields);
 
