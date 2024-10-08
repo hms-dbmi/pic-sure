@@ -57,7 +57,8 @@ public class ConceptRepository {
 
 
     public List<Concept> getConcepts(Filter filter, Pageable pageable) {
-        String sql = ALLOW_FILTERING_Q + """
+        QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
+        String sql = ALLOW_FILTERING_Q + ", " + filterQ.query() + """
             SELECT
                 concept_node.*,
                 ds.REF as dataset,
@@ -68,17 +69,14 @@ public class ConceptRepository {
                 meta_description.VALUE AS description
             FROM
                 concept_node
+                INNER JOIN concepts_filtered_sorted ON concepts_filtered_sorted.concept_node_id = concept_node.concept_node_id
                 LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
                 LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
                 LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
                 LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                 LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
-            WHERE concept_node.concept_node_id IN (
-            
             """;
-        QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
-        sql = sql + filterQ.query() + "\n)";
         MapSqlParameterSource params = filterQ.params().addValue("disallowed_meta_keys", disallowedMetaFields);
 
         return template.query(sql, params, mapper);
@@ -86,7 +84,7 @@ public class ConceptRepository {
 
     public long countConcepts(Filter filter) {
         QueryParamPair pair = filterGen.generateFilterQuery(filter, Pageable.unpaged());
-        String sql = "SELECT count(*) FROM (" + pair.query() + ")";
+        String sql = "WITH " + pair.query() + " SELECT count(*) FROM concepts_filtered_sorted;";
         Long count = template.queryForObject(sql, pair.params(), Long.class);
         return count == null ? 0 : count;
     }

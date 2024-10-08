@@ -83,6 +83,8 @@ public class ConceptFilterQueryGenerator {
                 .addValue("offset", pageable.getOffset());
         }
 
+        superQuery = " concepts_filtered_sorted AS (\n" + superQuery + "\n)";
+
 
         return new QueryParamPair(superQuery, params);
     }
