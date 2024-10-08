@@ -86,10 +86,19 @@ public class JWTFilter implements ContainerRequestFilter {
             // Everything else goes through PSAMA token introspection
             String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
             boolean isOpenAccessEnabled = picSureWarInit.isOpenAccessEnabled();
+            // get referer header
             if (
                 (StringUtils.isBlank(authorizationHeader) && isOpenAccessEnabled)
                     || (StringUtils.isNotBlank(authorizationHeader) && authorizationHeader.length() <= 7 && isOpenAccessEnabled)
             ) {
+                String referer = requestContext.getHeaderString("Referer");
+                boolean isExplorer = referer != null && referer.contains("/explorer");
+                if (isExplorer) {
+                    // If the request is coming from the explorer, we should not allow open access
+                    logger.error("User is not authorized.");
+                    requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized."));
+                }
+
                 boolean isAuthorized = callOpenAccessValidationEndpoint(requestContext);
                 if (!isAuthorized) {
                     logger.error("User is not authorized.");
@@ -139,7 +148,6 @@ public class JWTFilter implements ContainerRequestFilter {
     }
 
     /**
-     *
      * @param token
      * @param userIdClaim
      * @return
