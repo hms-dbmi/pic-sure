@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.concept.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
 import jakarta.annotation.Nullable;
 
 import java.util.List;
@@ -12,31 +13,27 @@ public record CategoricalConcept(
 
     List<String> values, boolean allowFiltering, String studyAcronym,
 
-    @Nullable
-    List<Concept> children,
+    @Nullable List<Concept> children,
 
-    @Nullable
-    Map<String, String> meta,
+    @Nullable Map<String, String> meta,
 
-    @Nullable
-    Concept table,
+    @Nullable Concept table,
 
-    @Nullable
-    Concept study
+    @Nullable Dataset study
 
 ) implements Concept {
 
     public CategoricalConcept(
-        String conceptPath, String name, String display, String dataset, String description, List<String> values,
-        boolean allowFiltering, String studyAcronym, @Nullable List<Concept> children, @Nullable Map<String, String> meta
+        String conceptPath, String name, String display, String dataset, String description, List<String> values, boolean allowFiltering,
+        String studyAcronym, @Nullable List<Concept> children, @Nullable Map<String, String> meta
     ) {
         this(conceptPath, name, display, dataset, description, values, allowFiltering, studyAcronym, children, meta, null, null);
     }
 
     public CategoricalConcept(CategoricalConcept core, Map<String, String> meta) {
         this(
-            core.conceptPath, core.name, core.display, core.dataset, core.description, core.values,
-            core.allowFiltering, core.studyAcronym, core.children, meta
+            core.conceptPath, core.name, core.display, core.dataset, core.description, core.values, core.allowFiltering, core.studyAcronym,
+            core.children, meta
         );
     }
 
@@ -66,7 +63,7 @@ public record CategoricalConcept(
     }
 
     @Override
-    public Concept withStudy(Concept study) {
+    public Concept withStudy(Dataset study) {
         return new CategoricalConcept(
             conceptPath, name, display, dataset, description, values, allowFiltering, studyAcronym, children, meta, table, study
         );

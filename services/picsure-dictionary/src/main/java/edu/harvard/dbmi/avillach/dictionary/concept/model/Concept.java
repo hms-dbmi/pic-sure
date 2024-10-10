@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
 import jakarta.annotation.Nullable;
 
 import java.util.List;
@@ -16,12 +17,11 @@ import java.util.Objects;
 // - The name is set in the 'type' property
 // - For each possible Concept type, here is what the 'type' property will be
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-@JsonSubTypes({
-    @JsonSubTypes.Type(value = ContinuousConcept.class, name = "Continuous"),
-    @JsonSubTypes.Type(value = CategoricalConcept.class, name = "Categorical"),
-})
-public sealed interface Concept
-    permits CategoricalConcept, ConceptShell, ContinuousConcept {
+@JsonSubTypes(
+    {@JsonSubTypes.Type(value = ContinuousConcept.class, name = "Continuous"),
+        @JsonSubTypes.Type(value = CategoricalConcept.class, name = "Categorical"),}
+)
+public sealed interface Concept permits CategoricalConcept, ConceptShell, ContinuousConcept {
 
     /**
      * @return The complete concept path for this concept (// delimited)
@@ -53,7 +53,7 @@ public sealed interface Concept
 
     Concept table();
 
-    Concept study();
+    Dataset study();
 
     Map<String, String> meta();
 
@@ -68,7 +68,7 @@ public sealed interface Concept
 
     Concept withTable(Concept table);
 
-    Concept withStudy(Concept study);
+    Concept withStudy(Dataset study);
 
     default boolean conceptEquals(Object object) {
         if (this == object) return true;

@@ -30,12 +30,8 @@ class ConceptRepositoryTest {
     ConceptRepository subject;
 
     @Container
-    static final PostgreSQLContainer<?> databaseContainer =
-        new PostgreSQLContainer<>("postgres:16")
-            .withReuse(true)
-            .withCopyFileToContainer(
-                MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql"
-            );
+    static final PostgreSQLContainer<?> databaseContainer = new PostgreSQLContainer<>("postgres:16").withReuse(true)
+        .withCopyFileToContainer(MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql");
 
     @DynamicPropertySource
     static void mySQLProperties(DynamicPropertyRegistry registry) {
@@ -48,7 +44,7 @@ class ConceptRepositoryTest {
     @Test
     void shouldListAllConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
-        
+
         Assertions.assertEquals(30, actual.size());
     }
 
@@ -76,12 +72,23 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldFilterConceptsByFacet() {
-        List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("phs000007", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()), Pageable.unpaged());
+        List<Concept> actual = subject.getConcepts(
+            new Filter(List.of(new Facet("phs000007", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()),
+            Pageable.unpaged()
+        );
         List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null),
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null),
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0F, 5F, "FHS", null)
+            new ContinuousConcept(
+                "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null
+            ),
+            new ContinuousConcept(
+                "\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007",
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null
+            ),
+            new ContinuousConcept(
+                "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
+                true, 0F, 5F, "FHS", null
+            )
         );
 
         Assertions.assertEquals(expected, actual);
@@ -91,9 +98,18 @@ class ConceptRepositoryTest {
     void shouldFilterBySearch() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "COLA", List.of()), Pageable.unpaged());
         List<? extends Record> expected = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null),
-            new ContinuousConcept("\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null),
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0F, 5F, "FHS", null)
+            new ContinuousConcept(
+                "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null
+            ),
+            new ContinuousConcept(
+                "\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007",
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null
+            ),
+            new ContinuousConcept(
+                "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
+                true, 0F, 5F, "FHS", null
+            )
         );
 
         Assertions.assertEquals(expected, actual);
@@ -101,11 +117,19 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldFilterByBothSearchAndFacet() {
-        List<Concept> actual =
-            subject.getConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "phs002715", List.of()), Pageable.unpaged());
+        List<Concept> actual = subject.getConcepts(
+            new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "phs002715", List.of()),
+            Pageable.unpaged()
+        );
         List<? extends Record> expected = List.of(
-            new CategoricalConcept("\\phs002715\\age\\", "AGE_CATEGORY", "age", "phs002715", "Participant's age (category)", List.of("21"), true, "NSRR CFS", null, null),
-            new CategoricalConcept("\\phs002715\\nsrr_ever_smoker\\", "nsrr_ever_smoker", "nsrr_ever_smoker", "phs002715", "Smoker status", List.of("yes"), true, "NSRR CFS", null, null)
+            new CategoricalConcept(
+                "\\phs002715\\age\\", "AGE_CATEGORY", "age", "phs002715", "Participant's age (category)", List.of("21"), true, "NSRR CFS",
+                null, null
+            ),
+            new CategoricalConcept(
+                "\\phs002715\\nsrr_ever_smoker\\", "nsrr_ever_smoker", "nsrr_ever_smoker", "phs002715", "Smoker status", List.of("yes"),
+                true, "NSRR CFS", null, null
+            )
         );
 
         Assertions.assertEquals(expected, actual);
@@ -120,14 +144,17 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldGetCountWithFilter() {
-        Long actual = subject.countConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()));
+        Long actual = subject
+            .countConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()));
         Assertions.assertEquals(2L, actual);
     }
 
     @Test
     void shouldGetDetailForConcept() {
-        ContinuousConcept expected =
-            new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true, 0F, 5F, "FHS", null);
+        ContinuousConcept expected = new ContinuousConcept(
+            "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true,
+            0F, 5F, "FHS", null
+        );
         Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
 
         Assertions.assertEquals(Optional.of(expected), actual);
@@ -161,27 +188,22 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetMetaForMultipleConcepts() {
         List<Concept> concepts = List.of(
-            new ContinuousConcept("\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of()),
+            new ContinuousConcept(
+                "\\phs000007\\pht000022\\phv00004260\\FM219\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of()
+            ),
             new ContinuousConcept("\\phs000007\\pht000033\\phv00008849\\D080\\", "", "", "phs000007", "", true, null, null, "FHS", Map.of())
         );
 
         Map<Concept, Map<String, String>> actual = subject.getConceptMetaForConcepts(concepts);
         Map<Concept, Map<String, String>> expected = Map.of(
-            new ConceptShell("\\phs000007\\pht000033\\phv00008849\\D080\\", "phs000007"), Map.of(
-                "unique_identifier", "false",
-                "stigmatized", "false",
-                "bdc_open_access", "true",
-                "values", "[0.57,6.77]",
-                "description", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
-                "free_text", "false"
-            ),
-            new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"), Map.of(
-                "unique_identifier", "false",
-                "stigmatized", "false",
-                "bdc_open_access", "true",
-                "values", "[0, 1]",
-                "description", "# 12 OZ CUPS OF CAFFEINATED COLA / DAY",
-                "free_text", "false"
+            new ConceptShell("\\phs000007\\pht000033\\phv00008849\\D080\\", "phs000007"),
+            Map.of(
+                "unique_identifier", "false", "stigmatized", "false", "bdc_open_access", "true", "values", "[0.57,6.77]", "description",
+                "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", "free_text", "false"
+            ), new ConceptShell("\\phs000007\\pht000022\\phv00004260\\FM219\\", "phs000007"),
+            Map.of(
+                "unique_identifier", "false", "stigmatized", "false", "bdc_open_access", "true", "values", "[0, 1]", "description",
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", "free_text", "false"
             )
         );
         Assertions.assertEquals(expected, actual);
@@ -191,16 +213,29 @@ class ConceptRepositoryTest {
     void shouldGetTree() {
         Concept d0 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\", "1");
         Concept d1 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", "1");
-        Concept d2 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\", "1");
-        Concept d3 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\", "1");
-        Concept d4A = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\", "1");
-        Concept d4B = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\", "1");
+        Concept d2 = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\",
+            "1"
+        );
+        Concept d3 = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\",
+            "1"
+        );
+        Concept d4A = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\",
+            "1"
+        );
+        Concept d4B = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\",
+            "1"
+        );
         d3 = d3.withChildren(List.of(d4A, d4B));
         d2.withChildren(List.of(d3));
         d1.withChildren(List.of(d2));
         d0.withChildren(List.of(d1));
 
-        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 3);
+        Optional<Concept> actual =
+            subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 3);
         Optional<Concept> expected = Optional.of(d0);
 
         Assertions.assertEquals(expected, actual);
@@ -210,16 +245,29 @@ class ConceptRepositoryTest {
     void shouldGetTreeForDepthThatExceedsOntology() {
         Concept d0 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\", "1");
         Concept d1 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", "1");
-        Concept d2 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\", "1");
-        Concept d3 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\", "1");
-        Concept d4A = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\", "1");
-        Concept d4B = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\", "1");
+        Concept d2 = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\",
+            "1"
+        );
+        Concept d3 = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\",
+            "1"
+        );
+        Concept d4A = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.5 Severe persistent asthma\\",
+            "1"
+        );
+        Concept d4B = new CategoricalConcept(
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified );asthma\\",
+            "1"
+        );
         d3 = d3.withChildren(List.of(d4A, d4B));
         d2.withChildren(List.of(d3));
         d1.withChildren(List.of(d2));
         d0.withChildren(List.of(d1));
 
-        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 30);
+        Optional<Concept> actual =
+            subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 30);
         Optional<Concept> expected = Optional.of(d0);
 
         Assertions.assertEquals(expected, actual);
@@ -235,7 +283,8 @@ class ConceptRepositoryTest {
 
     @Test
     void shouldReturnEmptyForNegativeDepth() {
-        Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", -1);
+        Optional<Concept> actual =
+            subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", -1);
         Optional<Concept> expected = Optional.empty();
 
         Assertions.assertEquals(expected, actual);
@@ -244,7 +293,9 @@ class ConceptRepositoryTest {
     @Test
     void shouldGetStigmatizingConcept() {
         Optional<Concept> actual = subject.getConcept("phs002385", "\\phs002385\\TXNUM\\");
-        ContinuousConcept expected = new ContinuousConcept("\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0F, 0F, "HCT_for_SCD", Map.of());
+        ContinuousConcept expected = new ContinuousConcept(
+            "\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0F, 0F, "HCT_for_SCD", Map.of()
+        );
 
         Assertions.assertTrue(actual.isPresent());
         Assertions.assertEquals(expected, actual.get());

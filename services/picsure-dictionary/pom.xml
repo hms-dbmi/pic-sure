@@ -15,6 +15,7 @@
 	<description>Data Dictionary API</description>
 	<properties>
 		<java.version>21</java.version>
+		<spotless.version>2.41.1</spotless.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -73,6 +74,20 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>com.diffplug.spotless</groupId>
+				<artifactId>spotless-maven-plugin</artifactId>
+				<version>${spotless.version}</version>
+				<configuration>
+					<java>
+						<eclipse>
+							<version>4.26</version>
+							<file>code-formatting/eclipse-formatter.xml</file>
+						</eclipse>
+						<toggleOffOn />
+					</java>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
