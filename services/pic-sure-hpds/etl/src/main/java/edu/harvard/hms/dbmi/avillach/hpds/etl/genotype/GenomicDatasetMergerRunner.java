@@ -1,10 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.genotype;
 
 import com.google.common.base.Preconditions;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.FileBackedByteIndexedInfoStore;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.*;
+import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJsonIndexStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +22,6 @@ public class GenomicDatasetMergerRunner {
     private static Logger log = LoggerFactory.getLogger(GenomicDatasetMerger.class);
 
     public static final String INFO_STORE_JAVABIN_SUFFIX = "infoStore.javabin";
-    public static final String VARIANT_SPEC_INDEX_FILENAME = "variantSpecIndex.javabin";
 
     private static String genomicDirectory1;
     private static String genomicDirectory2;
@@ -56,6 +53,11 @@ public class GenomicDatasetMergerRunner {
         variantIndexes.values().forEach(variantIndex -> {
             variantIndex.write(new File(outputDirectory + variantIndex.column_key + "_" + INFO_STORE_JAVABIN_SUFFIX));
         });
+
+        VariantMetadataIndex variantMetadataIndex1 = VariantMetadataIndex.createInstance(genomicDirectory1);
+        VariantMetadataIndex variantMetadataIndex2 = VariantMetadataIndex.createInstance(genomicDirectory2);
+
+        VariantMetadataIndex.merge(variantMetadataIndex1, variantMetadataIndex2, outputDirectory);
     }
 
     private static Map<String, FileBackedByteIndexedInfoStore> loadInfoStores(String directory) {

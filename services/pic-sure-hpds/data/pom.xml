@@ -11,6 +11,8 @@
 	<artifactId>data</artifactId>
 
 	<name>data</name>
+	<properties>
+	</properties>
 
 	<dependencies>
 		<dependency>

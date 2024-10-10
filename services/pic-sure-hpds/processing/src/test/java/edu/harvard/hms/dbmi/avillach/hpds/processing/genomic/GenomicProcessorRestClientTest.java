@@ -56,7 +56,7 @@ public class GenomicProcessorRestClientTest {
     public void getInfoColumnMeta() {
         List<InfoColumnMeta> infoColumnMeta = genomicProcessorRestClient.getInfoColumnMeta();
         for (InfoColumnMeta columnMeta : infoColumnMeta) {
-            if (columnMeta.getKey().equals("Variant_consequence_calculated")) {
+            if (columnMeta.key().equals("Variant_consequence_calculated")) {
                 return;
             }
         }

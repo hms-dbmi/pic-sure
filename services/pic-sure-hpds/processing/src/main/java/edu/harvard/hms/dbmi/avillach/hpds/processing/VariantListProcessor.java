@@ -15,12 +15,13 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class VariantListProcessor implements HpdsProcessor {
 
-	private final VariantMetadataIndex metadataIndex;
+	private final GenomicProcessor genomicProcessor;
 
 	private static Logger log = LoggerFactory.getLogger(VariantListProcessor.class);
 	
@@ -35,11 +36,11 @@ public class VariantListProcessor implements HpdsProcessor {
 
 
 	@Autowired
-	public VariantListProcessor(AbstractProcessor abstractProcessor) {
+	public VariantListProcessor(AbstractProcessor abstractProcessor, GenomicProcessor genomicProcessor, @Value("${VCF_EXCERPT_ENABLED:false}") boolean vcfExcerptEnabled ) {
 		this.abstractProcessor = abstractProcessor;
-		this.metadataIndex = VariantMetadataIndex.createInstance(VariantMetadataIndex.VARIANT_METADATA_BIN_FILE);
+		this.genomicProcessor = genomicProcessor;
 
-		VCF_EXCERPT_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
+		VCF_EXCERPT_ENABLED = vcfExcerptEnabled;
 		//always enable aggregate queries if full queries are permitted.
 		AGGREGATE_VCF_EXCERPT_ENABLED = VCF_EXCERPT_ENABLED || "TRUE".equalsIgnoreCase(System.getProperty("AGGREGATE_VCF_EXCERPT_ENABLED", "FALSE"));
 		VARIANT_LIST_ENABLED = VCF_EXCERPT_ENABLED || AGGREGATE_VCF_EXCERPT_ENABLED;
@@ -51,7 +52,7 @@ public class VariantListProcessor implements HpdsProcessor {
 
 	public VariantListProcessor(boolean isOnlyForTests, AbstractProcessor abstractProcessor)  {
 		this.abstractProcessor = abstractProcessor;
-		this.metadataIndex = null;
+		this.genomicProcessor = null;
 
 		VCF_EXCERPT_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
 		//always enable aggregate queries if full queries are permitted.
@@ -78,7 +79,7 @@ public class VariantListProcessor implements HpdsProcessor {
 	 * 
 	 * This should not actually do any filtering based on bitmasks, just INFO columns.
 	 * 
-	 * @param incomingQuery
+	 * @param query
 	 * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
 	 * @throws IOException 
 	 */
@@ -95,7 +96,7 @@ public class VariantListProcessor implements HpdsProcessor {
 	/**
 	 * Process only variantInfoFilters to count the number of variants that would be included in evaluating the query.
 	 * 
-	 * @param incomingQuery
+	 * @param query
 	 * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
 	 * @throws IOException 
 	 */
@@ -118,7 +119,7 @@ public class VariantListProcessor implements HpdsProcessor {
 	 *  The default patientId header value can be overridden by passing the ID_CUBE_NAME environment variable to 
 	 *  the java VM.
 	 *  
-	 *  @param Query A VCF_EXCERPT type query
+	 *  @param query A VCF_EXCERPT type query
 	 *  @param includePatientData whether to include patient specific data
 	 *  @return A Tab-separated string with one line per variant and one column per patient (plus variant data columns)
 	 * @throws IOException 
@@ -140,12 +141,12 @@ public class VariantListProcessor implements HpdsProcessor {
 		
 		log.debug("variantList Size " + variantList.size());
 
-		Map<String, String[]> metadata = (metadataIndex == null ? null : metadataIndex.findByMultipleVariantSpec(variantList));
+		Map<String, Set<String>> metadata =  genomicProcessor.getVariantMetadata(variantList);
 
 		log.debug("metadata size " + metadata.size());
 		
 		// Sort the variantSpecs so that the user doesn't lose their mind
-		TreeMap<String, String[]> metadataSorted = new TreeMap<>((o1, o2) -> {
+		TreeMap<String, Set<String>> metadataSorted = new TreeMap<>((o1, o2) -> {
 			return new VariantSpec(o1).compareTo(new VariantSpec(o2));
 		});
 		metadataSorted.putAll(metadata);
@@ -184,7 +185,7 @@ public class VariantListProcessor implements HpdsProcessor {
 		log.debug("identified " + patientSubset.size() + " patients from query");
 		Map<String, Integer> patientIndexMap = new LinkedHashMap<String, Integer>(); //keep a map for quick index lookups
 		VariantMask patientMasks = abstractProcessor.createMaskForPatientSet(patientSubset);
-		int index = 2; //variant bitmasks are bookended with '11'
+		int index = 0;
 
 		
 		for(String patientId : abstractProcessor.getPatientIds()) {
@@ -216,7 +217,7 @@ public class VariantListProcessor implements HpdsProcessor {
 		VariantBucketHolder<VariableVariantMasks> variantMaskBucketHolder = new VariantBucketHolder<VariableVariantMasks>();
 
 		//loop over the variants identified, and build an output row
-		metadata.forEach((String variantSpec, String[] variantMetadata)->{
+		metadata.forEach((String variantSpec, Set<String> variantMetadata)->{
 
 			String[] variantDataColumns = variantSpec.split(",");
 			//4 fixed columns in variant ID (CHROM POSITION REF ALT)
@@ -269,13 +270,13 @@ public class VariantListProcessor implements HpdsProcessor {
 
 			// Patient count = (hetero mask | homo mask) & patient mask
 			VariantMask heteroOrHomoMask = orNullableMasks(heteroMask, homoMask);
-			int patientCount = heteroOrHomoMask == null ? 0 :  (heteroOrHomoMask.intersection(patientMasks).bitCount() - 4);
+			int patientCount = heteroOrHomoMask == null ? 0 :  (heteroOrHomoMask.intersection(patientMasks).bitCount());
 
-			int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount() - 4);
-			bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount() - 4);
+			int bitCount = masks.heterozygousMask == null? 0 : (masks.heterozygousMask.bitCount());
+			bitCount += masks.homozygousMask == null? 0 : (masks.homozygousMask.bitCount());
 
 			//count how many patients have genomic data available
-			Integer patientsWithVariantsCount = patientMasks.bitCount() - 4;
+			Integer patientsWithVariantsCount = patientMasks.bitCount();
 
 
 			// (patients with/total) in subset   \t   (patients with/total) out of subset.

@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.FileInputStream;
@@ -20,7 +22,6 @@ public class PhenotypeMetaStore {
     private TreeMap<String, ColumnMeta> metaStore;
 
     private TreeSet<Integer> patientIds;
-    private String columnMetaFile;
 
     public TreeMap<String, ColumnMeta> getMetaStore() {
         return metaStore;
@@ -38,25 +39,25 @@ public class PhenotypeMetaStore {
         return metaStore.get(columnName);
     }
 
-    public PhenotypeMetaStore() {
-        String hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
-        columnMetaFile = hpdsDataDirectory + "columnMeta.javabin";
-        try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)));){
+    @Autowired
+    @SuppressWarnings("unchecked")
+    public PhenotypeMetaStore(@Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory) {
+        String columnMetaFile = hpdsDataDirectory + "columnMeta.javabin";
+        try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)))){
             TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
-            TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<String, ColumnMeta>();
+            TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<>();
             for(Map.Entry<String,ColumnMeta> entry : _metastore.entrySet()) {
                 metastoreScrubbed.put(entry.getKey().replaceAll("\\ufffd",""), entry.getValue());
             }
             metaStore = metastoreScrubbed;
             patientIds = (TreeSet<Integer>) objectInputStream.readObject();
-            objectInputStream.close();
         } catch (IOException | ClassNotFoundException e) {
             log.warn("************************************************");
             log.warn("Could not load metastore", e);
             log.warn("If you meant to include phenotype data of any kind, please check that the file " + columnMetaFile + " exists and is readable by the service.");
             log.warn("************************************************");
-            metaStore = new TreeMap<String, ColumnMeta>();
-            patientIds = new TreeSet<Integer>();
+            metaStore = new TreeMap<>();
+            patientIds = new TreeSet<>();
         }
     }
 

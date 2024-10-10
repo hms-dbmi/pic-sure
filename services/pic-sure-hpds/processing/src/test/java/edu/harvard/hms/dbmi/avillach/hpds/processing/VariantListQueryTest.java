@@ -87,8 +87,7 @@ public class VariantListQueryTest {
 		q.setVariantInfoFilters(variantInfoFilters);
 		assertEquals("[]", t.runVariantListQuery(q));
 	}	
-	
-	@Disabled
+
 	public void testVariantListWithVariantInfoFiltersWithMultipleVariantsWithIntersectingKeys() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<>(List.of(
 				Set.of(42),
@@ -136,8 +135,7 @@ public class VariantListQueryTest {
 		assertTrue(variantList.contains("2,1234,G,T"));
 		assertTrue(variantList.contains("2,3456,C,A"));
 	}*/
-	
-	@Disabled
+
 	public void testVariantListWithVariantInfoFiltersWithOnlyOneFilterCriteria() throws Exception {
 		ArrayList<Set<Integer>> data = new ArrayList<Set<Integer>>(List.of(
 				Set.of(42)));

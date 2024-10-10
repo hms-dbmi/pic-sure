@@ -18,6 +18,11 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+			<artifactId>etl</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 			<artifactId>client-api</artifactId>
 		</dependency>
 		<dependency>

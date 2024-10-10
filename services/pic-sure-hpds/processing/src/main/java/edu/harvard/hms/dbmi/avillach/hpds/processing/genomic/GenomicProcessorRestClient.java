@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.genomic;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
@@ -13,17 +12,13 @@ import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.math.BigInteger;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 public class GenomicProcessorRestClient implements GenomicProcessor {
 
     private final WebClient webClient;
 
-    private static final ParameterizedTypeReference<Collection<String>> VARIANT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
+    private static final ParameterizedTypeReference<Set<String>> VARIANT_SET_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     private static final ParameterizedTypeReference<List<InfoColumnMeta>> INFO_COLUMNS_META_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     private static final ParameterizedTypeReference<List<String>> LIST_OF_STRING_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
     private static final ParameterizedTypeReference<Set<String>> SET_OF_STRING_TYPE_REFERENCE = new ParameterizedTypeReference<>(){};
@@ -58,13 +53,13 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
 
     @SuppressWarnings("unchecked")
     @Override
-    public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
-        Mono<Collection<String>> result = webClient.post()
+    public Mono<Set<String>> getVariantList(DistributableQuery distributableQuery) {
+        Mono<Set<String>> result = webClient.post()
                 .uri("/variants")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Mono.just(distributableQuery), DistributableQuery.class)
                 .retrieve()
-                .bodyToMono(VARIANT_LIST_TYPE_REFERENCE);
+                .bodyToMono(VARIANT_SET_TYPE_REFERENCE);
         return result;
     }
 
@@ -116,5 +111,10 @@ public class GenomicProcessorRestClient implements GenomicProcessor {
                 .bodyToMono(INFO_COLUMNS_META_TYPE_REFERENCE)
                 .block();
         return result;
+    }
+
+    @Override
+    public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
+        throw new RuntimeException("Not implemented yet");
     }
 }

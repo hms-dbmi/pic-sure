@@ -19,13 +19,15 @@
 		<module>service</module>
 		<module>etl</module>
 		<module>data</module>
-		<module>docker</module>
 		<module>processing</module>
-		<module>war</module>
 		<module>client-api</module>
 		<module>genomic-processor</module>
-	</modules>
+		<module>docker</module>
+		<module>war</module>
+    </modules>
 	<properties>
+		<maven.compiler.release>21</maven.compiler.release>
+		<java.version>21</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<dockerfile-maven-version>1.4.10</dockerfile-maven-version>
 		<aws.version>2.20.153</aws.version>
@@ -118,7 +120,8 @@
 					<artifactId>maven-compiler-plugin</artifactId>
 					<version>3.8.0</version>
 					<configuration>
-						<release>11</release>
+						<!--this is the target Java version-->
+						<release>21</release>
 					</configuration>
 				</plugin>
 				<plugin>

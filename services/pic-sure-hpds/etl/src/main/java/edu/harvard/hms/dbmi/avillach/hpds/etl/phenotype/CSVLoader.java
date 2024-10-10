@@ -38,12 +38,12 @@ public class CSVLoader {
 			HPDS_DIRECTORY = args[0] + "/";
 		}
 		store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
-		initialLoad();
+		initialLoad(HPDS_DIRECTORY);
 		store.saveStore(HPDS_DIRECTORY);
 	}
 
-	private static void initialLoad() throws IOException {
-		Crypto.loadDefaultKey();
+	private static void initialLoad(String hpdsDirectory) throws IOException {
+		Crypto.loadKey(Crypto.DEFAULT_KEY_NAME, hpdsDirectory + "encryption_key");
 		Reader in = new FileReader(HPDS_DIRECTORY + "allConcepts.csv");
 		Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024*1024));
 

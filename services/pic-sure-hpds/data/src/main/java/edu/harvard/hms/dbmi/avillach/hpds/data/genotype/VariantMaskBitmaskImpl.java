@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
@@ -73,6 +74,13 @@ public class VariantMaskBitmaskImpl implements VariantMask {
             }
         }
         return ids;
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isEmpty() {
+        // because the bitmasks are padded with 11 on each end
+        return bitmask.bitCount() <= 4;
     }
 
     private VariantMask union(VariantMaskBitmaskImpl variantMaskBitmask) {

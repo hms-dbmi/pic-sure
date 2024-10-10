@@ -215,13 +215,7 @@ public class CountProcessor implements HpdsProcessor {
 	public Map<String, Object> runVariantCount(Query query) {
 		TreeMap<String, Object> response = new TreeMap<String, Object>();
 		if(!query.getVariantInfoFilters().isEmpty()) {
-			try {
-				response.put("count", abstractProcessor.getVariantList(query).size());
-			} catch (IOException e) {
-				log.error("Error processing query", e);
-				response.put("count", "0");
-				response.put("message", "An unexpected error occurred while processing the query, please contact us to let us know using the Contact Us option in the Help menu.");
-			}
+			response.put("count", abstractProcessor.getVariantList(query).size());
 			response.put("message", "Query ran successfully");
 		} else {
 			response.put("count", "0");

@@ -38,12 +38,12 @@ public class VariantMetadataLoader {
 	GZIP_FLAG_COLUMN=3,
 	FILE_COLUMN = 0;	
 	
-	public static void main(String[] args) throws Exception{  
+	public static void main(String[] args) throws IOException {
 		File vcfIndexFile;
 		
 		log.info(new File(".").getAbsolutePath());
 		if(args.length > 0 && new File(args[0]).exists()) {
-			log.info("using path from command line, is this a test");
+			log.info("using path from command line");
 			vcfIndexFile = new File(args[0]);
 			variantIndexPathForTests = args[1];
 			storagePathForTests = args[2];

@@ -13,6 +13,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -61,15 +62,19 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
 
     @Override
     public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
-        throw new RuntimeException("Not implemented");
+        // all nodes have the same patient set --
+        VariantMask result = nodes.stream().findFirst()
+                .map(node -> node.createMaskForPatientSet(patientSubset))
+                .orElseGet(VariantMask::emptyInstance);
+        return result;
     }
 
     @Override
-    public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
-        Mono<Collection<String>> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+    public Mono<Set<String>> getVariantList(DistributableQuery distributableQuery) {
+        Mono<Set<String>> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
                 .flatMap(node -> node.getVariantList(distributableQuery))
                 .reduce((variantList1, variantList2) -> {
-                    List<String> mergedResult = new ArrayList<>(variantList1.size() + variantList2.size());
+                    Set<String> mergedResult = new HashSet<>(variantList1.size() + variantList2.size());
                     mergedResult.addAll(variantList1);
                     mergedResult.addAll(variantList2);
                     return mergedResult;
@@ -133,6 +138,24 @@ public class GenomicProcessorParentImpl implements GenomicProcessor {
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
         return infoColumnsMeta;
+    }
+
+    @Override
+    public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
+        ConcurrentHashMap<String, Set<String>> result = new ConcurrentHashMap<>();
+        nodes.stream()
+                .map(node -> node.getVariantMetadata(variantList))
+                .forEach(variantMap -> {
+                    variantMap.entrySet().forEach(entry -> {
+                        Set<String> metadata = result.get(entry.getKey());
+                        if (metadata != null) {
+                            metadata.addAll(entry.getValue());
+                        } else {
+                            result.put(entry.getKey(), new HashSet<>(entry.getValue()));
+                        }
+                    });
+                });
+        return result;
     }
 
     private List<InfoColumnMeta> initInfoColumnsMeta() {

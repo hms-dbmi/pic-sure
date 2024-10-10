@@ -155,12 +155,12 @@ public class PicSureService {
 			//FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
 			String query = searchJson.getQuery().toString();
 			String lowerCase = query.toLowerCase();
-			boolean storeIsNumeric = infoColumnMeta.isContinuous();
-			if (infoColumnMeta.getDescription().toLowerCase().contains(lowerCase)
-					|| infoColumnMeta.getKey().toLowerCase().contains(lowerCase)) {
-				infoResults.put(infoColumnMeta.getKey(),
-						ImmutableMap.of("description", infoColumnMeta.getDescription(), "values",
-								storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.getKey(), ""), "continuous",
+			boolean storeIsNumeric = infoColumnMeta.continuous();
+			if (infoColumnMeta.description().toLowerCase().contains(lowerCase)
+					|| infoColumnMeta.key().toLowerCase().contains(lowerCase)) {
+				infoResults.put(infoColumnMeta.key(),
+						ImmutableMap.of("description", infoColumnMeta.description(), "values",
+								storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""), "continuous",
 								storeIsNumeric));
 			}
 		});

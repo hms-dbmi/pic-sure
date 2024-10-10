@@ -97,8 +97,6 @@ public class BucketIndexBySample implements Serializable {
 							});
 							
 							// For each patient set the patientBucketCharMask entry to 0 or 1 if they have a variant in the bucket.
-
-							// todo: implement for variant explorer
 							int indexOfBucket = Collections.binarySearch(bucketList, bucketKey) + 2; //patientBucketCharMasks has bookend bits
 							for(int x = 0; x < patientIds.size(); x++) {
 								if(patientMaskForBucket[0].testBit(x)) {

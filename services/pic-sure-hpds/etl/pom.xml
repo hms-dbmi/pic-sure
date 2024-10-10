@@ -330,6 +330,26 @@
 							<goal>single</goal>
 						</goals>
 					</execution>
+					<execution>
+						<id>GenomicDatasetFinalizer</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.GenomicDatasetFinalizer</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>GenomicDatasetFinalizer</classifier>
+							<finalName>GenomicDatasetFinalizer</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
 				</executions>
 			</plugin>
 		</plugins>

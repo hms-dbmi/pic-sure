@@ -79,8 +79,7 @@ public class VariantIndexCache {
                 boolean[] variantIndexArray = new boolean[variantIndex.length];
                 int x = 0;
                 for(Integer variantIndex : variantIndexIntArray) {
-                    // todo: shouldn't this be greater than or equal to 0? 0 is a valid index
-                    if (variantIndex > 0) {
+                    if (variantIndex >= 0) {
                         variantIndexArray[variantIndex] = true;
                     }
                 }

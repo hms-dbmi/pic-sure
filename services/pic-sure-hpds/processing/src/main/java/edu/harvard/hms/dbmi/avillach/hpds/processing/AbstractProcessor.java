@@ -7,6 +7,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.google.common.base.Joiner;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -38,19 +40,23 @@ public class AbstractProcessor {
 	private final String hpdsDataDirectory;
 
 
+	@Value("${HPDS_GENOMIC_DATA_DIRECTORY:/opt/local/hpds/all/}")
+	private String hpdsGenomicDataDirectory;
+
 	private LoadingCache<String, PhenoCube<?>> store;
 
 	private final PhenotypeMetaStore phenotypeMetaStore;
 
 	private final GenomicProcessor genomicProcessor;
 
+
 	@Autowired
 	public AbstractProcessor(
 			PhenotypeMetaStore phenotypeMetaStore,
-			GenomicProcessor genomicProcessor
+			GenomicProcessor genomicProcessor, @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory
 	) throws ClassNotFoundException, IOException, InterruptedException {
-		hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
 
+		this.hpdsDataDirectory = hpdsDataDirectory;
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.genomicProcessor = genomicProcessor;
 
@@ -86,7 +92,7 @@ public class AbstractProcessor {
 
 	public AbstractProcessor(PhenotypeMetaStore phenotypeMetaStore, LoadingCache<String, PhenoCube<?>> store,
 							 Map<String, FileBackedByteIndexedInfoStore> infoStores, List<String> infoStoreColumns,
-							 GenomicProcessor genomicProcessor) {
+							 GenomicProcessor genomicProcessor, String hpdsDataDirectory) {
 		this.phenotypeMetaStore = phenotypeMetaStore;
 		this.store = store;
 		this.genomicProcessor = genomicProcessor;
@@ -95,7 +101,7 @@ public class AbstractProcessor {
 		ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
 		ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
 
-		hpdsDataDirectory = System.getProperty("HPDS_DATA_DIRECTORY", "/opt/local/hpds/");
+		this.hpdsDataDirectory = hpdsDataDirectory;
 	}
 
 	public Set<String> getInfoStoreColumns() {
@@ -254,7 +260,7 @@ public class AbstractProcessor {
         return List.of();
 	}
 
-	protected Collection<String> getVariantList(Query query) throws IOException {
+	public Collection<String> getVariantList(Query query) {
 		DistributableQuery distributableQuery = getDistributableQuery(query);
 		return genomicProcessor.getVariantList(distributableQuery).block();
 	}

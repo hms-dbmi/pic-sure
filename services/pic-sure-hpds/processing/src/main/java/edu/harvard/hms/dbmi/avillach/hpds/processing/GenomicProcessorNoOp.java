@@ -8,10 +8,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHol
 import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 public class GenomicProcessorNoOp implements GenomicProcessor {
     @Override
@@ -30,7 +27,7 @@ public class GenomicProcessorNoOp implements GenomicProcessor {
     }
 
     @Override
-    public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
+    public Mono<Set<String>> getVariantList(DistributableQuery distributableQuery) {
         return null;
     }
 
@@ -57,5 +54,10 @@ public class GenomicProcessorNoOp implements GenomicProcessor {
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
         return List.of();
+    }
+
+    @Override
+    public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
+        return null;
     }
 }

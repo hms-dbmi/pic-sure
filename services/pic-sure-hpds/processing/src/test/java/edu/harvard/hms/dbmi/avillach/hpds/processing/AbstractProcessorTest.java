@@ -43,7 +43,8 @@ public class AbstractProcessorTest {
                 null,
                 infoStores,
                 null,
-                genomicProcessor
+                genomicProcessor,
+                ""
         );
     }
 

@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskBitmaskImpl;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMaskSparseImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -113,5 +115,34 @@ public class GenomicProcessorPatientMergingParentImplTest {
         ));
 
         assertTrue(output.getOut().contains("3 duplicate patients found in patient partitions"));
+    }
+
+
+    @Test
+    public void createMaskForPatientSet_validResponses_returnMerged() {
+        Set<Integer> patientSubset = Set.of(2, 3, 8, 9, 15);
+        when(mockProcessor1.createMaskForPatientSet(patientSubset)).thenReturn(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2)));
+        when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
+        when(mockProcessor2.createMaskForPatientSet(patientSubset)).thenReturn(new VariantMaskSparseImpl(Set.of(3, 4)));
+        when(mockProcessor2.getPatientIds()).thenReturn(List.of("5", "6", "7", "8", "9", "10", "11", "12"));
+        when(mockProcessor3.createMaskForPatientSet(patientSubset)).thenReturn(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2)));
+        when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
+        VariantMask patientMask = patientMergingParent.createMaskForPatientSet(patientSubset);
+        VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("11000100011000011011", 2));
+        assertEquals(expectedPatientMask, patientMask);
+    }
+
+    @Test
+    public void createMaskForPatientSet_validResponsesOneEmpty_returnMerged() {
+        Set<Integer> patientSubset = Set.of(2, 3, 15);
+        when(mockProcessor1.createMaskForPatientSet(patientSubset)).thenReturn(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2)));
+        when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
+        when(mockProcessor2.createMaskForPatientSet(patientSubset)).thenReturn(VariantMask.emptyInstance());
+        when(mockProcessor2.getPatientIds()).thenReturn(List.of("5", "6", "7", "8", "9", "10", "11", "12"));
+        when(mockProcessor3.createMaskForPatientSet(patientSubset)).thenReturn(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2)));
+        when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
+        VariantMask patientMask = patientMergingParent.createMaskForPatientSet(patientSubset);
+        VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("11000100000000011011", 2));
+        assertEquals(expectedPatientMask, patientMask);
     }
 }

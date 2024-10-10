@@ -90,15 +90,19 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
-        throw new RuntimeException("Not implemented");
+        return nodes.stream()
+                .map(node -> new SizedVariantMask(node.createMaskForPatientSet(patientSubset), node.getPatientIds().size()))
+                .reduce(this::appendMask)
+                .map(SizedVariantMask::getVariantMask)
+                .orElseGet(VariantMask::emptyInstance);
     }
 
     @Override
-    public Mono<Collection<String>> getVariantList(DistributableQuery distributableQuery) {
-        Mono<Collection<String>> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
+    public Mono<Set<String>> getVariantList(DistributableQuery distributableQuery) {
+        Mono<Set<String>> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
                 .flatMap(node -> node.getVariantList(distributableQuery))
                 .reduce((variantList1, variantList2) -> {
-                    List<String> mergedResult = new ArrayList<>(variantList1.size() + variantList2.size());
+                    Set<String> mergedResult = new HashSet<>(variantList1.size() + variantList2.size());
                     mergedResult.addAll(variantList1);
                     mergedResult.addAll(variantList2);
                     return mergedResult;
@@ -153,6 +157,17 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
     @Override
     public List<InfoColumnMeta> getInfoColumnMeta() {
         return infoColumnsMeta;
+    }
+
+    @Override
+    public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
+        return nodes.parallelStream()
+                .map(node -> node.getVariantMetadata(variantList))
+                .reduce((p1, p2) -> {
+                    Map<String, Set<String>> mapCopy = new HashMap<>(p1);
+                    mapCopy.putAll(p2);
+                    return mapCopy;
+                }).orElseGet(Map::of);
     }
 
     private List<InfoColumnMeta> initInfoColumnsMeta() {

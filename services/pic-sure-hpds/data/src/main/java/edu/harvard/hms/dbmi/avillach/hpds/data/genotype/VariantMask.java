@@ -33,4 +33,6 @@ public interface VariantMask {
     }
 
     Set<Integer> patientMaskToPatientIdSet(List<String> patientIds);
+
+    boolean isEmpty();
 }

@@ -163,8 +163,7 @@ public class VariantService {
                 }
             }
             if(variantStore.getPatientIds().length > 0 && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
-                // TODO: remove this! for testing only
-                /*log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
+                log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
                 bucketIndex = new BucketIndexBySample(variantStore, genomicDataDirectory);
                 try (
                         FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
@@ -172,8 +171,9 @@ public class VariantService {
                         ObjectOutputStream oos = new ObjectOutputStream(gzos);
                 ){
                     oos.writeObject(bucketIndex);
-                    oos.flush();oos.close();
-                }*/
+                    oos.flush();
+                    oos.close();
+                }
             }else {
                 try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
                     log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
@@ -196,6 +196,9 @@ public class VariantService {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+    public List<VariableVariantMasks> getMasksForDbSnpSpec(String variantName) {
+        return variantStore.getMasksForDbSnpSpec(variantName);
     }
 
     public BigInteger emptyBitmask() {

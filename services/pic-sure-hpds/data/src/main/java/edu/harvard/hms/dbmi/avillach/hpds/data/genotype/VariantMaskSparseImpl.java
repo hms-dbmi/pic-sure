@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigInteger;
@@ -57,6 +58,12 @@ public class VariantMaskSparseImpl implements VariantMask {
                 .map(String::trim)
                 .map(Integer::parseInt)
                 .collect(Collectors.toSet());
+    }
+
+    @Override
+    @JsonIgnore
+    public boolean isEmpty() {
+        return this.patientIndexes.isEmpty();
     }
 
     private VariantMask union(VariantMaskSparseImpl variantMask) {

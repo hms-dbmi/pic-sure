@@ -30,7 +30,7 @@ public class GenomicProcessorController {
     }
 
     @PostMapping("/variants")
-    public Mono<Collection<String>> queryForVariants(@RequestBody DistributableQuery distributableQuery) {
+    public Mono<Set<String>> queryForVariants(@RequestBody DistributableQuery distributableQuery) {
         return genomicProcessor.getVariantList(distributableQuery);
     }
 

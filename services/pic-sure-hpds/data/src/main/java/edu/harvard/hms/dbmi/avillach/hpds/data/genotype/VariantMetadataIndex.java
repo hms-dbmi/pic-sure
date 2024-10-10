@@ -1,11 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
 import java.io.*;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
+import com.google.common.base.Joiner;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,23 +24,23 @@ import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
  * a fast, disk-based backing store.
  */
 public class VariantMetadataIndex implements Serializable {
-	// todo: make this variable
-	public static String VARIANT_METADATA_BIN_FILE = "/opt/local/hpds/all/VariantMetadata.javabin";
+	public static final String VARIANT_METADATA_FILENAME = "VariantMetadata.javabin";
+	public static String VARIANT_METADATA_BIN_FILE = "/opt/local/hpds/all/" + VARIANT_METADATA_FILENAME;
 	
 	private static final long serialVersionUID = 5917054606643971537L;
 	private static Logger log = LoggerFactory.getLogger(VariantMetadataIndex.class); 
 
 	// (String) contig  --> (Integer) Bucket -->  (String) variant spec --> INFO column data[].
-	private Map<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> > indexMap = new HashMap<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> >();
+	private final Map<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> > indexMap = new HashMap<>();
 
-	// todo: make this variable
-	private static String fileStoragePrefix = "/opt/local/hpds/all/VariantMetadataStorage";
+	public static final String VARIANT_METADATA_STORAGE_FILE_PREFIX = "VariantMetadataStorage";
+	private static String fileStoragePrefix = "/opt/local/hpds/all/" + VARIANT_METADATA_STORAGE_FILE_PREFIX;
 
 	/**
 	 * This map allows us to load millions of variants without re-writing the fbbis each time (which would blow up the disk space).
 	 * We need to remember to flush() between each contig this gets saved to the fbbis array.
 	 */
-	private transient Map<String,  ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> > loadingMap = new HashMap<String,  ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> >();
+	private transient Map<String,  ConcurrentHashMap<Integer, ConcurrentHashMap<String, String[]>> > loadingMap = new HashMap<>();
 	
 	/**
 	 * This constructor should only be used for testing; we expect the files to be in the default locations in production
@@ -60,7 +63,7 @@ public class VariantMetadataIndex implements Serializable {
 	 * @param variantSpec
 	 * @return
 	 */
-	public String[] findBySingleVariantSpec(String variantSpec, VariantBucketHolder<String[]> bucketCache) {
+	public Set<String> findBySingleVariantSpec(String variantSpec, VariantBucketHolder<String[]> bucketCache) {
 		try {
 			String[] segments = variantSpec.split(",");
 			if (segments.length < 2) {
@@ -75,7 +78,7 @@ public class VariantMetadataIndex implements Serializable {
 					|| chrOffset != bucketCache.lastChunkOffset) {
 				FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> ContigFbbis = indexMap.get(contig);
 				if(ContigFbbis == null) {
-					return new String[0];
+					return Set.of();
 				}
 				bucketCache.lastValue = ContigFbbis.get(chrOffset);
 				bucketCache.lastContig = contig;
@@ -85,20 +88,20 @@ public class VariantMetadataIndex implements Serializable {
 			if( bucketCache.lastValue != null) {
 				if(bucketCache.lastValue.get(variantSpec) == null) {
 					log.warn("No variant data found for spec " + variantSpec);
-					return new String[0];
+					return Set.of();
 				}
-				return  bucketCache.lastValue.get(variantSpec);
+				return Set.of(bucketCache.lastValue.get(variantSpec));
 			}
 			log.warn("No bucket found for spec " + variantSpec + " in bucket " + chrOffset);
-			return new String[0];
+			return Set.of();
 		
 		} catch (UncheckedIOException e) {
 			log.warn("IOException caught looking up variantSpec : " + variantSpec, e);
-			return new String[0];
+			return Set.of();
 		}
 	}
 
-	public Map<String, String[]> findByMultipleVariantSpec(Collection<String> varientSpecList) {
+	public Map<String, Set<String>> findByMultipleVariantSpec(Collection<String> varientSpecList) {
 //		log.debug("SPEC list "  + varientSpecList.size() + " :: " + Arrays.deepToString(varientSpecList.toArray()));
 		
 		VariantBucketHolder<String[]> bucketCache = new VariantBucketHolder<String[]>();
@@ -161,7 +164,7 @@ public class VariantMetadataIndex implements Serializable {
 			if(contigFbbis == null) {
 				log.info("creating new file for " + contig);
 				String filePath = fileStoragePrefix + "_" + contig + ".bin";
-				contigFbbis = new FileBackedJavaIndexedStorage(Integer.class, (Class<ConcurrentHashMap<String, String[]>>)(Class<?>) ConcurrentHashMap.class, new File(filePath));
+				contigFbbis = new FileBackedJavaIndexedStorage(Integer.class, ConcurrentHashMap.class, new File(filePath));
 				indexMap.put(contig, contigFbbis);
 			}
 			
@@ -196,13 +199,57 @@ public class VariantMetadataIndex implements Serializable {
 
 	public static VariantMetadataIndex createInstance(String metadataIndexPath) {
 		try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(
-				new FileInputStream(metadataIndexPath)))){
-			return (VariantMetadataIndex) in.readObject();
+				new FileInputStream(metadataIndexPath + VARIANT_METADATA_FILENAME)))){
+			VariantMetadataIndex variantMetadataIndex = (VariantMetadataIndex) in.readObject();
+			variantMetadataIndex.updateStorageDirectory(new File(metadataIndexPath));
+			return variantMetadataIndex;
 		} catch(Exception e) {
 			// todo: handle exceptions better
 			log.info("No Metadata Index found at " + metadataIndexPath);
-			log.debug("Error loading metadata index:", e);
 			return null;
 		}
+	}
+
+	public static void merge(VariantMetadataIndex variantMetadataIndex1, VariantMetadataIndex variantMetadataIndex2, String outputDirectory) throws IOException {
+		VariantMetadataIndex merged = new VariantMetadataIndex(outputDirectory + VARIANT_METADATA_STORAGE_FILE_PREFIX);
+		if (!variantMetadataIndex1.indexMap.keySet().equals(variantMetadataIndex2.indexMap.keySet())) {
+			log.warn("Merging incompatible variant indexes. Index1 keys: " + Joiner.on(",").join(variantMetadataIndex1.indexMap.keySet()) + ". Index 2 keys: " + Joiner.on(",").join(variantMetadataIndex2.indexMap.keySet()));
+			throw new IllegalStateException("Cannot merge variant metadata index with different contig keys");
+		}
+		for (String contig : variantMetadataIndex1.indexMap.keySet()) {
+			String filePath = outputDirectory + VARIANT_METADATA_STORAGE_FILE_PREFIX + "_" + contig + ".bin";
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> mergedFbbis = new FileBackedJavaIndexedStorage(Integer.class, ConcurrentHashMap.class, new File(filePath));
+
+			// Store the merged result here because FileBackedByteIndexedStorage must be written all at once
+			Map<Integer, ConcurrentHashMap<String, String[]>> mergedStagedFbbis = new HashMap<>();
+
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> fbbis1 = variantMetadataIndex1.indexMap.get(contig);
+			FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> fbbis2 = variantMetadataIndex2.indexMap.get(contig);
+
+			fbbis1.keys().forEach(key -> {
+				mergedStagedFbbis.put(key, fbbis1.get(key));
+			});
+			fbbis2.keys().forEach(key -> {
+				ConcurrentHashMap<String, String[]> metadataMap = mergedStagedFbbis.get(key);
+				if (metadataMap == null) {
+					mergedStagedFbbis.put(key, fbbis2.get(key));
+				} else {
+					metadataMap.putAll(fbbis2.get(key));
+				}
+			});
+
+			mergedStagedFbbis.forEach(mergedFbbis::put);
+			mergedFbbis.complete();
+			merged.indexMap.put(contig, mergedFbbis);
+		}
+
+		try(ObjectOutputStream out = new ObjectOutputStream(new GZIPOutputStream(Files.newOutputStream(new File(outputDirectory + VARIANT_METADATA_FILENAME).toPath())))){
+			out.writeObject(merged);
+			out.flush();
+		}
+	}
+
+	public void updateStorageDirectory(File genomicDataDirectory) {
+		indexMap.values().forEach(value -> value.updateStorageDirectory(genomicDataDirectory));
 	}
 }

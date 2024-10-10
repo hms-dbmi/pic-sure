@@ -83,7 +83,6 @@ public class PatientVariantJoinHandler {
                         variantMask.ifPresentOrElse(masks -> {
                             VariantMask heterozygousMask = masks.heterozygousMask;
                             VariantMask homozygousMask = masks.homozygousMask;
-                            //log.info("Patients with variant " + variantSpec + ": " + (orMasks.bitCount() - 4));
                             if (heterozygousMask != null) {
                                 synchronized(matchingPatients) {
                                     matchingPatients[0] = matchingPatients[0].union(heterozygousMask);
@@ -110,7 +109,13 @@ public class PatientVariantJoinHandler {
     }
 
     // todo: return VariantMask
-    public BigInteger createMaskForPatientSet(Set<Integer> patientSubset) {
+    public BigInteger createMaskForPatientSet(Set<Integer> patientSet) {
+        Set<Integer> patientSubset = patientSet;
+        if (patientSet == null) {
+            patientSubset = Arrays.asList(
+                    variantService.getPatientIds()).stream().map((String id)->{
+                return Integer.parseInt(id);}).collect(Collectors.toSet());
+        }
         StringBuilder builder = new StringBuilder("11"); //variant bitmasks are bookended with '11'
 
         for (int i = variantService.getPatientIds().length - 1; i >= 0; i--) {
