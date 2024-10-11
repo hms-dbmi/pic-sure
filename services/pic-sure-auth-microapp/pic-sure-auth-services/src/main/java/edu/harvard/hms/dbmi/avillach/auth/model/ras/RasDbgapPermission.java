@@ -2,6 +2,21 @@ package edu.harvard.hms.dbmi.avillach.auth.model.ras;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+/**
+ * The RasDbgapPermission class is a model for the RAS dbGaP Permission object. An example of this object is:
+ * This is not a real study, but an example of what the object looks like.
+ * <pre>
+ *     {
+ *       "consent_name": "Unrestricted",
+ *       "phs_id": "phs000123",
+ *       "version": "v1",
+ *       "participant_set": "p1",
+ *       "consent_group": "c1",
+ *       "role": "pi",
+ *       "expiration": 1234567890
+ *     }
+ * </pre>
+ */
 public class RasDbgapPermission {
 
     @JsonProperty("consent_name")

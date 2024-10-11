@@ -4,6 +4,17 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
+/**
+ * The Ga4ghPassportV1 class is a model for the GA4GH Passport V1 object.
+ * <a href="https://github.com/ga4gh-duri/ga4gh-duri.github.io/blob/master/researcher_ids/ga4gh_passport_v1.md#passport-claim">passport-claim</a>
+ *
+ * <p>
+ *     <b>Description</b>
+ *     <br>
+ *     The GA4GH Passport V1 object is a JSON Web Token (JWT) that contains information about a user's identity, the signing entity (ga4ghVisaV1), and
+ *     the permissions they have been granted (RasDbgapPermissions).
+ * </p>
+ */
 public class Ga4ghPassportV1 {
 
     private String iss;

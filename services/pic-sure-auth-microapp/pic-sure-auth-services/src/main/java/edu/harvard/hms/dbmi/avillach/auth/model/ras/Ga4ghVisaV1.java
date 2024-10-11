@@ -1,5 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.model.ras;
 
+/**
+ * The Ga4ghVisaV1 class is a model for the GA4GH Visa V1 object.
+ * <a href="https://github.com/ga4gh-duri/ga4gh-duri.github.io/blob/master/researcher_ids/ga4gh_passport_v1.md#visa-claim">ga4gh_passport_v1.md#visa-claim</a>
+ */
 public class Ga4ghVisaV1 {
 
     private String type;

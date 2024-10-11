@@ -4,6 +4,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
+/**
+ * The RAS Passport JWT as defined by RAS in their developer documentation.
+ * Contains a list of claims about the user and the user's identity and a list of GA4Gh Passports as defined in the GA4GH standard.
+ */
 public class Passport {
 
     private String sub;

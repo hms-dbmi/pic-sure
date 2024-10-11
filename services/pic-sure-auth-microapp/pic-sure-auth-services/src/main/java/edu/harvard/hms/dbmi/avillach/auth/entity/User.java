@@ -75,6 +75,9 @@ public class User extends BaseEntity implements Serializable, Principal {
 	@Column(name = "long_term_token")
 	private String token;
 
+	/**
+	 * This is a passport for the user represented as a string. See the Passport class for more information.
+	 */
 	@Column(name = "passport")
 	private String passport;
 
