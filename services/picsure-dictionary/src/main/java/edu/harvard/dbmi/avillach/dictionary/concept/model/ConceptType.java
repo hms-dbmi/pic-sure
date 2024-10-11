@@ -9,8 +9,7 @@ public enum ConceptType {
     Categorical,
 
     /**
-     * i.e. Age: 0 - 150
-     * Also known as numeric (to me)
+     * i.e. Age: 0 - 150 Also known as numeric (to me)
      */
     Continuous;
 

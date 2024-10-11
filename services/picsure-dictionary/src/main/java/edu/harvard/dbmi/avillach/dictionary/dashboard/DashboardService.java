@@ -16,9 +16,7 @@ public class DashboardService {
 
     @Autowired
     public DashboardService(
-        DashboardRepository repository,
-        List<DashboardColumn> columns,
-        @Value("${dashboard.enable.bdc_hack}") boolean bdcHack
+        DashboardRepository repository, List<DashboardColumn> columns, @Value("${dashboard.enable.bdc_hack}") boolean bdcHack
     ) {
         this.repository = repository;
         this.columns = columns;
@@ -28,26 +26,16 @@ public class DashboardService {
     public Dashboard getDashboard() {
         if (bdcHack) {
             List<Map<String, String>> rows = repository.getHackyBDCRows();
-            return new Dashboard(
-                hackyBDCColumns,
-                rows
-            );
+            return new Dashboard(hackyBDCColumns, rows);
         }
         List<Map<String, String>> rows = repository.getRows();
-        return new Dashboard(
-            columns,
-            rows
-        );
+        return new Dashboard(columns, rows);
     }
 
     private static final List<DashboardColumn> hackyBDCColumns = List.of(
-        new DashboardColumn("abbreviation", "Abbreviation"),
-        new DashboardColumn("name", "Name"),
-        new DashboardColumn("study_focus", "Study Focus"),
-        new DashboardColumn("clinvars", "Clinical Variables"),
-        new DashboardColumn("participants", "Participants"),
-        new DashboardColumn("samples", "Samples Sequenced"),
-        new DashboardColumn("accession", "Accession"),
-        new DashboardColumn("additional_info_link", "Study Link")
+        new DashboardColumn("abbreviation", "Abbreviation"), new DashboardColumn("name", "Name"),
+        new DashboardColumn("study_focus", "Study Focus"), new DashboardColumn("clinvars", "Clinical Variables"),
+        new DashboardColumn("participants", "Participants"), new DashboardColumn("samples", "Samples Sequenced"),
+        new DashboardColumn("accession", "Accession"), new DashboardColumn("additional_info_link", "Study Link")
     );
 }

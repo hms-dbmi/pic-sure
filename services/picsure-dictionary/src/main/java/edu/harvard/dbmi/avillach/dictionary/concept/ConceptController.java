@@ -22,25 +22,19 @@ public class ConceptController {
     private Integer MAX_DEPTH;
 
 
-    public ConceptController(
-        @Autowired ConceptService conceptService
-    ) {
+    public ConceptController(@Autowired ConceptService conceptService) {
         this.conceptService = conceptService;
     }
 
 
     @PostMapping(path = "/concepts")
     public ResponseEntity<Page<Concept>> listConcepts(
-        @RequestBody Filter filter,
-        @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
+        @RequestBody Filter filter, @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);
-        PageImpl<Concept> pageResp = new PageImpl<>(
-            conceptService.listConcepts(filter, pagination),
-            pagination,
-            conceptService.countConcepts(filter)
-        );
+        PageImpl<Concept> pageResp =
+            new PageImpl<>(conceptService.listConcepts(filter, pagination), pagination, conceptService.countConcepts(filter));
 
         return ResponseEntity.ok(pageResp);
     }
@@ -52,8 +46,7 @@ public class ConceptController {
     ) {
         PageRequest pagination = PageRequest.of(page, size);
         PageImpl<Concept> pageResp = new PageImpl<>(
-            conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), pagination),
-            pagination,
+            conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), pagination), pagination,
             conceptService.countConcepts(new Filter(List.of(), "", List.of()))
         );
 
@@ -61,26 +54,18 @@ public class ConceptController {
     }
 
     @PostMapping(path = "/concepts/detail/{dataset}")
-    public ResponseEntity<Concept> conceptDetail(
-        @PathVariable(name = "dataset") String dataset,
-        @RequestBody() String conceptPath
-    ) {
-        return conceptService.conceptDetail(dataset, conceptPath)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Concept> conceptDetail(@PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath) {
+        return conceptService.conceptDetail(dataset, conceptPath).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping(path = "/concepts/tree/{dataset}")
     public ResponseEntity<Concept> conceptTree(
-        @PathVariable(name = "dataset") String dataset,
-        @RequestBody() String conceptPath,
+        @PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath,
         @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth
     ) {
         if (depth < 0 || depth > MAX_DEPTH) {
             return ResponseEntity.badRequest().build();
         }
-        return conceptService.conceptTree(dataset, conceptPath, depth)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+        return conceptService.conceptTree(dataset, conceptPath, depth).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 }

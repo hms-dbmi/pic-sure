@@ -25,12 +25,7 @@ public class FacetController {
     }
 
     @GetMapping(path = "/facets/{facetCategory}/{facet}")
-    public ResponseEntity<Facet> facetDetails(
-        @PathVariable String facetCategory,
-        @PathVariable String facet
-    ) {
-        return facetService.facetDetails(facetCategory, facet)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Facet> facetDetails(@PathVariable String facetCategory, @PathVariable String facet) {
+        return facetService.facetDetails(facetCategory, facet).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 }

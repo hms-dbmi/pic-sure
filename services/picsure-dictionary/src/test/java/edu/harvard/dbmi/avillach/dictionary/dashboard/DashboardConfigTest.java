@@ -17,10 +17,8 @@ class DashboardConfigTest {
     void shouldGetColumns() {
         List<DashboardColumn> actual = subject.getColumns();
         List<DashboardColumn> expected = List.of(
-            new DashboardColumn("abbreviation", "Abbreviation"),
-            new DashboardColumn("name", "Name"),
-            new DashboardColumn("clinvars", "Clinical Variables"),
-            new DashboardColumn("melast", "This one goes last"),
+            new DashboardColumn("abbreviation", "Abbreviation"), new DashboardColumn("name", "Name"),
+            new DashboardColumn("clinvars", "Clinical Variables"), new DashboardColumn("melast", "This one goes last"),
             new DashboardColumn("participants", "Participants")
         );
 

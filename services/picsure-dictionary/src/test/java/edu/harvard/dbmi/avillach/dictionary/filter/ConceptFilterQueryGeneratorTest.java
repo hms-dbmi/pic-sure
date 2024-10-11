@@ -23,12 +23,8 @@ import java.util.List;
 class ConceptFilterQueryGeneratorTest {
 
     @Container
-    static final PostgreSQLContainer<?> databaseContainer =
-        new PostgreSQLContainer<>("postgres:16")
-            .withReuse(true)
-            .withCopyFileToContainer(
-                MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql"
-            );
+    static final PostgreSQLContainer<?> databaseContainer = new PostgreSQLContainer<>("postgres:16").withReuse(true)
+        .withCopyFileToContainer(MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql");
 
     @DynamicPropertySource
     static void mySQLProperties(DynamicPropertyRegistry registry) {
@@ -69,7 +65,8 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFacetAndSearchNoMatch() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
+        Filter f =
+            new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
@@ -93,9 +90,8 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent1() {
-        Filter f = new Filter(List.of(new Facet(
-            "phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)),
-            "", List.of("phs000007.c1")
+        Filter f = new Filter(
+            List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("phs000007.c1")
         );
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
@@ -108,7 +104,10 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent1And2() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("phs000007.c1", "phs000007.c2"));
+        Filter f = new Filter(
+            List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "",
+            List.of("phs000007.c1", "phs000007.c2")
+        );
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
@@ -120,7 +119,8 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFHSFacetWithConsent3() {
-        Filter f = new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("dne.c3"));
+        Filter f =
+            new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "", List.of("dne.c3"));
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
@@ -132,7 +132,8 @@ class ConceptFilterQueryGeneratorTest {
 
     @Test
     void shouldGenerateForFacetAndSearchMatch() {
-        Filter f = new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
+        Filter f =
+            new Filter(List.of(new Facet("phs002715", "NSRR", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());
         QueryParamPair pair = subject.generateFilterQuery(f, Pageable.unpaged());
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 

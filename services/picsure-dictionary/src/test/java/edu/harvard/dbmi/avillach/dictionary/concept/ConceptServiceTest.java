@@ -32,13 +32,10 @@ class ConceptServiceTest {
 
     @Test
     void shouldListConcepts() {
-        List<Concept> expected = List.of(
-            new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), true, "", null, null)
-        );
+        List<Concept> expected = List.of(new CategoricalConcept("A", "a", "A", "invalid.invalid", null, List.of(), true, "", null, null));
         Filter filter = new Filter(List.of(), "", List.of());
         Pageable page = Pageable.ofSize(10).first();
-        Mockito.when(repository.getConcepts(filter, page))
-            .thenReturn(expected);
+        Mockito.when(repository.getConcepts(filter, page)).thenReturn(expected);
 
         List<Concept> actual = subject.listConcepts(filter, page);
 
@@ -48,8 +45,7 @@ class ConceptServiceTest {
     @Test
     void shouldCountConcepts() {
         Filter filter = new Filter(List.of(), "", List.of());
-        Mockito.when(repository.countConcepts(filter))
-            .thenReturn(1L);
+        Mockito.when(repository.countConcepts(filter)).thenReturn(1L);
 
         long actual = subject.countConcepts(filter);
 
@@ -60,12 +56,9 @@ class ConceptServiceTest {
     void shouldShowDetailForContinuous() {
         ContinuousConcept concept = new ContinuousConcept("path", "", "", "dataset", null, true, 0F, 1F, "", null);
         Map<String, String> meta = Map.of("MIN", "0", "MAX", "1", "stigmatizing", "true");
-        Mockito.when(repository.getConcept("dataset", "path"))
-            .thenReturn(Optional.of(concept));
-        Mockito.when(decoratorService.populateParentConcepts(Mockito.any()))
-            .thenAnswer(i -> i.getArguments()[0]);
-        Mockito.when(repository.getConceptMeta("dataset", "path"))
-            .thenReturn(meta);
+        Mockito.when(repository.getConcept("dataset", "path")).thenReturn(Optional.of(concept));
+        Mockito.when(decoratorService.populateParentConcepts(Mockito.any())).thenAnswer(i -> i.getArguments()[0]);
+        Mockito.when(repository.getConceptMeta("dataset", "path")).thenReturn(meta);
 
         Optional<Concept> actual = subject.conceptDetail("dataset", "path");
         Optional<Concept> expected = Optional.of(new ContinuousConcept(concept, meta));
@@ -77,12 +70,9 @@ class ConceptServiceTest {
     void shouldShowDetailForCategorical() {
         CategoricalConcept concept = new CategoricalConcept("path", "", "", "dataset", null, List.of("a"), true, "", List.of(), null);
         Map<String, String> meta = Map.of("VALUES", "a", "stigmatizing", "true");
-        Mockito.when(repository.getConcept("dataset", "path"))
-            .thenReturn(Optional.of(concept));
-        Mockito.when(decoratorService.populateParentConcepts(Mockito.any()))
-            .thenAnswer(i -> i.getArguments()[0]);
-        Mockito.when(repository.getConceptMeta("dataset", "path"))
-            .thenReturn(meta);
+        Mockito.when(repository.getConcept("dataset", "path")).thenReturn(Optional.of(concept));
+        Mockito.when(decoratorService.populateParentConcepts(Mockito.any())).thenAnswer(i -> i.getArguments()[0]);
+        Mockito.when(repository.getConceptMeta("dataset", "path")).thenReturn(meta);
 
         Optional<Concept> actual = subject.conceptDetail("dataset", "path");
         Optional<Concept> expected = Optional.of(new CategoricalConcept(concept, meta));
@@ -105,27 +95,20 @@ class ConceptServiceTest {
         Filter emptyFilter = new Filter(List.of(), "", List.of());
 
 
-        Mockito.when(repository.getConceptMetaForConcepts(concepts))
-            .thenReturn(metas);
-        Mockito.when(repository.getConcepts(emptyFilter, Pageable.unpaged()))
-            .thenReturn(concepts);
+        Mockito.when(repository.getConceptMetaForConcepts(concepts)).thenReturn(metas);
+        Mockito.when(repository.getConcepts(emptyFilter, Pageable.unpaged())).thenReturn(concepts);
 
         List<Concept> actual = subject.listDetailedConcepts(emptyFilter, Pageable.unpaged());
-        List<Concept> expected = List.of(
-            new CategoricalConcept(conceptA, metaA),
-            new ContinuousConcept(conceptB, metaB)
-        );
+        List<Concept> expected = List.of(new CategoricalConcept(conceptA, metaA), new ContinuousConcept(conceptB, metaB));
 
         Assertions.assertEquals(expected, actual);
     }
 
     @Test
     void shouldGetTree() {
-        CategoricalConcept concept = new CategoricalConcept("ds", "\\A\\B\\C\\").withChildren(
-            List.of(new CategoricalConcept("ds", "\\A\\B\\C\\1\\"), new ContinuousConcept("ds", "\\A\\B\\C\\2\\"))
-        );
-        Mockito.when(repository.getConceptTree("ds", "\\A\\B\\C\\", 2))
-            .thenReturn(Optional.of(concept));
+        CategoricalConcept concept = new CategoricalConcept("ds", "\\A\\B\\C\\")
+            .withChildren(List.of(new CategoricalConcept("ds", "\\A\\B\\C\\1\\"), new ContinuousConcept("ds", "\\A\\B\\C\\2\\")));
+        Mockito.when(repository.getConceptTree("ds", "\\A\\B\\C\\", 2)).thenReturn(Optional.of(concept));
 
         Optional<Concept> actual = subject.conceptTree("ds", "\\A\\B\\C\\", 2);
 

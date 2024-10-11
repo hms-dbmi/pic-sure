@@ -34,40 +34,35 @@ public class ConceptFilterQueryGenerator {
         """;
 
     private static final String CONSENT_QUERY = """
-                dataset.dataset_id IN (
-                    SELECT
-                        consent.dataset_id
-                    FROM consent
-                        LEFT JOIN dataset ON dataset.dataset_id = consent.dataset_id
-                    WHERE
-                        concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
-                        (dataset.ref IN (:consents) AND consent.consent_code = '')
-                    UNION
-                    SELECT
-                        dataset_harmonization.harmonized_dataset_id
-                    FROM consent
-                        JOIN dataset_harmonization ON dataset_harmonization.source_dataset_id = consent.dataset_id
-                        LEFT JOIN dataset ON dataset.dataset_id = dataset_harmonization.source_dataset_id
-                    WHERE
-                        concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
-                        (dataset.ref IN (:consents) AND consent.consent_code = '')
-                ) AND
-                """;
+        dataset.dataset_id IN (
+            SELECT
+                consent.dataset_id
+            FROM consent
+                LEFT JOIN dataset ON dataset.dataset_id = consent.dataset_id
+            WHERE
+                concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
+                (dataset.ref IN (:consents) AND consent.consent_code = '')
+            UNION
+            SELECT
+                dataset_harmonization.harmonized_dataset_id
+            FROM consent
+                JOIN dataset_harmonization ON dataset_harmonization.source_dataset_id = consent.dataset_id
+                LEFT JOIN dataset ON dataset.dataset_id = dataset_harmonization.source_dataset_id
+            WHERE
+                concat(dataset.ref, '.', consent.consent_code) IN (:consents) OR
+                (dataset.ref IN (:consents) AND consent.consent_code = '')
+        ) AND
+        """;
 
     @Autowired
-    public ConceptFilterQueryGenerator(
-        @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields
-    ) {
+    public ConceptFilterQueryGenerator(@Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields) {
         this.disallowedMetaFields = disallowedMetaFields;
     }
 
     /**
-     * This generates a query that will return a list of concept_node IDs for the given filter.
-     * <p>
-     * A filter object has a list of facets, each belonging to a category. Within a category,
-     * facets are ORed together. Between categories, facets are ANDed together.
-     * In SQL, this is represented as N clauses for N facets, all INTERSECTed together. Search
-     * also acts as its own special facet here.
+     * This generates a query that will return a list of concept_node IDs for the given filter. <p> A filter object has a list of facets,
+     * each belonging to a category. Within a category, facets are ORed together. Between categories, facets are ANDed together. In SQL,
+     * this is represented as N clauses for N facets, all INTERSECTed together. Search also acts as its own special facet here.
      *
      * @param filter universal filter object for the page
      * @param pageable pagination, if applicable
@@ -113,8 +108,7 @@ public class ConceptFilterQueryGenerator {
                 LIMIT :limit
                 OFFSET :offset
                 """;
-            params.addValue("limit", pageable.getPageSize())
-                .addValue("offset", pageable.getOffset());
+            params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
         }
 
         superQuery = " concepts_filtered_sorted AS (\n" + superQuery + "\n)";
@@ -150,26 +144,26 @@ public class ConceptFilterQueryGenerator {
                     continuous_max.value <> '' OR
                     categorical_values.value <> ''
                 )
-            """.formatted(rankQuery, rankWhere, consentWhere);
+            """
+            .formatted(rankQuery, rankWhere, consentWhere);
     }
 
     private List<String> createFacetFilter(Filter filter, MapSqlParameterSource params) {
         String consentWhere = CollectionUtils.isEmpty(filter.consents()) ? "" : CONSENT_QUERY;
-        return filter.facets().stream()
-            .collect(Collectors.groupingBy(Facet::category))
-            .entrySet().stream()
-            .map(facetsForCategory ->  {
-                params
-                    // The templating here is to namespace the params for each facet category in the query
-                    .addValue("facets_for_category_%s".formatted(facetsForCategory.getKey()), facetsForCategory.getValue().stream().map(Facet::name).toList())
-                    .addValue("category_%s".formatted(facetsForCategory.getKey()), facetsForCategory.getKey());
-                String rankQuery = "0";
-                String rankWhere = "";
-                if (StringUtils.hasLength(filter.search())) {
-                    rankQuery = "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery)";
-                    rankWhere = "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND";
-                }
-                return """
+        return filter.facets().stream().collect(Collectors.groupingBy(Facet::category)).entrySet().stream().map(facetsForCategory -> {
+            params
+                // The templating here is to namespace the params for each facet category in the query
+                .addValue(
+                    "facets_for_category_%s".formatted(facetsForCategory.getKey()),
+                    facetsForCategory.getValue().stream().map(Facet::name).toList()
+                ).addValue("category_%s".formatted(facetsForCategory.getKey()), facetsForCategory.getKey());
+            String rankQuery = "0";
+            String rankWhere = "";
+            if (StringUtils.hasLength(filter.search())) {
+                rankQuery = "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery)";
+                rankWhere = "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND";
+            }
+            return """
                 (
                     SELECT
                         facet__concept_node.concept_node_id AS concept_node_id,
@@ -187,8 +181,7 @@ public class ConceptFilterQueryGenerator {
                         facet__concept_node.concept_node_id
                 )
                 """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
-            })
-            .toList();
+        }).toList();
     }
 
 }

@@ -21,9 +21,8 @@ class FilterPreProcessorTest {
     @Test
     void shouldProcessFilter() {
         Object processedFilter = subject.afterBodyRead(
-            new Filter(List.of(), "I_love_underscores", List.of()),
-            Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class),
-            SimpleType.constructUnsafe(Filter.class), null
+            new Filter(List.of(), "I_love_underscores", List.of()), Mockito.mock(HttpInputMessage.class),
+            Mockito.mock(MethodParameter.class), SimpleType.constructUnsafe(Filter.class), null
         );
 
         Assertions.assertEquals(new Filter(List.of(), "I/love/underscores", List.of()), processedFilter);
@@ -32,8 +31,7 @@ class FilterPreProcessorTest {
     @Test
     void shouldNotProcessOtherBodies() {
         Object actual = subject.afterBodyRead(
-            "I'm an object!",
-            Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class),
+            "I'm an object!", Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class),
             SimpleType.constructUnsafe(Filter.class), null
         );
 

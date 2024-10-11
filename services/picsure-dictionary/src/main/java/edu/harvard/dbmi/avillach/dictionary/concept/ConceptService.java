@@ -49,16 +49,14 @@ public class ConceptService {
     }
 
     private Optional<Concept> getConcept(String dataset, String conceptPath, boolean addAncestors) {
-        Optional<Concept> concept = conceptRepository.getConcept(dataset, conceptPath)
-            .map(core -> {
-                    var meta = conceptRepository.getConceptMeta(dataset, conceptPath);
-                    return switch (core) {
-                        case ContinuousConcept cont -> new ContinuousConcept(cont, meta);
-                        case CategoricalConcept cat -> new CategoricalConcept(cat, meta);
-                        case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
-                    };
-                }
-            );
+        Optional<Concept> concept = conceptRepository.getConcept(dataset, conceptPath).map(core -> {
+            var meta = conceptRepository.getConceptMeta(dataset, conceptPath);
+            return switch (core) {
+                case ContinuousConcept cont -> new ContinuousConcept(cont, meta);
+                case CategoricalConcept cat -> new CategoricalConcept(cat, meta);
+                case ConceptShell ignored -> throw new RuntimeException("Concept shell escaped to API");
+            };
+        });
         return addAncestors ? concept.map(conceptDecoratorService::populateParentConcepts) : concept;
     }
 

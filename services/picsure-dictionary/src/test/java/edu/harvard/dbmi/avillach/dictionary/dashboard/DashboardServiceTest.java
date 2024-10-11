@@ -24,8 +24,7 @@ class DashboardServiceTest {
     @Test
     void shouldGetDashboard() {
         List<Map<String, String>> rows = List.of(Map.of("a", "1", "b", "2"));
-        Mockito.when(repository.getRows())
-            .thenReturn(rows);
+        Mockito.when(repository.getRows()).thenReturn(rows);
 
         Dashboard actual = subject.getDashboard();
 

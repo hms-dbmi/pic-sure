@@ -16,7 +16,8 @@ public class ConceptResultSetExtractor implements ResultSetExtractor<Concept> {
     @Autowired
     private ConceptResultSetUtil conceptResultSetUtil;
 
-    private record ConceptWithId(Concept c, int id) {};
+    private record ConceptWithId(Concept c, int id) {
+    };
 
     @Override
     public Concept extractData(ResultSet rs) throws SQLException, DataAccessException {
@@ -28,7 +29,9 @@ public class ConceptResultSetExtractor implements ResultSetExtractor<Concept> {
                 case Continuous -> conceptResultSetUtil.mapContinuous(rs);
             };
             ConceptWithId conceptWithId = new ConceptWithId(c, rs.getInt("concept_node_id"));
-            if (root == null) { root = conceptWithId; }
+            if (root == null) {
+                root = conceptWithId;
+            }
 
             int parentId = rs.getInt("parent_id");
             // weirdness: null value for int is 0, so to check for missing parent value, you need the wasNull check
@@ -45,8 +48,7 @@ public class ConceptResultSetExtractor implements ResultSetExtractor<Concept> {
 
     private Concept seedChildren(ConceptWithId root, Map<Integer, List<ConceptWithId>> conceptsByParentId) {
         List<Concept> children = conceptsByParentId.getOrDefault(root.id, List.of()).stream()
-            .map(conceptWithId -> seedChildren(conceptWithId, conceptsByParentId))
-            .toList();
+            .map(conceptWithId -> seedChildren(conceptWithId, conceptsByParentId)).toList();
         return root.c.withChildren(children);
     }
 }

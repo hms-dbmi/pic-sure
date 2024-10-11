@@ -58,27 +58,28 @@ public class ConceptRepository {
 
     public List<Concept> getConcepts(Filter filter, Pageable pageable) {
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
-        String sql = ALLOW_FILTERING_Q + ", " + filterQ.query() + """
-            SELECT
-                concept_node.*,
-                ds.REF as dataset,
-                ds.abbreviation AS studyAcronym,
-                continuous_min.VALUE as min, continuous_max.VALUE as max,
-                categorical_values.VALUE as values,
-                allow_filtering.allowFiltering AS allowFiltering,
-                meta_description.VALUE AS description
-            FROM
-                concept_node
-                INNER JOIN concepts_filtered_sorted ON concepts_filtered_sorted.concept_node_id = concept_node.concept_node_id
-                LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
-                LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
-                LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
-            ORDER BY
-                concepts_filtered_sorted.rank DESC, concept_node.concept_node_id ASC
-            """;
+        String sql = ALLOW_FILTERING_Q + ", " + filterQ.query()
+            + """
+                SELECT
+                    concept_node.*,
+                    ds.REF as dataset,
+                    ds.abbreviation AS studyAcronym,
+                    continuous_min.VALUE as min, continuous_max.VALUE as max,
+                    categorical_values.VALUE as values,
+                    allow_filtering.allowFiltering AS allowFiltering,
+                    meta_description.VALUE AS description
+                FROM
+                    concept_node
+                    INNER JOIN concepts_filtered_sorted ON concepts_filtered_sorted.concept_node_id = concept_node.concept_node_id
+                    LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
+                    LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                    LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+                ORDER BY
+                    concepts_filtered_sorted.rank DESC, concept_node.concept_node_id ASC
+                """;
         MapSqlParameterSource params = filterQ.params().addValue("disallowed_meta_keys", disallowedMetaFields);
 
         return template.query(sql, params, mapper);
@@ -92,30 +93,29 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConcept(String dataset, String conceptPath) {
-        String sql = ALLOW_FILTERING_Q + """
-            SELECT
-                concept_node.*,
-                ds.REF as dataset,
-                ds.abbreviation AS studyAcronym,
-                continuous_min.VALUE as min, continuous_max.VALUE as max,
-                categorical_values.VALUE as values,
-                allow_filtering.allowFiltering AS allowFiltering,
-                meta_description.VALUE AS description
-            FROM
-                concept_node
-                LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
-                LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
-                LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
-            WHERE
-                concept_node.concept_path = :conceptPath
-                AND ds.REF = :dataset
-            """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-            .addValue("conceptPath", conceptPath)
-            .addValue("dataset", dataset)
+        String sql = ALLOW_FILTERING_Q
+            + """
+                SELECT
+                    concept_node.*,
+                    ds.REF as dataset,
+                    ds.abbreviation AS studyAcronym,
+                    continuous_min.VALUE as min, continuous_max.VALUE as max,
+                    categorical_values.VALUE as values,
+                    allow_filtering.allowFiltering AS allowFiltering,
+                    meta_description.VALUE AS description
+                FROM
+                    concept_node
+                    LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
+                    LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                    LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+                WHERE
+                    concept_node.concept_path = :conceptPath
+                    AND ds.REF = :dataset
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", conceptPath).addValue("dataset", dataset)
             .addValue("disallowed_meta_keys", disallowedMetaFields);
         return template.query(sql, params, mapper).stream().findFirst();
     }
@@ -132,9 +132,7 @@ public class ConceptRepository {
                 concept_node.concept_path = :conceptPath
                 AND dataset.REF = :dataset
             """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-            .addValue("conceptPath", conceptPath)
-            .addValue("dataset", dataset);
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", conceptPath).addValue("dataset", dataset);
         return template.query(sql, params, new MapExtractor("KEY", "VALUE"));
     }
 
@@ -151,9 +149,7 @@ public class ConceptRepository {
                 (concept_node.CONCEPT_PATH, dataset.REF) IN (:pairs)
             ORDER BY concept_node.CONCEPT_PATH, dataset.REF
             """;
-        List<String[]> pairs = concepts.stream()
-            .map(c -> new String[]{c.conceptPath(), c.dataset()})
-            .toList();
+        List<String[]> pairs = concepts.stream().map(c -> new String[] {c.conceptPath(), c.dataset()}).toList();
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("pairs", pairs);
 
         return template.query(sql, params, conceptMetaExtractor);
@@ -161,83 +157,81 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConceptTree(String dataset, String conceptPath, int depth) {
-        String sql = ALLOW_FILTERING_Q + """
-                , core_query AS (
-                    WITH RECURSIVE nodes AS (
-                        SELECT
-                            concept_node_id, parent_id, 0 AS depth
-                        FROM
-                            concept_node
-                            LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                        WHERE
-                            concept_node.CONCEPT_PATH = :path
-                            AND dataset.REF = :dataset
-                    UNION
-                        SELECT
-                            child_nodes.concept_node_id, child_nodes.parent_id, parent_node.depth+ 1
-                        FROM
-                            concept_node child_nodes
-                            INNER JOIN nodes parent_node ON child_nodes.parent_id = parent_node.concept_node_id
-                            LEFT JOIN dataset ON child_nodes.dataset_id = dataset.dataset_id
-                    )
-                    SELECT
-                        depth, child_nodes.concept_node_id
-                    FROM
-                        nodes parent_node
-                        INNER JOIN concept_node child_nodes ON child_nodes.parent_id = parent_node.concept_node_id
-                    WHERE
-                        depth < :depth
-                    UNION
-                    SELECT
-                        0 as depth, concept_node.concept_node_id
-                    FROM
-                        concept_node
-                        LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                    WHERE
-                        concept_node.CONCEPT_PATH = :path
-                        AND dataset.REF = :dataset
-                    UNION
-                    SELECT
-                        -1 as depth, concept_node.concept_node_id
-                    FROM
-                        concept_node
-                    WHERE
-                        concept_node.concept_node_id = (
+        String sql = ALLOW_FILTERING_Q
+            + """
+                    , core_query AS (
+                        WITH RECURSIVE nodes AS (
                             SELECT
-                                parent_id
+                                concept_node_id, parent_id, 0 AS depth
                             FROM
                                 concept_node
                                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                             WHERE
                                 concept_node.CONCEPT_PATH = :path
                                 AND dataset.REF = :dataset
+                        UNION
+                            SELECT
+                                child_nodes.concept_node_id, child_nodes.parent_id, parent_node.depth+ 1
+                            FROM
+                                concept_node child_nodes
+                                INNER JOIN nodes parent_node ON child_nodes.parent_id = parent_node.concept_node_id
+                                LEFT JOIN dataset ON child_nodes.dataset_id = dataset.dataset_id
                         )
-                    ORDER BY depth ASC
-                )
-                SELECT
-                    concept_node.*,
-                    ds.REF AS dataset,
-                    ds.abbreviation AS studyAcronym,
-                    continuous_min.VALUE AS min, continuous_max.VALUE AS max,
-                    categorical_values.VALUE AS values,
-                    meta_description.VALUE AS description,
-                    allow_filtering.allowFiltering AS allowFiltering,
-                    core_query.depth AS depth
-                FROM
-                    concept_node
-                    INNER JOIN core_query ON concept_node.concept_node_id = core_query.concept_node_id
-                    LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
-                    LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
-                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
-                    LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
-            """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-            .addValue("path", conceptPath)
-            .addValue("dataset", dataset)
-            .addValue("depth", depth)
-            .addValue("disallowed_meta_keys", disallowedMetaFields);
+                        SELECT
+                            depth, child_nodes.concept_node_id
+                        FROM
+                            nodes parent_node
+                            INNER JOIN concept_node child_nodes ON child_nodes.parent_id = parent_node.concept_node_id
+                        WHERE
+                            depth < :depth
+                        UNION
+                        SELECT
+                            0 as depth, concept_node.concept_node_id
+                        FROM
+                            concept_node
+                            LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+                        WHERE
+                            concept_node.CONCEPT_PATH = :path
+                            AND dataset.REF = :dataset
+                        UNION
+                        SELECT
+                            -1 as depth, concept_node.concept_node_id
+                        FROM
+                            concept_node
+                        WHERE
+                            concept_node.concept_node_id = (
+                                SELECT
+                                    parent_id
+                                FROM
+                                    concept_node
+                                    LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+                                WHERE
+                                    concept_node.CONCEPT_PATH = :path
+                                    AND dataset.REF = :dataset
+                            )
+                        ORDER BY depth ASC
+                    )
+                    SELECT
+                        concept_node.*,
+                        ds.REF AS dataset,
+                        ds.abbreviation AS studyAcronym,
+                        continuous_min.VALUE AS min, continuous_max.VALUE AS max,
+                        categorical_values.VALUE AS values,
+                        meta_description.VALUE AS description,
+                        allow_filtering.allowFiltering AS allowFiltering,
+                        core_query.depth AS depth
+                    FROM
+                        concept_node
+                        INNER JOIN core_query ON concept_node.concept_node_id = core_query.concept_node_id
+                        LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
+                        LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                        LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                        LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                        LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("path", conceptPath).addValue("dataset", dataset)
+            .addValue("depth", depth).addValue("disallowed_meta_keys", disallowedMetaFields);
 
         if (depth < 0) {
             return Optional.empty();

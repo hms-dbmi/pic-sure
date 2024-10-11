@@ -27,14 +27,11 @@ public class FacetCategoryExtractor implements ResultSetExtractor<List<FacetCate
             // build out all the facets and make shells of the facet categories
             String category = rs.getString("category_name");
             Facet facet = new Facet(
-                rs.getString("name"), rs.getString("display"),
-                rs.getString("description"), rs.getString("full_name"), rs.getInt("facet_count"),
-                List.of(), category, null
+                rs.getString("name"), rs.getString("display"), rs.getString("description"), rs.getString("full_name"),
+                rs.getInt("facet_count"), List.of(), category, null
             );
-            FacetCategory facetCategory = new FacetCategory(
-                category, rs.getString("category_display"),
-                rs.getString("category_description"), List.of()
-            );
+            FacetCategory facetCategory =
+                new FacetCategory(category, rs.getString("category_display"), rs.getString("category_description"), List.of());
             String parentName = rs.getString("parent_name");
             if (StringUtils.hasLength(parentName)) {
                 Pair key = new Pair(parentName, category);
@@ -46,16 +43,15 @@ public class FacetCategoryExtractor implements ResultSetExtractor<List<FacetCate
             }
             categories.put(category, facetCategory);
         }
-        facets = facets.stream()
-            .map(f -> f.withChildren(childrenForParent.getOrDefault(new Pair(f), List.of())))
-            .toList();
+        facets = facets.stream().map(f -> f.withChildren(childrenForParent.getOrDefault(new Pair(f), List.of()))).toList();
         // group facets by category, then add them to their respective category
         Map<String, List<Facet>> grouped = facets.stream().collect(Collectors.groupingBy(Facet::category));
         return categories.entrySet().stream()
-            .map(e -> new FacetCategory(
-                e.getValue(),
-                grouped.getOrDefault(e.getKey(), List.of()).stream().sorted(Comparator.comparingInt(Facet::count).reversed()).toList()
-            ))
-            .toList();
+            .map(
+                e -> new FacetCategory(
+                    e.getValue(),
+                    grouped.getOrDefault(e.getKey(), List.of()).stream().sorted(Comparator.comparingInt(Facet::count).reversed()).toList()
+                )
+            ).toList();
     }
 }

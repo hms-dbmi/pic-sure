@@ -23,23 +23,17 @@ public class ConceptResultSetUtil {
 
     public CategoricalConcept mapCategorical(ResultSet rs) throws SQLException {
         return new CategoricalConcept(
-            rs.getString("concept_path"), rs.getString("name"),
-            rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
-            rs.getString("values") == null ? List.of() : parseValues(rs.getString("values")),
-            rs.getBoolean("allowFiltering"), rs.getString("studyAcronym"),
-            null,
-            null
+            rs.getString("concept_path"), rs.getString("name"), rs.getString("display"), rs.getString("dataset"),
+            rs.getString("description"), rs.getString("values") == null ? List.of() : parseValues(rs.getString("values")),
+            rs.getBoolean("allowFiltering"), rs.getString("studyAcronym"), null, null
         );
     }
 
     public ContinuousConcept mapContinuous(ResultSet rs) throws SQLException {
         return new ContinuousConcept(
-            rs.getString("concept_path"), rs.getString("name"),
-            rs.getString("display"), rs.getString("dataset"), rs.getString("description"),
-            rs.getBoolean("allowFiltering"),
-            parseMin(rs.getString("values")), parseMax(rs.getString("values")),
-            rs.getString("studyAcronym"),
-            null
+            rs.getString("concept_path"), rs.getString("name"), rs.getString("display"), rs.getString("dataset"),
+            rs.getString("description"), rs.getBoolean("allowFiltering"), parseMin(rs.getString("values")),
+            parseMax(rs.getString("values")), rs.getString("studyAcronym"), null
         );
     }
 

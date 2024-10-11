@@ -22,8 +22,7 @@ class DashboardControllerTest {
     @Test
     void shouldGetDashboard() {
         Dashboard dashboard = new Dashboard(List.of(), List.of());
-        Mockito.when(service.getDashboard())
-            .thenReturn(dashboard);
+        Mockito.when(service.getDashboard()).thenReturn(dashboard);
 
         ResponseEntity<Dashboard> actual = subject.getDashboard();
 

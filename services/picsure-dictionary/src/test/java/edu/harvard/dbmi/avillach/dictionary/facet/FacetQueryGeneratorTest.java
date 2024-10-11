@@ -30,12 +30,8 @@ class FacetQueryGeneratorTest {
     FacetQueryGenerator subject;
 
     @Container
-    static final PostgreSQLContainer<?> databaseContainer =
-        new PostgreSQLContainer<>("postgres:16")
-            .withReuse(true)
-            .withCopyFileToContainer(
-                MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql"
-            );
+    static final PostgreSQLContainer<?> databaseContainer = new PostgreSQLContainer<>("postgres:16").withReuse(true)
+        .withCopyFileToContainer(MountableFile.forClasspathResource("seed.sql"), "/docker-entrypoint-initdb.d/seed.sql");
 
     @DynamicPropertySource
     static void mySQLProperties(DynamicPropertyRegistry registry) {
@@ -45,7 +41,8 @@ class FacetQueryGeneratorTest {
         registry.add("spring.datasource.db", databaseContainer::getDatabaseName);
     }
 
-    record IdCountPair(int facetId, int facetCount) {}
+    record IdCountPair(int facetId, int facetCount) {
+    }
 
     static class IdCountPairMapper implements RowMapper<IdCountPair> {
 
@@ -64,9 +61,8 @@ class FacetQueryGeneratorTest {
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
         List<IdCountPair> expected = List.of(
-            new IdCountPair(22, 13), new IdCountPair(31, 3), new IdCountPair(27, 3),
-            new IdCountPair(26, 3), new IdCountPair(28, 3), new IdCountPair(23, 2),
-            new IdCountPair(25, 2), new IdCountPair(21, 1), new IdCountPair(20, 1)
+            new IdCountPair(22, 13), new IdCountPair(31, 3), new IdCountPair(27, 3), new IdCountPair(26, 3), new IdCountPair(28, 3),
+            new IdCountPair(23, 2), new IdCountPair(25, 2), new IdCountPair(21, 1), new IdCountPair(20, 1)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -80,9 +76,7 @@ class FacetQueryGeneratorTest {
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(27, 3), new IdCountPair(20, 1), new IdCountPair(21, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(27, 3), new IdCountPair(20, 1), new IdCountPair(21, 1));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -95,12 +89,8 @@ class FacetQueryGeneratorTest {
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(23, 1),
-            new IdCountPair(25, 1),
-            new IdCountPair(26, 1),
-            new IdCountPair(28, 1)
-        );
+        List<IdCountPair> expected =
+            List.of(new IdCountPair(23, 1), new IdCountPair(25, 1), new IdCountPair(26, 1), new IdCountPair(28, 1));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -113,32 +103,21 @@ class FacetQueryGeneratorTest {
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(25, 1),
-            new IdCountPair(26, 1),
-            new IdCountPair(28, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(25, 1), new IdCountPair(26, 1), new IdCountPair(28, 1));
 
         Assertions.assertEquals(expected, actual);
     }
 
     @Test
     void shouldCountFacetsWithSearchAndOneSelectedFacetsAndNoConsents() {
-        Filter filter = new Filter(
-            List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "age", List.of()
-        );
+        Filter filter = new Filter(List.of(new Facet("phs002715", "study_ids_dataset_ids")), "age", List.of());
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(23, 1),
-            new IdCountPair(25, 1),
-            new IdCountPair(26, 1),
-            new IdCountPair(28, 1)
-        );
+        List<IdCountPair> expected =
+            List.of(new IdCountPair(23, 1), new IdCountPair(25, 1), new IdCountPair(26, 1), new IdCountPair(28, 1));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -146,42 +125,29 @@ class FacetQueryGeneratorTest {
     @Test
     void shouldCountFacetsWithSearchAndOneSelectedFacetsAndConsents() {
         Filter filter = new Filter(
-            List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "age", List.of("phs002715.c1", "phs000284.c1", "phs002385.c1")
+            List.of(new Facet("phs002715", "study_ids_dataset_ids")), "age", List.of("phs002715.c1", "phs000284.c1", "phs002385.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(25, 1),
-            new IdCountPair(26, 1),
-            new IdCountPair(28, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(25, 1), new IdCountPair(26, 1), new IdCountPair(28, 1));
 
         Assertions.assertEquals(expected, actual);
     }
 
     @Test
     void shouldCountFacetsNoSearchAndOneSelectedFacetsAndNoConsents() {
-        Filter filter = new Filter(
-            List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "", List.of()
-        );
+        Filter filter = new Filter(List.of(new Facet("phs002715", "study_ids_dataset_ids")), "", List.of());
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
         List<IdCountPair> expected = List.of(
-            new IdCountPair(28, 3),
-            new IdCountPair(26, 3),
-            new IdCountPair(31, 3),
-            new IdCountPair(22, 13),
-            new IdCountPair(23, 2),
-            new IdCountPair(25, 2),
-            new IdCountPair(27, 3)
+            new IdCountPair(28, 3), new IdCountPair(26, 3), new IdCountPair(31, 3), new IdCountPair(22, 13), new IdCountPair(23, 2),
+            new IdCountPair(25, 2), new IdCountPair(27, 3)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -189,41 +155,27 @@ class FacetQueryGeneratorTest {
 
     @Test
     void shouldCountFacetsNoSearchAndOneSelectedFacetsAndConsents() {
-        Filter filter = new Filter(
-            List.of(new Facet("phs002715", "study_ids_dataset_ids")),
-            "", List.of("phs000007.c2")
-        );
+        Filter filter = new Filter(List.of(new Facet("phs002715", "study_ids_dataset_ids")), "", List.of("phs000007.c2"));
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(27, 3)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(27, 3));
 
         Assertions.assertEquals(expected, actual);
     }
 
     @Test
     void shouldCountFacetsWithSearchAndTwoSelectedFacetsInDifferentCatsAndNoConsents() {
-        Filter filter = new Filter(
-            List.of(
-                new Facet("phs000007", "study_ids_dataset_ids"),
-                new Facet("LOINC", "nsrr_harmonized")
-            ),
-            "cola", List.of()
-        );
+        Filter filter =
+            new Filter(List.of(new Facet("phs000007", "study_ids_dataset_ids"), new Facet("LOINC", "nsrr_harmonized")), "cola", List.of());
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(21, 1),
-            new IdCountPair(27, 1),
-            new IdCountPair(20, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(21, 1), new IdCountPair(27, 1), new IdCountPair(20, 1));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -231,45 +183,29 @@ class FacetQueryGeneratorTest {
     @Test
     void shouldCountFacetsWithSearchAndTwoSelectedFacetsInDifferentCatsAndConsents() {
         Filter filter = new Filter(
-            List.of(
-                new Facet("phs000007", "study_ids_dataset_ids"),
-                new Facet("LOINC", "nsrr_harmonized")
-            ),
-            "cola", List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
+            List.of(new Facet("phs000007", "study_ids_dataset_ids"), new Facet("LOINC", "nsrr_harmonized")), "cola",
+            List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(21, 1),
-            new IdCountPair(27, 1),
-            new IdCountPair(20, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(21, 1), new IdCountPair(27, 1), new IdCountPair(20, 1));
 
         Assertions.assertEquals(expected, actual);
     }
 
     @Test
     void shouldCountFacetsNoSearchAndTwoSelectedFacetsInDifferentCatsAndNoConsents() {
-        Filter filter = new Filter(
-            List.of(
-                new Facet("phs000007", "study_ids_dataset_ids"),
-                new Facet("LOINC", "nsrr_harmonized")
-            ),
-            "", List.of()
-        );
+        Filter filter =
+            new Filter(List.of(new Facet("phs000007", "study_ids_dataset_ids"), new Facet("LOINC", "nsrr_harmonized")), "", List.of());
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(21, 1),
-            new IdCountPair(27, 1),
-            new IdCountPair(20, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(21, 1), new IdCountPair(27, 1), new IdCountPair(20, 1));
 
         Assertions.assertEquals(expected, actual);
     }
@@ -277,22 +213,15 @@ class FacetQueryGeneratorTest {
     @Test
     void shouldCountFacetsNoSearchAndTwoSelectedFacetsInDifferentCatsAndConsents() {
         Filter filter = new Filter(
-            List.of(
-                new Facet("phs000007", "study_ids_dataset_ids"),
-                new Facet("LOINC", "nsrr_harmonized")
-            ),
-            "", List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
+            List.of(new Facet("phs000007", "study_ids_dataset_ids"), new Facet("LOINC", "nsrr_harmonized")), "",
+            List.of("LOINC.c1", "PhenX.c1", "phs000007.c1")
         );
 
         MapSqlParameterSource params = new MapSqlParameterSource();
         String query = subject.createFacetSQLAndPopulateParams(filter, params);
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
-        List<IdCountPair> expected = List.of(
-            new IdCountPair(21, 1),
-            new IdCountPair(27, 1),
-            new IdCountPair(20, 1)
-        );
+        List<IdCountPair> expected = List.of(new IdCountPair(21, 1), new IdCountPair(27, 1), new IdCountPair(20, 1));
 
         Assertions.assertEquals(expected, actual);
     }

@@ -24,10 +24,8 @@ public class DashboardConfig {
 
     @Bean
     public List<DashboardColumn> getColumns() {
-        return labelDisplayElementPairs.entrySet().stream()
-            .map(e -> new DashboardColumn(e.getKey(), e.getValue()))
-            .sorted((a, b) -> Integer.compare(calculateOrder(a), calculateOrder(b)))
-            .toList();
+        return labelDisplayElementPairs.entrySet().stream().map(e -> new DashboardColumn(e.getKey(), e.getValue()))
+            .sorted((a, b) -> Integer.compare(calculateOrder(a), calculateOrder(b))).toList();
     }
 
     private int calculateOrder(DashboardColumn column) {

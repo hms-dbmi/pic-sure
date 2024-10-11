@@ -22,10 +22,8 @@ public class DashboardRepository {
 
     @Autowired
     public DashboardRepository(
-        NamedParameterJdbcTemplate template,
-        List<DashboardColumn> columns,
-        @Value("${dashboard.nonmeta-columns}")
-        Set<String> nonMetaColumns, DashboardRowResultSetExtractor extractor
+        NamedParameterJdbcTemplate template, List<DashboardColumn> columns,
+        @Value("${dashboard.nonmeta-columns}") Set<String> nonMetaColumns, DashboardRowResultSetExtractor extractor
     ) {
         this.template = template;
         this.columns = columns;
@@ -33,7 +31,7 @@ public class DashboardRepository {
         this.extractor = extractor;
     }
 
-    private static final class ListMapExtractor implements ResultSetExtractor<List<Map<String,String>>> {
+    private static final class ListMapExtractor implements ResultSetExtractor<List<Map<String, String>>> {
 
         @Override
         public List<Map<String, String>> extractData(ResultSet rs) throws SQLException, DataAccessException {
@@ -51,41 +49,42 @@ public class DashboardRepository {
     }
 
     public List<Map<String, String>> getHackyBDCRows() {
-        String sql = """
-                SELECT
-                    dataset.abbreviation AS abbreviation,
-                    dataset.full_name AS name,
-                    CASE
-                        WHEN consent.variable_count > -1 THEN consent.variable_count::text
-                        ELSE 'N/A'
-                        END
-                        AS clinvars,
-                    CASE
-                        WHEN consent.participant_count > -1 THEN consent.participant_count::text
-                        ELSE 'N/A'
-                        END
-                        AS participants,
-                    CASE
-                        WHEN consent.sample_count > -1 THEN consent.sample_count::text
-                        ELSE 'N/A'
-                        END
-                        AS samples,
-                    CASE
-                            WHEN (consent.consent_code IS NOT NULL AND consent.consent_code != '') THEN concat(study_accession_meta.value, '.', consent.consent_code)
-                        ELSE study_accession_meta.value
-                        END
-                        AS accession,
-                    study_focus_meta.value AS study_focus,
-                    additional_info_meta.value AS additional_info_link
-                FROM
-                    dataset
-                    LEFT JOIN consent ON consent.dataset_id = dataset.dataset_id
-                    LEFT JOIN dataset_meta AS study_focus_meta ON study_focus_meta.dataset_id = dataset.dataset_id AND study_focus_meta.KEY = 'study_focus'
-                    LEFT JOIN dataset_meta AS study_accession_meta ON study_accession_meta.dataset_id = dataset.dataset_id AND study_accession_meta.KEY = 'study_accession'
-                    LEFT JOIN dataset_meta AS additional_info_meta ON additional_info_meta.dataset_id = dataset.dataset_id AND additional_info_meta.KEY = 'study_link'
-                    WHERE dataset.dataset_id NOT IN (select dataset_id from dataset_meta where KEY = 'show_dashboad' and VALUE = 'false')
-                ORDER BY name ASC, abbreviation ASC
-            """;
+        String sql =
+            """
+                    SELECT
+                        dataset.abbreviation AS abbreviation,
+                        dataset.full_name AS name,
+                        CASE
+                            WHEN consent.variable_count > -1 THEN consent.variable_count::text
+                            ELSE 'N/A'
+                            END
+                            AS clinvars,
+                        CASE
+                            WHEN consent.participant_count > -1 THEN consent.participant_count::text
+                            ELSE 'N/A'
+                            END
+                            AS participants,
+                        CASE
+                            WHEN consent.sample_count > -1 THEN consent.sample_count::text
+                            ELSE 'N/A'
+                            END
+                            AS samples,
+                        CASE
+                                WHEN (consent.consent_code IS NOT NULL AND consent.consent_code != '') THEN concat(study_accession_meta.value, '.', consent.consent_code)
+                            ELSE study_accession_meta.value
+                            END
+                            AS accession,
+                        study_focus_meta.value AS study_focus,
+                        additional_info_meta.value AS additional_info_link
+                    FROM
+                        dataset
+                        LEFT JOIN consent ON consent.dataset_id = dataset.dataset_id
+                        LEFT JOIN dataset_meta AS study_focus_meta ON study_focus_meta.dataset_id = dataset.dataset_id AND study_focus_meta.KEY = 'study_focus'
+                        LEFT JOIN dataset_meta AS study_accession_meta ON study_accession_meta.dataset_id = dataset.dataset_id AND study_accession_meta.KEY = 'study_accession'
+                        LEFT JOIN dataset_meta AS additional_info_meta ON additional_info_meta.dataset_id = dataset.dataset_id AND additional_info_meta.KEY = 'study_link'
+                        WHERE dataset.dataset_id NOT IN (select dataset_id from dataset_meta where KEY = 'show_dashboad' and VALUE = 'false')
+                    ORDER BY name ASC, abbreviation ASC
+                """;
         return template.query(sql, new ListMapExtractor());
     }
 
@@ -102,10 +101,7 @@ public class DashboardRepository {
                 dataset_meta.KEY IN (:keys)
             ORDER BY name ASC, abbreviation ASC
             """;
-        List<String> keys = columns.stream()
-            .map(DashboardColumn::dataElement)
-            .filter(Predicate.not(nonMetaColumns::contains))
-            .toList();
+        List<String> keys = columns.stream().map(DashboardColumn::dataElement).filter(Predicate.not(nonMetaColumns::contains)).toList();
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("keys", keys);
         return template.query(sql, params, extractor);
     }
