@@ -310,7 +310,7 @@ public class AccessRuleService {
                 // means one fails all fail
                 for (AccessRule gate : gates) {
                     if (!evaluateAccessRule(parsedRequestBody, gate)) {
-                        logger.error("evaluateAccessRule() gate {} failed: {} ____ {}", gate.getName(), gate.getRule(), gate.getValue());
+                        logger.info("evaluateAccessRule() gate {} failed: {} ____ {}", gate.getName(), gate.getRule(), gate.getValue());
                         gatesPassed = false;
                         break;
                     }
