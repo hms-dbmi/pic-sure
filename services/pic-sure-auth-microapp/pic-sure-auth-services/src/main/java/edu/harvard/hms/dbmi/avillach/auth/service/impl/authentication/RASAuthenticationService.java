@@ -28,9 +28,9 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     private final UserService userService;
     private final boolean isEnabled;
-    private final AccessRuleService accessRuleService;
     private final RoleService roleService;
     private final RASPassPortService rasPassPortService;
+    private final CacheEvictionService cacheEvictionService;
     private Connection rasConnection;
     private final String rasPassportIssuer;
 
@@ -45,7 +45,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
      */
     @Autowired
     public RASAuthenticationService(UserService userService,
-                                    AccessRuleService accessRuleService,
                                     RestClientUtil restClientUtil,
                                     @Value("${ras.okta.idp.provider.is.enabled}") boolean isEnabled,
                                     @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri,
@@ -55,7 +54,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
                                     @Value("${ras.passport.issuer}") String rasPassportIssuer,
                                     RoleService roleService,
                                     RASPassPortService rasPassPortService,
-                                    ConnectionWebService connectionService ) {
+                                    ConnectionWebService connectionService, CacheEvictionService cacheEvictionService) {
         super(idp_provider_uri, clientId, clientSecret, restClientUtil);
 
         this.userService = userService;
@@ -69,8 +68,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         logger.info("idp_provider_uri: {}", idp_provider_uri);
         logger.info("connectionId: {}", connectionId);
 
-        this.accessRuleService = accessRuleService;
         this.rasConnection = connectionService.getConnectionByLabel("RAS");
+        this.cacheEvictionService = cacheEvictionService;
     }
 
     /**
@@ -161,7 +160,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         currentUser.setGeneralMetadata(generateRasUserMetadata(currentUser).toString());
         logger.info("USER METADATA SUCCESSFULLY ADDED - USER DATA: {}", currentUser.getGeneralMetadata());
 
-        clearCache(currentUser);
+        cacheEvictionService.evictCache(currentUser);
         return Optional.of(currentUser);
     }
 
@@ -178,11 +177,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         claims.put("sub", user.getSubject());
         // We need the id_token to be returned, so we can use it at logout
         return userService.getUserProfileResponse(claims);
-    }
-
-    private void clearCache(User user) {
-        userService.evictFromCache(user.getSubject());
-        accessRuleService.evictFromCache(user.getSubject());
     }
 
     /**

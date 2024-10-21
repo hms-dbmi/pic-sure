@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.config;
 
 import edu.harvard.hms.dbmi.avillach.auth.filter.JWTFilter;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
@@ -24,25 +25,23 @@ import static org.springframework.security.config.http.SessionCreationPolicy.STA
 public class SecurityConfig {
 
     private final JWTFilter jwtFilter;
-    private final SessionService sessionService;
+    private final CacheEvictionService cacheEvictionService;
     private final AuthenticationProvider authenticationProvider;
     private final UserService userService;
-    private final AccessRuleService accessRuleService;
     private final JWTUtil jwtUtil;
 
     @Autowired
-    public SecurityConfig(JWTFilter jwtFilter, SessionService sessionService, AuthenticationProvider authenticationProvider, UserService userService, AccessRuleService accessRuleService, JWTUtil jwtUtil) {
+    public SecurityConfig(JWTFilter jwtFilter, AuthenticationProvider authenticationProvider, UserService userService, CacheEvictionService cacheEvictionService, JWTUtil jwtUtil) {
         this.jwtFilter = jwtFilter;
-        this.sessionService = sessionService;
         this.authenticationProvider = authenticationProvider;
         this.userService = userService;
-        this.accessRuleService = accessRuleService;
         this.jwtUtil = jwtUtil;
+        this.cacheEvictionService = cacheEvictionService;
     }
 
     @Bean
     public CustomLogoutHandler customLogoutHandler() {
-        return new CustomLogoutHandler(sessionService, userService, accessRuleService, jwtUtil);
+        return new CustomLogoutHandler(userService, cacheEvictionService, jwtUtil);
     }
 
     @Bean
@@ -61,7 +60,8 @@ public class SecurityConfig {
                                     "/user/me/queryTemplate",
                                     "/user/me/queryTemplate/**",
                                     "/open/validate",
-                                    "/logout"
+                                    "/logout",
+                                    "/cache/**"
                             ).permitAll()
                             .anyRequest().authenticated()
                 )

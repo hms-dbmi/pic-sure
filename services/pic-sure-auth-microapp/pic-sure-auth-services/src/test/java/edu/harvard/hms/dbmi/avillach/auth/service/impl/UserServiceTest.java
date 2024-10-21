@@ -49,8 +49,6 @@ public class UserServiceTest {
     @Mock
     private RoleService roleService;
     @Mock
-    private SessionService sessionService;
-    @Mock
     private JWTUtil mockJwtUtil;
     private JWTUtil jwtUtil;
 
@@ -80,7 +78,6 @@ public class UserServiceTest {
                 applicationUUID,
                 longTermTokenExpirationTime,
                 mockJwtUtil,
-                sessionService,
                 false);
     }
 

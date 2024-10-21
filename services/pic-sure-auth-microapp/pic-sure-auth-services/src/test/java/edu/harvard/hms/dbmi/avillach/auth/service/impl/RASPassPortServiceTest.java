@@ -26,6 +26,8 @@ public class RASPassPortServiceTest {
 
     @Mock
     private RestClientUtil restClientUtil;
+    @Mock
+    private CacheEvictionService cacheEvictionService;
 
     private RASPassPortService rasPassPortService;
 
@@ -33,7 +35,7 @@ public class RASPassPortServiceTest {
 
     @Before
     public void setUp() throws Exception {
-        this.rasPassPortService = new RASPassPortService(restClientUtil, null, "https://test.com/");
+        this.rasPassPortService = new RASPassPortService(restClientUtil, null, "https://test.com/", cacheEvictionService);
 
         // Parse the passport and get the visa so we can mock the validateVisa method
         Optional<Passport> passport = JWTUtil.parsePassportJWTV11(exampleRasPassport);

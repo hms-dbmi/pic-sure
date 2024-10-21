@@ -332,6 +332,7 @@ public class AuthorizationServiceTest {
 
         // create access_rule for privilege
         AccessRule accessRule = new AccessRule();
+        accessRule.setUuid(UUID.randomUUID());
         accessRule.setRule("$.test");
         accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
         accessRule.setValue("value");

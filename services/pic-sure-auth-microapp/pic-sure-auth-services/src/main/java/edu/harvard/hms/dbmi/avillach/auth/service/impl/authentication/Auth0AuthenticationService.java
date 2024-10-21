@@ -9,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.BasicMailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
@@ -46,6 +47,7 @@ public class Auth0AuthenticationService implements AuthenticationService {
 
     private static final int AUTH_RETRY_LIMIT = 3;
     private final boolean isAuth0Enabled;
+    private final CacheEvictionService cacheEvictionService;
 
     private boolean deniedEmailEnabled;
 
@@ -64,8 +66,8 @@ public class Auth0AuthenticationService implements AuthenticationService {
                                       RestClientUtil restClientUtil,
                                       @Value("${auth0.idp.provider.is.enabled}") boolean isAuth0Enabled,
                                       @Value("${auth0.denied.email.enabled}") boolean deniedEmailEnabled,
-                                      @Value("${auth0.host}") String auth0host
-    ) {
+                                      @Value("${auth0.host}") String auth0host,
+                                      CacheEvictionService cacheEvictionService) {
         this.matchingService = matchingService;
         this.userRepository = userRepository;
         this.basicMailService = basicMailService;
@@ -75,6 +77,7 @@ public class Auth0AuthenticationService implements AuthenticationService {
         this.connectionRepository = connectionRepository;
         this.restClientUtil = restClientUtil;
         this.isAuth0Enabled = isAuth0Enabled;
+        this.cacheEvictionService = cacheEvictionService;
     }
 
     @Override
@@ -121,6 +124,7 @@ public class Auth0AuthenticationService implements AuthenticationService {
             }
         }
 
+        cacheEvictionService.evictCache(user);
         HashMap<String, Object> claims = new HashMap<>();
         claims.put("sub", userId);
         claims.put("name", user.getName());

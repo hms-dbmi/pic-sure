@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.config;
 
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -18,15 +17,13 @@ import org.springframework.stereotype.Component;
 public class CustomLogoutHandler implements LogoutHandler {
 
     private final Logger logger = LoggerFactory.getLogger(CustomLogoutHandler.class);
-    private final SessionService sessionService;
     private final UserService userService;
-    private final AccessRuleService accessRuleService;
+    private final CacheEvictionService cacheEvictionService;
     private final JWTUtil jwtUtil;
 
-    public CustomLogoutHandler(SessionService sessionService, UserService userService, AccessRuleService accessRuleService, edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil jwtUtil) {
-        this.sessionService = sessionService;
+    public CustomLogoutHandler(UserService userService, CacheEvictionService cacheEvictionService, edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil jwtUtil) {
         this.userService = userService;
-        this.accessRuleService = accessRuleService;
+        this.cacheEvictionService = cacheEvictionService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -47,9 +44,7 @@ public class CustomLogoutHandler implements LogoutHandler {
 
         if (StringUtils.isNotBlank(subject)) {
             logger.info("logout() Logging out User: {}", subject);
-            this.sessionService.endSession(subject);
-            this.userService.evictFromCache(subject);
-            this.accessRuleService.evictFromCache(subject);
+            this.cacheEvictionService.evictCache(subject);
             this.userService.removeUserPassport(subject);
         }
     }

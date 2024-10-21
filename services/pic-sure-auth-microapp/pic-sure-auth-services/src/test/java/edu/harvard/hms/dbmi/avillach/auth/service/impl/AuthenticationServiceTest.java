@@ -42,6 +42,8 @@ public class AuthenticationServiceTest {
     private ConnectionRepository connectionRepository;
     @Mock
     private RestClientUtil restClientUtil;
+    @Mock
+    private CacheEvictionService cacheEvictionService;
 
     private Auth0AuthenticationService authenticationService;
 
@@ -58,7 +60,7 @@ public class AuthenticationServiceTest {
         authRequest.put("access_token", accessToken);
         authRequest.put("redirectURI", redirectURI);
 
-        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost");
+        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost", cacheEvictionService);
     }
 
     // Tests missing parameters in the authentication request

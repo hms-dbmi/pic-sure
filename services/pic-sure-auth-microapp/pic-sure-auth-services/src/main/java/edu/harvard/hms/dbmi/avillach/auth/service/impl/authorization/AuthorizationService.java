@@ -150,7 +150,13 @@ public class AuthorizationService {
             label = user.getConnection().getLabel();
         }
 
-        if (!this.strictConnections.contains(label)) {
+        if (this.strictConnections.contains(label)) {
+            accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
+            if (accessRules.isEmpty()) {
+                logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
+                return false;
+            }
+        } else {
             Set<Privilege> privileges = user.getPrivilegesByApplication(application);
             // List all privileges of the user
             logger.info("ACCESS_LOG ___ {},{},{} ___ has the following privileges: {}", user.getUuid().toString(), user.getEmail(), user.getName(), privileges.stream().map(Privilege::getName).collect(Collectors.joining(", ")));
@@ -160,20 +166,13 @@ public class AuthorizationService {
             }
 
             accessRules = this.accessRuleService.cachedPreProcessAccessRules(user, privileges);
-            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::getName).collect(Collectors.joining(", ")));
             if (accessRules.isEmpty()) {
                 logger.info("ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
                 return true;
             }
-        } else {
-            accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
-
-            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", ")));
-            if (accessRules.isEmpty()) {
-                logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
-                return false;
-            }
         }
+
+        logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", ")));
 
         EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, accessRules);
         boolean result = evaluationResult.result();

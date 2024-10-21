@@ -15,6 +15,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.stubbing.OngoingStubbing;
 import org.springframework.http.ResponseEntity;
 
 import java.util.*;
@@ -28,11 +29,12 @@ public class RASAuthenticationServiceTest {
     @Mock
     private UserService userService;
     @Mock
-    private AccessRuleService accessRuleService;
-    @Mock
     private RestClientUtil restClientUtil;
     @Mock
     private ConnectionWebService connectionService;
+    @Mock
+    private CacheEvictionService cacheEvictionService;
+
     private RASPassPortService rasPassPortService;
     private RASAuthenticationService rasAuthenticationService;
 
@@ -46,12 +48,11 @@ public class RASAuthenticationServiceTest {
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         RoleService roleService = new RoleService(mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class));
-        this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, ""));
+        this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
         rasAuthenticationService = new RASAuthenticationService(
                 userService,
-                accessRuleService,
                 restClientUtil,
                 true,
                 "test.com",
@@ -61,7 +62,8 @@ public class RASAuthenticationServiceTest {
                 "https://stsstg.nih.gov",
                 roleService,
                 rasPassPortService,
-                connectionService
+                connectionService,
+                cacheEvictionService
         );
 
         Connection rasConnection = new Connection();
@@ -90,6 +92,8 @@ public class RASAuthenticationServiceTest {
 
         // introspect
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(payload))).thenReturn(ResponseEntity.ok(introspectionResponse));
+
+        doNothing().when(cacheEvictionService).evictCache(any(User.class));
 
         User user = createTestUser();
         user.setSubject("okta-ras|adfadfaf");

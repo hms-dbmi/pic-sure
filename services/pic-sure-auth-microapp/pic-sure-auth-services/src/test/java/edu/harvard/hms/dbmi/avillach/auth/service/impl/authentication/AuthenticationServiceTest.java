@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.BasicMailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
@@ -44,13 +45,12 @@ public class AuthenticationServiceTest {
     private ConnectionRepository connectionRepository;
     @Mock
     private RestClientUtil restClientUtil;
+    @Mock
+    private CacheEvictionService cacheEvictionService;
 
     private Auth0AuthenticationService authenticationService;
 
     private final String accessToken = "dummyAccessToken";
-    private final String redirectURI = "http://dummyRedirectUri.com";
-    private final String userId = "user123";
-    private final String connectionId = "conn123";
     private Map<String, String> authRequest;
 
     @Before
@@ -58,9 +58,10 @@ public class AuthenticationServiceTest {
         MockitoAnnotations.initMocks(this);
         authRequest = new HashMap<>();
         authRequest.put("access_token", accessToken);
+        String redirectURI = "http://dummyRedirectUri.com";
         authRequest.put("redirectURI", redirectURI);
 
-        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost");
+        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost", cacheEvictionService);
     }
 
     // Tests missing parameters in the authentication request
@@ -131,10 +132,12 @@ public class AuthenticationServiceTest {
         this.authenticationService.setDeniedEmailEnabled(false);
         JsonNode mockUserInfo = mock(JsonNode.class);
         when(mockUserInfo.get("user_id")).thenReturn(mock(JsonNode.class));
+        String userId = "user123";
         when(mockUserInfo.get("user_id").asText()).thenReturn(userId);
         when(mockUserInfo.get("identities")).thenReturn(mock(JsonNode.class));
         when(mockUserInfo.get("identities").get(0)).thenReturn(mock(JsonNode.class));
         when(mockUserInfo.get("identities").get(0).get("connection")).thenReturn(mock(JsonNode.class));
+        String connectionId = "conn123";
         when(mockUserInfo.get("identities").get(0).get("connection").asText()).thenReturn(connectionId);
 
         String validJson = "{"

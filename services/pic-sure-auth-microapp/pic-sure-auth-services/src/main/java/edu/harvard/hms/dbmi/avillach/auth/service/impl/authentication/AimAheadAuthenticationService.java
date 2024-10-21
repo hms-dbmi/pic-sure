@@ -8,7 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
-import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import jakarta.persistence.NoResultException;
 import org.apache.commons.lang3.StringUtils;
@@ -32,7 +32,8 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
 
     private final String connectionId;
     private final boolean isOktaEnabled;
-    private final AccessRuleService accessRuleService;
+
+    private final CacheEvictionService cacheEvictionService;
 
     /**
      * Constructor for the OktaOAuthAuthenticationService
@@ -46,26 +47,24 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
     @Autowired
     public AimAheadAuthenticationService(UserService userService,
                                          RoleService roleService,
-                                         AccessRuleService accessRuleService,
                                          RestClientUtil restClientUtil,
                                          @Value("${a4.okta.idp.provider.is.enabled}") boolean isOktaEnabled,
                                          @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
                                          @Value("${a4.okta.connection.id}") String connectionId,
                                          @Value("${a4.okta.client.id}") String clientId,
-                                         @Value("${a4.okta.client.secret}") String spClientSecret) {
+                                         @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService) {
         super(idp_provider_uri, clientId, spClientSecret, restClientUtil);
 
         this.userService = userService;
         this.roleService = roleService;
         this.connectionId = connectionId;
         this.isOktaEnabled = isOktaEnabled;
+        this.cacheEvictionService = cacheEvictionService;
 
         logger.info("OktaOAuthAuthenticationService is enabled: {}", isOktaEnabled);
         logger.info("OktaOAuthAuthenticationService initialized");
         logger.info("idp_provider_uri: {}", idp_provider_uri);
         logger.info("connectionId: {}", connectionId);
-
-        this.accessRuleService = accessRuleService;
     }
 
     /**
@@ -128,7 +127,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
             return null;
         }
 
-        clearCache(user);
+        cacheEvictionService.evictCache(user);
         return user;
     }
 
@@ -144,11 +143,6 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
         claims.put("email", user.getEmail());
         claims.put("sub", user.getSubject());
         return userService.getUserProfileResponse(claims);
-    }
-
-    private void clearCache(User user) {
-        userService.evictFromCache(user.getSubject());
-        accessRuleService.evictFromCache(user.getSubject());
     }
 
     /**

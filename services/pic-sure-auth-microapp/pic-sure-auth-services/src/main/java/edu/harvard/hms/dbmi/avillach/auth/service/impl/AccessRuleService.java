@@ -158,16 +158,6 @@ public class AccessRuleService {
         return new HashSet<>();
     }
 
-    /**
-     * Evicts the user from all AccessRule caches
-     * @param userSubject the email to evict
-     */
-    public void evictFromCache(String userSubject) {
-        logger.info("evictFromCache called for user.email: {}", userSubject);
-        evictFromMergedAccessRuleCache(userSubject);
-        evictFromPreProcessedAccessRules(userSubject);
-    }
-
     @CacheEvict(value = "mergedRulesCache")
     public void evictFromMergedAccessRuleCache(String userSubject) {
         if (StringUtils.isBlank(userSubject)) {

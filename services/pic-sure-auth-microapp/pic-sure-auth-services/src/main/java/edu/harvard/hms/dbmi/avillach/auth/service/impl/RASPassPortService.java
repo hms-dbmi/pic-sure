@@ -33,14 +33,16 @@ public class RASPassPortService {
     private final RestClientUtil restClientUtil;
     private final UserService userService;
     private final String rasURI;
+    private final CacheEvictionService cacheEvictionService;
 
     @Autowired
     public RASPassPortService(RestClientUtil restClientUtil,
                               UserService userService,
-                              @Value("${ras.idp.uri}") String rasURI) {
+                              @Value("${ras.idp.uri}") String rasURI, CacheEvictionService cacheEvictionService) {
         this.restClientUtil = restClientUtil;
         this.userService = userService;
         this.rasURI = rasURI.replaceAll("/$", "");
+        this.cacheEvictionService = cacheEvictionService;
 
         logger.info("RASPassPortService initialized with rasURI: {}", rasURI);
     }
@@ -72,7 +74,7 @@ public class RASPassPortService {
                 logger.error("FAILED TO DECODE PASSPORT ___ USER: {}", user.getSubject());
                 user.setPassport(null);
                 userService.save(user);
-                userService.logoutUser(user);
+                cacheEvictionService.evictCache(user);
                 return;
             }
 
@@ -127,6 +129,7 @@ public class RASPassPortService {
     private boolean handleFailedValidationResponse(String validateResponse, User user) {
         this.userService.save(user);
         this.userService.logoutUser(user);
+        this.cacheEvictionService.evictCache(user);
         this.logger.info("handleFailedValidationResponse - {} - USER LOGGED OUT - {}", validateResponse, user.getSubject());
         return false;
     }
