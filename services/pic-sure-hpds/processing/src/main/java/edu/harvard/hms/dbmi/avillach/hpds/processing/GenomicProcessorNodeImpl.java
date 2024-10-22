@@ -35,8 +35,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     private final VariantService variantService;
 
-    private final VariantMetadataIndex variantMetadataIndex;
-
 
     private final String HOMOZYGOUS_VARIANT = "1/1";
     private final String HETEROZYGOUS_VARIANT = "0/1";
@@ -46,7 +44,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         this.genomicDataDirectory = genomicDataDirectory;
         this.variantService = new VariantService(genomicDataDirectory);
         this.patientVariantJoinHandler = new PatientVariantJoinHandler(variantService);
-        this.variantMetadataIndex = VariantMetadataIndex.createInstance(genomicDataDirectory);
 
         infoStores = new HashMap<>();
         File genomicDataDirectoryFile = new File(this.genomicDataDirectory);
@@ -402,6 +399,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
 
     @Override
     public Map<String, Set<String>> getVariantMetadata(Collection<String> variantList) {
-        return variantMetadataIndex.findByMultipleVariantSpec(variantList);
+        return variantService.findByMultipleVariantSpec(variantList);
     }
 }
