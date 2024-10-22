@@ -96,7 +96,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 if (isExplorer) {
                     // If the request is coming from the explorer, we should not allow open access
                     logger.error("User is not authorized.");
-                    requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized."));
+                    requestContext.abortWith(PICSUREResponse.unauthorizedError("Your session has expired. Please log in again."));
                 }
 
                 boolean isAuthorized = callOpenAccessValidationEndpoint(requestContext);
