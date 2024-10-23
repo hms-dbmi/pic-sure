@@ -80,6 +80,7 @@ public class TokenService {
         if (token == null || token.isEmpty()) {
             logger.error("Token - {} is blank", token);
             tokenInspection.setMessage("Token not found");
+            tokenInspection.addField("active", false);
             return tokenInspection;
         }
 
@@ -98,6 +99,7 @@ public class TokenService {
             // only when the token is for sure invalid, we can dump it into the log.
             logger.error("_inspectToken() the token - {} - is invalid with exception: {}", token, ex.getMessage());
             tokenInspection.setMessage(ex.getMessage());
+            tokenInspection.addField("active", false);
             return tokenInspection;
         }
 
@@ -142,6 +144,7 @@ public class TokenService {
         if (user == null) {
             logger.error("_inspectToken() could not find user with subject {}", subject);
             tokenInspection.setMessage("user doesn't exist");
+            tokenInspection.addField("active", false);
             return tokenInspection;
         }
 

@@ -186,7 +186,7 @@ public class AccessRuleService {
         return preProcessARBySortedKeys(accessRules);
     }
 
-    @CacheEvict(value = "preProcessedAccessRules", keyGenerator = "customKeyGenerator")
+    @CacheEvict(value = "preProcessedAccessRules")
     public void evictFromPreProcessedAccessRules(String userSubject) {
         if (userSubject == null || userSubject.isEmpty()) {
             logger.warn("evictFromPreProcessedAccessRules() was called with a null or empty email");
