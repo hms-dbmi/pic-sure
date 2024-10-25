@@ -176,13 +176,11 @@ public class VariantService {
                 ){
                     oos.writeObject(bucketIndex);
                     oos.flush();
-                    oos.close();
                 }
-            }else {
+            }else if (new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
                 try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
                     log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
                     bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
-                    objectInputStream.close();
                 } catch (IOException | ClassNotFoundException e) {
                     log.error("an error occurred", e);
                 }
