@@ -7,34 +7,38 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Optional;
 import java.util.Set;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
 
+@SpringBootTest
+@ContextConfiguration(classes = {CustomUserDetailService.class})
 public class CustomUserDetailServiceTest {
 
-    @Mock
+    @MockBean
     private UserService userService;
 
-    @Mock
+    @MockBean
     private ApplicationService applicationService;
 
-    @InjectMocks
+    @Autowired
     private CustomUserDetailService customUserDetailService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
@@ -46,7 +50,7 @@ public class CustomUserDetailServiceTest {
 
         UserDetails userDetails = customUserDetailService.loadUserByUsername("application:" + applicationName);
         assertNotNull(userDetails);
-        assertTrue(userDetails instanceof CustomApplicationDetails);
+        assertInstanceOf(CustomApplicationDetails.class, userDetails);
     }
 
     @Test
@@ -74,7 +78,7 @@ public class CustomUserDetailServiceTest {
 
         UserDetails userDetails = customUserDetailService.loadUserByUsername(username);
         assertNotNull(userDetails);
-        assertTrue(userDetails instanceof CustomUserDetails);
+        assertInstanceOf(CustomUserDetails.class, userDetails);
     }
 
     @Test

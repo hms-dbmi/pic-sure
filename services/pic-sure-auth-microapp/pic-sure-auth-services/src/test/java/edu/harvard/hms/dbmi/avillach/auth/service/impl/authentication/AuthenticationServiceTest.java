@@ -6,18 +6,21 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.BasicMailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.OauthUserMatchingService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -25,27 +28,30 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {AuthenticationService.class})
 public class AuthenticationServiceTest {
 
-    @Mock
+    @MockBean
     private OauthUserMatchingService matchingService;
-    @Mock
+    @MockBean
     private UserRepository userRepository;
-    @Mock
+    @MockBean
     private BasicMailService basicMailService;
-    @Mock
+    @MockBean
     private UserService userService;
-    @Mock
+    @MockBean
     private ConnectionRepository connectionRepository;
-    @Mock
+    @MockBean
     private RestClientUtil restClientUtil;
-    @Mock
+    @MockBean
     private CacheEvictionService cacheEvictionService;
 
     private Auth0AuthenticationService authenticationService;
@@ -53,9 +59,9 @@ public class AuthenticationServiceTest {
     private final String accessToken = "dummyAccessToken";
     private Map<String, String> authRequest;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         authRequest = new HashMap<>();
         authRequest.put("access_token", accessToken);
         String redirectURI = "http://dummyRedirectUri.com";
@@ -65,25 +71,33 @@ public class AuthenticationServiceTest {
     }
 
     // Tests missing parameters in the authentication request
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testGetToken_MissingParameters() throws IOException {
-        authenticationService.authenticate(new HashMap<>(), "localhost"); // Empty map should trigger the exception
+        assertThrows(IllegalArgumentException.class, () -> {
+            authenticationService.authenticate(new HashMap<>(), "localhost"); // Empty map should trigger the exception
+        });
     }
 
     // Tests the failure in retrieving user information, expecting an IOException to be converted into a NotAuthorizedException
-    @Test(expected = NotAuthorizedException.class)
+    @Test
     public void testGetToken_UserInfoRetrievalFails() throws IOException {
         when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), anyInt()))
                 .thenThrow(new NotAuthorizedException("Failed to retrieve user info"));
-        authenticationService.authenticate(authRequest, "localhost");
+
+        assertThrows(NotAuthorizedException.class, () -> {
+            authenticationService.authenticate(authRequest, "localhost");
+        });
     }
 
     // Tests the scenario where the user ID is not found in the user info retrieved
-    @Test(expected = NotAuthorizedException.class)
+    @Test
     public void testGetToken_NoUserIdInUserInfo() throws IOException {
         when(this.restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(), anyInt()))
                 .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
-        authenticationService.authenticate(authRequest, "localhost");
+
+        assertThrows(NotAuthorizedException.class, () -> {
+            authenticationService.authenticate(authRequest, "localhost");
+        });
     }
 
     // Tests a successful token retrieval scenario
@@ -110,10 +124,12 @@ public class AuthenticationServiceTest {
     }
 
     // Tests matching a token to a user when no existing user is found and an attempt to create a user fails
-    @Test(expected = NotAuthorizedException.class)
+    @Test
     public void testGetToken_NoUserMatchingAndCreationFails() throws Exception {
         setupNoUserMatchScenario();
-        authenticationService.authenticate(authRequest, "localhost");
+        assertThrows(NotAuthorizedException.class, () -> {
+            authenticationService.authenticate(authRequest, "localhost");
+        });
     }
 
     // Test scenario where denied access email is triggered

@@ -6,49 +6,51 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
-import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {JWTUtil.class, UserService.class})
 public class UserServiceTest {
 
-    @Mock
+    @MockBean
     private SecurityContext securityContext;
-    @Mock
+    @MockBean
     private BasicMailService basicMailService;
-    @Mock
+    @MockBean
     private TOSService tosService;
-    @Mock
+    @MockBean
     private UserRepository userRepository;
-    @Mock
+    @MockBean
     private ConnectionRepository connectionRepository;
-    @Mock
+    @MockBean
     private ApplicationRepository applicationRepository;
-    @Mock
+    @MockBean
     private RoleService roleService;
-    @Mock
+    @MockBean
     private JWTUtil mockJwtUtil;
     private JWTUtil jwtUtil;
 
@@ -57,9 +59,9 @@ public class UserServiceTest {
 
     private UserService userService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
 
         Authentication authentication = mock(Authentication.class);
         SecurityContextHolder.setContext(securityContext);
@@ -107,12 +109,14 @@ public class UserServiceTest {
         assertEquals(testId, result.getUuid());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testGetUserById_notFound() {
         UUID testId = UUID.randomUUID();
         when(userRepository.findById(testId)).thenReturn(Optional.empty());
 
-        userService.getUserById(testId.toString());
+        assertThrows(IllegalArgumentException.class, ()-> {
+            userService.getUserById(testId.toString());
+        });
     }
 
     @Test
@@ -164,7 +168,7 @@ public class UserServiceTest {
         assertEquals(user, result.getFirst());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testAddUsers_SuperAdminRole_withoutNecessaryPrivileges() {
         User user = createTestUser();
         Set<Role> roles = user.getRoles();
@@ -178,19 +182,24 @@ public class UserServiceTest {
         configureUserSecurityContext(loggedInUser);
         when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
-        userService.addUsers(List.of(user));
+        assertThrows(IllegalArgumentException.class, () -> {
+            userService.addUsers(List.of(user));
+        });
+
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testAddUsers_UserRoleNotExisting() {
         User user = createTestUser();
         configureUserSecurityContext(user);
         when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
-        List<User> result = userService.addUsers(List.of(user));
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(user, result.getFirst());
+        assertThrows(RuntimeException.class, () -> {
+            List<User> result = userService.addUsers(List.of(user));
+            assertNotNull(result);
+            assertEquals(1, result.size());
+            assertEquals(user, result.getFirst());
+        });
     }
 
     @Test
@@ -255,7 +264,7 @@ public class UserServiceTest {
         assertNotNull(result);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testUpdateUser_SuperAdminRole_withoutNecessaryPrivileges() {
         User user = createTestUser();
         Set<Role> roles = user.getRoles();
@@ -273,20 +282,26 @@ public class UserServiceTest {
         userToFindByID.setRoles(new HashSet<>());
         when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(userToFindByID));
 
-        userService.updateUser(List.of(user));
+        assertThrows(IllegalArgumentException.class, ()-> {
+            userService.updateUser(List.of(user));
+        });
     }
 
-    @Test(expected = NullPointerException.class)
+    @Test
     public void testGetUserProfileResponse_missingClaims() {
         HashMap<String, Object> incompleteClaims = new HashMap<>();
         incompleteClaims.put("email", "test@example.com");
         // Missing "sub" which is mandatory for the method logic
-        userService.getUserProfileResponse(incompleteClaims);
+        assertThrows(NullPointerException.class, ()->{
+            userService.getUserProfileResponse(incompleteClaims);
+        });
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testGetUserById_invalidUUID() {
-        userService.getUserById("not-a-real-uuid");
+        assertThrows(IllegalArgumentException.class, () -> {
+            userService.getUserById("not-a-real-uuid");
+        });
     }
 
     @Test
@@ -400,9 +415,11 @@ public class UserServiceTest {
         assertEquals(user.getToken(), currentUser.getToken());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testGetQueryTemplate_invalidApplicationId() {
-        userService.getQueryTemplate(null);
+        assertThrows(IllegalArgumentException.class, ()->{
+            userService.getQueryTemplate(null);
+        });
     }
 
     @Test
@@ -459,7 +476,7 @@ public class UserServiceTest {
         assertNotNull(result.get("queryTemplate"));
     }
 
-    @Test(expected = NullPointerException.class)
+    @Test
     public void testAddUsers_withUserHavingNullRoleSet() {
         User user = createTestUser();
         user.setRoles(null);
@@ -467,8 +484,10 @@ public class UserServiceTest {
         configureUserSecurityContext(user);
         when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
-        List<User> result = userService.addUsers(List.of(user));
-        assertNull(result.getFirst().getRoles());
+        assertThrows(NullPointerException.class, () -> {
+            List<User> result = userService.addUsers(List.of(user));
+            assertNull(result.getFirst().getRoles());
+        });
     }
 
     @Test

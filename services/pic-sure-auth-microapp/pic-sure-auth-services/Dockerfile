@@ -15,7 +15,7 @@ RUN mvn clean install -DskipTests
 FROM amazoncorretto:21.0.1-alpine3.18
 
 # Copy jar and access token from maven build
-COPY --from=build /app/pic-sure-auth-services/target/pic-sure-auth-services.jar /pic-sure-auth-service.jar
+COPY --from=build /app/pic-sure-auth-services/target/pic-sure-auth-services-*.jar /pic-sure-auth-service.jar
 
 # Copy the AWS certificate
 COPY  pic-sure-auth-services/aws_certs/certificate.der /certificate.der

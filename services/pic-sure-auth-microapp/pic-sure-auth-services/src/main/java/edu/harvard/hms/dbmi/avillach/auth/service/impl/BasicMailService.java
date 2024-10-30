@@ -43,8 +43,11 @@ public class BasicMailService implements MailService {
 
 
 	@Autowired
-	public BasicMailService(JavaMailSender mailSender, @Value("${application.template.path}") String templatePath, @Value("${application.system.name}") String systemName,
-							@Value("${application.access.grant.email.subject") String accessGrantEmailSubject, @Value("${application.admin.users}") String adminUsers) {
+	public BasicMailService(JavaMailSender mailSender,
+							@Value("${application.template.path}") String templatePath,
+							@Value("${application.system.name}") String systemName,
+							@Value("${application.access.grant.email.subject") String accessGrantEmailSubject,
+							@Value("${application.admin.users}") String adminUsers) {
         this.mailSender = mailSender;
 		this.templatePath = templatePath;
         this.systemName = systemName;

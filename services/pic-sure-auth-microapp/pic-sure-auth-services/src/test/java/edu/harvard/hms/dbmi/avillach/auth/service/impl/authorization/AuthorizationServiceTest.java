@@ -2,48 +2,49 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.SessionService;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.io.IOException;
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {AuthorizationService.class, AccessRuleService.class})
 public class AuthorizationServiceTest {
 
-    @Mock
+    @MockBean
     private SecurityContext securityContext;
 
     private AuthorizationService authorizationService;
 
     private AccessRuleService accessRuleService;
 
-    @Mock
+    @MockBean
     private SessionService sessionService;
 
-    @Mock
+    @MockBean
     private AccessRuleRepository accessRuleRepository;
 
-    @Mock
+    @MockBean
     private RoleService roleService;
 
-    ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     private static AccessRule GATE_resouceUUID;
     private static AccessRule GATE_has_expectedResultType;
@@ -232,7 +233,7 @@ public class AuthorizationServiceTest {
             "}]\n" +
             "}";
 
-    @BeforeClass
+    @BeforeAll
     public static void init() {
         GATE_resouceUUID = new AccessRule();
         GATE_resouceUUID.setUuid(UUID.randomUUID());
@@ -315,9 +316,9 @@ public class AuthorizationServiceTest {
         AR_Fields_IS_NOT_EMPTY.setType(AccessRule.TypeNaming.IS_NOT_EMPTY);
     }
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
@@ -655,8 +656,8 @@ public class AuthorizationServiceTest {
     @Test
     public void testGates() throws IOException {
 
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_resouceUUID));
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_has_expectedResultType));
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_resouceUUID));
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_matchGate, Map.class), GATE_has_expectedResultType));
 
     }
 
@@ -666,8 +667,7 @@ public class AuthorizationServiceTest {
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_passGate_passCheck_string_contains, Map.class), AR_CategoryFilter_String_contains));
-
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_passGate_passCheck_string_contains, Map.class), AR_CategoryFilter_String_contains));
     }
 
     @Test
@@ -676,7 +676,7 @@ public class AuthorizationServiceTest {
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
     }
 
     @Test
@@ -685,8 +685,7 @@ public class AuthorizationServiceTest {
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_Any_Contains.setGates(gates);
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_Any_Contains));
-
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_Any_Contains));
     }
 
     @Test
@@ -695,8 +694,7 @@ public class AuthorizationServiceTest {
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
-
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(getSample_passGate_passCheck_array_contains, Map.class), AR_CategoryFilter_String_contains));
     }
 
     @Test
@@ -704,7 +702,7 @@ public class AuthorizationServiceTest {
         Set<AccessRule> gates = new HashSet<>();
         gates.add(GATE_resouceUUID);
         AR_CategoryFilter_String_contains.setGates(gates);
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_no_pass_gate, Map.class), AR_CategoryFilter_String_contains));
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_no_pass_gate, Map.class), AR_CategoryFilter_String_contains));
     }
 
     /**
@@ -720,18 +718,18 @@ public class AuthorizationServiceTest {
 
         Set<AccessRule> mergedAccessRules = accessRuleService.preProcessARBySortedKeys(inputAccessRules);
 
-        Assert.assertEquals(1, mergedAccessRules.size());
+        assertEquals(1, mergedAccessRules.size());
 
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEX_And_AGE, Map.class),
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_SEX_And_AGE, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX, Map.class),
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withFields_and_SEE_AGE_SEX, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class),
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
 
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withNoFieldsNode, Map.class),
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withNoFieldsNode, Map.class),
                 mergedAccessRules.stream().findFirst().get()));
     }
 
@@ -743,8 +741,8 @@ public class AuthorizationServiceTest {
      */
     @Test
     public void testRuleIsEmpty_IsNotEmpty() throws IOException {
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_EMPTY));
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_NOT_EMPTY));
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_EMPTY));
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_UUID_8694e3d4_withEmptyFields, Map.class), AR_Fields_IS_NOT_EMPTY));
     }
 
     /**
@@ -765,14 +763,14 @@ public class AuthorizationServiceTest {
         // default is false, for testing, we explicitly set it here just for fluently reading code
         accessRuleGatesAllAny.setGateAnyRelation(false);
         // No gates applied, return false.
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
 
         // the rules will deny the access, but since we set only evaluate gates with OR relationship,
         // while the gates passes, it will return true.
         // Here we test any relationship and evaluate only by gates.
         accessRuleGatesAllAny.setGateAnyRelation(true);
         accessRuleGatesAllAny.setEvaluateOnlyByGates(true);
-        Assert.assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_gates_all_any, Map.class), accessRuleGatesAllAny));
 
     }
 
@@ -805,8 +803,7 @@ public class AuthorizationServiceTest {
         gates2.add(GATE_has_expectedResultType);
         accessRuleGatesAllandAny.setGates(gates2);
 
-        Assert.assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
-
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_nestedGates, Map.class), accessRuleGatesAllandAny));
     }
 
     private Role createTestRole() {
@@ -828,21 +825,6 @@ public class AuthorizationServiceTest {
         CustomUserDetails customUserDetails = new CustomUserDetails(user);
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
         when(securityContext.getAuthentication()).thenReturn(authentication);
-    }
-
-    private Role createSuperAdminRole() {
-        Role role = new Role();
-        role.setName(SecurityRoles.SUPER_ADMIN.name());
-        role.setUuid(UUID.randomUUID());
-        role.setPrivileges(Collections.singleton(createSuperAdminPrivilege()));
-        return role;
-    }
-
-    private Privilege createSuperAdminPrivilege() {
-        Privilege privilege = new Privilege();
-        privilege.setName(AuthNaming.AuthRoleNaming.SUPER_ADMIN);
-        privilege.setUuid(UUID.randomUUID());
-        return privilege;
     }
 
     private User createTestUser() {

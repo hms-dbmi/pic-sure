@@ -5,30 +5,31 @@ import com.github.mustachejava.Mustache;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.context.ContextConfiguration;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {BasicMailService.class})
 public class BasicMailServiceTest {
 
-    @Mock
+    @MockBean
     private JavaMailSender mailSender;
 
-    @Mock
+    @MockBean
     private Mustache accessTemplate;
 
-    @Mock
-    private Mustache deniedTemplate;
-
-    @InjectMocks
+    @Autowired
     private BasicMailService basicMailService;
 
     @Value("${application.template.path}")
@@ -43,9 +44,9 @@ public class BasicMailServiceTest {
     @Value("${application.admin.users}")
     private String adminUsers = "admin@test.com";
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         basicMailService = new BasicMailService(mailSender, templatePath, systemName, accessGrantEmailSubject, adminUsers);
     }
 

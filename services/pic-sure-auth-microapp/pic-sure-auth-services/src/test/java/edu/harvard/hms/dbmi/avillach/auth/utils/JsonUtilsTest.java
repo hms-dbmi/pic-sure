@@ -1,20 +1,21 @@
 package edu.harvard.hms.dbmi.avillach.auth.utils;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.Before;
-import org.junit.Test;
 
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ContextConfiguration;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest
+@ContextConfiguration(classes = {JsonUtils.class})
 public class JsonUtilsTest {
 
 	
@@ -31,10 +32,6 @@ public class JsonUtilsTest {
 	 * }
 	 */
 	
-    @Before
-    public void init() {
-    }
-
     @Test
     public void testmergeTemplateMap() throws IOException {
 		ObjectMapper objectMapper = new ObjectMapper();
@@ -57,7 +54,7 @@ public class JsonUtilsTest {
     	assertNotNull(mergedTemplate.get("requiredFields"));
     	
     	//both required fields (same) should have been merged
-    	assertTrue(mergedTemplate.get("requiredFields") instanceof Collection);
+        assertInstanceOf(Collection.class, mergedTemplate.get("requiredFields"));
     	assertEquals(1, ((Collection)mergedTemplate.get("requiredFields")).size());
     	
     	assertNotNull(mergedTemplate.get("variantInfoFilters"));
@@ -93,7 +90,7 @@ public class JsonUtilsTest {
     	assertNotNull(mergedTemplate.get("requiredFields"));
     	
     	//both required fields (same) should have been merged
-    	assertTrue(mergedTemplate.get("requiredFields") instanceof Collection);
+        assertInstanceOf(Collection.class, mergedTemplate.get("requiredFields"));
     	assertEquals(1, ((Collection)mergedTemplate.get("requiredFields")).size());
     	
     	assertNotNull(mergedTemplate.get("variantInfoFilters"));
@@ -130,7 +127,7 @@ public class JsonUtilsTest {
     	assertNotNull(mergedTemplate.get("requiredFields"));
     	
     	//both required fields (same) should have been merged
-    	assertTrue(mergedTemplate.get("requiredFields") instanceof Collection);
+        assertInstanceOf(Collection.class, mergedTemplate.get("requiredFields"));
     	assertEquals(1, ((Collection)mergedTemplate.get("requiredFields")).size());
     	
     	assertNotNull(mergedTemplate.get("variantInfoFilters"));
@@ -153,7 +150,7 @@ public class JsonUtilsTest {
     	
     	//validate that the same category filters are merged
     	assertNotNull(mergedTemplate.get("categoryFilters"));
-    	assertTrue(mergedTemplate.get("categoryFilters") instanceof Map);
+        assertInstanceOf(Map.class, mergedTemplate.get("categoryFilters"));
     	Map categoryFilters = (Map)mergedTemplate.get("categoryFilters");
     	assertEquals(1, categoryFilters.size());
     	

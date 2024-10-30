@@ -5,53 +5,56 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
-import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.*;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@SpringBootTest
+@ContextConfiguration(classes = {TokenService.class, JWTUtil.class})
 public class TokenServiceTest {
 
-    @Mock
+    @MockBean
     private AuthorizationService authorizationService;
 
-    @Mock
+    @MockBean
     private UserRepository userRepository;
 
-    @Mock
+    @MockBean
     private SessionService sessionService;
 
     private JWTUtil jwtUtil;
 
-    @Mock
+    @MockBean
     private SecurityContext securityContext;
 
     private TokenService tokenService;
 
     private static final long testTokenExpiration = 1000L * 60 * 60;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         Authentication authentication = mock(Authentication.class);
 
         SecurityContextHolder.setContext(securityContext);
@@ -108,7 +111,7 @@ public class TokenServiceTest {
         assertEquals("Token not found", response.get("message"));
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testInspectToken_withUserPrincipal() {
         User user = createTestUser();
         Map<String, Object> claims = new HashMap<>();
@@ -125,8 +128,11 @@ public class TokenServiceTest {
         inputMap.put("token", token);
 
         configureUserSecurityContext(user);
-        Map<String, Object> tokenInspection = tokenService.inspectToken(inputMap);
-        assertNotNull(tokenInspection.get("message"));
+
+        assertThrows(RuntimeException.class, () -> {
+            Map<String, Object> tokenInspection = tokenService.inspectToken(inputMap);
+            assertNotNull(tokenInspection.get("message"));
+        });
     }
 
 
@@ -156,7 +162,7 @@ public class TokenServiceTest {
         assertEquals("user doesn't exist", response.get("message"));
     }
 
-    @Test(expected = NullPointerException.class)
+    @Test
     public void testInspectToken_withNoApplicationInSecurityContext() {
         configureApplicationSecurityContext(null);
 
@@ -176,7 +182,9 @@ public class TokenServiceTest {
         inputMap.put("token", token);
 
         when(userRepository.findBySubject(user.getSubject())).thenReturn(null);
-        tokenService.inspectToken(inputMap);
+        assertThrows(NullPointerException.class, ()->{
+            tokenService.inspectToken(inputMap);
+        });
     }
 
     /*

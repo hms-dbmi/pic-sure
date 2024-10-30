@@ -8,13 +8,15 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.io.IOException;
 import java.util.List;
@@ -22,38 +24,37 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
 
+@SpringBootTest
+@ContextConfiguration(classes = {OauthUserMatchingService.class})
 public class Auth0MatchingServiceTest {
 
     private static final Logger log = LoggerFactory.getLogger(Auth0MatchingServiceTest.class);
 
-    @Mock
-    UserRepository userRepo;
+    @MockBean
+    private UserRepository userRepo;
 
-    @Mock
-    UserMetadataMappingService mappingService;
+    @MockBean
+    private UserMetadataMappingService mappingService;
 
-    @Mock
-    UserService userService;
+    @MockBean
+    private UserService userService;
 
-    @Mock
-    ConnectionRepository connectionRepo;
+    @MockBean
+    private ConnectionRepository connectionRepo;
 
-    @InjectMocks
-    OauthUserMatchingService cut;
+    @Autowired
+    private OauthUserMatchingService cut;
 
-    User persistedUser;
-    ObjectMapper mapper = new ObjectMapper();
+    private User persistedUser;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         //Instead of calling the database
         doAnswer(invocation -> (listUnmatchedByConnectionIdMock(invocation.getArgument(0)))).
                 when(userRepo).findByConnectionAndMatched(any(Connection.class), anyBoolean());

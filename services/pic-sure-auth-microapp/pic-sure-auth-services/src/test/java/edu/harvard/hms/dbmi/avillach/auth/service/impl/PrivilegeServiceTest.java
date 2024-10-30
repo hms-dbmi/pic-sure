@@ -2,14 +2,16 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,26 +19,34 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming.ADMIN;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {PrivilegeService.class})
 public class PrivilegeServiceTest {
 
-    @Mock
+    @MockBean
     private PrivilegeRepository privilegeRepository;
 
-    @Mock
+    @MockBean
     private SecurityContext securityContext;
 
-    @Mock
+    @MockBean
     private Authentication authentication;
 
-    @InjectMocks
+    @MockBean
+    private ApplicationService applicationService;
+
+    @MockBean
+    private AccessRuleService accessRuleService;
+
+    @Autowired
     private PrivilegeService privilegeService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
     }
@@ -58,10 +68,10 @@ public class PrivilegeServiceTest {
 
         assertEquals(privileges, result);
         verify(privilegeRepository, times(1)).deleteById(privilegeId);
-        verify(privilegeRepository, times(1)).findAll();
+        verify(privilegeRepository, times(2)).findAll();
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testDeletePrivilegeByPrivilegeId_AdminPrivilege() {
         UUID privilegeId = UUID.randomUUID();
         Privilege privilege = new Privilege();
@@ -71,7 +81,9 @@ public class PrivilegeServiceTest {
         when(privilegeRepository.findById(privilegeId)).thenReturn(Optional.of(privilege));
         when(authentication.getName()).thenReturn("testUser");
 
-        privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+        assertThrows(RuntimeException.class, () -> {
+            privilegeService.deletePrivilegeByPrivilegeId(privilegeId.toString());
+        });
     }
 
     @Test

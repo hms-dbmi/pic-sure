@@ -4,34 +4,39 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserMetadataMappingRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {UserMetadataMappingService.class})
 public class UserMetadataMappingServiceTest {
 
-    @Mock
+    @MockBean
     private UserMetadataMappingRepository userMetadataMappingRepo;
 
-    @Mock
+    @MockBean
     private ConnectionRepository connectionRepo;
 
-    @InjectMocks
+    @Autowired
     private UserMetadataMappingService userMetadataMappingService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
@@ -70,7 +75,7 @@ public class UserMetadataMappingServiceTest {
         verify(userMetadataMappingRepo, times(1)).saveAll(mappings);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testAddMappings_ConnectionNotFound() {
         Connection connection = new Connection();
         connection.setId("invalidConnectionId");
@@ -82,7 +87,9 @@ public class UserMetadataMappingServiceTest {
 
         when(connectionRepo.findById("invalidConnectionId")).thenReturn(Optional.empty());
 
-        userMetadataMappingService.addMappings(mappings);
+        assertThrows(IllegalArgumentException.class, () -> {
+            userMetadataMappingService.addMappings(mappings);
+        });
     }
 
     @Test
@@ -110,11 +117,13 @@ public class UserMetadataMappingServiceTest {
         verify(connectionRepo, times(1)).findById("testConnectionId");
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testGetAllMappingsForConnectionById_NotFound() {
         when(connectionRepo.findById("invalidConnectionId")).thenReturn(Optional.empty());
 
-        userMetadataMappingService.getAllMappingsForConnection("invalidConnectionId");
+        assertThrows(IllegalArgumentException.class, () -> {
+            userMetadataMappingService.getAllMappingsForConnection("invalidConnectionId");
+        });
     }
 
     @Test

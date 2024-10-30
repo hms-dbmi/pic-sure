@@ -2,36 +2,34 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
+@SpringBootTest
+@ContextConfiguration(classes = {AccessRuleService.class})
 public class AccessRuleServiceTest {
 
-    @Mock
+    @MockBean
     private AccessRuleRepository accessRuleRepo;
 
-    @InjectMocks
+    @Autowired
     private AccessRuleService accessRuleService;
 
-    @Before
-    public void setUp() {
-        MockitoAnnotations.initMocks(this);
-    }
-
-    @After
-    public void tearDown() throws Exception {
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
@@ -42,7 +40,7 @@ public class AccessRuleServiceTest {
 
         Optional<AccessRule> result = accessRuleService.getAccessRuleById(id.toString());
         assertTrue(result.isPresent());
-        Assert.assertSame(accessRule, result.get());
+        assertSame(accessRule, result.get());
     }
 
     @Test

@@ -9,42 +9,59 @@ import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {RoleService.class, PrivilegeService.class})
 public class RoleServiceTest {
 
-    @Mock
+    @MockBean
+    private ApplicationService applicationService;
+
+    @MockBean
+    private AccessRuleService accessRuleService;
+
+    @MockBean
     private RoleRepository roleRepository;
 
-    @Mock
+    @MockBean
     private PrivilegeRepository privilegeRepo;
 
-    @Mock
+    @MockBean
     private SecurityContext securityContext;
 
-    @Mock
+    @MockBean
     private Authentication authentication;
 
-    @InjectMocks
+    @MockBean
+    private FenceMappingUtility fenceMappingUtility;
+
+    @Autowired
     private RoleService roleService;
 
-    @Before
+    @Autowired
+    private PrivilegeService privilegeService;
+
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
         when(securityContext.getAuthentication()).thenReturn(authentication);
     }
@@ -103,7 +120,7 @@ public class RoleServiceTest {
         verify(roleRepository, times(1)).saveAll(roles);
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testAddRoles_PrivilegeNotFound() {
         Role role = new Role();
         Privilege privilege = new Privilege();
@@ -112,7 +129,9 @@ public class RoleServiceTest {
 
         when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
 
-        roleService.addRoles(Collections.singletonList(role));
+        assertThrows(RuntimeException.class, () -> {
+            roleService.addRoles(Collections.singletonList(role));
+        });
     }
 
     @Test
@@ -127,7 +146,7 @@ public class RoleServiceTest {
         verify(roleRepository, times(1)).saveAll(roles);
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testUpdateRoles_PrivilegeNotFound() {
         Role role = new Role();
         Privilege privilege = new Privilege();
@@ -136,7 +155,9 @@ public class RoleServiceTest {
 
         when(privilegeRepo.findById(privilege.getUuid())).thenReturn(Optional.empty());
 
-        roleService.updateRoles(Collections.singletonList(role));
+        assertThrows(RuntimeException.class, () -> {
+            roleService.updateRoles(Collections.singletonList(role));
+        });
     }
 
     @Test
@@ -201,15 +222,16 @@ public class RoleServiceTest {
         assertTrue(roles.contains(role));
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testAddObjectToSet_RoleNotFound() {
         Set<Role> roles = new HashSet<>();
         Role role = new Role();
         role.setUuid(UUID.randomUUID());
 
         when(roleRepository.findById(role.getUuid())).thenReturn(Optional.empty());
-
-        roleService.addObjectToSet(roles, role);
+        assertThrows(RuntimeException.class, () -> {
+            roleService.addObjectToSet(roles, role);
+        });
     }
 
     private Role createTopAdminRole() {

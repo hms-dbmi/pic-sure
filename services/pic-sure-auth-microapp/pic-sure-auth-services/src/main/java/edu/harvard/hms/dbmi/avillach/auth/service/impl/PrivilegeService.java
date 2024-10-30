@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.ApplicationContextEvent;
-import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,7 +45,9 @@ public class PrivilegeService {
     private static final String topmedAccessionField = "\\\\_Topmed Study Accession with Subject ID\\\\";
 
     @Autowired
-    protected PrivilegeService(PrivilegeRepository privilegeRepository, ApplicationService applicationService, AccessRuleService accessRuleService,
+    protected PrivilegeService(PrivilegeRepository privilegeRepository,
+                               ApplicationService applicationService,
+                               AccessRuleService accessRuleService,
                                @Value("${fence.variant.annotation.columns}") String variantAnnotationColumns,
                                @Value("${fence.harmonized.consent.group.concept.path}") String fenceHarmonizedConsentGroupConceptPath,
                                @Value("${fence.parent.consent.group.concept.path}") String fenceParentConceptPath,

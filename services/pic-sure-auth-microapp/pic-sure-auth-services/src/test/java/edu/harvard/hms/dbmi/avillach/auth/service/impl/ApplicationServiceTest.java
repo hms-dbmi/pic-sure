@@ -5,35 +5,39 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.*;
 
-import static org.mockito.ArgumentMatchers.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static org.junit.Assert.*;
 
+@SpringBootTest
+@ContextConfiguration(classes = {ApplicationService.class})
 public class ApplicationServiceTest {
 
-    @Mock
+    @MockBean
     private ApplicationRepository applicationRepo;
 
-    @Mock
+    @MockBean
     private PrivilegeRepository privilegeRepo;
 
-    @Mock
+    @MockBean
     private JWTUtil jwtUtil;
 
-    @InjectMocks
+    @Autowired
     private ApplicationService applicationService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
@@ -67,7 +71,7 @@ public class ApplicationServiceTest {
 
         Optional<Application> result = applicationService.getApplicationByIdWithPrivileges(id.toString());
         assertTrue(result.isPresent());
-        assertNotNull(result.get().getPrivileges());
+        Assertions.assertNotNull(result.get().getPrivileges());
     }
 
     @Test
@@ -120,12 +124,14 @@ public class ApplicationServiceTest {
         assertNotNull(remainingApps);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testDeleteApplicationById_notFound() {
         UUID id = UUID.randomUUID();
         when(applicationRepo.findById(id)).thenReturn(Optional.empty());
 
-        applicationService.deleteApplicationById(id.toString());
+        assertThrows(IllegalArgumentException.class, () -> {
+            applicationService.deleteApplicationById(id.toString());
+        });
     }
 
     @Test
@@ -136,8 +142,8 @@ public class ApplicationServiceTest {
         when(applicationRepo.saveAll(anyList())).thenReturn(applications);
 
         List<Application> updatedApps = applicationService.updateApplications(applications);
-        assertNotNull(updatedApps);
-        assertEquals(applications.size(), updatedApps.size());
+        Assertions.assertNotNull(updatedApps);
+        Assertions.assertEquals(applications.size(), updatedApps.size());
     }
 
     @Test
@@ -153,15 +159,17 @@ public class ApplicationServiceTest {
         assertEquals("newToken", token);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testRefreshApplicationToken_notFound() {
         UUID id = UUID.randomUUID();
         when(applicationRepo.findById(id)).thenReturn(Optional.empty());
 
-        applicationService.refreshApplicationToken(id.toString());
+        assertThrows(IllegalArgumentException.class, () -> {
+            applicationService.refreshApplicationToken(id.toString());
+        });
     }
 
-    @Test(expected = NullPointerException.class)
+    @Test
     public void testRefreshApplicationToken_failedToGenerateToken() {
         UUID id = UUID.randomUUID();
         Application application = new Application();
@@ -169,6 +177,9 @@ public class ApplicationServiceTest {
         when(applicationRepo.findById(id)).thenReturn(Optional.of(application));
         when(jwtUtil.createJwtToken(any(), any(), any(), anyString(), anyLong())).thenReturn(null);
 
-        applicationService.refreshApplicationToken(id.toString());
+
+        assertThrows(NullPointerException.class, () -> {
+            applicationService.refreshApplicationToken(id.toString());
+        });
     }
 }

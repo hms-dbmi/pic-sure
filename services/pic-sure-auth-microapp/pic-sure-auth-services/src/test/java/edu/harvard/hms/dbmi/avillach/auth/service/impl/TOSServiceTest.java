@@ -4,34 +4,37 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.repository.TermsOfServiceRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+@SpringBootTest
+@ContextConfiguration(classes = {TOSService.class})
 public class TOSServiceTest {
 
-    @Mock
+    @MockBean
     private TermsOfServiceRepository termsOfServiceRepo;
 
-    @Mock
+    @MockBean
     private UserRepository userRepo;
 
     private TOSService tosService;
 
-    @Before
+    @BeforeEach
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
+        MockitoAnnotations.openMocks(this);
         tosService = new TOSService(termsOfServiceRepo, userRepo, true);
     }
 
@@ -133,14 +136,16 @@ public class TOSServiceTest {
         assertNotNull(result.getAcceptedTOS());
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testAcceptTermsOfService_UserDoesNotExist() {
         when(userRepo.findBySubject(anyString())).thenReturn(null);
 
-        tosService.acceptTermsOfService("user-id");
+        assertThrows(RuntimeException.class, ()->{
+            tosService.acceptTermsOfService("user-id");
+        });
     }
 
-    @Test(expected = RuntimeException.class)
+    @Test
     public void testAcceptTermsOfService_NoTOSInDatabase() {
         User user = new User();
         user.setSubject("user-id");
@@ -148,7 +153,9 @@ public class TOSServiceTest {
         when(userRepo.findBySubject(anyString())).thenReturn(user);
         when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.empty());
 
-        tosService.acceptTermsOfService("user-id");
+        assertThrows(RuntimeException.class, () -> {
+            tosService.acceptTermsOfService("user-id");
+        });
     }
 
     @Test
