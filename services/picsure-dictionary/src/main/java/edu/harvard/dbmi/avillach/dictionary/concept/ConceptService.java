@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,7 @@ public class ConceptService {
         this.conceptDecoratorService = conceptDecoratorService;
     }
 
+    @Cacheable("concepts")
     public List<Concept> listConcepts(Filter filter, Pageable page) {
         return conceptRepository.getConcepts(filter, page);
     }
@@ -40,6 +42,7 @@ public class ConceptService {
         }).toList();
     }
 
+    @Cacheable("concepts_count")
     public long countConcepts(Filter filter) {
         return conceptRepository.countConcepts(filter);
     }

@@ -6,6 +6,7 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,8 @@ class ConceptServiceTest {
         Mockito.when(repository.getConcepts(filter, page)).thenReturn(expected);
 
         List<Concept> actual = subject.listConcepts(filter, page);
+        subject.listConcepts(filter, page);
+        Mockito.verify(repository, Mockito.times(1)).getConcepts(filter, page);
 
         Assertions.assertEquals(expected, actual);
     }
@@ -48,7 +51,9 @@ class ConceptServiceTest {
         Mockito.when(repository.countConcepts(filter)).thenReturn(1L);
 
         long actual = subject.countConcepts(filter);
+        subject.countConcepts(filter);
 
+        Mockito.verify(repository, Mockito.times(1)).countConcepts(filter);
         Assertions.assertEquals(1L, actual);
     }
 

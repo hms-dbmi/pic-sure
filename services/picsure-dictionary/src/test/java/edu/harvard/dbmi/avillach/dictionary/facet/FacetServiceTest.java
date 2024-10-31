@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.mockito.internal.verification.Times;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -28,6 +29,8 @@ class FacetServiceTest {
         Mockito.when(repository.getFacets(filter)).thenReturn(expected);
 
         List<FacetCategory> actual = subject.getFacets(filter);
+        subject.getFacets(filter);
+        Mockito.verify(repository, Mockito.times(1)).getFacets(filter);
 
         Assertions.assertEquals(expected, actual);
     }

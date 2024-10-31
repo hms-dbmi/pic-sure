@@ -19,6 +19,19 @@ class FilterPreProcessorTest {
     private FilterPreProcessor subject;
 
     @Test
+    void shouldSortFilter() {
+        Filter filter = new Filter(List.of(new Facet("b", ""), new Facet("a", "")), "", List.of("c", "b", "a"));
+        Filter actual = (Filter) subject.afterBodyRead(
+            filter, Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class), SimpleType.constructUnsafe(Filter.class),
+            null
+        );
+
+        Filter expected = new Filter(List.of(new Facet("a", ""), new Facet("b", "")), "", List.of("a", "b", "c"));
+        Assertions.assertEquals(expected, actual);
+
+    }
+
+    @Test
     void shouldProcessFilter() {
         Object processedFilter = subject.afterBodyRead(
             new Filter(List.of(), "I_love_underscores", List.of()), Mockito.mock(HttpInputMessage.class),
