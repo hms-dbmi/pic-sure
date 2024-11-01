@@ -18,6 +18,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @OpenAPIDefinition(info = @Info(title = "Pic-sure API", version = "1.0.0", description = "This is the Pic-sure API."))
 @Path("/")
@@ -25,6 +27,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @Consumes("application/json")
 public class PicsureRS {
 
+    private static final Logger log = LoggerFactory.getLogger(PicsureRS.class);
     @Inject
     PicsureInfoService infoService;
 
@@ -203,6 +206,7 @@ public class PicsureRS {
     }
 
 
+
     @POST
     @Path("/proxy/{container}/{request : .+}")
     @Operation(hidden = true)
@@ -216,7 +220,10 @@ public class PicsureRS {
     @Path("/proxy/{container}/{request : .+}")
     @Operation(hidden = true)
     public Response getProxy(@PathParam("container") String containerId, @PathParam("request") String request, @Context UriInfo uriInfo) {
-        return proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters());
+        log.info("Starting {}", uriInfo.getQueryParameters());
+        Response p = proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters());
+        log.info("Returning {}", uriInfo.getQueryParameters());
+        return p;
     }
 
 }

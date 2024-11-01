@@ -61,7 +61,10 @@ public class ProxyWebClient {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
             HttpGet request = new HttpGet(uri);
-            return getResponse(request);
+            LOG.info("Getting response");
+            Response response = getResponse(request);
+            LOG.info("Done getting response");
+            return response;
         } catch (URISyntaxException e) {
             LOG.warn("Failed to construct URI. Container: {} Path: {}", containerId, path);
             throw new RuntimeException(e);
