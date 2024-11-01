@@ -31,6 +31,7 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.ssl.SSLContexts;
 import org.slf4j.Logger;
@@ -56,6 +57,8 @@ public class HttpClientUtil {
 		return retrieveGetResponse(uri, headers.toArray(new Header[headers.size()]));
 	}
 
+	private static final HttpClient client = getConfiguredHttpClient();
+
 	/**
 	 * resource level get, which will throw a <b>ResourceInterfaceException</b> if cannot get response back from the url
 	 * 
@@ -67,8 +70,7 @@ public class HttpClientUtil {
 		try {
 			logger.debug("HttpClientUtil retrieveGetResponse()");
 
-			HttpClient client = getConfiguredHttpClient();
-			return simpleGet(client, uri, headers);
+			return simpleGet(uri, headers);
 		} catch (ApplicationException e) {
 			throw new ResourceInterfaceException(uri, e);
 		}
@@ -115,8 +117,7 @@ public class HttpClientUtil {
 				headerList = new ArrayList<>(Arrays.asList(headers));
 			headerList.add(new BasicHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON));
 
-			HttpClient client = getConfiguredHttpClient();
-			return simplePost(uri, client, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
+			return simplePost(uri, new StringEntity(body), headerList.toArray(new Header[headerList.size()]));
 		} catch (ApplicationException | UnsupportedEncodingException e) {
 			throw new ResourceInterfaceException(uri, e);
 		}
@@ -206,17 +207,13 @@ public class HttpClientUtil {
 	 * Basic and general post function using Apache Http Client
 	 *
 	 * @param uri
-	 * @param client
 	 * @param requestBody
 	 * @param headers
 	 * @return HttpResponse
 	 * @throws ApplicationException
 	 */
-	public static HttpResponse simplePost(String uri, HttpClient client, StringEntity requestBody, Header... headers)
+	public static HttpResponse simplePost(String uri, StringEntity requestBody, Header... headers)
 			throws ApplicationException {
-		if (client == null) {
-			client = getConfiguredHttpClient();
-		}
 
 		HttpPost post = new HttpPost(uri);
 		post.setHeaders(headers);
@@ -235,12 +232,11 @@ public class HttpClientUtil {
 	 *
 	 * @param uri
 	 * @param requestBody
-	 * @param client
 	 * @param headers
 	 * @return InputStream
 	 */
-	public static InputStream simplePost(String uri, StringEntity requestBody, HttpClient client, Header... headers) {
-		HttpResponse response = simplePost(uri, client, requestBody, headers);
+	public static InputStream simplePostStream(String uri, StringEntity requestBody, Header... headers) {
+		HttpResponse response = simplePost(uri, requestBody, headers);
 
 		try {
 			return response.getEntity().getContent();
@@ -251,40 +247,13 @@ public class HttpClientUtil {
 	}
 
 	/**
-	 * only works if the POST method returns a JSON response body
-	 * 
-	 * @param uri
-	 * @param requestBody
-	 * @param client
-	 * @param objectMapper
-	 * @param headers
-	 * @return
-	 */
-	public static JsonNode simplePost(String uri, StringEntity requestBody, HttpClient client,
-			ObjectMapper objectMapper, Header... headers) {
-		try {
-			return objectMapper.readTree(simplePost(uri, requestBody, client, headers));
-		} catch (IOException ex) {
-			logger.error("simplePost() Exception: {}, cannot parse content from by POST from url: {}", ex.getMessage(),
-					uri);
-			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
-		}
-	}
-
-	/**
 	 * for general and basic use of GET function using Apache Http Client
-	 * 
-	 * @param client
 	 * @param uri
 	 * @param headers
 	 * @return
 	 * @throws ApplicationException
 	 */
-	public static HttpResponse simpleGet(HttpClient client, String uri, Header... headers) throws ApplicationException {
-		if (client == null) {
-			client = getConfiguredHttpClient();
-		}
-
+	public static HttpResponse simpleGet(String uri, Header... headers) throws ApplicationException {
 		HttpGet get = new HttpGet(uri);
 		get.setHeaders(headers);
 
@@ -296,12 +265,12 @@ public class HttpClientUtil {
 		}
 	}
 
-	public static InputStream simpleGet(String uri, HttpClient client, Header... headers) {
-		return simpleGetWithConfig(uri, client, null, headers);
+	public static InputStream simpleGetStream(String uri, Header... headers) {
+		return simpleGetWithConfig(uri, null, headers);
 	}
 
 	public static InputStream simpleGetWithConfig(
-		String uri, HttpClient client, RequestConfig config, Header... headers
+		String uri, RequestConfig config, Header... headers
 	) throws ApplicationException {
 		HttpGet get = new HttpGet(uri);
 		get.setHeaders(headers);
@@ -319,29 +288,11 @@ public class HttpClientUtil {
 		}
 	}
 
-	/**
-	 * only work if the GET method returns a JSON response body
-	 * 
-	 * @param uri
-	 * @param client
-	 * @param objectMapper
-	 * @param headers
-	 * @return
-	 */
-	public static JsonNode simpleGet(String uri, HttpClient client, ObjectMapper objectMapper, Header... headers) {
-		try {
-			return objectMapper.readTree(simpleGet(uri, client, headers));
-		} catch (IOException ex) {
-			logger.error("simpleGet() cannot parse content from by GET from url: {}", uri, ex);
-			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
-		}
-	}
-
 	public static JsonNode simpleGetWithConfig(
-		String uri, HttpClient client, ObjectMapper objectMapper, RequestConfig requestConfig, Header... headers
+		String uri, ObjectMapper objectMapper, RequestConfig requestConfig, Header... headers
 	) {
 		try {
-			return objectMapper.readTree(simpleGetWithConfig(uri, client, requestConfig, headers));
+			return objectMapper.readTree(simpleGetWithConfig(uri, requestConfig, headers));
 		} catch (IOException ex) {
 			logger.error("simpleGet() cannot parse content from by GET from url: {}", uri, ex);
 			throw new ApplicationException("Inner problem, please contact system admin and check the server log");
@@ -364,6 +315,9 @@ public class HttpClientUtil {
 			        limited.add(suite);
 			    }
 			}
+			PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+			connectionManager.setMaxTotal(200); // Maximum total connections
+			connectionManager.setDefaultMaxPerRoute(50); // Maximum connections per route
 			
 			return HttpClients.custom()
 				    .setSSLSocketFactory(new SSLConnectionSocketFactory(
@@ -371,6 +325,7 @@ public class HttpClientUtil {
 			            new String[]{"TLSv1.2"},
 			            limited.toArray(new String[limited.size()]),
 			            SSLConnectionSocketFactory.getDefaultHostnameVerifier()))
+					.setConnectionManager(connectionManager)
 				    .build();
 		} catch( NoSuchAlgorithmException | KeyManagementException e) {
 			logger.warn("Unable to establish SSL context.  using default client", e);
