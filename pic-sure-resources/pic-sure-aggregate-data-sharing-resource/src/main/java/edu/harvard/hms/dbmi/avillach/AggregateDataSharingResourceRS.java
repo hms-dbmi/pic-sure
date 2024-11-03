@@ -18,6 +18,7 @@ import edu.harvard.hms.dbmi.avillach.service.RequestScopedHeader;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.getConfiguredHttpClient;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
 
 @Path("/aggregate-data-sharing")
@@ -66,6 +68,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     private final String randomSalt;
 
+    private final HttpClientUtil httpClientUtil;
+
     public AggregateDataSharingResourceRS() {
         this(null);
     }
@@ -89,6 +93,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         randomSalt = properties.getTargetPicsureObfuscationSalt();
 
         headers = new Header[]{new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
+
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(100); // Maximum total connections
+        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+        httpClientUtil = HttpClientUtil.getInstance(connectionManager);
     }
 
 
@@ -120,8 +129,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
             String payload = objectMapper.writeValueAsString(chainRequest);
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
-            HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
-            if (!HttpClientUtil.is2xx(response)) {
+            HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
+            if (!httpClientUtil.is2xx(response)) {
                 logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
                         response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
                 HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
@@ -194,7 +203,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             QueryRequest chainRequest = createChainRequest(statusRequest);
             String payload = objectMapper.writeValueAsString(chainRequest);
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
-            HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, payload);
+            HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
             if (!HttpClientUtil.is2xx(response)) {
                 logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
                         response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
@@ -267,7 +276,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, pathName);
 
         logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
-        HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, queryString);
+        HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
         if (!HttpClientUtil.is2xx(response)) {
             logger.error("Not 200 status!");
             logger.error(
@@ -414,7 +423,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         try {
             String queryString = objectMapper.writeValueAsString(queryRequest);
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
-            HttpResponse response = HttpClientUtil.retrievePostResponse(composedURL, headers, queryString);
+            HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
             if (!HttpClientUtil.is2xx(response)) {
                 logger.error(
                         composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",

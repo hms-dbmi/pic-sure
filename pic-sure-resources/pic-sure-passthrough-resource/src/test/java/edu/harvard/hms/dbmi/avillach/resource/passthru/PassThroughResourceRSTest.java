@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
@@ -41,7 +42,7 @@ import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 @ExtendWith(MockitoExtension.class)
 class PassThroughResourceRSTest {
 
-	HttpClient httpClient;
+	HttpClientUtil httpClient;
 	PassThroughResourceRS resource;
 	ObjectMapper objectMapper = new ObjectMapper();
 
@@ -52,12 +53,7 @@ class PassThroughResourceRSTest {
 		lenient().when(appProperties.getTargetPicsureUrl()).thenReturn("http://test");
 		lenient().when(appProperties.getTargetResourceId()).thenReturn(UUID.randomUUID().toString());
 
-		httpClient = mock(HttpClient.class);
-		// not mocking these methods...
-		lenient().doCallRealMethod().when(httpClient).composeURL(anyString(), anyString());
-		lenient().doCallRealMethod().when(httpClient).readObjectFromResponse(any(HttpResponse.class), any());
-		lenient().doCallRealMethod().when(httpClient).throwResponseError(any(HttpResponse.class), anyString());
-		lenient().doCallRealMethod().when(httpClient).throwInternalResponseError(any(HttpResponse.class), anyString());
+		httpClient = mock(HttpClientUtil.class);
 
 		resource = new PassThroughResourceRS(appProperties, httpClient);
 	}

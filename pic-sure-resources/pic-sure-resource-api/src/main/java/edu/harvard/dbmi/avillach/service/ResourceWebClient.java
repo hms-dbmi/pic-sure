@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
@@ -11,6 +12,7 @@ import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +23,6 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Map;
-
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 
 /**
@@ -40,8 +40,18 @@ public class ResourceWebClient {
     public static final String BEARER_STRING = "Bearer ";
     public static final String BEARER_TOKEN_KEY = "BEARER_TOKEN";
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
+
+    public final HttpClientUtil httpClientUtil;
     
-    public ResourceWebClient() { }
+    public ResourceWebClient() {
+        PoolingHttpClientConnectionManager connectionManager;
+
+        connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(100); // Maximum total connections
+        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+
+        this.httpClientUtil = HttpClientUtil.getInstance(connectionManager);
+    }
 
     public ResourceInfo info(String rsURL, QueryRequest queryRequest){
         logger.debug("Calling ResourceWebClient info()");
@@ -58,12 +68,12 @@ public class ResourceWebClient {
             logger.debug("Calling /info at ResourceURL: {}", rsURL);
             String pathName = "/info";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return readObjectFromResponse(resourcesResponse, ResourceInfo.class);
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, ResourceInfo.class);
         } catch (JsonProcessingException e){
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
         }
@@ -84,12 +94,12 @@ public class ResourceWebClient {
                 uriBuilder.addParameter("size", size.toString());
             }
             Map<String, String> resourceCredentials = queryRequest != null ? queryRequest.getResourceCredentials() : Map.of();
-            HttpResponse resourcesResponse = retrieveGetResponse(uriBuilder.build().toString(), createHeaders(resourceCredentials));
+            HttpResponse resourcesResponse = httpClientUtil.retrieveGetResponse(uriBuilder.build().toString(), createHeaders(resourceCredentials));
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return readObjectFromResponse(resourcesResponse, PaginatedSearchResult.class);
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, PaginatedSearchResult.class);
         } catch (URISyntaxException e) {
             throw new ApplicationException("rsURL invalid : " + rsURL, e);
         }
@@ -111,12 +121,12 @@ public class ResourceWebClient {
             String pathName = "/search";
             String body = json.writeValueAsString(searchQueryRequest);
 
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(searchQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(searchQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return readObjectFromResponse(resourcesResponse, SearchResults.class);
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, SearchResults.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to serialize search query");
             //TODO Write custom exception
@@ -138,12 +148,12 @@ public class ResourceWebClient {
             }
             String pathName = "/query";
             String body = json.writeValueAsString(dataQueryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(dataQueryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(dataQueryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return readObjectFromResponse(resourcesResponse, QueryStatus.class);
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to encode data query");
             throw new ProtocolException("Unable to encode data query", e);
@@ -167,14 +177,14 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(queryRequest);
-            logger.debug(composeURL(rsURL, pathName));
+            logger.debug(httpClientUtil.composeURL(rsURL, pathName));
             logger.debug(body);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return readObjectFromResponse(resourcesResponse, QueryStatus.class);
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, QueryStatus.class);
         } catch (JsonProcessingException e){
             logger.error("Unable to encode resource credentials");
             throw new ProtocolException("Unable to encode resource credentials", e);
@@ -198,10 +208,10 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
@@ -229,10 +239,10 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/signed-url";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                throwResponseError(resourcesResponse, rsURL);
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
             return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e){
@@ -258,7 +268,7 @@ public class ResourceWebClient {
             }
             String pathName = "/query/format";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body);
             int status = resourcesResponse.getStatusLine().getStatusCode();
             if (status != 200) {
                 logger.error("Query format request did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
@@ -301,7 +311,7 @@ public class ResourceWebClient {
                 headers = newHeaders;
             }
 
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), headers, body);
 			if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
 				throwError(resourcesResponse, rsURL);
 			}
@@ -357,7 +367,7 @@ public class ResourceWebClient {
             }
 
             logger.debug("Calling ResourceWebClient queryContinuous() with body: " + body + " and headers: " + queryRequest);
-            HttpResponse resourcesResponse = retrievePostResponse(composeURL(rsURL, pathName), headers, body);
+            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);
             }

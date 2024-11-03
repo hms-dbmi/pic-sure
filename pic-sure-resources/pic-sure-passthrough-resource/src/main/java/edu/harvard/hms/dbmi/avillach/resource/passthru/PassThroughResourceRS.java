@@ -5,13 +5,13 @@ import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.SecurityContext;
 
+import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,14 +37,24 @@ public class PassThroughResourceRS implements IResourceRS {
 	@Inject
 	private ApplicationProperties properties;
 	@Inject
-	private HttpClient httpClient;
+	private HttpClientUtil httpClient;
 
 	public PassThroughResourceRS() {
 	}
 
 	@Inject
-	public PassThroughResourceRS(ApplicationProperties applicationProperties, HttpClient httpClient) {
+	public PassThroughResourceRS(ApplicationProperties applicationProperties) {
 		this.properties = applicationProperties;
+
+		PoolingHttpClientConnectionManager connectionManager;
+		connectionManager = new PoolingHttpClientConnectionManager();
+		connectionManager.setMaxTotal(100); // Maximum total connections
+		connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+		this.httpClient = HttpClientUtil.getInstance(connectionManager);
+	}
+
+	public PassThroughResourceRS(ApplicationProperties properties, HttpClientUtil httpClient) {
+		this.properties = properties;
 		this.httpClient = httpClient;
 	}
 
