@@ -408,7 +408,7 @@ public class IRCTResourceIT extends BaseIT {
 		body = objectMapper.writeValueAsString(queryRequest);
 		response = retrievePostResponse(irctEndpointUrl+"pic-sure/v1.4/query/"+testQueryResultId+"/result", headers, body);
 		assertEquals("Correct request should return a 200",200, response.getStatusLine().getStatusCode());
-		String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+		String responseBody = EntityUtils.toString(response.getEntity().getContent(), "UTF-8");
 		assertFalse("Response content should not be empty", responseBody.isEmpty());
 	}
 

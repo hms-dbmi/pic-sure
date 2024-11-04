@@ -11,6 +11,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicNameValuePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,13 @@ public class ProxyWebClient {
     ResourceRepository resourceRepository;
 
     public ProxyWebClient() {
-        client = HttpClientUtil.getConfiguredHttpClient();
+        PoolingHttpClientConnectionManager connectionManager;
+
+        connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(100); // Maximum total connections
+        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+
+        client = HttpClientUtil.getConfiguredHttpClient(connectionManager);
     }
 
     public Response postProxy(

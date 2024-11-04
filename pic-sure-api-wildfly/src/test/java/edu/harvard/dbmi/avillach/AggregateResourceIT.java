@@ -145,7 +145,7 @@ public class AggregateResourceIT extends BaseIT {
         //Should throw an error if credentials missing or wrong
         System.out.println("401 URL: " + endpointUrl+"/query" + "|headers: " + headers + "|body: " + body);
         HttpResponse response = retrievePostResponse(endpointUrl+"/query", headers, body);
-//        System.out.println("Test Response: " + IOUtils.toString(response.getEntity().getContent(), "UTF-8"));
+//        System.out.println("Test Response: " + EntityUtils.toString(response.getEntity().getContent(), "UTF-8"));
         assertEquals("Missing credentials should return a 401", 401, response.getStatusLine().getStatusCode());
         JsonNode responseMessage = objectMapper.readTree(response.getEntity().getContent());
         assertNotNull("Response message should not be null", responseMessage);

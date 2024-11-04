@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.util.exception.ResourceCommunicationException;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +57,7 @@ public class HttpClientUtil {
 
 	public static <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
 		try {
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+			String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
 			return json.readValue(responseBody, new TypeReference<List<T>>() {});
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -66,7 +67,7 @@ public class HttpClientUtil {
 
 	public static <T> List<T> readDataObjectsFromResponse(HttpResponse response, Class<T> expectedElementType) {
 		try {
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+			String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
 			// Get only the data_objects field from the returned structure. Ugly, but has to de- and then re-serialize
             JsonNode jn = json.readTree(responseBody);
             if (null == jn.get("data_objects")) {

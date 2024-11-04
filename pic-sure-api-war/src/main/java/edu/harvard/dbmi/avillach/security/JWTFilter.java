@@ -296,7 +296,7 @@ public class JWTFilter implements ContainerRequestFilter {
                             Response formatResponse = resourceWebClient.queryFormat(resource.getResourceRSPath(), queryRequest);
                             if (formatResponse.getStatus() == 200) {
                                 // add the formatted query if available
-                                String formattedQuery = IOUtils.toString((InputStream) formatResponse.getEntity(), "UTF-8");
+                                String formattedQuery = (String) formatResponse.getEntity();
                                 logger.debug("Formatted response: " + formattedQuery);
                                 requestMap.put("formattedQuery", formattedQuery);
                             }

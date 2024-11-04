@@ -150,7 +150,7 @@ public class PicsureQueryServiceIT extends BaseIT {
         //This should return some kind of result
         response = retrievePostResponse(uri, headers, objectMapper.writeValueAsString(resultRequest));
         assertEquals("Correct request should return a 200", 200, response.getStatusLine().getStatusCode());
-        String result = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+        String result = EntityUtils.toString(response.getEntity().getContent(), "UTF-8");
         assertNotNull("Result should not be null, result");
 
         //Nonexistent resultId

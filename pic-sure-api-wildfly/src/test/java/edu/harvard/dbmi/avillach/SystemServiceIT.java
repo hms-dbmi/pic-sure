@@ -22,7 +22,7 @@ public class SystemServiceIT extends BaseIT {
 			get.setHeader(HttpHeaders.AUTHORIZATION, "Bearer "+ jwt);
 			HttpResponse response = client.execute(get);
 			assertEquals("Response status code should be 200", 200, response.getStatusLine().getStatusCode());
-			assertEquals("System status should be RUNNING'", "RUNNING", IOUtils.toString(response.getEntity().getContent(), "UTF-8"));
+			assertEquals("System status should be RUNNING'", "RUNNING", EntityUtils.toString(response.getEntity().getContent(), "UTF-8"));
 
 		}catch(Exception e) {
 			fail("Exception: " + e.getMessage());

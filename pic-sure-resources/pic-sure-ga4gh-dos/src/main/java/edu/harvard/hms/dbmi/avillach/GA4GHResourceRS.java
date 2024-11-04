@@ -22,6 +22,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -278,7 +279,7 @@ public class GA4GHResourceRS implements IResourceRS
 		// If the HTTP Response is a success, then returns an object like so: {"resultId":230464}
 		//TODO later Add things like duration and expiration
 		try {
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), "UTF-8");
+			String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
 			JsonNode responseNode = json.readTree(responseBody);
 
             long endtime = new Date().getTime();
