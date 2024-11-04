@@ -92,11 +92,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         variance = properties.getTargetPicsureObfuscationVariance();
         randomSalt = properties.getTargetPicsureObfuscationSalt();
 
-        headers = new Header[]{new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
+        headers = new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
 
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100); // Maximum total connections
-        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+        connectionManager.setDefaultMaxPerRoute(5); // Maximum connections per route
         httpClientUtil = HttpClientUtil.getInstance(connectionManager);
     }
 
@@ -120,7 +120,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             if (infoRequest != null) {
                 chainRequest.setQuery(infoRequest.getQuery());
                 chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
-                //set a default value of the existing uuid here (can override in properties file)
+                // set a default value of the existing uuid here (can override in properties file)
                 chainRequest.setResourceUUID(infoRequest.getResourceUUID());
             }
             if (properties.getTargetResourceId() != null && !properties.getTargetResourceId().isEmpty()) {
@@ -131,20 +131,21 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
             HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
             if (!httpClientUtil.is2xx(response)) {
-                logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
-                        response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+                logger.error(
+                    "{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
                 HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
             }
 
-            //if we are proxying an info request, we need to return our own resource ID
+            // if we are proxying an info request, we need to return our own resource ID
             ResourceInfo resourceInfo = readObjectFromResponse(response, ResourceInfo.class);
             if (infoRequest != null && infoRequest.getResourceUUID() != null) {
                 resourceInfo.setId(infoRequest.getResourceUUID());
             }
             return resourceInfo;
         } catch (IOException e) {
-            throw new ApplicationException(
-                    "Error encoding query for resource with id " + infoRequest.getResourceUUID());
+            throw new ApplicationException("Error encoding query for resource with id " + infoRequest.getResourceUUID());
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
@@ -192,9 +193,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         try {
             return Response.ok(response.getEntity().getContent()).build();
         } catch (IOException e) {
-            throw new ApplicationException(
-                    "Error encoding query for resource with id " + resultRequest.getResourceUUID()
-            );
+            throw new ApplicationException("Error encoding query for resource with id " + resultRequest.getResourceUUID());
         }
     }
 
@@ -205,16 +204,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
             HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
             if (!HttpClientUtil.is2xx(response)) {
-                logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
-                        response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+                logger.error(
+                    "{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
                 HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
             }
             return response;
         } catch (IOException e) {
             // Note: this shouldn't ever happen
             logger.error("Error encoding search payload", e);
-            throw new ApplicationException(
-                    "Error encoding search for resource with id " + statusRequest.getResourceUUID());
+            throw new ApplicationException("Error encoding search for resource with id " + statusRequest.getResourceUUID());
         }
     }
 
@@ -236,9 +236,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             String expectedResultType = jsonNode.get("expectedResultType").asText();
 
             Set<String> allowedResultTypes = Set.of(
-                    "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT",
-                    "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT", "CONTINUOUS_CROSS_COUNT",
-                    "VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "VCF_EXCERPT"
+                "COUNT", "CROSS_COUNT", "INFO_COLUMN_LISTING", "OBSERVATION_COUNT", "OBSERVATION_CROSS_COUNT", "CATEGORICAL_CROSS_COUNT",
+                "CONTINUOUS_CROSS_COUNT", "VARIANT_COUNT_FOR_QUERY", "AGGREGATE_VCF_EXCERPT", "VCF_EXCERPT"
             );
 
             if (!allowedResultTypes.contains(expectedResultType)) {
@@ -254,7 +253,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
             responseString = getExpectedResponse(expectedResultType, entityString, responseString, queryRequest);
 
-            //propagate any metadata from the back end (e.g., resultId)
+            // propagate any metadata from the back end (e.g., resultId)
             if (response.containsHeader(QUERY_METADATA_FIELD)) {
                 Header metadataHeader = ((Header[]) response.getHeaders(QUERY_METADATA_FIELD))[0];
                 return Response.ok(responseString).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
@@ -263,15 +262,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             return Response.ok(responseString).build();
         } catch (IOException e) {
             logger.error(e.getMessage(), e);
-            throw new ApplicationException(
-                    "Error encoding query for resource with id " + queryRequest.getResourceUUID());
+            throw new ApplicationException("Error encoding query for resource with id " + queryRequest.getResourceUUID());
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
         }
     }
 
-    private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl) throws JsonProcessingException {
+    private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl)
+        throws JsonProcessingException {
         String queryString = objectMapper.writeValueAsString(queryRequest);
         String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, pathName);
 
@@ -280,27 +279,26 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         if (!HttpClientUtil.is2xx(response)) {
             logger.error("Not 200 status!");
             logger.error(
-                    composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
-                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+                composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+                response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+            );
             HttpClientUtil.throwResponseError(response, targetPicsureUrl);
         }
         return response;
     }
 
     /**
-     * This method will process the response from the backend and return the
-     * expected response based on the expected result type.
-     * Currently, the only types that are handled are:
-     * COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT
+     * This method will process the response from the backend and return the expected response based on the expected result type. Currently,
+     * the only types that are handled are: COUNT, CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT
      *
      * @param expectedResultType The expected result type
-     * @param entityString       The response from the backend that will be processed
-     * @param responseString     The response that will be returned. Will return the passed entityString if
-     *                           no cases are matched.
+     * @param entityString The response from the backend that will be processed
+     * @param responseString The response that will be returned. Will return the passed entityString if no cases are matched.
      * @return String The response that will be returned
      * @throws JsonProcessingException If there is an error processing the response
      */
-    private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest) throws IOException, JsonProcessingException {
+    private String getExpectedResponse(String expectedResultType, String entityString, String responseString, QueryRequest queryRequest)
+        throws IOException, JsonProcessingException {
         String crossCountResponse;
         switch (expectedResultType) {
             case "COUNT":
@@ -327,8 +325,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * No matter what the expected result type is we will get the cross count instead. Additionally,
-     * it will include ALL study consents in the query.
+     * No matter what the expected result type is we will get the cross count instead. Additionally, it will include ALL study consents in
+     * the query.
      *
      * @param queryRequest The query request
      * @return String The cross count for the query
@@ -336,7 +334,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     private String getCrossCountForQuery(QueryRequest queryRequest) throws IOException {
         logger.debug("Calling Aggregate Data Sharing Resource getCrossCountForQuery()");
 
-        HttpResponse response = getHttpResponse(changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync", properties.getTargetPicsureUrl());
+        HttpResponse response = getHttpResponse(
+            changeQueryToOpenCrossCount(queryRequest), queryRequest.getResourceUUID(), "/query/sync", properties.getTargetPicsureUrl()
+        );
         HttpEntity entity = response.getEntity();
         return EntityUtils.toString(entity, "UTF-8");
     }
@@ -356,8 +356,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
         JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
 
-        LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>() {
-        });
+        LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>() {});
         queryRequest.setQuery(rebuiltQuery);
         return queryRequest;
     }
@@ -380,11 +379,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         logger.debug("Calling Aggregate Data Sharing Resource addStudyConsentsToQuery()");
 
         SearchResults consentResults = getAllStudyConsents();
-        LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {
-        });
+        LinkedHashMap<String, Object> linkedHashMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
         Object phenotypes = linkedHashMap.get("phenotypes");
-        LinkedHashMap<String, Object> phenotypesLinkedHashMap = objectMapper.convertValue(phenotypes, new TypeReference<>() {
-        });
+        LinkedHashMap<String, Object> phenotypesLinkedHashMap = objectMapper.convertValue(phenotypes, new TypeReference<>() {});
 
         // get all the keys from phenotypes
         Set<String> keys = phenotypesLinkedHashMap.keySet();
@@ -426,15 +423,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
             if (!HttpClientUtil.is2xx(response)) {
                 logger.error(
-                        composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
-                        response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
+                    composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
+                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
                 HttpClientUtil.throwResponseError(response, properties.getTargetPicsureUrl());
             }
 
             return Response.ok(response.getEntity().getContent()).build();
         } catch (IOException e) {
-            throw new ApplicationException(
-                    "Error encoding query for resource with id " + queryRequest.getResourceUUID());
+            throw new ApplicationException("Error encoding query for resource with id " + queryRequest.getResourceUUID());
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
@@ -442,8 +439,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     private Map<String, String> processCrossCounts(String entityString) throws com.fasterxml.jackson.core.JsonProcessingException {
-        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {
-        });
+        Map<String, String> crossCounts = objectMapper.readValue(entityString, new TypeReference<>() {});
 
         int requestVariance = generateVarianceWithCrossCounts(crossCounts);
         crossCounts = obfuscateCrossCounts(crossCounts, requestVariance);
@@ -454,7 +450,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     /**
      * This method will appropriately process the obfuscation of the cross counts.
      *
-     * @param crossCounts     The cross counts
+     * @param crossCounts The cross counts
      * @param requestVariance The variance for the request
      * @return Map<String, String> The obfuscated cross counts
      */
@@ -482,11 +478,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method is used to generate a variance for Cross Count queries.
-     * The variance is generated by taking the cross counts and sorting them by key.
-     * Then we generate a string with lines like consent:1\n consent:2\ consent:3\n etc.
-     * Then we generate a variance using the string. This is to give us a random variance that is deterministic for each
-     * query.
+     * This method is used to generate a variance for Cross Count queries. The variance is generated by taking the cross counts and sorting
+     * them by key. Then we generate a string with lines like consent:1\n consent:2\ consent:3\n etc. Then we generate a variance using the
+     * string. This is to give us a random variance that is deterministic for each query.
      *
      * @param crossCounts A map of cross counts
      * @return int The variance
@@ -507,27 +501,27 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous
-     * cross count, we are unable to directly obfuscate it in its original form. First, we send the continuous
-     * cross count data to the visualization resource to group it into bins. Once the data is binned, we assess whether
-     * obfuscation is necessary for this particular continuous cross count. If obfuscation is not required, we return
-     * the data in string format. However, if obfuscation is needed, we first obfuscate the data and then return it.
+     * This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous cross count, we are
+     * unable to directly obfuscate it in its original form. First, we send the continuous cross count data to the visualization resource to
+     * group it into bins. Once the data is binned, we assess whether obfuscation is necessary for this particular continuous cross count.
+     * If obfuscation is not required, we return the data in string format. However, if obfuscation is needed, we first obfuscate the data
+     * and then return it.
      *
      * @param continuousCrossCountResponse The continuous cross count response
-     * @param crossCountResponse           The cross count response
-     * @param queryRequest                 The original query request
+     * @param crossCountResponse The cross count response
+     * @param queryRequest The original query request
      * @return String The obfuscated binned continuous cross count
      * @throws IOException If there is an error processing the JSON
      */
-    protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest) throws IOException {
+    protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest)
+        throws IOException {
         logger.info("Processing continuous cross counts");
 
         if (continuousCrossCountResponse == null || crossCountResponse == null) {
             return null;
         }
 
-        Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>() {
-        });
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>() {});
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
         boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 
@@ -537,8 +531,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
         // Handle the case where there is no visualization service UUID
         if (properties.getVisualizationResourceId() != null) {
-            Map<String, Map<String, Integer>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
-            Map<String, Map<String, Object>> binnedContinuousCrossCounts = getBinnedContinuousCrossCount(queryRequest, continuousCrossCounts);
+            Map<String, Map<String, Integer>> continuousCrossCounts =
+                objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
+            Map<String, Map<String, Object>> binnedContinuousCrossCounts =
+                getBinnedContinuousCrossCount(queryRequest, continuousCrossCounts);
 
             // Log the binned continuous cross counts
             logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
@@ -554,14 +550,17 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 return continuousCrossCountResponse;
             }
 
-            Map<String, Map<String, Object>> continuousCrossCounts = objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
+            Map<String, Map<String, Object>> continuousCrossCounts =
+                objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
 
             obfuscatedCrossCount(generatedVariance, continuousCrossCounts);
             return objectMapper.writeValueAsString(continuousCrossCounts);
         }
     }
 
-    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(QueryRequest queryRequest, Map<String, Map<String, Integer>> continuousCrossCounts) throws IOException {
+    private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(
+        QueryRequest queryRequest, Map<String, Map<String, Integer>> continuousCrossCounts
+    ) throws IOException {
         // Create Query for Visualization /bin/continuous
         QueryRequest visualizationBinRequest = new GeneralQueryRequest();
         visualizationBinRequest.setResourceUUID(properties.getVisualizationResourceId());
@@ -574,38 +573,38 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         }
 
         // call the binning endpoint
-        HttpResponse httpResponse = getHttpResponse(visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath());
+        HttpResponse httpResponse = getHttpResponse(
+            visualizationBinRequest, visualizationBinRequest.getResourceUUID(), "/bin/continuous", visResource.getResourceRSPath()
+        );
         HttpEntity entity = httpResponse.getEntity();
         String binResponse = EntityUtils.toString(entity, "UTF-8");
 
-        return objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {
-        });
+        return objectMapper.readValue(binResponse, new TypeReference<Map<String, Map<String, Object>>>() {});
     }
 
     /**
-     * This method handles the processing of categorical cross counts. It begins by determining whether the cross
-     * counts require obfuscation. This is accomplished by checking if any of the CROSS_COUNTS must be obfuscated.
-     * If obfuscation is required, the categorical cross counts will be obfuscated accordingly. Otherwise,
-     * if no obfuscation is needed, the method can simply return the categorical entity string.
+     * This method handles the processing of categorical cross counts. It begins by determining whether the cross counts require
+     * obfuscation. This is accomplished by checking if any of the CROSS_COUNTS must be obfuscated. If obfuscation is required, the
+     * categorical cross counts will be obfuscated accordingly. Otherwise, if no obfuscation is needed, the method can simply return the
+     * categorical entity string.
      *
      * @param categoricalEntityString The categorical entity string
-     * @param crossCountEntityString  The cross count entity string
+     * @param crossCountEntityString The cross count entity string
      * @return String The processed categorical entity string
      * @throws JsonProcessingException If there is an error processing the JSON
      */
-    protected String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString) throws JsonProcessingException {
+    protected String processCategoricalCrossCounts(String categoricalEntityString, String crossCountEntityString)
+        throws JsonProcessingException {
         logger.info("Processing categorical cross counts");
 
         if (categoricalEntityString == null || crossCountEntityString == null) {
             return null;
         }
 
-        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {
-        });
+        Map<String, String> crossCounts = objectMapper.readValue(crossCountEntityString, new TypeReference<>() {});
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
 
-        Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {
-        });
+        Map<String, Map<String, Object>> categoricalCrossCount = objectMapper.readValue(categoricalEntityString, new TypeReference<>() {});
 
         if (categoricalCrossCount == null) {
             logger.info("Categorical cross count is null. Returning categoricalEntityString: {}", categoricalEntityString);
@@ -641,8 +640,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             return false;
         }
 
-        return categoricalCrossCount.values().stream()
-                .anyMatch(this::checkForObfuscation);
+        return categoricalCrossCount.values().stream().anyMatch(this::checkForObfuscation);
     }
 
     private boolean checkForObfuscation(Map<String, Object> axisMap) {
@@ -678,11 +676,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method will obfuscate the cross counts based on the generated variance. We do not have a return because
-     * we are modifying the passed crossCount object. Java passes objects by reference value, so we do not need to return.
+     * This method will obfuscate the cross counts based on the generated variance. We do not have a return because we are modifying the
+     * passed crossCount object. Java passes objects by reference value, so we do not need to return.
      *
      * @param generatedVariance The variance for the request
-     * @param crossCount        The cross count that will be obfuscated
+     * @param crossCount The cross count that will be obfuscated
      */
     private void obfuscatedCrossCount(int generatedVariance, Map<String, Map<String, Object>> crossCount) {
         crossCount.forEach((key, value) -> {
@@ -698,10 +696,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method will determine if the cross count needs to be obfuscated. It will return true if any of the
-     * cross counts are less than the threshold or if any of the cross counts have a variance.
+     * This method will determine if the cross count needs to be obfuscated. It will return true if any of the cross counts are less than
+     * the threshold or if any of the cross counts have a variance.
      *
-     * @param crossCounts     The cross counts
+     * @param crossCounts The cross counts
      * @param generatedVariance The variance for the request
      * @return boolean True if the cross count needs to be obfuscated, false otherwise
      */
@@ -734,10 +732,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method will generate a random variance for the request based on the passed entityString. The variance
-     * will be between -variance and +variance. The variance will be generated by adding a random salt to the
-     * entityString and then taking the hashcode of the result. The variance will be the hashcode mod the
-     * variance * 2 + 1 - variance.
+     * This method will generate a random variance for the request based on the passed entityString. The variance will be between -variance
+     * and +variance. The variance will be generated by adding a random salt to the entityString and then taking the hashcode of the result.
+     * The variance will be the hashcode mod the variance * 2 + 1 - variance.
      *
      * @return int The variance for the request
      */
@@ -773,9 +770,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
         String[] split = key.split("\\\\");
         if (split.length > 1) {
-            return Arrays.stream(Arrays.copyOfRange(split, 0, split.length - 1))
-                    .filter(Predicate.not(String::isEmpty))
-                    .map(segment -> stringJoiner.add(segment).toString());
+            return Arrays.stream(Arrays.copyOfRange(split, 0, split.length - 1)).filter(Predicate.not(String::isEmpty))
+                .map(segment -> stringJoiner.add(segment).toString());
         }
         return Stream.empty();
     }
