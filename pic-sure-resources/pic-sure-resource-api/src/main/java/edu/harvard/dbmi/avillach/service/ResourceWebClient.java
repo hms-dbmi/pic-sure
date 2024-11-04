@@ -79,13 +79,7 @@ public class ResourceWebClient {
         } catch (JsonProcessingException e) {
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -116,13 +110,7 @@ public class ResourceWebClient {
         } catch (URISyntaxException e) {
             throw new ApplicationException("rsURL invalid : " + rsURL, e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -156,13 +144,7 @@ public class ResourceWebClient {
             // TODO Write custom exception
             throw new ProtocolException("Unable to serialize search query", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -193,18 +175,13 @@ public class ResourceWebClient {
             logger.error("Unable to encode data query");
             throw new ProtocolException("Unable to encode data query", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
     public QueryStatus queryStatus(String rsURL, String queryId, QueryRequest queryRequest) {
         logger.debug("Calling ResourceWebClient query()");
+        HttpResponse resourcesResponse = null;
         try {
             if (queryRequest == null) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
@@ -222,7 +199,7 @@ public class ResourceWebClient {
             String body = json.writeValueAsString(queryRequest);
             logger.debug(httpClientUtil.composeURL(rsURL, pathName));
             logger.debug(body);
-            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(
+            resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
@@ -233,11 +210,25 @@ public class ResourceWebClient {
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new ProtocolException("Unable to encode resource credentials", e);
+        } finally {
+            closeHttpResponse(resourcesResponse);
+        }
+    }
+
+    private void closeHttpResponse(HttpResponse resourcesResponse) {
+        if (resourcesResponse != null) {
+            try {
+                EntityUtils.consume(resourcesResponse.getEntity());
+            } catch (IOException e) {
+                logger.error("Failed to close HttpResponse entity", e);
+            }
         }
     }
 
     public Response queryResult(String rsURL, String queryId, QueryRequest queryRequest) {
         logger.debug("Calling ResourceWebClient query()");
+
+        HttpResponse resourcesResponse = null;
         try {
             if (queryRequest == null) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
@@ -253,19 +244,21 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/result";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(
-                httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
+            resourcesResponse = httpClientUtil.retrievePostResponse(
+                HttpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
-                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
+                HttpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e) {
-            throw new ResourceInterfaceException("Error getting results", e);
+        } finally {
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -290,30 +283,26 @@ public class ResourceWebClient {
             resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e) {
-            throw new ResourceInterfaceException("Error getting results", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
 
     public Response queryFormat(String rsURL, QueryRequest queryRequest) {
         logger.debug("Calling ResourceWebClient queryFormat()");
+        HttpResponse resourcesResponse = null;
         try {
             if (queryRequest == null) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
@@ -326,20 +315,22 @@ public class ResourceWebClient {
             }
             String pathName = "/query/format";
             String body = json.writeValueAsString(queryRequest);
-            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(
+            resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
             int status = resourcesResponse.getStatusLine().getStatusCode();
             if (status != 200) {
-                logger.error("Query format request did not return a 200:  " + resourcesResponse.getStatusLine().getStatusCode());
-                return Response.status(status).entity(resourcesResponse.getEntity().getContent()).build();
+                logger.error("Query format request did not return a 200:  {}", resourcesResponse.getStatusLine().getStatusCode());
+                return Response.status(status).entity(content).build();
             }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e) {
-            throw new ResourceInterfaceException("Error getting results", e);
+        } finally {
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -377,25 +368,17 @@ public class ResourceWebClient {
                 throwError(resourcesResponse, rsURL);
             }
 
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
             if (resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
                 Header metadataHeader = ((Header[]) resourcesResponse.getHeaders(QUERY_METADATA_FIELD))[0];
-                return Response.ok(resourcesResponse.getEntity().getContent()).header(QUERY_METADATA_FIELD, metadataHeader.getValue())
-                    .build();
+                return Response.ok(content).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
             }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e) {
-            throw new ResourceInterfaceException("Error getting results", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -437,24 +420,17 @@ public class ResourceWebClient {
             }
 
             logger.debug("Calling ResourceWebClient queryContinuous() with body: " + body + " and headers: " + queryRequest);
-            resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), headers, body);
+            resourcesResponse = httpClientUtil.retrievePostResponse(HttpClientUtil.composeURL(rsURL, pathName), headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);
             }
 
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new ResourceInterfaceException("Error getting results", e);
         } finally {
-            if (resourcesResponse != null) {
-                try {
-                    EntityUtils.consume(resourcesResponse.getEntity());
-                } catch (IOException e) {
-                    logger.error("Failed to close HttpResponse entity", e);
-                }
-            }
+            closeHttpResponse(resourcesResponse);
         }
     }
 
@@ -467,6 +443,7 @@ public class ResourceWebClient {
                 errorMessage += "/n" + responseNode.get("message").asText();
             }
         } catch (IOException e) {
+            logger.error(e.getMessage());
         }
         if (response.getStatusLine().getStatusCode() == 401) {
             throw new NotAuthorizedException(errorMessage);
