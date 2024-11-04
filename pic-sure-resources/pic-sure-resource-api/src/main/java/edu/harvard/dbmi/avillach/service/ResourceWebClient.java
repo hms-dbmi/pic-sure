@@ -41,7 +41,7 @@ public class ResourceWebClient {
     public static final String BEARER_TOKEN_KEY = "BEARER_TOKEN";
     public static final String QUERY_METADATA_FIELD = "queryMetadata";
 
-    public final HttpClientUtil httpClientUtil;
+    private final HttpClientUtil httpClientUtil;
     
     public ResourceWebClient() {
         PoolingHttpClientConnectionManager connectionManager;
