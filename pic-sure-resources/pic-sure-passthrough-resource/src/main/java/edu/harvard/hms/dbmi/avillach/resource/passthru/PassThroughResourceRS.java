@@ -13,6 +13,7 @@ import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +24,7 @@ import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
 
 @Path("/passthru")
 @Produces("application/json")
@@ -67,6 +69,7 @@ public class PassThroughResourceRS implements IResourceRS {
     public ResourceInfo info(QueryRequest infoRequest) {
         String pathName = "/info";
 
+		HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             if (infoRequest != null) {
@@ -77,7 +80,7 @@ public class PassThroughResourceRS implements IResourceRS {
 
             String payload = objectMapper.writeValueAsString(chainRequest);
 
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -97,7 +100,9 @@ public class PassThroughResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-        }
+        } finally {
+			closeHttpResponse(response);
+		}
     }
 
     @POST
@@ -112,13 +117,13 @@ public class PassThroughResourceRS implements IResourceRS {
         }
 
         String pathName = "/query";
-
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = queryRequest.copy();
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -135,6 +140,8 @@ public class PassThroughResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
@@ -147,6 +154,7 @@ public class PassThroughResourceRS implements IResourceRS {
 
         String pathName = "/query/" + queryId + "/result";
 
+		HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             chainRequest.setQuery(resultRequest.getQuery());
@@ -154,9 +162,10 @@ public class PassThroughResourceRS implements IResourceRS {
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-            if (response.getStatusLine().getStatusCode() != 200) {
+			String content = httpClient.readObjectFromResponse(response);
+			if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
                     "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
                     chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
@@ -164,13 +173,15 @@ public class PassThroughResourceRS implements IResourceRS {
                 httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
             }
 
-            return Response.ok(response.getEntity().getContent()).build();
+            return Response.ok(content).build();
         } catch (IOException e) {
             throw new ApplicationException("Error encoding query for resource with id " + resultRequest.getResourceUUID());
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-        }
+        } finally {
+			closeHttpResponse(response);
+		}
     }
 
     @POST
@@ -182,7 +193,7 @@ public class PassThroughResourceRS implements IResourceRS {
         }
 
         String pathName = "/query/" + queryId + "/status";
-
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             chainRequest.setQuery(statusRequest.getQuery());
@@ -190,7 +201,7 @@ public class PassThroughResourceRS implements IResourceRS {
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -207,6 +218,8 @@ public class PassThroughResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
@@ -224,6 +237,7 @@ public class PassThroughResourceRS implements IResourceRS {
 
         String pathName = "/query/sync";
 
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             chainRequest.setQuery(queryRequest.getQuery());
@@ -231,7 +245,7 @@ public class PassThroughResourceRS implements IResourceRS {
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -253,6 +267,8 @@ public class PassThroughResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
@@ -267,6 +283,7 @@ public class PassThroughResourceRS implements IResourceRS {
             throw new ProtocolException((ProtocolException.MISSING_DATA));
         }
 
+        HttpResponse response = null;
         String pathName = "/search/" + properties.getTargetResourceId();
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
@@ -275,7 +292,7 @@ public class PassThroughResourceRS implements IResourceRS {
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -289,6 +306,8 @@ public class PassThroughResourceRS implements IResourceRS {
             // Note: this shouldn't ever happen
             logger.error("Error encoding search payload", e);
             throw new ApplicationException("Error encoding search for resource with id " + searchRequest.getResourceUUID());
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
@@ -303,7 +322,7 @@ public class PassThroughResourceRS implements IResourceRS {
         }
 
         String pathName = "/query/format";
-
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             chainRequest.setQuery(queryRequest.getQuery());
@@ -311,7 +330,7 @@ public class PassThroughResourceRS implements IResourceRS {
             chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
             String payload = objectMapper.writeValueAsString(chainRequest);
-            HttpResponse response = httpClient
+            response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
@@ -327,6 +346,8 @@ public class PassThroughResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
