@@ -47,7 +47,7 @@ public class ResourceWebClient {
 
         connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100); // Maximum total connections
-        connectionManager.setDefaultMaxPerRoute(5); // Maximum connections per route
+        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
 
         this.httpClientUtil = HttpClientUtil.getInstance(connectionManager);
     }
