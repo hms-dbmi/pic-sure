@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Map;
 
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
+
 
 /**
  * The ResourceWebClient class implements the client side logic for the endpoints specified in IResourceRS. <p> The PicsureInfoService,
@@ -212,16 +214,6 @@ public class ResourceWebClient {
             throw new ProtocolException("Unable to encode resource credentials", e);
         } finally {
             closeHttpResponse(resourcesResponse);
-        }
-    }
-
-    private void closeHttpResponse(HttpResponse resourcesResponse) {
-        if (resourcesResponse != null) {
-            try {
-                EntityUtils.consume(resourcesResponse.getEntity());
-            } catch (IOException e) {
-                logger.error("Failed to close HttpResponse entity", e);
-            }
         }
     }
 

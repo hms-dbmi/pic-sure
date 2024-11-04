@@ -36,8 +36,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.getConfiguredHttpClient;
-import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
+import static edu.harvard.dbmi.avillach.util.HttpClientUtil.*;
 
 @Path("/aggregate-data-sharing")
 @Produces("application/json")
@@ -115,6 +114,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         logger.debug("Calling Aggregate Data Sharing Resource info()");
         String pathName = "/info";
 
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             if (infoRequest != null) {
@@ -129,8 +129,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
             String payload = objectMapper.writeValueAsString(chainRequest);
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
-            HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
-            if (!httpClientUtil.is2xx(response)) {
+            response = httpClientUtil.retrievePostResponse(composedURL, headers, payload);
+            if (!HttpClientUtil.is2xx(response)) {
                 logger.error(
                     "{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
                     response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
@@ -149,6 +149,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
         }
     }
 
@@ -158,8 +160,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     public SearchResults search(QueryRequest searchRequest) {
         logger.debug("Calling Aggregate Data Sharing Search");
         checkQuery(searchRequest);
-        HttpResponse response = postRequest(searchRequest, "/search");
-        return readObjectFromResponse(response, SearchResults.class);
+        HttpResponse response = null;
+        try {
+            response = postRequest(searchRequest, "/search");
+            return readObjectFromResponse(response, SearchResults.class);
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
+        }
     }
 
     @POST
@@ -168,9 +175,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     public QueryStatus query(QueryRequest queryRequest) {
         logger.debug("Calling Aggregate Data Sharing Resource query()");
         checkQuery(queryRequest);
-        HttpResponse response = postRequest(queryRequest, "/query");
-        return readObjectFromResponse(response, QueryStatus.class);
-
+        HttpResponse response = null;
+        try {
+            response = postRequest(queryRequest, "/query");
+            return readObjectFromResponse(response, QueryStatus.class);
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
+        }
     }
 
     @POST
@@ -179,8 +190,13 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     public QueryStatus queryStatus(@PathParam("resourceQueryId") UUID queryId, QueryRequest statusRequest) {
         logger.debug("Calling Aggregate Data Sharing Resource queryStatus() for query {}", queryId);
         checkQuery(statusRequest);
-        HttpResponse response = postRequest(statusRequest, "/query/" + queryId + "/status");
-        return readObjectFromResponse(response, QueryStatus.class);
+        HttpResponse response = null;
+        try {
+            response = postRequest(statusRequest, "/query/" + queryId + "/status");
+            return readObjectFromResponse(response, QueryStatus.class);
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
+        }
     }
 
     @POST
@@ -191,9 +207,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         checkQuery(resultRequest);
         HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
         try {
-            return Response.ok(response.getEntity().getContent()).build();
-        } catch (IOException e) {
-            throw new ApplicationException("Error encoding query for resource with id " + resultRequest.getResourceUUID());
+            String responseBody = httpClientUtil.readObjectFromResponse(response);
+            return Response.ok(responseBody).build();
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
         }
     }
 
@@ -225,6 +242,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         logger.debug("Calling Aggregate Data Sharing Resource querySync()");
         checkQuery(queryRequest);
 
+        HttpResponse response = null;
         try {
             Object query = queryRequest.getQuery();
             UUID resourceUUID = queryRequest.getResourceUUID();
@@ -245,7 +263,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 return Response.status(Response.Status.BAD_REQUEST).build();
             }
 
-            HttpResponse response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
+            response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
             HttpEntity entity = response.getEntity();
             String entityString = EntityUtils.toString(entity, "UTF-8");
@@ -266,6 +284,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            closeHttpResponse(response);
         }
     }
 
@@ -417,10 +437,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         UUID resourceUUID = queryRequest.getResourceUUID();
         String pathName = "/query/format";
 
+        HttpResponse response = null;
         try {
             String queryString = objectMapper.writeValueAsString(queryRequest);
             String composedURL = HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName);
-            HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
+            response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
             if (!HttpClientUtil.is2xx(response)) {
                 logger.error(
                     composedURL + " calling resource with id " + resourceUUID + " did not return a 200: {} {} ",
@@ -435,6 +456,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         } catch (ClassCastException | IllegalArgumentException e) {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        } finally {
+            HttpClientUtil.closeHttpResponse(response);
         }
     }
 

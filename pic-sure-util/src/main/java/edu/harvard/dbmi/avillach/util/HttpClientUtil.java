@@ -337,4 +337,14 @@ public class HttpClientUtil {
 	public static HttpClientUtil getInstance(HttpClientConnectionManager connectionManager) {
 		return new HttpClientUtil(getConfiguredHttpClient(connectionManager));
 	}
+
+	public static void closeHttpResponse(HttpResponse resourcesResponse) {
+		if (resourcesResponse != null) {
+			try {
+				EntityUtils.consume(resourcesResponse.getEntity());
+			} catch (IOException e) {
+				logger.error("Failed to close HttpResponse entity", e);
+			}
+		}
+	}
 }
