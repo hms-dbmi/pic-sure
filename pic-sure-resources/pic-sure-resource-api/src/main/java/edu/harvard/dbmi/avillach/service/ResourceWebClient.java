@@ -311,6 +311,7 @@ public class ResourceWebClient {
 
     public Response querySync(String rsURL, QueryRequest queryRequest, String requestSource) {
         logger.debug("Calling ResourceWebClient querySync()");
+        HttpResponse resourcesResponse = null;
         try {
             if (queryRequest == null) {
                 throw new ProtocolException("Missing query data");
@@ -337,7 +338,7 @@ public class ResourceWebClient {
                 headers = newHeaders;
             }
 
-            HttpResponse resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), headers, body);
+            resourcesResponse = httpClientUtil.retrievePostResponse(httpClientUtil.composeURL(rsURL, pathName), headers, body);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 throwError(resourcesResponse, rsURL);
             }
@@ -353,6 +354,14 @@ public class ResourceWebClient {
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
         } catch (IOException e) {
             throw new ResourceInterfaceException("Error getting results", e);
+        } finally {
+            if (resourcesResponse != null) {
+                try {
+                    EntityUtils.consume(resourcesResponse.getEntity());
+                } catch (IOException e) {
+                    logger.error("Failed to close HttpResponse entity", e);
+                }
+            }
         }
     }
 
