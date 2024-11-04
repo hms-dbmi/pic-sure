@@ -29,304 +29,308 @@ import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA
 @Consumes("application/json")
 public class PassThroughResourceRS implements IResourceRS {
 
-	private static final String BEARER_STRING = "Bearer ";
+    private static final String BEARER_STRING = "Bearer ";
 
-	private static final ObjectMapper objectMapper = new ObjectMapper();
-	private static final Logger logger = LoggerFactory.getLogger(PassThroughResourceRS.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Logger logger = LoggerFactory.getLogger(PassThroughResourceRS.class);
 
-	@Inject
-	private ApplicationProperties properties;
-	@Inject
-	private HttpClientUtil httpClient;
+    @Inject
+    private ApplicationProperties properties;
 
-	public PassThroughResourceRS() {
-	}
+    private final HttpClientUtil httpClient;
 
-	@Inject
-	public PassThroughResourceRS(ApplicationProperties applicationProperties) {
-		this.properties = applicationProperties;
+    public PoolingHttpClientConnectionManager getConnectionManager() {
+        PoolingHttpClientConnectionManager connectionManager;
+        connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(100); // Maximum total connections
+        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+        return connectionManager;
+    }
 
-		PoolingHttpClientConnectionManager connectionManager;
-		connectionManager = new PoolingHttpClientConnectionManager();
-		connectionManager.setMaxTotal(100); // Maximum total connections
-		connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
-		this.httpClient = HttpClientUtil.getInstance(connectionManager);
-	}
+    public PassThroughResourceRS() {
+        this.httpClient = HttpClientUtil.getInstance(getConnectionManager());
+    }
 
-	public PassThroughResourceRS(ApplicationProperties properties, HttpClientUtil httpClient) {
-		this.properties = properties;
-		this.httpClient = httpClient;
-	}
+    @Inject
+    public PassThroughResourceRS(ApplicationProperties applicationProperties) {
+        this.properties = applicationProperties;
+        this.httpClient = HttpClientUtil.getInstance(getConnectionManager());
+    }
 
-	@POST
-	@Path("/info")
-	public ResourceInfo info(QueryRequest infoRequest) {
-		String pathName = "/info";
+    public PassThroughResourceRS(ApplicationProperties properties, HttpClientUtil httpClient) {
+        this.properties = properties;
+        this.httpClient = httpClient;
+    }
 
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			if (infoRequest != null) {
-				chainRequest.setQuery(infoRequest.getQuery());
-				chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
-			}
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+    @POST
+    @Path("/info")
+    public ResourceInfo info(QueryRequest infoRequest) {
+        String pathName = "/info";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            if (infoRequest != null) {
+                chainRequest.setQuery(infoRequest.getQuery());
+                chainRequest.setResourceCredentials(infoRequest.getResourceCredentials());
+            }
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
+            String payload = objectMapper.writeValueAsString(chainRequest);
 
-			ResourceInfo resourceInfo = httpClient.readObjectFromResponse(response, ResourceInfo.class);
-			if (infoRequest != null && infoRequest.getResourceUUID() != null) {
-				resourceInfo.setId(infoRequest.getResourceUUID());
-			}
-			return resourceInfo;
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + infoRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+            HttpResponse response = httpClient
+                .retrievePostResponse(HttpClientUtil.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                HttpClientUtil.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
 
-	@POST
-	@Path("/query")
-	public QueryStatus query(QueryRequest queryRequest) {
-		if (queryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = queryRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
-		}
+            ResourceInfo resourceInfo = HttpClientUtil.readObjectFromResponse(response, ResourceInfo.class);
+            if (infoRequest != null && infoRequest.getResourceUUID() != null) {
+                resourceInfo.setId(infoRequest.getResourceUUID());
+            }
+            return resourceInfo;
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + infoRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
 
-		String pathName = "/query";
+    @POST
+    @Path("/query")
+    public QueryStatus query(QueryRequest queryRequest) {
+        if (queryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Object search = queryRequest.getQuery();
+        if (search == null) {
+            throw new ProtocolException((ProtocolException.MISSING_DATA));
+        }
 
-		try {
-			QueryRequest chainRequest = queryRequest.copy();
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+        String pathName = "/query";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
-						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
-			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
-			queryStatus.setResourceID(queryRequest.getResourceUUID());
-			return queryStatus;
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+        try {
+            QueryRequest chainRequest = queryRequest.copy();
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-	@POST
-	@Path("/query/{resourceQueryId}/result")
-	public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
-		if (resultRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
+            QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
+            queryStatus.setResourceID(queryRequest.getResourceUUID());
+            return queryStatus;
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + queryRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
 
-		String pathName = "/query/" + queryId + "/result";
+    @POST
+    @Path("/query/{resourceQueryId}/result")
+    public Response queryResult(@PathParam("resourceQueryId") String queryId, QueryRequest resultRequest) {
+        if (resultRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
 
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			chainRequest.setQuery(resultRequest.getQuery());
-			chainRequest.setResourceCredentials(resultRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+        String pathName = "/query/" + queryId + "/result";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
-						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            chainRequest.setQuery(resultRequest.getQuery());
+            chainRequest.setResourceCredentials(resultRequest.getResourceCredentials());
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-			return Response.ok(response.getEntity().getContent()).build();
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + resultRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
 
-	@POST
-	@Path("/query/{resourceQueryId}/status")
-	public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
-		// JNix: Retaining for future use...
-		if (statusRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
+            return Response.ok(response.getEntity().getContent()).build();
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + resultRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
 
-		String pathName = "/query/" + queryId + "/status";
+    @POST
+    @Path("/query/{resourceQueryId}/status")
+    public QueryStatus queryStatus(@PathParam("resourceQueryId") String queryId, QueryRequest statusRequest) {
+        // JNix: Retaining for future use...
+        if (statusRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
 
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			chainRequest.setQuery(statusRequest.getQuery());
-			chainRequest.setResourceCredentials(statusRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+        String pathName = "/query/" + queryId + "/status";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
-						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
-			QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
-			queryStatus.setResourceID(statusRequest.getResourceUUID());
-			return queryStatus;
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + statusRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            chainRequest.setQuery(statusRequest.getQuery());
+            chainRequest.setResourceCredentials(statusRequest.getResourceCredentials());
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-	@POST
-	@Path("/query/sync")
-	@Override
-	public Response querySync(QueryRequest queryRequest) {
-		if (queryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = queryRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
-		}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
+            QueryStatus queryStatus = httpClient.readObjectFromResponse(response, QueryStatus.class);
+            queryStatus.setResourceID(statusRequest.getResourceUUID());
+            return queryStatus;
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + statusRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
 
-		String pathName = "/query/sync";
+    @POST
+    @Path("/query/sync")
+    @Override
+    public Response querySync(QueryRequest queryRequest) {
+        if (queryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Object search = queryRequest.getQuery();
+        if (search == null) {
+            throw new ProtocolException((ProtocolException.MISSING_DATA));
+        }
 
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			chainRequest.setQuery(queryRequest.getQuery());
-			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+        String pathName = "/query/sync";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
-						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            chainRequest.setQuery(queryRequest.getQuery());
+            chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-			if (response.containsHeader(QUERY_METADATA_FIELD)) {
-				Header metadataHeader = ((Header[]) response.getHeaders(QUERY_METADATA_FIELD))[0];
-				logger.debug("Found Header[] : " + metadataHeader.getValue());
-				return Response.ok(response.getEntity().getContent())
-						.header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
-			}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
 
-			return Response.ok(response.getEntity().getContent()).build();
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+            if (response.containsHeader(QUERY_METADATA_FIELD)) {
+                Header metadataHeader = ((Header[]) response.getHeaders(QUERY_METADATA_FIELD))[0];
+                logger.debug("Found Header[] : " + metadataHeader.getValue());
+                return Response.ok(response.getEntity().getContent()).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
+            }
 
-	@POST
-	@Path("/search")
-	public SearchResults search(QueryRequest searchRequest) {
-		if (searchRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = searchRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
-		}
+            return Response.ok(response.getEntity().getContent()).build();
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + queryRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
 
-		String pathName = "/search/" + properties.getTargetResourceId();
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			chainRequest.setQuery(searchRequest.getQuery());
-			chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+    @POST
+    @Path("/search")
+    public SearchResults search(QueryRequest searchRequest) {
+        if (searchRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Object search = searchRequest.getQuery();
+        if (search == null) {
+            throw new ProtocolException((ProtocolException.MISSING_DATA));
+        }
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
-			return httpClient.readObjectFromResponse(response, SearchResults.class);
-		} catch (IOException e) {
-			// Note: this shouldn't ever happen
-			logger.error("Error encoding search payload", e);
-			throw new ApplicationException(
-					"Error encoding search for resource with id " + searchRequest.getResourceUUID());
-		}
-	}
+        String pathName = "/search/" + properties.getTargetResourceId();
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            chainRequest.setQuery(searchRequest.getQuery());
+            chainRequest.setResourceCredentials(searchRequest.getResourceCredentials());
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-	@Override
-	public Response queryFormat(QueryRequest queryRequest) {
-		if (queryRequest == null) {
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
-		Object search = queryRequest.getQuery();
-		if (search == null) {
-			throw new ProtocolException((ProtocolException.MISSING_DATA));
-		}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
+            return httpClient.readObjectFromResponse(response, SearchResults.class);
+        } catch (IOException e) {
+            // Note: this shouldn't ever happen
+            logger.error("Error encoding search payload", e);
+            throw new ApplicationException("Error encoding search for resource with id " + searchRequest.getResourceUUID());
+        }
+    }
 
-		String pathName = "/query/format";
+    @Override
+    public Response queryFormat(QueryRequest queryRequest) {
+        if (queryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        Object search = queryRequest.getQuery();
+        if (search == null) {
+            throw new ProtocolException((ProtocolException.MISSING_DATA));
+        }
 
-		try {
-			QueryRequest chainRequest = new GeneralQueryRequest();
-			chainRequest.setQuery(queryRequest.getQuery());
-			chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
-			chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
+        String pathName = "/query/format";
 
-			String payload = objectMapper.writeValueAsString(chainRequest);
-			HttpResponse response = httpClient.retrievePostResponse(
-					httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			if (response.getStatusLine().getStatusCode() != 200) {
-				logger.error("{}{} calling resource with id {} did not return a 200: {} {} ",
-						properties.getTargetPicsureUrl(), pathName, chainRequest.getResourceUUID(),
-						response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase());
-				httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
-			}
+        try {
+            QueryRequest chainRequest = new GeneralQueryRequest();
+            chainRequest.setQuery(queryRequest.getQuery());
+            chainRequest.setResourceCredentials(queryRequest.getResourceCredentials());
+            chainRequest.setResourceUUID(UUID.fromString(properties.getTargetResourceId()));
 
-			return Response.ok(response.getEntity().getContent()).build();
-		} catch (IOException e) {
-			throw new ApplicationException(
-					"Error encoding query for resource with id " + queryRequest.getResourceUUID());
-		} catch (ClassCastException | IllegalArgumentException e) {
-			logger.error(e.getMessage());
-			throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
-		}
-	}
+            String payload = objectMapper.writeValueAsString(chainRequest);
+            HttpResponse response = httpClient
+                .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
+            if (response.getStatusLine().getStatusCode() != 200) {
+                logger.error(
+                    "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
+                    chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
+                );
+                httpClient.throwInternalResponseError(response, properties.getTargetPicsureUrl());
+            }
 
-	private Header[] createAuthHeader() {
-		return new Header[] {
-				new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken()) };
-	}
+            return Response.ok(response.getEntity().getContent()).build();
+        } catch (IOException e) {
+            throw new ApplicationException("Error encoding query for resource with id " + queryRequest.getResourceUUID());
+        } catch (ClassCastException | IllegalArgumentException e) {
+            logger.error(e.getMessage());
+            throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
+        }
+    }
+
+    private Header[] createAuthHeader() {
+        return new Header[] {new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + properties.getTargetPicsureToken())};
+    }
 }
