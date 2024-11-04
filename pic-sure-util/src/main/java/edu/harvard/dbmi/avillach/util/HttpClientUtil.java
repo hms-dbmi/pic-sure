@@ -295,6 +295,12 @@ public class HttpClientUtil {
 	
 	public static HttpClient getConfiguredHttpClient(HttpClientConnectionManager connectionManager) {
 		try {
+			int timeout = 15;
+			RequestConfig config = RequestConfig.custom()
+					.setConnectTimeout(timeout * 1000)
+					.setConnectionRequestTimeout(timeout * 1000)
+					.setSocketTimeout(timeout * 1000).build();
+
 			SSLConnectionSocketFactory.getSocketFactory();
 			SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
 		    sslContext.init(null, null, null);
@@ -317,6 +323,7 @@ public class HttpClientUtil {
 			            limited.toArray(new String[limited.size()]),
 			            SSLConnectionSocketFactory.getDefaultHostnameVerifier()))
 					.setConnectionManager(connectionManager)
+					.setDefaultRequestConfig(config)
 				    .build();
 		} catch( NoSuchAlgorithmException | KeyManagementException e) {
 			logger.warn("Unable to establish SSL context.  using default client", e);
