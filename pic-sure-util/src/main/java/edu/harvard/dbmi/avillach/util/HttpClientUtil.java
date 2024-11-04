@@ -296,7 +296,7 @@ public class HttpClientUtil {
 	
 	public static HttpClient getConfiguredHttpClient(HttpClientConnectionManager connectionManager) {
 		try {
-			int timeout = 15;
+			int timeout = 30;
 			RequestConfig config = RequestConfig.custom()
 					.setConnectTimeout(timeout * 1000)
 					.setConnectionRequestTimeout(timeout * 1000)
