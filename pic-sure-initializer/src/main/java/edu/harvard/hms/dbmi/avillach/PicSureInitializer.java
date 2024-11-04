@@ -75,8 +75,8 @@ public class PicSureInitializer
 			printHelpAndExit();
 		}
 		url = cmd.getOptionValue("p");
-		users = IOUtils.toString(new FileInputStream(cmd.getOptionValue("u")), "UTF-8");
-		resources = IOUtils.toString(new FileInputStream(cmd.getOptionValue("r")), "UTF-8");
+		users = EntityUtils.toString(new FileInputStream(cmd.getOptionValue("u")), "UTF-8");
+		resources = EntityUtils.toString(new FileInputStream(cmd.getOptionValue("r")), "UTF-8");
 		token = cmd.getOptionValue("t");
 	}
 

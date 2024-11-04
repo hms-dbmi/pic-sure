@@ -8,6 +8,8 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
+import org.apache.http.util.EntityUtils;
 import org.glassfish.jersey.internal.RuntimeDelegateImpl;
 import org.junit.BeforeClass;
 import org.junit.Rule;

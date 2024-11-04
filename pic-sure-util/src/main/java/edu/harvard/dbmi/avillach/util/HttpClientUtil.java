@@ -33,6 +33,7 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.ssl.SSLContexts;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -131,7 +132,7 @@ public class HttpClientUtil {
 	public <T> List<T> readListFromResponse(HttpResponse response, Class<T> expectedElementType) {
 		logger.debug("HttpClientUtil readListFromResponse()");
 		try {
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+			String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 			return json.readValue(responseBody, new TypeReference<List<T>>() {
 			});
 		} catch (IOException e) {
@@ -142,7 +143,7 @@ public class HttpClientUtil {
 	public String readObjectFromResponse(HttpResponse response) {
 		logger.debug("HttpClientUtil readObjectFromResponse(HttpResponse response)");
 		try {
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+			String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 			logger.debug("readObjectFromResponse() responseBody {}", responseBody);
 			return responseBody;
 		} catch (IOException e) {
@@ -154,9 +155,9 @@ public class HttpClientUtil {
 		logger.debug("HttpClientUtil readObjectFromResponse()");
 		try {
 			long startTime = System.nanoTime();
-			String responseBody = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
+			String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
 			logger.debug(
-					"readObjectFromResponse() line: IOUtils.toString(response.getEntity().getContent(), \"UTF-8\"), took {}",
+					"readObjectFromResponse() line: EntityUtils.toString(response.getEntity().getContent(), \"UTF-8\"), took {}",
 					(System.nanoTime() - startTime));
 			logger.trace("readObjectFromResponse() responseBody {}", responseBody);
 
