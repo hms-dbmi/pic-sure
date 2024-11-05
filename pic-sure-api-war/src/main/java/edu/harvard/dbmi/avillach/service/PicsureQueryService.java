@@ -7,10 +7,7 @@ import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -22,6 +19,8 @@ import javax.inject.Inject;
 import javax.transaction.Transactional;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.util.*;
@@ -430,6 +429,18 @@ public class PicsureQueryService {
             Utilities.convertQueryRequestToString(mapper, dataQueryRequest)
         );
         return resource;
+    }
+
+    public Response getSignedRedirect(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers, String target) {
+        Response response = this.queryResultSignedUrl(queryId, credentialsQueryRequest, headers);
+        String responseString = response.getEntity().toString();
+        try {
+            SignedUrlResponse signedUrlResponse = mapper.readValue(responseString, SignedUrlResponse.class);
+            String formattedString = String.format(target, URLEncoder.encode(signedUrlResponse.getSignedUrl(), StandardCharsets.UTF_8));
+            return Response.status(Response.Status.FOUND).location(URI.create(formattedString)).build();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 

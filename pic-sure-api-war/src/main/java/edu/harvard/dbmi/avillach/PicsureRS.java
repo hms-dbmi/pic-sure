@@ -245,4 +245,14 @@ public class PicsureRS {
         return proxyWebClient.getProxy(containerId, request, uriInfo.getQueryParameters(), headers);
     }
 
+    @GET
+    @Path("/query/{queryId}/signed-redirect")
+    public Response getSignedRedirect(
+            @PathParam("queryId") UUID queryId,
+            @QueryParam("target") String target,
+            @Parameter QueryRequest credentialsQueryRequest,
+            @Context HttpHeaders headers) {
+        return queryService.getSignedRedirect(queryId, credentialsQueryRequest, headers, target);
+    }
+
 }
