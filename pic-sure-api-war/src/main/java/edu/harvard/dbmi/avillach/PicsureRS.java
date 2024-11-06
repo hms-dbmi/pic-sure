@@ -247,6 +247,7 @@ public class PicsureRS {
 
     @GET
     @Path("/query/{queryId}/signed-redirect")
+    @Consumes("*/*")
     public Response getSignedRedirect(
             @PathParam("queryId") UUID queryId,
             @QueryParam("target") String target,
