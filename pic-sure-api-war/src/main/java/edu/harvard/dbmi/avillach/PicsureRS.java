@@ -177,6 +177,7 @@ public class PicsureRS {
         )}
     )
     @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.WILDCARD)
     public Response queryResultSignedUrl(
         @Parameter(
             description = "The UUID of the query to fetch the status of. The UUID is "
