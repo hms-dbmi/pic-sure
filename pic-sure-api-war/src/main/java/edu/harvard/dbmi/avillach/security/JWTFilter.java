@@ -244,7 +244,7 @@ public class JWTFilter implements ContainerRequestFilter {
             // Read the query from the backing store if we are getting the results (full query may not be specified in request)
             if (requestPath.startsWith("/query/") &&
                     (requestPath.endsWith("result") || requestPath.endsWith("result/") ||
-                            requestPath.endsWith("signed-redirect") || requestPath.endsWith("signed-redirect/"))
+                            requestPath.endsWith("signed-url") || requestPath.endsWith("signed-url/"))
             ) {
                 // Path: /query/{queryId}/result
                 String[] pathParts = requestPath.split("/");

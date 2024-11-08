@@ -430,17 +430,5 @@ public class PicsureQueryService {
         );
         return resource;
     }
-
-    public Response getSignedRedirect(UUID queryId, QueryRequest credentialsQueryRequest, HttpHeaders headers, String target) {
-        Response response = this.queryResultSignedUrl(queryId, credentialsQueryRequest, headers);
-        String responseString = response.getEntity().toString();
-        try {
-            SignedUrlResponse signedUrlResponse = mapper.readValue(responseString, SignedUrlResponse.class);
-            String formattedString = String.format(target, URLEncoder.encode(signedUrlResponse.getSignedUrl(), StandardCharsets.UTF_8));
-            return Response.status(Response.Status.FOUND).location(URI.create(formattedString)).build();
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-    }
 }
 
