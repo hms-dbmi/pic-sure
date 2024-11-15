@@ -8,27 +8,27 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Component
-public class PfbProcessor implements HpdsProcessor {
+public class MultiValueQueryProcessor implements HpdsProcessor {
 
     public static final String PATIENT_ID_FIELD_NAME = "patient_id";
-    private final int ID_BATCH_SIZE;
+    private final int idBatchSize;
     private final AbstractProcessor abstractProcessor;
 
-    private Logger log = LoggerFactory.getLogger(PfbProcessor.class);
+    private Logger log = LoggerFactory.getLogger(MultiValueQueryProcessor.class);
 
 
     @Autowired
-    public PfbProcessor(AbstractProcessor abstractProcessor) {
+    public MultiValueQueryProcessor(AbstractProcessor abstractProcessor, @Value("${ID_BATCH_SIZE:0}") int idBatchSize) {
         this.abstractProcessor = abstractProcessor;
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
+        this.idBatchSize = idBatchSize;
     }
 
     @Override
@@ -43,7 +43,7 @@ public class PfbProcessor implements HpdsProcessor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
-        Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE).stream()
+        Lists.partition(new ArrayList<>(idList), idBatchSize).stream()
                 .forEach(patientIds -> {
                     Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(result, query, new TreeSet<>(patientIds));
                     List<List<List<String>>> fieldValuesPerPatient = patientIds.stream().map(patientId -> {

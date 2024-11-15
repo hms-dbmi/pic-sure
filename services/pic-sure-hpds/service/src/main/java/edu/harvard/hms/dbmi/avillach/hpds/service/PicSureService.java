@@ -180,8 +180,6 @@ public class PicSureService {
 			} catch (IOException e) {
 				log.error("IOException caught in query processing:", e);
 				return ResponseEntity.status(500).build();
-			} catch (ClassNotFoundException e) {
-				return ResponseEntity.status(500).build();
 			}
 		} else {
 			QueryStatus status = new QueryStatus();

@@ -15,8 +15,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.ImmutableMap;
-
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
@@ -48,7 +46,7 @@ public class QueryService {
 	private final QueryProcessor queryProcessor;
 	private final TimeseriesProcessor timeseriesProcessor;
 	private final CountProcessor countProcessor;
-	private final PfbProcessor pfbProcessor;
+	private final MultiValueQueryProcessor multiValueQueryProcessor;
 
 	HashMap<String, AsyncResult> results = new HashMap<>();
 
@@ -58,7 +56,7 @@ public class QueryService {
 						 QueryProcessor queryProcessor,
 						 TimeseriesProcessor timeseriesProcessor,
 						 CountProcessor countProcessor,
-						 PfbProcessor pfbProcessor,
+						 MultiValueQueryProcessor multiValueQueryProcessor,
 						 @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
 						 @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
 						 @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads) {
@@ -66,7 +64,7 @@ public class QueryService {
 		this.queryProcessor = queryProcessor;
 		this.timeseriesProcessor = timeseriesProcessor;
 		this.countProcessor = countProcessor;
-		this.pfbProcessor = pfbProcessor;
+		this.multiValueQueryProcessor = multiValueQueryProcessor;
 
 		SMALL_JOB_LIMIT = smallJobLimit;
 		SMALL_TASK_THREADS = smallTaskThreads;
@@ -83,7 +81,7 @@ public class QueryService {
 		smallTaskExecutor = createExecutor(smallTaskExecutionQueue, SMALL_TASK_THREADS);
 	}
 
-	public AsyncResult runQuery(Query query) throws ClassNotFoundException, IOException {
+	public AsyncResult runQuery(Query query) throws IOException {
 		// Merging fields from filters into selected fields for user validation of results
 		mergeFilterFieldsIntoSelectedFields(query);
 
@@ -112,11 +110,10 @@ public class QueryService {
 		return countProcessor.runCounts(query);
 	}
 
-	private AsyncResult initializeResult(Query query) throws ClassNotFoundException, FileNotFoundException, IOException {
+	private AsyncResult initializeResult(Query query) throws IOException {
 		
 		HpdsProcessor p;
 		switch(query.getExpectedResultType()) {
-			case DATAFRAME :
 			case SECRET_ADMIN_DATAFRAME:
 				p = queryProcessor;
 				break;
@@ -129,7 +126,8 @@ public class QueryService {
 				p = countProcessor;
 				break;
 			case DATAFRAME_PFB:
-				p = pfbProcessor;
+			case DATAFRAME:
+				p = multiValueQueryProcessor;
 				break;
 			default :
 				throw new RuntimeException("UNSUPPORTED RESULT TYPE");
