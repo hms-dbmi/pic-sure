@@ -323,4 +323,6 @@ class ConceptRepositoryTest {
         Assertions.assertEquals(0.57f, concept.min());
         Assertions.assertEquals(6.77f, concept.max());
     }
+
+
 }

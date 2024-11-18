@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach.dictionary.dataset;
 
-import edu.harvard.dbmi.avillach.dictionary.facet.FacetRepository;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +14,6 @@ import org.testcontainers.utility.MountableFile;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
 @SpringBootTest

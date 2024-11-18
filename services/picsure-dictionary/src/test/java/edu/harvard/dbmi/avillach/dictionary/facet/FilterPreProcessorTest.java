@@ -8,11 +8,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpInputMessage;
+import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.type.SimpleType;
 
 import java.util.List;
 
 @SpringBootTest
+@ActiveProfiles("test")
 class FilterPreProcessorTest {
 
     @Autowired

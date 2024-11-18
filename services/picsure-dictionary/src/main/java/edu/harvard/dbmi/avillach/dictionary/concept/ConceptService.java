@@ -70,4 +70,5 @@ public class ConceptService {
     public Optional<Concept> conceptDetailWithoutAncestors(String dataset, String conceptPath) {
         return getConcept(dataset, conceptPath, false);
     }
+
 }

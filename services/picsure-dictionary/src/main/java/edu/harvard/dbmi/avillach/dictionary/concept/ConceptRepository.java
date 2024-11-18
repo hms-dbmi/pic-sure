@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
+import edu.harvard.dbmi.avillach.dictionary.legacysearch.SearchResultRowMapper;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,23 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static edu.harvard.dbmi.avillach.dictionary.util.QueryUtility.ALLOW_FILTERING_Q;
+
+
 @Repository
 public class ConceptRepository {
-
-    private static final String ALLOW_FILTERING_Q = """
-        WITH allow_filtering AS (
-            SELECT
-                concept_node.concept_node_id AS concept_node_id,
-                (string_agg(concept_node_meta.value, ' ') NOT LIKE '%' || 'true' || '%') AS allowFiltering
-            FROM
-                concept_node
-                JOIN concept_node_meta ON
-                    concept_node.concept_node_id = concept_node_meta.concept_node_id
-                    AND concept_node_meta.KEY IN (:disallowed_meta_keys)
-            GROUP BY
-                concept_node.concept_node_id
-        )
-        """;
 
     private final NamedParameterJdbcTemplate template;
     private final ConceptRowMapper mapper;
@@ -39,7 +28,6 @@ public class ConceptRepository {
     private final ConceptMetaExtractor conceptMetaExtractor;
     private final ConceptResultSetExtractor conceptResultSetExtractor;
     private final List<String> disallowedMetaFields;
-
 
     @Autowired
     public ConceptRepository(
@@ -240,4 +228,6 @@ public class ConceptRepository {
         return Optional.ofNullable(template.query(sql, params, conceptResultSetExtractor));
 
     }
+
+
 }

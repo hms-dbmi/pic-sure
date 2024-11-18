@@ -1,0 +1,15 @@
+# curl 'https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/picsure/proxy/dictionary-api/concepts?page_number=1&page_size=1'
+#  -H 'origin: https://dev.picsure.biodatacatalyst.nhlbi.nih.gov'
+#  -H 'referer: https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/'
+#  --data-raw '{"facets":[],"search":"","consents":[]}'
+POST http://localhost:80/concepts?page_number=0&page_size=100
+Content-Type: application/json
+
+{"facets":[],"search":"lipid triglyceride"}
+
+###
+
+POST http://localhost:80/search
+Content-Type: application/json
+
+{"@type":"GeneralQueryRequest","resourceCredentials":{},"query":{"searchTerm":"breast","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":10000000},"resourceUUID":null}

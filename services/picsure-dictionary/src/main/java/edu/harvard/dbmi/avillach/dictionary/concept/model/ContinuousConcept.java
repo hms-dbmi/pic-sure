@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
 import jakarta.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
