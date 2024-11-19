@@ -54,4 +54,38 @@ class LegacySearchControllerIntegrationTest {
         searchResults.forEach(searchResult -> Assertions.assertEquals("phs000007", searchResult.result().studyId()));
     }
 
+    @Test
+    void shouldHandleORRequest() throws IOException {
+        String jsonString = """
+            {"query":{"searchTerm":"age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
+            """;
+
+        ResponseEntity<LegacyResponse> legacyResponseResponseEntity = legacySearchController.legacySearch(jsonString);
+        Assertions.assertEquals(HttpStatus.OK, legacyResponseResponseEntity.getStatusCode());
+        LegacyResponse legacyResponseBody = legacyResponseResponseEntity.getBody();
+        Assertions.assertNotNull(legacyResponseBody);
+        Results results = legacyResponseBody.results();
+        List<SearchResult> ageSearchResults = results.searchResults();
+        Assertions.assertEquals(4, ageSearchResults.size());
+
+        jsonString = """
+            {"query":{"searchTerm":"physical|age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
+            """;
+
+        legacyResponseResponseEntity = legacySearchController.legacySearch(jsonString);
+        Assertions.assertEquals(HttpStatus.OK, legacyResponseResponseEntity.getStatusCode());
+        legacyResponseBody = legacyResponseResponseEntity.getBody();
+        Assertions.assertNotNull(legacyResponseBody);
+        results = legacyResponseBody.results();
+        List<SearchResult> physicalORAgeSearchResults = results.searchResults();
+        Assertions.assertEquals(5, physicalORAgeSearchResults.size());
+
+        // Verify that age|physical has expanded the search results
+        Assertions.assertNotEquals(ageSearchResults.size(), physicalORAgeSearchResults.size());
+
+        // Verify the OR statement has more results
+        Assertions.assertTrue(ageSearchResults.size() < physicalORAgeSearchResults.size());
+    }
+
+
 }

@@ -82,37 +82,7 @@ public class ConceptFilterQueryGenerator {
             params.addValue("consents", filter.consents());
         }
         clauses.add(createValuelessNodeFilter(filter.search(), filter.consents()));
-
-
-        String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n)";
-        String superQuery = """
-            WITH q AS (
-                %s
-            )
-            %s
-            SELECT q.concept_node_id AS concept_node_id, max((1 + rank) * coalesce(rank_adjustment, 1)) AS rank
-            FROM q
-            LEFT JOIN allow_filtering ON allow_filtering.concept_node_id = q.concept_node_id
-            GROUP BY q.concept_node_id
-            ORDER BY max((1 + rank) * coalesce(rank_adjustment, 1)) DESC, q.concept_node_id ASC
-            """.formatted(query, RANK_ADJUSTMENTS);
-        // explanation of ORDER BY max((1 + rank) * coalesce(rank_adjustment, 1)) DESC
-        // you want to sort the best matches first, BUT anything that is marked as unfilterable should be put last
-        // coalesce will return the first non null value; this solves rows that aren't marked as filterable or not
-        // I then multiply that by 1 + rank instead of just rank so that a rank value of 0 for an unfilterable var
-        // is placed below a rank value of 0 for a filterable var
-        // Finally, I add the concept node id to the sort to keep it stable for ties, otherwise pagination gets weird
-
-        if (pageable.isPaged()) {
-            superQuery = superQuery + """
-                LIMIT :limit
-                OFFSET :offset
-                """;
-            params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        }
-
-        superQuery = " concepts_filtered_sorted AS (\n" + superQuery + "\n)";
-
+        String superQuery = getSuperQuery(pageable, clauses, params);
 
         return new QueryParamPair(superQuery, params);
     }
@@ -182,6 +152,80 @@ public class ConceptFilterQueryGenerator {
                 )
                 """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
         }).toList();
+    }
+
+    public QueryParamPair generateLegacyFilterQuery(Filter filter, Pageable pageable) {
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        params.addValue("disallowed_meta_keys", disallowedMetaFields);
+        List<String> clauses = new java.util.ArrayList<>(List.of());
+        if (StringUtils.hasLength(filter.search())) {
+            params.addValue("dynamic_tsquery", filter.search().trim());
+        }
+        clauses.add(createDynamicValuelessNodeFilter(filter.search()));
+        String superQuery = getSuperQuery(pageable, clauses, params);
+
+        return new QueryParamPair(superQuery, params);
+    }
+
+    private String createDynamicValuelessNodeFilter(String search) {
+        String rankQuery = "0 as rank";
+        String rankWhere = "";
+        if (StringUtils.hasLength(search)) {
+            rankQuery = "ts_rank(searchable_fields, to_tsquery(:dynamic_tsquery)) AS rank";
+            rankWhere = "concept_node.searchable_fields @@ to_tsquery(:dynamic_tsquery) AND";
+        }
+        return """
+            SELECT
+                concept_node.concept_node_id,
+                %s
+            FROM
+                concept_node
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+            WHERE
+                %s
+                %s
+                (
+                    continuous_min.value <> '' OR
+                    continuous_max.value <> '' OR
+                    categorical_values.value <> ''
+                )
+            """
+            .formatted(rankQuery, rankWhere, "");
+    }
+
+    private static String getSuperQuery(Pageable pageable, List<String> clauses, MapSqlParameterSource params) {
+        String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n)";
+        String superQuery = """
+            WITH q AS (
+                %s
+            )
+            %s
+            SELECT q.concept_node_id AS concept_node_id, max((1 + rank) * coalesce(rank_adjustment, 1)) AS rank
+            FROM q
+            LEFT JOIN allow_filtering ON allow_filtering.concept_node_id = q.concept_node_id
+            GROUP BY q.concept_node_id
+            ORDER BY max((1 + rank) * coalesce(rank_adjustment, 1)) DESC, q.concept_node_id ASC
+            """.formatted(query, RANK_ADJUSTMENTS);
+        // explanation of ORDER BY max((1 + rank) * coalesce(rank_adjustment, 1)) DESC
+        // you want to sort the best matches first, BUT anything that is marked as unfilterable should be put last
+        // coalesce will return the first non null value; this solves rows that aren't marked as filterable or not
+        // I then multiply that by 1 + rank instead of just rank so that a rank value of 0 for an unfilterable var
+        // is placed below a rank value of 0 for a filterable var
+        // Finally, I add the concept node id to the sort to keep it stable for ties, otherwise pagination gets weird
+
+        if (pageable.isPaged()) {
+            superQuery = superQuery + """
+                LIMIT :limit
+                OFFSET :offset
+                """;
+            params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
+        }
+
+        superQuery = " concepts_filtered_sorted AS (\n" + superQuery + "\n)";
+        return superQuery;
     }
 
 }
