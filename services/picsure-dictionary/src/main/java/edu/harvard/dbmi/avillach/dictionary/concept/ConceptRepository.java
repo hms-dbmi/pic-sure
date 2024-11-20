@@ -3,7 +3,6 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
-import edu.harvard.dbmi.avillach.dictionary.legacysearch.SearchResultRowMapper;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,19 +26,21 @@ public class ConceptRepository {
     private final ConceptFilterQueryGenerator filterGen;
     private final ConceptMetaExtractor conceptMetaExtractor;
     private final ConceptResultSetExtractor conceptResultSetExtractor;
+    private final ConceptRowWithMetaMapper conceptRowWithMetaMapper;
     private final List<String> disallowedMetaFields;
 
     @Autowired
     public ConceptRepository(
         NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen,
         ConceptMetaExtractor conceptMetaExtractor, ConceptResultSetExtractor conceptResultSetExtractor,
-        @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields
+        ConceptRowWithMetaMapper conceptRowWithMetaMapper, @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields
     ) {
         this.template = template;
         this.mapper = mapper;
         this.filterGen = filterGen;
         this.conceptMetaExtractor = conceptMetaExtractor;
         this.conceptResultSetExtractor = conceptResultSetExtractor;
+        this.conceptRowWithMetaMapper = conceptRowWithMetaMapper;
         this.disallowedMetaFields = disallowedMetaFields;
     }
 
@@ -230,4 +231,52 @@ public class ConceptRepository {
     }
 
 
+    public List<Concept> getConceptsByPathWithMetadata(List<String> conceptPaths) {
+        String sql = ALLOW_FILTERING_Q + ", "
+            + """
+                filtered_concepts AS (
+                     SELECT
+                        concept_node.*
+                     FROM
+                         concept_node
+                     WHERE
+                         concept_path IN (:conceptPaths)
+                 ),
+                 aggregated_meta AS (
+                     SELECT
+                         concept_node_meta.concept_node_id,
+                         json_agg(json_build_object('key', concept_node_meta.key, 'value', concept_node_meta.value)) AS metadata
+                     FROM
+                         concept_node_meta
+                     WHERE
+                         concept_node_meta.concept_node_id IN (
+                             SELECT concept_node_id FROM filtered_concepts
+                         )
+                     GROUP BY
+                         concept_node_meta.concept_node_id
+                 )
+                 SELECT
+                     concept_node.*,
+                     ds.REF as dataset,
+                     ds.abbreviation AS studyAcronym,
+                     continuous_min.VALUE as min, continuous_max.VALUE as max,
+                     categorical_values.VALUE as values,
+                     allow_filtering.allowFiltering AS allowFiltering,
+                     meta_description.VALUE AS description,
+                     aggregated_meta.metadata AS metadata
+                 FROM
+                     filtered_concepts as concept_node
+                     LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
+                     LEFT JOIN concept_node_meta AS meta_description ON concept_node.concept_node_id = meta_description.concept_node_id AND meta_description.KEY = 'description'
+                     LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
+                     LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
+                     LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                     LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+                     LEFT JOIN aggregated_meta ON concept_node.concept_node_id = aggregated_meta.concept_node_id
+                """;
+
+        MapSqlParameterSource params =
+            new MapSqlParameterSource().addValue("conceptPaths", conceptPaths).addValue("disallowed_meta_keys", disallowedMetaFields);
+        return template.query(sql, params, conceptRowWithMetaMapper);
+    }
 }

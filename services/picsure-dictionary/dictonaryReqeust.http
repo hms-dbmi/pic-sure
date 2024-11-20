@@ -14,3 +14,10 @@ Content-Type: application/json
 
 {"@type":"GeneralQueryRequest","resourceCredentials":{},"query":{"searchTerm":"throat sore acute #8","includedTags":[],
   "excludedTags":[],"returnTags":"true","offset":0,"limit":100000},"resourceUUID":null}
+
+###
+
+POST http://localhost:80/concepts/detail
+Content-Type: application/json
+
+["\\phs000993\\pht005015\\phv00253191\\BODY_SITE\\", "\\phs002913\\W2Q_COV_REINFEC_2_OTH\\"]

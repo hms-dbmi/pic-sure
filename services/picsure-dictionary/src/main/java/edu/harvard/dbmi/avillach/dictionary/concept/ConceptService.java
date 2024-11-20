@@ -71,4 +71,7 @@ public class ConceptService {
         return getConcept(dataset, conceptPath, false);
     }
 
+    public List<Concept> conceptsWithDetail(List<String> conceptPaths) {
+        return this.conceptRepository.getConceptsByPathWithMetadata(conceptPaths);
+    }
 }

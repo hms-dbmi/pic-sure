@@ -148,4 +148,18 @@ class ConceptControllerTest {
         Assertions.assertEquals(concepts, actual.getBody().getContent());
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
     }
+
+    @Test
+    void shouldReturnConceptsWithMeta() {
+        CategoricalConcept fooBar = new CategoricalConcept(
+            "/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), true, "", List.of(), Map.of("key", "value")
+        );
+        Concept fooBaz = new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", true, 0F, 100F, "", Map.of("key", "value"));
+        List<Concept> concepts = List.of(fooBar, fooBaz);
+        List<String> conceptPaths = List.of("/foo//bar", "/foo//bar");
+        Mockito.when(conceptService.conceptsWithDetail(conceptPaths)).thenReturn(concepts);
+        ResponseEntity<List<Concept>> listResponseEntity = subject.conceptsDetail(conceptPaths);
+        Assertions.assertEquals(HttpStatus.OK, listResponseEntity.getStatusCode());
+        Assertions.assertEquals(concepts, listResponseEntity.getBody());
+    }
 }
