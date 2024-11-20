@@ -41,9 +41,8 @@ public class SignUrlService {
 
     public void uploadFile(File file, String objectKey) {
         S3Client s3 = S3Client.builder()
-                .region(region)
+                .region(this.region)
                 .build();
-
         putS3Object(s3, bucketName, objectKey, file);
         s3.close();
     }

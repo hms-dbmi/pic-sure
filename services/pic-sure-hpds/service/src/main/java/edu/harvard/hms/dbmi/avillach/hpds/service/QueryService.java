@@ -9,6 +9,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
@@ -48,6 +49,8 @@ public class QueryService {
 	private final CountProcessor countProcessor;
 	private final MultiValueQueryProcessor multiValueQueryProcessor;
 
+	private final DictionaryService dictionaryService;
+
 	HashMap<String, AsyncResult> results = new HashMap<>();
 
 
@@ -57,6 +60,7 @@ public class QueryService {
 						 TimeseriesProcessor timeseriesProcessor,
 						 CountProcessor countProcessor,
 						 MultiValueQueryProcessor multiValueQueryProcessor,
+						 @Autowired(required = false) DictionaryService dictionaryService,
 						 @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
 						 @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
 						 @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads) {
@@ -65,6 +69,7 @@ public class QueryService {
 		this.timeseriesProcessor = timeseriesProcessor;
 		this.countProcessor = countProcessor;
 		this.multiValueQueryProcessor = multiValueQueryProcessor;
+		this.dictionaryService = dictionaryService;
 
 		SMALL_JOB_LIMIT = smallJobLimit;
 		SMALL_TASK_THREADS = smallTaskThreads;
@@ -136,7 +141,7 @@ public class QueryService {
 		String queryId = UUIDv5.UUIDFromString(query.toString()).toString();
 		ResultWriter writer;
         if (ResultType.DATAFRAME_PFB.equals(query.getExpectedResultType())) {
-            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId);
+            writer = new PfbWriter(File.createTempFile("result-" + System.nanoTime(), ".avro"), queryId, dictionaryService);
         } else {
             writer = new CsvWriter(File.createTempFile("result-" + System.nanoTime(), ".sstmp"));
         }
