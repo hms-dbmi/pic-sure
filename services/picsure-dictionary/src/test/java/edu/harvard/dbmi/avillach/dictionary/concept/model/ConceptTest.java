@@ -78,8 +78,7 @@ class ConceptTest {
 
         String actual = new ObjectMapper().writeValueAsString(concepts);
         String expected =
-            "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"allowFiltering\":true,\"min\":0.0,\"max\":1.0,\"studyAcronym\":\"\",\"meta\":{},\"children\":null,\"table\":null,\"study\":null,\"type\":\"Continuous\"},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"allowFiltering\":true,\"studyAcronym\":\"\",\"children\":null,\"meta\":{},\"table\":null,\"study\":null,\"type\":\"Categorical\"}]";
-
+            "[{\"conceptPath\":\"/foo//baz\",\"name\":\"baz\",\"display\":\"Baz\",\"dataset\":\"study_a\",\"description\":null,\"allowFiltering\":true,\"min\":0.0,\"max\":1.0,\"studyAcronym\":\"\",\"meta\":{},\"children\":null,\"table\":null,\"study\":null},{\"conceptPath\":\"/foo//bar\",\"name\":\"bar\",\"display\":\"Bar\",\"dataset\":\"study_a\",\"description\":null,\"values\":[\"a\",\"b\"],\"allowFiltering\":true,\"studyAcronym\":\"\",\"children\":null,\"meta\":{},\"table\":null,\"study\":null}]";
         Assertions.assertEquals(expected, actual);
     }
 }
