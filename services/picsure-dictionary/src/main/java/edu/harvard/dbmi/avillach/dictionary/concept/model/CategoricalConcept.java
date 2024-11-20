@@ -42,6 +42,7 @@ public record CategoricalConcept(
     }
 
 
+    @JsonProperty("type")
     @Override
     public ConceptType type() {
         return ConceptType.Categorical;

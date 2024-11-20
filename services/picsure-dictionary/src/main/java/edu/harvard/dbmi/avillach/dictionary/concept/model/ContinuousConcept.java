@@ -43,6 +43,7 @@ public record ContinuousConcept(
         this(conceptPath, name, display, dataset, description, allowFiltering, min, max, studyAcronym, meta, null);
     }
 
+    @JsonProperty("type")
     @Override
     public ConceptType type() {
         return ConceptType.Continuous;
