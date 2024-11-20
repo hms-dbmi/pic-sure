@@ -34,8 +34,9 @@ public class DashboardService {
 
     private static final List<DashboardColumn> hackyBDCColumns = List.of(
         new DashboardColumn("abbreviation", "Abbreviation"), new DashboardColumn("name", "Name"),
-        new DashboardColumn("study_focus", "Study Focus"), new DashboardColumn("clinvars", "Clinical Variables"),
-        new DashboardColumn("participants", "Participants"), new DashboardColumn("samples", "Samples Sequenced"),
-        new DashboardColumn("accession", "Accession"), new DashboardColumn("additional_info_link", "Study Link")
+        new DashboardColumn("study_focus", "Study Focus"), new DashboardColumn("program_name", "Program"),
+        new DashboardColumn("participants", "Participants"), new DashboardColumn("clinvars", "Clinical Variables"),
+        new DashboardColumn("samples", "Samples Sequenced"), new DashboardColumn("accession", "Accession"),
+        new DashboardColumn("additional_info_link", "Study Link")
     );
 }

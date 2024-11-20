@@ -52,6 +52,7 @@ public class DashboardRepository {
         String sql =
             """
                     SELECT
+                        dataset.dataset_id as dataset_id,
                         dataset.abbreviation AS abbreviation,
                         dataset.full_name AS name,
                         CASE
@@ -70,10 +71,11 @@ public class DashboardRepository {
                             END
                             AS samples,
                         CASE
-                                WHEN (consent.consent_code IS NOT NULL AND consent.consent_code != '') THEN concat(study_accession_meta.value, '.', consent.consent_code)
+                            WHEN (consent.consent_code IS NOT NULL AND consent.consent_code != '') THEN concat(study_accession_meta.value, '.', consent.consent_code)
                             ELSE study_accession_meta.value
                             END
                             AS accession,
+                        program_name.value as program_name,
                         study_focus_meta.value AS study_focus,
                         additional_info_meta.value AS additional_info_link
                     FROM
@@ -82,6 +84,7 @@ public class DashboardRepository {
                         LEFT JOIN dataset_meta AS study_focus_meta ON study_focus_meta.dataset_id = dataset.dataset_id AND study_focus_meta.KEY = 'study_focus'
                         LEFT JOIN dataset_meta AS study_accession_meta ON study_accession_meta.dataset_id = dataset.dataset_id AND study_accession_meta.KEY = 'study_accession'
                         LEFT JOIN dataset_meta AS additional_info_meta ON additional_info_meta.dataset_id = dataset.dataset_id AND additional_info_meta.KEY = 'study_link'
+                        LEFT JOIN dataset_meta AS program_name ON program_name.dataset_id = dataset.dataset_id AND program_name.KEY = 'program_name'
                         WHERE dataset.dataset_id NOT IN (select dataset_id from dataset_meta where KEY = 'show_dashboad' and VALUE = 'false')
                     ORDER BY name ASC, abbreviation ASC
                 """;
