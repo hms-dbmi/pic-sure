@@ -96,14 +96,14 @@ public class MetadataResultSetUtil {
     }
 
     private String getParentDisplay(ResultSet rs) throws SQLException {
-        return StringUtils.hasLength("parentDisplay") ? "" : rs.getString("parentDisplay");
+        return StringUtils.hasLength("parentDisplay") ? rs.getString("parentDisplay") : "";
     }
 
     private String getParentName(ResultSet rs) throws SQLException {
-        return StringUtils.hasLength(rs.getString("parentName")) ? "All Variables" : rs.getString("parentName");
+        return StringUtils.hasLength(rs.getString("parentName")) ? rs.getString("parentName") : "All Variables";
     }
 
     private String getDescription(ResultSet rs) throws SQLException {
-        return StringUtils.hasLength(rs.getString("description")) ? "" : rs.getString("description");
+        return StringUtils.hasLength(rs.getString("description")) ? rs.getString("description") : "";
     }
 }
