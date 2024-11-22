@@ -102,7 +102,7 @@ public class SystemService {
                     lastStatus = ONE_OR_MORE_COMPONENTS_DEGRADED;
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("One or more components degraded", e);
                 lastStatus = ONE_OR_MORE_COMPONENTS_DEGRADED;
             }
             return lastStatus;

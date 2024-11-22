@@ -283,7 +283,6 @@ public class DataProcessingService {
             return title.substring(title.lastIndexOf(" ") + 1);
         } catch (IndexOutOfBoundsException e) {
             logger.error("Error getting cross counts: " + e.getMessage());
-            e.printStackTrace();
             return title;
         }
     }

@@ -8,9 +8,13 @@ import java.util.zip.GZIPOutputStream;
 import javax.persistence.*;
 
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Entity(name = "query")
 public class Query extends BaseEntity {
+
+	private static final Logger logger = LoggerFactory.getLogger(Query.class);
 	
 	//TODO may not need these two things
 	private Date startTime;
@@ -89,7 +93,7 @@ public class Query extends BaseEntity {
 	          outStr += line;
 	        }
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
         return outStr;
 	}
@@ -106,7 +110,7 @@ public class Query extends BaseEntity {
 	        gzip.close();
 	        this.query = obj.toByteArray();
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 	}
 
