@@ -7,7 +7,7 @@ services:
     ports:
       - "5005:5005"
     env_file:
-      - ./uploader/.env
+      - .env
     depends_on:
       - uploader-db
     restart: always
@@ -23,7 +23,7 @@ services:
     # and one for each container. This specifies the LATTER of those two envs
     # The variables on the right side of the environment section are from the FORMER of these two envs
     env_file:
-      - ./uploader/.env
+      - .env
     environment:
       MYSQL_ROOT_PASSWORD: $DATA_UPLOAD_DB_PASS
       MYSQL_PASSWORD: $DATA_UPLOAD_DB_PASS
@@ -42,3 +42,8 @@ services:
 volumes:
   uploader-db-data:
 
+networks:
+  picsure:
+    external: true
+  hpdsNet:
+    external: true
