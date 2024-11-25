@@ -89,7 +89,7 @@ public class Query extends BaseEntity {
 	          outStr += line;
 	        }
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
         return outStr;
 	}
@@ -106,7 +106,7 @@ public class Query extends BaseEntity {
 	        gzip.close();
 	        this.query = obj.toByteArray();
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new UncheckedIOException(e);
 		}
 	}
 

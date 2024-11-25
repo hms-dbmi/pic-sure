@@ -142,13 +142,8 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 		query.select(root);
 		if (predicates != null && predicates.length > 0)
 			query.where(predicates);
-		try{
-			return em().createQuery(query)
-					.getResultList();
-		} catch (PersistenceException e) {
-			e.printStackTrace();
-			return null;
-		}
+		return em().createQuery(query)
+				.getResultList();
 
 	}
 
@@ -167,9 +162,6 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
 			return (T) em().createQuery(query)
 				.getSingleResult();
 		} catch (NoResultException e){
-			return null;
-		} catch (PersistenceException e){
-			e.printStackTrace();
 			return null;
 		}
 	}
