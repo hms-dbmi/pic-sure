@@ -28,7 +28,7 @@ public class S3StateVerifier {
     private Map<String, SiteAWSInfo> sites;
 
     @Autowired
-    private SelfRefreshingS3Client client;
+    private AWSClientBuilder clientBuilder;
 
     @PostConstruct
     private void verifyS3Status() {
@@ -39,7 +39,7 @@ public class S3StateVerifier {
     private void asyncVerify(SiteAWSInfo institution) {
         LOG.info("Checking S3 connection to {} ...", institution.siteName());
         createTempFileWithText(institution)
-            .map(p -> uploadFileFromPath(p, institution))
+            .flatMap(p -> uploadFileFromPath(p, institution))
             .map(this::waitABit)
             .flatMap(s1 -> deleteFileFromBucket(s1, institution))
             .orElseThrow();
@@ -49,8 +49,10 @@ public class S3StateVerifier {
     private Optional<String> deleteFileFromBucket(String s, SiteAWSInfo info) {
         LOG.info("Verifying delete capabilities");
         DeleteObjectRequest request = DeleteObjectRequest.builder().bucket(info.bucket()).key(s).build();
-        DeleteObjectResponse deleteObjectResponse = client.getS3Client(info.siteName()).deleteObject(request);
-        return deleteObjectResponse.deleteMarker() ? Optional.of(s) : Optional.empty();
+        return clientBuilder.buildClientForSite(info.siteName())
+            .map(c -> c.deleteObject(request))
+            .map(DeleteObjectResponse::deleteMarker)
+            .map((ignored) -> s);
     }
 
     private String waitABit(String s) {
@@ -62,7 +64,7 @@ public class S3StateVerifier {
         return s;
     }
 
-    private String uploadFileFromPath(Path p, SiteAWSInfo info) {
+    private Optional<String> uploadFileFromPath(Path p, SiteAWSInfo info) {
         LOG.info("Verifying upload capabilities");
         RequestBody body = RequestBody.fromFile(p.toFile());
         PutObjectRequest request = PutObjectRequest.builder()
@@ -71,8 +73,9 @@ public class S3StateVerifier {
             .ssekmsKeyId(info.kmsKeyID())
             .key(p.getFileName().toString())
             .build();
-        client.getS3Client(info.siteName()).putObject(request, body);
-        return p.getFileName().toString();
+        return clientBuilder.buildClientForSite(info.siteName())
+            .map(client -> client.putObject(request, body))
+            .map(resp -> p.getFileName().toString());
     }
 
     private Optional<Path> createTempFileWithText(SiteAWSInfo info) {

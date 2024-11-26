@@ -1,13 +1,12 @@
 package edu.harvard.dbmi.avillach.dataupload.upload;
 
-import edu.harvard.dbmi.avillach.dataupload.aws.SelfRefreshingS3Client;
+import edu.harvard.dbmi.avillach.dataupload.aws.AWSClientBuilder;
 import edu.harvard.dbmi.avillach.dataupload.aws.SiteAWSInfo;
 import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
@@ -26,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 
 @SpringBootTest
@@ -47,7 +47,7 @@ class DataUploadServiceTest {
     S3Client s3Client;
 
     @Mock
-    SelfRefreshingS3Client s3;
+    AWSClientBuilder s3;
 
     @InjectMocks
     DataUploadService subject;
@@ -101,7 +101,7 @@ class DataUploadServiceTest {
 
         Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
         Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
-        Mockito.when(s3.getS3Client("bch")).thenReturn(s3Client);
+        Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
         Mockito.when(s3Client.putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class)))
                 .thenThrow(AwsServiceException.builder().build());
 
@@ -128,7 +128,7 @@ class DataUploadServiceTest {
 
         Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
         Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
-        Mockito.when(s3.getS3Client("bch")).thenReturn(s3Client);
+        Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
         Mockito.when(s3Client.putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class)))
             .thenReturn(Mockito.mock(PutObjectResponse.class));
 

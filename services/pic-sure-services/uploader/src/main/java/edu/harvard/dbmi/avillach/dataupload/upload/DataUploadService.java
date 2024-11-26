@@ -1,23 +1,22 @@
 package edu.harvard.dbmi.avillach.dataupload.upload;
 
-import edu.harvard.dbmi.avillach.dataupload.aws.SelfRefreshingS3Client;
+import edu.harvard.dbmi.avillach.dataupload.aws.AWSClientBuilder;
 import edu.harvard.dbmi.avillach.dataupload.aws.SiteAWSInfo;
 import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.DataUploadStatuses;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 
@@ -44,7 +43,7 @@ public class DataUploadService {
     private String home;
 
     @Autowired
-    private SelfRefreshingS3Client s3;
+    private AWSClientBuilder s3ClientBuilder;
 
     @Autowired
     private HPDSClient hpds;
@@ -127,11 +126,12 @@ public class DataUploadService {
                 .ssekmsKeyId(site.kmsKeyID())
                 .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
                 .build();
-            s3.getS3Client(site.siteName()).putObject(request, body);
+            return s3ClientBuilder.buildClientForSite(site.siteName())
+                .map(client -> client.putObject(request, body))
+                .isPresent();
         } catch (AwsServiceException | SdkClientException e) {
             LOG.info("Error uploading file from {} to bucket {}", p, site.bucket(), e);
             return false;
         }
-        return true;
     }
 }

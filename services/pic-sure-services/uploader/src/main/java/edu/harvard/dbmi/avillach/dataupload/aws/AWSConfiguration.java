@@ -11,9 +11,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.annotation.RequestScope;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.encryption.s3.S3EncryptionClient;
@@ -81,5 +84,16 @@ public class AWSConfiguration {
     StsClientBuilder stsClientBuilder() {
         // This is a bean for mocking purposes
         return StsClient.builder();
+    }
+
+    @Bean
+    S3ClientBuilder s3ClientBuilder() {
+        return S3Client.builder();
+    }
+
+    @Bean
+    @RequestScope
+    StsClient getStsClient() {
+        return StsClient.builder().region(Region.US_EAST_1).build();
     }
 }
