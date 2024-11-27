@@ -11,6 +11,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
+import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.apache.http.entity.ContentType;
@@ -48,7 +49,8 @@ public class PicSureService {
 	@Autowired
 	public PicSureService(QueryService queryService, TimelineProcessor timelineProcessor, CountProcessor countProcessor,
 						  VariantListProcessor variantListProcessor, AbstractProcessor abstractProcessor, Paginator paginator,
-						  SignUrlService signUrlService, FileSharingService fileSystemService, QueryDecorator queryDecorator
+						  SignUrlService signUrlService, FileSharingService fileSystemService, QueryDecorator queryDecorator,
+                          TestDataService testDataService
 	) {
 		this.queryService = queryService;
 		this.timelineProcessor = timelineProcessor;
@@ -60,6 +62,8 @@ public class PicSureService {
 		this.queryDecorator = queryDecorator;
 		this.signUrlService = signUrlService;
 		Crypto.loadDefaultKey();
+        this.testDataService = testDataService;
+        Crypto.loadDefaultKey();
 	}
 
 	private final QueryService queryService;
@@ -83,6 +87,8 @@ public class PicSureService {
 	private final FileSharingService fileSystemService;
 
 	private final QueryDecorator queryDecorator;
+
+	private final TestDataService testDataService;
 
 	private static final String QUERY_METADATA_FIELD = "queryMetadata";
 	private static final int RESPONSE_CACHE_SIZE = 50;
@@ -252,6 +258,10 @@ public class PicSureService {
     public ResponseEntity writeQueryResult(
             @RequestBody() Query query, @PathVariable("dataType") String datatype
     ) {
+        if ("test_upload".equals(datatype)) {
+            return testDataService.uploadTestFile(query.getPicSureId()) ?
+                    ResponseEntity.ok().build() : ResponseEntity.status(500).build();
+        }
         if (roundTripUUID(query.getPicSureId()).map(id -> !id.equalsIgnoreCase(query.getPicSureId())).orElse(false)) {
             return ResponseEntity
                     .status(400)
