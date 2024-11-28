@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dataupload.aws;
 
+import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSConnectionVerifier;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,16 +25,23 @@ public class S3StateVerifier {
     private static final String testTempPrefix = "S3_DAEMON_INIT_TEST";
     private static final Logger LOG = LoggerFactory.getLogger(S3StateVerifier.class);
 
-    @Autowired
-    private Map<String, SiteAWSInfo> sites;
+    private final Map<String, SiteAWSInfo> sites;
+    private final AWSClientBuilder clientBuilder;
+    private final HPDSConnectionVerifier hpdsVerifier;
 
     @Autowired
-    private AWSClientBuilder clientBuilder;
+    public S3StateVerifier(Map<String, SiteAWSInfo> sites, AWSClientBuilder clientBuilder, HPDSConnectionVerifier hpdsVerifier) {
+        this.sites = sites;
+        this.clientBuilder = clientBuilder;
+        this.hpdsVerifier = hpdsVerifier;
+    }
 
     @PostConstruct
     private void verifyS3Status() {
         sites.values().forEach(inst -> Thread.ofVirtual().start(() -> asyncVerify(inst)));
-
+        if (!hpdsVerifier.verifyConnection()) {
+            throw new RuntimeException("Not correctly connected to HPDS");
+        }
     }
 
     private void asyncVerify(SiteAWSInfo institution) {

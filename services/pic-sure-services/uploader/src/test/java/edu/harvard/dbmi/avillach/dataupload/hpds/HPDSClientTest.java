@@ -117,4 +117,21 @@ class HPDSClientTest {
 
         Assertions.assertFalse(actual);
     }
+
+    @Test
+    void shouldWriteTestData() throws IOException {
+        Query query = new Query();
+        query.setPicSureId("my id");
+
+        Mockito.when(response.getStatusLine())
+            .thenReturn(line);
+        Mockito.when(line.getStatusCode())
+            .thenReturn(200);
+        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
+            .thenReturn(response);
+
+        boolean actual = subject.writeTestData(query);
+
+        Assertions.assertTrue(actual);
+    }
 }

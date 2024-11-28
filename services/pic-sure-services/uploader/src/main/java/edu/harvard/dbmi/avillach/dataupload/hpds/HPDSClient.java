@@ -33,6 +33,10 @@ public class HPDSClient {
     @Autowired
     private HttpClientContext context;
 
+    public boolean writeTestData(Query query) {
+        return writeData(query, "test_upload");
+    }
+
     public boolean writePhenotypicData(Query query) {
         return writeData(query, "phenotypic");
     }

@@ -150,5 +150,16 @@ public class Query {
 		public Map<String, String[]> categoryVariantInfoFilters;
 	}
 
+	@Override
+	public boolean equals(Object object) {
+		if (this == object) return true;
+		if (object == null || getClass() != object.getClass()) return false;
+		Query query = (Query) object;
+		return getExpectedResultType() == query.getExpectedResultType() && Objects.equals(getId(), query.getId()) && Objects.equals(getPicSureId(), query.getPicSureId());
+	}
 
+	@Override
+	public int hashCode() {
+		return Objects.hash(getExpectedResultType(), getId(), getPicSureId());
+	}
 }
