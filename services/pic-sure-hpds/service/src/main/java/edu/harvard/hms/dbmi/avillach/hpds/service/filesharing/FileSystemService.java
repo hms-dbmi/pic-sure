@@ -53,7 +53,10 @@ public class FileSystemService {
         try {
             LOG.info("Moving query {} to file: {}", queryId, filePath);
             makeDirIfDNE(dirPath);
-            Path result = Files.move(sourceFile, filePath, REPLACE_EXISTING);
+            Path result = Files.copy(sourceFile, filePath, REPLACE_EXISTING);
+            // we have to copy and then delete because of how mv works with mounted drives
+            // (it doesn't work)
+            Files.delete(sourceFile);
             return Files.exists(result);
         } catch (IOException e) {
             LOG.error("Error moving.", e);
