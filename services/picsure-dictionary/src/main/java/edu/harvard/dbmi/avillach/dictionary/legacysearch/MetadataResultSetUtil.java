@@ -33,6 +33,7 @@ public class MetadataResultSetUtil {
         String description = getDescription(rs);
         String parentName = getParentName(rs);
         String parentDisplay = getParentDisplay(rs);
+        String dsFullName = getDatasetFullName(rs);
 
         String max = String.valueOf(jsonBlobParser.parseMax(rs.getString("values")));
         String min = String.valueOf(jsonBlobParser.parseMin(rs.getString("values")));
@@ -41,8 +42,8 @@ public class MetadataResultSetUtil {
             rs.getString("stigmatized"), rs.getString("display"), description, min, rs.getString("conceptPath"), parentName,
             rs.getString("conceptPath"), rs.getString("name"), parentDisplay, description, // changed
             "{}", "", parentName, max, description, rs.getString("dataset"), hashedVarId, rs.getString("conceptType"), rs.getString("name"),
-            rs.getString("dataset"), rs.getString("stigmatized"), rs.getString("display"), rs.getString("studyAcronym"),
-            rs.getString("dsFullName"), parentName, parentDisplay, rs.getString("conceptPath"), min, max
+            rs.getString("dataset"), rs.getString("stigmatized"), rs.getString("display"), rs.getString("studyAcronym"), dsFullName,
+            parentName, parentDisplay, rs.getString("conceptPath"), min, max
         );
         return new Result(
             metadata, jsonBlobParser.parseValues(rs.getString("values")), rs.getString("dataset"), parentName, rs.getString("name"), false,
@@ -55,13 +56,14 @@ public class MetadataResultSetUtil {
         String description = getDescription(rs);
         String parentName = getParentName(rs);
         String parentDisplay = getParentDisplay(rs);
+        String dsFullName = getDatasetFullName(rs);
 
         CategoricalMetadata metadata = new CategoricalMetadata(
             rs.getString("stigmatized"), rs.getString("display"), description, "", rs.getString("conceptPath"), parentName,
-            rs.getString("conceptPath"), rs.getString("name"), parentDisplay, description, // changed
-            "{}", "", parentName, "", description, rs.getString("dataset"), hashedVarId, rs.getString("conceptType"), rs.getString("name"),
-            rs.getString("dataset"), rs.getString("stigmatized"), rs.getString("display"), rs.getString("studyAcronym"),
-            rs.getString("dsFullName"), parentName, parentDisplay, rs.getString("conceptPath")
+            rs.getString("conceptPath"), rs.getString("name"), parentDisplay, description, "{}", "", parentName, "", description,
+            rs.getString("dataset"), hashedVarId, rs.getString("conceptType"), rs.getString("name"), rs.getString("dataset"),
+            rs.getString("stigmatized"), rs.getString("display"), rs.getString("studyAcronym"), dsFullName, parentName, parentDisplay,
+            rs.getString("conceptPath")
         );
 
         return new Result(
@@ -69,6 +71,8 @@ public class MetadataResultSetUtil {
             false
         );
     }
+
+
 
     private static String hashVarId(String hpdsPath) {
         String hashedVarId = "";
@@ -106,4 +110,9 @@ public class MetadataResultSetUtil {
     private String getDescription(ResultSet rs) throws SQLException {
         return StringUtils.hasLength(rs.getString("description")) ? rs.getString("description") : "";
     }
+
+    private String getDatasetFullName(ResultSet rs) throws SQLException {
+        return StringUtils.hasLength(rs.getString("dsFullName")) ? rs.getString("dsFullName") : "";
+    }
+
 }
