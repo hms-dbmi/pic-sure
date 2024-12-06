@@ -143,8 +143,8 @@ public class PicSureService {
 
 		// Phenotype Values
 		Object phenotypeResults = searchJson.getQuery() != null ? allColumns.stream().filter((entry) -> {
-			String lowerCaseSearchTerm = searchJson.getQuery().toString().toLowerCase();
-			return entry.getKey().toLowerCase().contains(lowerCaseSearchTerm)
+			String lowerCaseSearchTerm = searchJson.getQuery().toString().toLowerCase(Locale.ENGLISH);
+			return entry.getKey().toLowerCase(Locale.ENGLISH).contains(lowerCaseSearchTerm)
 					|| (entry.getValue().isCategorical() && entry.getValue().getCategoryValues().stream()
 							.map(String::toLowerCase).collect(Collectors.toList()).contains(lowerCaseSearchTerm));
 		}).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) : allColumns;
@@ -154,10 +154,10 @@ public class PicSureService {
 		abstractProcessor.getInfoStoreMeta().stream().forEach(infoColumnMeta -> {
 			//FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
 			String query = searchJson.getQuery().toString();
-			String lowerCase = query.toLowerCase();
+			String lowerCase = query.toLowerCase(Locale.ENGLISH);
 			boolean storeIsNumeric = infoColumnMeta.continuous();
-			if (infoColumnMeta.description().toLowerCase().contains(lowerCase)
-					|| infoColumnMeta.key().toLowerCase().contains(lowerCase)) {
+			if (infoColumnMeta.description().toLowerCase(Locale.ENGLISH).contains(lowerCase)
+					|| infoColumnMeta.key().toLowerCase(Locale.ENGLISH).contains(lowerCase)) {
 				infoResults.put(infoColumnMeta.key(),
 						ImmutableMap.of("description", infoColumnMeta.description(), "values",
 								storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""), "continuous",

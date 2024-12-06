@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentHashMap.KeySetView;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -22,8 +23,8 @@ public class InfoStore implements Serializable {
 			return new ArrayList<String>();
 		}else {
 			return allValues.keySet().stream().filter((value)->{
-				String lowerTerm = term.toLowerCase();
-				return value.toLowerCase().contains(lowerTerm);
+				String lowerTerm = term.toLowerCase(Locale.ENGLISH);
+				return value.toLowerCase(Locale.ENGLISH).contains(lowerTerm);
 			}).collect(Collectors.toList());			
 		}
 	}

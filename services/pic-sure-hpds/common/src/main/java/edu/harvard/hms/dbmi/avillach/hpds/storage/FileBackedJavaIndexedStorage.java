@@ -11,10 +11,11 @@ public class FileBackedJavaIndexedStorage <K, V extends Serializable> extends Fi
 
     protected ByteArrayOutputStream writeObject(V value) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(out));
-        oos.writeObject(value);
-        oos.flush();
-        oos.close();
+        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(out);
+             ObjectOutputStream oos = new ObjectOutputStream(gzipOutputStream)) {
+            oos.writeObject(value);
+            oos.flush();
+        }
         return out;
     }
 

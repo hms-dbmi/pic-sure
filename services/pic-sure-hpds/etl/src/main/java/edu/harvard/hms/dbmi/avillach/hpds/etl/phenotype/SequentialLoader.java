@@ -75,9 +75,9 @@ public class SequentialLoader {
 		//load each into observation store
 		for(String filename : inputFiles) {
 			log.info("Loading file " + filename);
-			if(filename.toLowerCase().endsWith("sql")) {
+			if(filename.toLowerCase(Locale.ENGLISH).endsWith("sql")) {
 				loadSqlFile(filename);
-			} else if(filename.toLowerCase().endsWith("csv")){
+			} else if(filename.toLowerCase(Locale.ENGLISH).endsWith("csv")){
 				loadCsvFile(filename);
 			}
 		}

@@ -44,15 +44,17 @@ public class VariantStore implements Serializable {
 	}
 
 	public static VariantStore readInstance(String genomicDataDirectory) throws IOException, ClassNotFoundException {
-		ObjectInputStream ois = new ObjectInputStream(new GZIPInputStream(new FileInputStream(genomicDataDirectory + VARIANT_STORE_JAVABIN_FILENAME)));
-		VariantStore variantStore = (VariantStore) ois.readObject();
-		ois.close();
-		variantStore.getVariantMaskStorage().values().forEach(store -> {
-			store.updateStorageDirectory(new File(genomicDataDirectory));
-		});
-		variantStore.open();
-		variantStore.setVariantSpecIndex(loadVariantIndexFromFile(genomicDataDirectory));
-		return variantStore;
+		try (GZIPInputStream gzipInputStream = new GZIPInputStream(new FileInputStream(genomicDataDirectory + VARIANT_STORE_JAVABIN_FILENAME));
+			 ObjectInputStream ois = new ObjectInputStream(gzipInputStream)) {
+			VariantStore variantStore = (VariantStore) ois.readObject();
+			ois.close();
+			variantStore.getVariantMaskStorage().values().forEach(store -> {
+				store.updateStorageDirectory(new File(genomicDataDirectory));
+			});
+			variantStore.open();
+			variantStore.setVariantSpecIndex(loadVariantIndexFromFile(genomicDataDirectory));
+			return variantStore;
+		}
 	}
 
 	public void writeInstance(String genomicDirectory) {
@@ -125,11 +127,7 @@ public class VariantStore implements Serializable {
 	public void open() {
 		variantMaskStorage.values().stream().forEach((fbbis -> {
 			if (fbbis != null) {
-				try {
-					fbbis.open();
-				} catch (FileNotFoundException e) {
-					throw new UncheckedIOException(e);
-				}
+				fbbis.open();
 			}
 		}));
 	}

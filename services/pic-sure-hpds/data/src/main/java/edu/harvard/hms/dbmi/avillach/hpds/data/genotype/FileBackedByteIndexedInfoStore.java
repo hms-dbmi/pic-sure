@@ -36,8 +36,8 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 			return new ArrayList<String>();
 		}else {
 			return allValues.keys().stream().filter((value)->{
-				String lowerTerm = term.toLowerCase();
-				return value.toLowerCase().contains(lowerTerm);
+				String lowerTerm = term.toLowerCase(Locale.ENGLISH);
+				return value.toLowerCase(Locale.ENGLISH).contains(lowerTerm);
 			}).collect(Collectors.toList());
 		}
 	}

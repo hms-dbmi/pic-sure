@@ -23,8 +23,8 @@ public abstract class FileBackedJsonIndexStorage <K, V extends Serializable> ext
     }
 
     protected V readObject(byte[] buffer) {
-        try {
-            return objectMapper.readValue(new GZIPInputStream(new ByteArrayInputStream(buffer)), getTypeReference());
+        try (GZIPInputStream gzipInputStream = new GZIPInputStream(new ByteArrayInputStream(buffer))) {
+            return objectMapper.readValue(gzipInputStream, getTypeReference());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

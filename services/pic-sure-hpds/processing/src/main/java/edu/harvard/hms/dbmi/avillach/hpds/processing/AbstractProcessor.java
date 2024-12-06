@@ -336,10 +336,9 @@ public class AbstractProcessor {
 										byte[] buffer = new byte[length];
 										allObservationsStore.read(buffer);
 										allObservationsStore.close();
-										ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)));
-										PhenoCube<?> ret = (PhenoCube<?>)inStream.readObject();
-										inStream.close();
-										return ret;
+										try (ObjectInputStream inStream = new ObjectInputStream(new ByteArrayInputStream(Crypto.decryptData(buffer)))) {
+											return (PhenoCube<?>)inStream.readObject();
+										}
 									}else {
 										log.warn("ColumnMeta not found for : [{}]", key);
 										return null;

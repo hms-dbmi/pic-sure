@@ -50,22 +50,29 @@ public abstract class FileBackedByteIndexedStorage <K, V extends Serializable> i
 		index.put(key, recordIndex);
 	}
 
-	public void load(Iterable<V> values, Function<V, K> mapper) throws IOException {
+	public void load(Iterable<V> values, Function<V, K> mapper) {
 		//make sure we start fresh
 		if(this.storageFile.exists()) {
 			this.storageFile.delete();
 		}
-		this.storage = new RandomAccessFile(storageFile, "rw");
-		for(V value : values) {
-			put(mapper.apply(value), value);
-		}
-		this.storage.close();
-		complete();
-	}
+		try (RandomAccessFile storage = new RandomAccessFile(storageFile, "rw");) {
+			this.storage = storage;
+			for(V value : values) {
+				put(mapper.apply(value), value);
+			}
+			complete();
+		} catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
-	public void open() throws FileNotFoundException {
-		this.storage = new RandomAccessFile(this.storageFile, "rwd");
-	}
+	public void open() {
+        try {
+            this.storage = new RandomAccessFile(this.storageFile, "rwd");
+        } catch (FileNotFoundException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
 	public void complete() {
 		this.completed = true;

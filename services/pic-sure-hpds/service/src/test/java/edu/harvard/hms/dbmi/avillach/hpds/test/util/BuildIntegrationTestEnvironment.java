@@ -25,9 +25,7 @@ public enum BuildIntegrationTestEnvironment {
             VariantMetadataLoader.main(new String[] {"./src/test/resources/test_vcfIndex.tsv", binFile, "target/VariantMetadataStorage.bin"});
             VariantStore variantStore = VariantStore.readInstance(STORAGE_DIR);
             BucketIndexBySample bucketIndexBySample = new BucketIndexBySample(variantStore, STORAGE_DIR);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
 
