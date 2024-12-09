@@ -272,7 +272,7 @@ public class AbstractProcessor {
 	public List<String> searchInfoConceptValues(String conceptPath, String query) {
 		try {
 			return genomicProcessor.getInfoStoreValues(conceptPath).stream()
-					.filter(variableValue -> variableValue.toUpperCase().contains(query.toUpperCase()))
+					.filter(variableValue -> variableValue.toUpperCase(Locale.ENGLISH).contains(query.toUpperCase(Locale.ENGLISH)))
 					.collect(Collectors.toList());
 		} catch (UncheckedExecutionException e) {
 			if(e.getCause() instanceof RuntimeException) {
