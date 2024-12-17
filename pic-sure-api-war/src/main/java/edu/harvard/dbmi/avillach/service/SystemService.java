@@ -4,6 +4,7 @@ import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import javax.annotation.PostConstruct;
@@ -88,7 +89,7 @@ public class SystemService {
                 // This because both are included in the database, but only one is actually deployed.
                 // if the name contains hpds and is not the default application uuid, remove it.
                 resourcesToTest.removeIf(
-                    resource -> resource.getName().toLowerCase().contains("hpds") && !resource.getUuid().equals(defaultApplicationUUID)
+                    resource -> resource.getName().toLowerCase(Locale.ENGLISH).contains("hpds") && !resource.getUuid().equals(defaultApplicationUUID)
                 );
 
                 // This proves the MySQL database is serving queries
