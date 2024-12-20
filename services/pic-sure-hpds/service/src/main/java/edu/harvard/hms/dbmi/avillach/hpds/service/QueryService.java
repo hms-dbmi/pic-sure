@@ -156,7 +156,6 @@ public class QueryService {
 				.setStatus(AsyncResult.Status.PENDING)
 				.setQueuedTime(System.currentTimeMillis())
 				.setId(queryId);
-		query.setId(result.getId());
 		results.put(result.getId(), result);
 		return result;
 	}
