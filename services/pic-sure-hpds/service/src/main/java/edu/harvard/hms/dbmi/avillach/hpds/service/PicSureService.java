@@ -14,7 +14,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
-import org.apache.http.entity.ContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,14 +31,12 @@ import com.google.common.collect.ImmutableMap;
 
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
-import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.RequestBody;
 
 @RequestMapping(value = "PIC-SURE", produces = "application/json")
@@ -308,7 +305,10 @@ public class PicSureService {
             success = fileSystemService.createPhenotypicData(query);
         } else if ("genomic".equals(datatype)) {
             success = fileSystemService.createGenomicData(query);
-        }
+        } else if ("patients".equals(datatype)) {
+			success = ResultType.PATIENTS.equals(query.getExpectedResultType()) &&
+				fileSystemService.createPatientList(query);
+		}
         return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
     }
 
@@ -391,6 +391,7 @@ public class PicSureService {
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:
 		case DATAFRAME_TIMESERIES:
+		case PATIENTS:
 			QueryStatus status = query(resultRequest).getBody();
 			while (status.getResourceStatus().equalsIgnoreCase("RUNNING")
 					|| status.getResourceStatus().equalsIgnoreCase("PENDING")) {

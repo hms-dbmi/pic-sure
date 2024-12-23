@@ -8,6 +8,7 @@ import java.util.concurrent.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeseriesProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
@@ -50,6 +51,7 @@ public class QueryService {
 	private final TimeseriesProcessor timeseriesProcessor;
 	private final CountProcessor countProcessor;
 	private final MultiValueQueryProcessor multiValueQueryProcessor;
+	private final PatientProcessor patientProcessor;
 
 	private final DictionaryService dictionaryService;
 	private final QueryDecorator queryDecorator;
@@ -59,15 +61,15 @@ public class QueryService {
 
 	@Autowired
 	public QueryService (AbstractProcessor abstractProcessor,
-						 QueryProcessor queryProcessor,
-						 TimeseriesProcessor timeseriesProcessor,
-						 CountProcessor countProcessor,
-						 MultiValueQueryProcessor multiValueQueryProcessor,
-						 @Autowired(required = false) DictionaryService dictionaryService,
+                         QueryProcessor queryProcessor,
+                         TimeseriesProcessor timeseriesProcessor,
+                         CountProcessor countProcessor,
+                         MultiValueQueryProcessor multiValueQueryProcessor,
+                         @Autowired(required = false) DictionaryService dictionaryService,
                          QueryDecorator queryDecorator,
-						 @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
-						 @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
-						 @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads) {
+                         @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
+                         @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
+                         @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor) {
 		this.abstractProcessor = abstractProcessor;
 		this.queryProcessor = queryProcessor;
 		this.timeseriesProcessor = timeseriesProcessor;
@@ -79,9 +81,10 @@ public class QueryService {
 		SMALL_JOB_LIMIT = smallJobLimit;
 		SMALL_TASK_THREADS = smallTaskThreads;
 		LARGE_TASK_THREADS = largeTaskThreads;
+        this.patientProcessor = patientProcessor;
 
 
-		/* These have to be of type Runnable(nothing more specific) in order 
+        /* These have to be of type Runnable(nothing more specific) in order
 		 * to be compatible with ThreadPoolExecutor constructor prototype 
 		 */
 		largeTaskExecutionQueue = new PriorityBlockingQueue<Runnable>(1000);
@@ -124,6 +127,8 @@ public class QueryService {
 		
 		HpdsProcessor p;
 		switch(query.getExpectedResultType()) {
+			case PATIENTS:
+				p = patientProcessor;
 			case SECRET_ADMIN_DATAFRAME:
 				p = queryProcessor;
 				break;

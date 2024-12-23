@@ -1,38 +1,49 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service.filesharing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryService;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ExtendWith(MockitoExtension.class)
+@EnableAutoConfiguration
+@SpringBootTest(classes = FileSharingService.class)
 public class FileSharingServiceTest {
 
-    @Mock
+    @MockBean
     QueryService queryService;
 
-    @Mock
+    @MockBean
     FileSystemService fileWriter;
 
-    @Mock
+    @MockBean
     VariantListProcessor variantListProcessor;
 
-    @Mock
+    @MockBean
+    PatientProcessor patientProcessor;
+
+    @MockBean
     ResultWriter resultWriter;
 
-    @InjectMocks
+    @Autowired
     FileSharingService subject;
 
     @Test
@@ -94,5 +105,23 @@ public class FileSharingServiceTest {
         boolean actual = subject.createGenomicData(query);
 
         assertFalse(actual);
+    }
+
+    @Test
+    void shouldCreatePatientsList() {
+        Query query = new Query();
+        query.setId("jasdijasd");
+        query.setPicSureId("jasdijasd");
+        query.setExpectedResultType(ResultType.PATIENTS);
+        AsyncResult result = new AsyncResult(query, patientProcessor, resultWriter);
+        result.setStatus(AsyncResult.Status.SUCCESS);
+        Mockito.when(queryService.getResultFor("jasdijasd"))
+            .thenReturn(result);
+        Mockito.when(fileWriter.writeResultToFile("patients.txt", result, "jasdijasd"))
+            .thenReturn(true);
+
+        boolean actual = subject.createPatientList(query);
+
+        Assertions.assertTrue(actual);
     }
 }

@@ -190,6 +190,7 @@ public class Query {
 			break;
 		case DATAFRAME:
 		case SECRET_ADMIN_DATAFRAME:
+		case PATIENTS:
 			writePartFormat("Data Export Fields", fields, builder, true);
 			break;
 		case DATAFRAME_TIMESERIES:

@@ -1,18 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service.filesharing;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.QueryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 /**
  * Used for sharing data. Given a query, this service will write
@@ -23,21 +20,25 @@ public class FileSharingService {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileSharingService.class);
 
-    @Autowired
-    private QueryService queryService;
+    private final QueryService queryService;
+    private final FileSystemService fileWriter;
+    private final VariantListProcessor variantListProcessor;
 
-    @Autowired
-    private FileSystemService fileWriter;
-
-    @Autowired
-    private VariantListProcessor variantListProcessor;
+    public FileSharingService(
+        QueryService queryService, FileSystemService fileWriter,
+        VariantListProcessor variantListProcessor
+    ) {
+        this.queryService = queryService;
+        this.fileWriter = fileWriter;
+        this.variantListProcessor = variantListProcessor;
+    }
 
     public boolean createPhenotypicData(Query query) {
-        AsyncResult result = queryService.getResultFor(query.getId());
-        if (result == null || result.getStatus() != AsyncResult.Status.SUCCESS) {
-            return false;
-        }
-        return fileWriter.writeResultToFile("phenotypic_data.csv", result, query.getPicSureId());
+        return createAndWriteData(query, "phenotypic_data.csv");
+    }
+
+    public boolean createPatientList(Query query) {
+        return createAndWriteData(query, "patients.txt");
     }
 
     public boolean createGenomicData(Query query) {
@@ -48,5 +49,13 @@ public class FileSharingService {
             LOG.error("Error running genomic query", e);
             return false;
         }
+    }
+
+    private boolean createAndWriteData(Query query, String fileName) {
+        AsyncResult result = queryService.getResultFor(query.getId());
+        if (result == null || result.getStatus() != AsyncResult.Status.SUCCESS) {
+            return false;
+        }
+        return fileWriter.writeResultToFile(fileName, result, query.getPicSureId());
     }
 }
