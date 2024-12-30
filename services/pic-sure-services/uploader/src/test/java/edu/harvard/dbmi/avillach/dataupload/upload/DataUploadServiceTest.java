@@ -18,8 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -102,15 +101,101 @@ class DataUploadServiceTest {
         Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
         Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
         Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
-        Mockito.when(s3Client.putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class)))
+        Mockito.when(s3Client.createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class)))
                 .thenThrow(AwsServiceException.builder().build());
 
         subject.uploadData(q, DataType.Phenotypic, "bch");
 
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Querying);
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploading);
-        Mockito.verify(s3Client, Mockito.times(1)).putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class));
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Error);
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Querying);
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Uploading);
+        Mockito.verify(s3Client, Mockito.times(1))
+            .createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class));
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Error);
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
+    }
+
+    @Test
+    void shouldNotUploadDataIfAWSUploadFails(@TempDir Path tempDir) throws IOException, InterruptedException {
+        Query q = new Query();
+        q.setPicSureId("my-id");
+        q.setId("my-id");
+
+        Files.createDirectory(Path.of(tempDir.toString(), q.getPicSureId()));
+        Files.writeString(Path.of(tempDir.toString(), q.getPicSureId(), DataType.Phenotypic.fileName), ":)");
+        ReflectionTestUtils.setField(subject, "roleARNs", roleARNs);
+        CreateMultipartUploadResponse createResp = Mockito.mock(CreateMultipartUploadResponse.class);
+        Mockito.when(createResp.uploadId()).thenReturn("frank");
+
+        Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
+        Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
+        Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
+        Mockito.when(s3Client.createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class)))
+            .thenReturn(createResp);
+        Mockito.when(s3Client.uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class)))
+            .thenThrow(AwsServiceException.builder().build());
+
+        subject.uploadData(q, DataType.Phenotypic, "bch");
+
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Querying);
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Uploading);
+        Mockito.verify(s3Client, Mockito.times(1))
+            .createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class));
+        Mockito.verify(s3Client, Mockito.times(1))
+            .uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class));
+        Mockito.verify(statusService, Mockito.times(1)).
+            setPhenotypicStatus(q, UploadStatus.Error);
+        Mockito.verify(uploadLock, Mockito.times(1)).acquire();
+        Mockito.verify(uploadLock, Mockito.times(1)).release();
+    }
+
+    @Test
+    void shouldNotUploadDataWhenCompleteFails(@TempDir Path tempDir) throws IOException, InterruptedException {
+        Query q = new Query();
+        q.setPicSureId("my-id");
+        q.setId("my-id");
+
+        Path fileToUpload = Path.of(tempDir.toString(), q.getPicSureId(), DataType.Phenotypic.fileName);
+        Files.createDirectory(Path.of(tempDir.toString(), q.getPicSureId()));
+        Files.writeString(fileToUpload, ":)");
+        ReflectionTestUtils.setField(subject, "roleARNs", roleARNs);
+
+        CreateMultipartUploadResponse createResp = Mockito.mock(CreateMultipartUploadResponse.class);
+        Mockito.when(createResp.uploadId()).thenReturn("frank");
+        UploadPartResponse uploadResp = Mockito.mock(UploadPartResponse.class);
+        Mockito.when(uploadResp.eTag()).thenReturn("gus");
+
+        Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
+        Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
+        Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
+        Mockito.when(s3Client.uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class)))
+            .thenReturn(uploadResp);
+        Mockito.when(s3Client.createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class)))
+            .thenReturn(createResp);
+        Mockito.when(s3Client.completeMultipartUpload(Mockito.any(CompleteMultipartUploadRequest.class)))
+           .thenThrow(AwsServiceException.builder().build());
+
+
+        subject.uploadData(q, DataType.Phenotypic, "bch");
+
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Querying);
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Uploading);
+        Mockito.verify(s3Client, Mockito.times(1))
+            .createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class));
+        Mockito.verify(s3Client, Mockito.times(1))
+           .completeMultipartUpload(Mockito.any(CompleteMultipartUploadRequest.class));
+        Mockito.verify(s3Client, Mockito.times(1))
+           .uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class));
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Error);
+        Assertions.assertFalse(Files.exists(fileToUpload));
         Mockito.verify(uploadLock, Mockito.times(1)).acquire();
         Mockito.verify(uploadLock, Mockito.times(1)).release();
     }
@@ -126,18 +211,34 @@ class DataUploadServiceTest {
         Files.writeString(fileToUpload, ":)");
         ReflectionTestUtils.setField(subject, "roleARNs", roleARNs);
 
+        CreateMultipartUploadResponse createResp = Mockito.mock(CreateMultipartUploadResponse.class);
+        Mockito.when(createResp.uploadId()).thenReturn("frank");
+        UploadPartResponse uploadResp = Mockito.mock(UploadPartResponse.class);
+        Mockito.when(uploadResp.eTag()).thenReturn("gus");
+
         Mockito.when(sharingRoot.toString()).thenReturn(tempDir.toString());
         Mockito.when(hpds.writePhenotypicData(q)).thenReturn(true);
         Mockito.when(s3.buildClientForSite("bch")).thenReturn(Optional.of(s3Client));
-        Mockito.when(s3Client.putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class)))
-            .thenReturn(Mockito.mock(PutObjectResponse.class));
+        Mockito.when(s3Client.uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class)))
+            .thenReturn(uploadResp);
+        Mockito.when(s3Client.createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class)))
+            .thenReturn(createResp);
+
 
         subject.uploadData(q, DataType.Phenotypic, "bch");
 
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Querying);
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploading);
-        Mockito.verify(s3Client, Mockito.times(1)).putObject(Mockito.any(PutObjectRequest.class), Mockito.any(RequestBody.class));
-        Mockito.verify(statusService, Mockito.times(1)).setPhenotypicStatus(q, UploadStatus.Uploaded);
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Querying);
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Uploading);
+        Mockito.verify(s3Client, Mockito.times(1))
+            .createMultipartUpload(Mockito.any(CreateMultipartUploadRequest.class));
+        Mockito.verify(s3Client, Mockito.times(1))
+            .completeMultipartUpload(Mockito.any(CompleteMultipartUploadRequest.class));
+        Mockito.verify(s3Client, Mockito.times(1))
+            .uploadPart(Mockito.any(UploadPartRequest.class), Mockito.any(RequestBody.class));
+        Mockito.verify(statusService, Mockito.times(1))
+            .setPhenotypicStatus(q, UploadStatus.Uploaded);
         Assertions.assertFalse(Files.exists(fileToUpload));
         Mockito.verify(uploadLock, Mockito.times(1)).acquire();
         Mockito.verify(uploadLock, Mockito.times(1)).release();

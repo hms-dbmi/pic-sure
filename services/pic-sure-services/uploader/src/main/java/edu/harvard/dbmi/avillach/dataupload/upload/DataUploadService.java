@@ -16,14 +16,18 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3ClientBuilder;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.function.BiConsumer;
 
@@ -32,6 +36,7 @@ import java.util.function.BiConsumer;
 public class DataUploadService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DataUploadService.class);
+    private static final int SIXTEEN_MB = 16 * 1024 * 1024;
 
     @Autowired
     private Semaphore uploadLock;
@@ -109,7 +114,7 @@ public class DataUploadService {
         uploadLock.release();
     }
 
-    private static void deleteFile(Path data) {
+    private void deleteFile(Path data) {
         try {
             Files.delete(data);
         } catch (IOException e) {
@@ -118,20 +123,98 @@ public class DataUploadService {
     }
 
     private boolean uploadFileFromPath(Path p, SiteAWSInfo site, String dir) {
-        try {
-            RequestBody body = RequestBody.fromFile(p.toFile());
-            PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(site.bucket())
-                .serverSideEncryption(ServerSideEncryption.AWS_KMS)
-                .ssekmsKeyId(site.kmsKeyID())
-                .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
-                .build();
-            return s3ClientBuilder.buildClientForSite(site.siteName())
-                .map(client -> client.putObject(request, body))
-                .isPresent();
-        } catch (AwsServiceException | SdkClientException e) {
-            LOG.info("Error uploading file from {} to bucket {}", p, site.bucket(), e);
+        Optional<S3Client> maybeClient = s3ClientBuilder.buildClientForSite(site.siteName());
+        if (maybeClient.isEmpty()) {
+            LOG.info("There is no client for site {}", site);
             return false;
         }
+        S3Client s3 = maybeClient.get();
+        LOG.info("Starting multipart upload for file {} to site {} in dir {}", p, site, dir);
+
+        CreateMultipartUploadRequest createRequest = CreateMultipartUploadRequest.builder()
+            .bucket(site.bucket())
+            .serverSideEncryption(ServerSideEncryption.AWS_KMS)
+            .ssekmsKeyId(site.kmsKeyID())
+            .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
+            .build();
+        String uploadId;
+        try {
+            uploadId = s3.createMultipartUpload(createRequest).uploadId();
+        } catch (AwsServiceException e) {
+            LOG.error("Error creating multipart: ", e);
+            return false;
+        }
+        LOG.info("Created initial multipart request and notified S3");
+
+        LOG.info("Starting upload process...");
+        List<CompletedPart> completedParts = uploadAllParts(p, site, dir, uploadId, s3);
+        if (completedParts.isEmpty()) {
+            return false;
+        }
+        LOG.info("Upload complete! Uploaded {} parts", completedParts.size());
+
+        LOG.info("Notifying S3 of completed upload...");
+        CompletedMultipartUpload completedUpload = CompletedMultipartUpload.builder()
+            .parts(completedParts)
+            .build();
+
+        CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
+            .bucket(site.bucket())
+            .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
+            .uploadId(uploadId)
+            .multipartUpload(completedUpload)
+            .build();
+
+        try {
+            s3.completeMultipartUpload(completeRequest);
+        } catch (AwsServiceException | SdkClientException e) {
+            LOG.error("Error finishing multipart: ", e);
+            return false;
+        }
+        LOG.info("Done uploading {} to {}", p.getFileName(), site.siteName());
+        return true;
+    }
+
+    private List<CompletedPart> uploadAllParts(Path p, SiteAWSInfo site, String dir, String uploadId, S3Client s3) {
+        List<CompletedPart> completedParts = new ArrayList<>();
+        int part = 1;
+        ByteBuffer buffer = ByteBuffer.allocate(SIXTEEN_MB);
+
+        try (RandomAccessFile file = new RandomAccessFile(p.toString(), "r")) {
+            long fileSize = file.length();
+            long position = 0;
+
+            while (position < fileSize) {
+                file.seek(position);
+                int bytesRead = file.getChannel().read(buffer);
+
+                LOG.info("Uploading file {} part {}", p.getFileName(), part);
+                buffer.flip();
+                UploadPartRequest uploadPartRequest = UploadPartRequest.builder()
+                    .bucket(site.bucket())
+                    .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
+                    .uploadId(uploadId)
+                    .partNumber(part)
+                    .contentLength((long) bytesRead)
+                    .build();
+
+
+                UploadPartResponse response = s3.uploadPart(uploadPartRequest, RequestBody.fromByteBuffer(buffer));
+
+                completedParts.add(CompletedPart.builder()
+                    .partNumber(part)
+                    .eTag(response.eTag())
+                    .build());
+
+                buffer.clear();
+                position += bytesRead;
+                part++;
+            }
+        } catch (IOException | AwsServiceException | SdkClientException e) {
+            LOG.error("Failed to upload file {}, part {}: ", p.getFileName(), part, e);
+            return List.of();
+        }
+        LOG.info("Uploaded all parts, finishing");
+        return completedParts;
     }
 }
