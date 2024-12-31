@@ -40,10 +40,14 @@ class DataUploadControllerTest {
     void shouldUpload() {
         Query query = new Query();
         query.setPicSureId("my id");
-        DataUploadStatuses before =
-            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.EPOCH, "bch");
-        DataUploadStatuses after =
-            new DataUploadStatuses(UploadStatus.Uploading, UploadStatus.Uploading, query.getPicSureId(), LocalDate.EPOCH, "bch");
+        DataUploadStatuses before = new DataUploadStatuses(
+            UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent,
+            query.getPicSureId(), LocalDate.EPOCH, "bch"
+        );
+        DataUploadStatuses after = new DataUploadStatuses(
+            UploadStatus.Uploading, UploadStatus.Uploading, UploadStatus.Unsent, UploadStatus.Unsent,
+            query.getPicSureId(), LocalDate.EPOCH, "bch"
+        );
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(before));
         Mockito.when(uploadService.asyncUpload(query, "bch", DataType.Genomic))
@@ -85,7 +89,7 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
         DataUploadStatuses nullApprovalDate =
-            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), null, "bch");
+            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), null, "bch");
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(nullApprovalDate));
 
@@ -99,7 +103,7 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
         DataUploadStatuses nullApprovalDate =
-            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.MAX, "bch");
+            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.MAX, "bch");
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(nullApprovalDate));
 
@@ -113,7 +117,7 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
         DataUploadStatuses uploading =
-            new DataUploadStatuses(UploadStatus.Uploading, UploadStatus.Uploading, query.getPicSureId(), LocalDate.EPOCH, "bch");
+            new DataUploadStatuses(UploadStatus.Uploading, UploadStatus.Uploading, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.EPOCH, "bch");
         Mockito.when(statusService.getStatus(query.getPicSureId()))
             .thenReturn(Optional.of(uploading));
 

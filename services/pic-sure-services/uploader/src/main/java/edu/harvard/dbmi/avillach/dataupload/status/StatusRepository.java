@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dataupload.status;
 
+import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -18,7 +19,8 @@ public class StatusRepository {
     public Optional<DataUploadStatuses> getQueryStatus(String queryId) {
         String sql = """
                 SELECT
-                    GENOMIC_STATUS, PHENOTYPIC_STATUS, hex(QUERY) as QUERY, APPROVED, SITE
+                    GENOMIC_STATUS, PHENOTYPIC_STATUS, PATIENT_STATUS, QUERY_JSON_STATUS,
+                    hex(QUERY) as QUERY, APPROVED, SITE
                 FROM
                     query_status
                 WHERE
@@ -67,5 +69,25 @@ public class StatusRepository {
                 ON DUPLICATE KEY UPDATE SITE=?
         """;
         template.update(sql, picSureId.replace("-", ""), site, site);
+    }
+
+    public void setPatientStatus(String queryId, UploadStatus status) {
+        String sql = """
+            INSERT INTO query_status
+                (query, patient_status)
+                VALUES (unhex(?), ?)
+                ON DUPLICATE KEY UPDATE patient_status=?
+        """;
+        template.update(sql, queryId.replace("-", ""), status.toString(), status.toString());
+    }
+
+    public void setQueryUploadStatus(String queryId, UploadStatus status) {
+        String sql = """
+            INSERT INTO query_status
+                (query, query_json_status)
+                VALUES (unhex(?), ?)
+                ON DUPLICATE KEY UPDATE query_json_status=?
+        """;
+        template.update(sql, queryId.replace("-", ""), status.toString(), status.toString());
     }
 }

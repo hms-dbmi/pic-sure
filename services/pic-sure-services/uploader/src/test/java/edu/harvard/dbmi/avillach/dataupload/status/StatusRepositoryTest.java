@@ -129,8 +129,8 @@ class StatusRepositoryTest {
 
         DataUploadStatuses actual = subject.getQueryStatus(query.getPicSureId()).orElseThrow();
         DataUploadStatuses expected = new DataUploadStatuses(
-            UploadStatus.Uploaded, UploadStatus.Error, "33613336-3934-3761-2d38-3233312d3131",
-            LocalDate.of(2022, 2, 22), "bch"
+            UploadStatus.Uploaded, UploadStatus.Error, UploadStatus.Unsent, UploadStatus.Uploading,
+            "33613336-3934-3761-2d38-3233312d3131", LocalDate.of(2022, 2, 22), "bch"
         );
 
         Assertions.assertEquals(expected, actual);
@@ -145,6 +145,32 @@ class StatusRepositoryTest {
         Optional<String> actual = subject.getQueryStatus(query.getPicSureId())
             .map(DataUploadStatuses::site);
         Optional<String> expected = Optional.of("Narnia");
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldSetPatient() {
+        Query query = new Query();
+        query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
+
+        subject.setPatientStatus(query.getPicSureId(), UploadStatus.Uploaded);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
+                                            .map(DataUploadStatuses::patient);
+        Optional<UploadStatus> expected = Optional.of(UploadStatus.Uploaded);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldSetQueryStatus() {
+        Query query = new Query();
+        query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
+
+        subject.setQueryUploadStatus(query.getPicSureId(), UploadStatus.Error);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
+                                            .map(DataUploadStatuses::query);
+        Optional<UploadStatus> expected = Optional.of(UploadStatus.Error);
 
         Assertions.assertEquals(expected, actual);
     }

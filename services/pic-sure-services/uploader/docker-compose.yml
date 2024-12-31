@@ -14,8 +14,9 @@ services:
     volumes:
       - $DOCKER_CONFIG_DIR/aws_uploads/:/gic_query_results/
     networks:
-      - hpdsNet
       - picsure
+    profiles:
+      - "production"
   uploader-db:
     image: mysql:8.0
     container_name: uploader-db
@@ -39,11 +40,23 @@ services:
     volumes:
       - /usr/local/pic-sure-services/uploader/data/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
       - uploader-db-data:/var/lib/mysql
+  migrations:
+    image: flyway/flyway:11-alpine
+    container_name: flyway
+    command: -url=jdbc:mysql://uploader-db:3306/${DATA_UPLOAD_DB_DATABASE}?allowPublicKeyRetrieval=true -schemas=${DATA_UPLOAD_DB_DATABASE} -user=${DATA_UPLOAD_DB_USER} -password=${DATA_UPLOAD_DB_PASS} -connectRetries=60 -validateMigrationNaming=true migrate
+    env_file:
+      - .env
+    volumes:
+      - ./flyway:/flyway/sql
+    networks:
+      - picsure
+    profiles:
+      - "migrate"
+    depends_on:
+      - "uploader-db"
 volumes:
   uploader-db-data:
 
 networks:
   picsure:
-    external: true
-  hpdsNet:
     external: true

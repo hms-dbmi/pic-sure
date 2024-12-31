@@ -9,7 +9,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 public enum DataType {
-    Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.csv");
+    Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.csv"), Patient("patients.txt");
     public final String fileName;
 
     DataType(String fileName) {
@@ -20,6 +20,7 @@ public enum DataType {
         return switch (this) {
             case Genomic -> statusService::setGenomicStatus;
             case Phenotypic -> statusService::setPhenotypicStatus;
+            case Patient -> statusService::setPatientStatus;
         };
     }
 
@@ -27,6 +28,7 @@ public enum DataType {
         return switch (this) {
             case Genomic -> client::writeGenomicData;
             case Phenotypic -> client::writePhenotypicData;
+            case Patient -> client::writePatientData;
         };
     }
 }

@@ -47,7 +47,7 @@ that Amazon provides you.
 
 5. Run
 
-Run `docker run --rm --env-file .env gic-data-uploader`. Here is an example of a
+Run `docker compose --profile production up -d `. Here is an example of a
 successful output, with logging prefixes omitted:
 
 ```
@@ -79,10 +79,6 @@ Verifying delete capabilities
 S3 connection verified.
 ```
 
-TODO:
-- Mount this study in service workbench
-  - Admin UI
-- Test all 4 workspace types
-  - Mount study
-  - R/W access
-  - 
+6. Run Migrations
+
+`docker compose --profile migrate up -d`

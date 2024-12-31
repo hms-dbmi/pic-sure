@@ -12,13 +12,15 @@ import java.util.UUID;
 public class DataUploadStatusesMapper implements RowMapper<DataUploadStatuses> {
     @Override
     public DataUploadStatuses mapRow(ResultSet rs, int rowNum) throws SQLException {
-        UploadStatus genomicStatus = UploadStatus.fromString(rs.getString("GENOMIC_STATUS"));
-        UploadStatus phenotypicStatus = UploadStatus.fromString(rs.getString("PHENOTYPIC_STATUS"));
+        UploadStatus genomic = UploadStatus.fromString(rs.getString("GENOMIC_STATUS"));
+        UploadStatus pheno = UploadStatus.fromString(rs.getString("PHENOTYPIC_STATUS"));
+        UploadStatus patient = UploadStatus.fromString(rs.getString("PATIENT_STATUS"));
+        UploadStatus queryStatus = UploadStatus.fromString(rs.getString("QUERY_JSON_STATUS"));
         String query = fromDashlessString(rs.getString("QUERY")).toString();
         Date approved = rs.getDate("APPROVED");
         String site = rs.getString("SITE");
         return new DataUploadStatuses(
-                genomicStatus, phenotypicStatus, query, approved == null ? null : approved.toLocalDate(), site
+                genomic, pheno, patient, queryStatus, query, approved == null ? null : approved.toLocalDate(), site
         );
     }
 

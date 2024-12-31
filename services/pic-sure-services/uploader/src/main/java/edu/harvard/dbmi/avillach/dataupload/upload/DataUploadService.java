@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.dataupload.upload;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dataupload.aws.AWSClientBuilder;
 import edu.harvard.dbmi.avillach.dataupload.aws.SiteAWSInfo;
 import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
@@ -62,6 +64,8 @@ public class DataUploadService {
     @Autowired
     private Map<String, SiteAWSInfo> roleARNs;
 
+    private static final ObjectMapper mapper = new ObjectMapper();
+
     public DataUploadStatuses asyncUpload(Query query, String site, DataType dataType) {
         dataType.getStatusSetter(statusService).accept(query, UploadStatus.Queued);
         Thread.ofVirtual().start(() -> uploadData(query, dataType, site));
@@ -110,8 +114,39 @@ public class DataUploadService {
         } else {
             statusSetter.accept(query, UploadStatus.Error);
         }
+        uploadQueryJson(query, roleARNs.get(site));
         LOG.info("Releasing lock for  {} / {}", dataType, query.getPicSureId());
         uploadLock.release();
+    }
+
+    private void uploadQueryJson(Query query, SiteAWSInfo site) {
+        UploadStatus queryUploadStatus = statusService.getStatus(query.getPicSureId())
+                                             .map(DataUploadStatuses::query)
+                                             .orElse(UploadStatus.Unsent);
+        if (queryUploadStatus == UploadStatus.Uploaded || queryUploadStatus == UploadStatus.Uploading) {
+            return;
+        }
+        statusService.setQueryUploadStatus(query, UploadStatus.Uploading);
+        LOG.info("Uploading query json for {}", query.getPicSureId());
+        try {
+            String queryJson = mapper.writeValueAsString(query);
+            LOG.info("Created query JSON. Writing to file.");
+            Path jsonPath = Path.of(sharingRoot.toString(), query.getPicSureId(), "query.json");
+            Files.writeString(jsonPath, queryJson);
+            if (!uploadFileFromPath(jsonPath, site, query.getPicSureId())) {
+                LOG.info("Failed to write query.json");
+                statusService.setQueryUploadStatus(query, UploadStatus.Error);
+            }
+            Files.delete(jsonPath);
+        } catch (JsonProcessingException e) {
+            statusService.setQueryUploadStatus(query, UploadStatus.Error);
+            LOG.info("Failed to get query json: ", e);
+        } catch (IOException e) {
+            statusService.setQueryUploadStatus(query, UploadStatus.Error);
+            LOG.info("Failed to write query json: ", e);
+        }
+        LOG.info("Successfully uploaded query.json for {} to {}", query.getPicSureId(), site.siteName());
+        statusService.setQueryUploadStatus(query, UploadStatus.Uploaded);
     }
 
     private void deleteFile(Path data) {

@@ -44,4 +44,12 @@ public class StatusService {
     public void setSite(Query query, String site) {
         repository.setSite(query.getPicSureId(), site);
     }
+
+    public void setPatientStatus(Query query, UploadStatus uploadStatus) {
+        repository.setPatientStatus(query.getPicSureId(), uploadStatus);
+    }
+
+    public void setQueryUploadStatus(Query query, UploadStatus uploadStatus) {
+        repository.setQueryUploadStatus(query.getPicSureId(), uploadStatus);
+    }
 }

@@ -105,4 +105,8 @@ public class HPDSClient {
             return null;
         }
     }
+
+    public boolean writePatientData(Query query) {
+        return writeData(query, "patients");
+    }
 }
