@@ -1,11 +1,17 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -106,18 +112,19 @@ public class LoadingStore {
 
 	public TreeSet<Integer> allIds = new TreeSet<Integer>();
 	
-	public void saveStore(String hpdsDirectory) throws FileNotFoundException, IOException {
+	public void saveStore(String hpdsDirectory) throws IOException {
 		System.out.println("Invalidating store");
 		store.invalidateAll();
 		store.cleanUp();
 		System.out.println("Writing metadata");
-		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(new File(hpdsDirectory + "columnMeta.javabin"))));
+		ObjectOutputStream metaOut = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(hpdsDirectory + "columnMeta.javabin")));
 		metaOut.writeObject(metadataMap);
 		metaOut.writeObject(allIds);
 		metaOut.flush();
 		metaOut.close();
 		System.out.println("Closing Store");
 		allObservationsStore.close();
+		dumpStatsAndColumnMeta(hpdsDirectory);
 	}
 
 	public void dumpStats() {
@@ -149,5 +156,55 @@ public class LoadingStore {
 		}
 	}
 
+	/**
+	 * This method will display counts for the objects stored in the metadata.
+	 * This will also write out a csv file used by the data dictionary importer.
+	 */
+	public void dumpStatsAndColumnMeta(String hpdsDirectory) {
+		try (ObjectInputStream objectInputStream =
+					 new ObjectInputStream(new GZIPInputStream(new FileInputStream(hpdsDirectory + "columnMeta.javabin")))){
+			TreeMap<String, ColumnMeta> metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
+			try(BufferedWriter writer = Files.newBufferedWriter(Paths.get(hpdsDirectory + "columnMeta.csv"), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+				CSVPrinter printer = new CSVPrinter(writer, CSVFormat.DEFAULT);
+				for(String key : metastore.keySet()) {
+					ColumnMeta columnMeta = metastore.get(key);
+					Object[] columnMetaOut = new Object[11];
+
+					StringBuilder listQuoted = new StringBuilder();
+					AtomicInteger x = new AtomicInteger(1);
+
+					if(columnMeta.getCategoryValues() != null){
+						if(!columnMeta.getCategoryValues().isEmpty()) {
+							columnMeta.getCategoryValues().forEach(string -> {
+								listQuoted.append(string);
+								if(x.get() != columnMeta.getCategoryValues().size()) listQuoted.append("µ");
+								x.incrementAndGet();
+							});
+						}
+					}
+
+					columnMetaOut[0] = columnMeta.getName();
+					columnMetaOut[1] = String.valueOf(columnMeta.getWidthInBytes());
+					columnMetaOut[2] = String.valueOf(columnMeta.getColumnOffset());
+					columnMetaOut[3] = String.valueOf(columnMeta.isCategorical());
+					// this should nest the list of values in a list inside the String array.
+					columnMetaOut[4] = listQuoted;
+					columnMetaOut[5] = String.valueOf(columnMeta.getMin());
+					columnMetaOut[6] = String.valueOf(columnMeta.getMax());
+					columnMetaOut[7] = String.valueOf(columnMeta.getAllObservationsOffset());
+					columnMetaOut[8] = String.valueOf(columnMeta.getAllObservationsLength());
+					columnMetaOut[9] = String.valueOf(columnMeta.getObservationCount());
+					columnMetaOut[10] = String.valueOf(columnMeta.getPatientCount());
+
+					printer.printRecord(columnMetaOut);
+				}
+
+				writer.flush();
+            }
+
+		} catch (IOException | ClassNotFoundException e) {
+			throw new RuntimeException("Could not load metastore", e);
+		}
+	}
 
 }
