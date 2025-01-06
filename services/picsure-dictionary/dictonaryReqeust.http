@@ -21,3 +21,25 @@ POST http://localhost:80/concepts/detail
 Content-Type: application/json
 
 ["\\phs000993\\pht005015\\phv00253191\\BODY_SITE\\", "\\phs002913\\W2Q_COV_REINFEC_2_OTH\\"]
+
+###
+
+POST https://predev.picsure.biodatacatalyst.nhlbi.nih.gov/picsure/proxy/dictionary-api/concepts/detail
+Content-Type: application/json
+
+["\\phs000993\\pht005015\\phv00253191\\BODY_SITE\\", "\\phs002913\\W2Q_COV_REINFEC_2_OTH\\"]
+
+###
+# This request is used by our grafana dashboard to check if search is available.
+POST https://predev.picsure.biodatacatalyst.nhlbi.nih.gov/picsure/search/02e23f52-f354-4e8b-992c-d37c8b9ba140
+Content-Type: application/json
+Authorization: Bearer <replace_with_token>
+
+{
+  "query": {
+      "@type": "GeneralQueryRequest",
+      "resourceCredentials": {},
+      "query": "Genetic Epidemiology of COPD (COPDGene)",
+      "resourceUUID": null
+  }
+}

@@ -1,3 +1,5 @@
+# Use for local development. This file will create the "dictionary" network.
+# The Production file expects the network to already exist.
 version: '3.3'
 
 services:
@@ -20,16 +22,9 @@ services:
     env_file: .env
     networks:
       - dictionary
-      - hpdsNet
-      - picsure
 
 volumes:
   picsure-search:
 
 networks:
   dictionary:
-    external: true
-  picsure:
-    external: true
-  hpdsNet:
-    external: true
