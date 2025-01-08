@@ -5,6 +5,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Controller
 @RequestMapping("/dashboard-drawer")
 public class DashboardDrawerController {
@@ -13,7 +15,7 @@ public class DashboardDrawerController {
     private DashboardDrawerService dashboardDrawerService;
 
     @GetMapping
-    public ResponseEntity<DashboardDrawerList> findAll() {
+    public ResponseEntity<List<DashboardDrawer>> findAll() {
         return dashboardDrawerService.findAll().map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 

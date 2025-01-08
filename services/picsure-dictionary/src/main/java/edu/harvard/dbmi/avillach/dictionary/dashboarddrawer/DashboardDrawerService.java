@@ -15,7 +15,7 @@ public class DashboardDrawerService {
     private final String dashboardLayout;
 
     @Autowired
-    public DashboardDrawerService(DashboardDrawerRepository repository, @Value("${dashboard.layout.type}") String dashboardLayout) {
+    public DashboardDrawerService(DashboardDrawerRepository repository, @Value("${dashboard.layout.type:default}") String dashboardLayout) {
         this.repository = repository;
         this.dashboardLayout = dashboardLayout;
     }
@@ -25,13 +25,11 @@ public class DashboardDrawerService {
      *
      * @return All Dashboard Instances and their metadata.
      */
-    public Optional<DashboardDrawerList> findAll() {
-        if (dashboardLayout.equalsIgnoreCase("bdc")) {
-            List<DashboardDrawer> records = repository.getDashboardDrawerRows();
-            return Optional.of(new DashboardDrawerList(records));
+    public Optional<List<DashboardDrawer>> findAll() {
+        if (dashboardLayout.equalsIgnoreCase("default")) {
+            return repository.getDashboardDrawerRows();
         }
-
-        return Optional.of(new DashboardDrawerList(new ArrayList<>()));
+        return Optional.of(new ArrayList<>());
     }
 
     /**
@@ -42,8 +40,8 @@ public class DashboardDrawerService {
      * @return a single Dashboard instance with drawer-specific metadata.
      */
     public Optional<DashboardDrawer> findByDatasetId(Integer datasetId) {
-        if ("bdc".equalsIgnoreCase(dashboardLayout)) {
-            return repository.getDashboardDrawerRows(datasetId);
+        if (dashboardLayout.equalsIgnoreCase("default")) {
+            return repository.getDashboardDrawerRowsByDatasetId(datasetId);
         }
         return Optional.empty();
     }
