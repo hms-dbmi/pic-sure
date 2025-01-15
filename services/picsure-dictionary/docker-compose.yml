@@ -5,8 +5,8 @@ services:
     container_name: dictionary-db
     image: postgres:16-alpine
     volumes:
-      - picsure-search:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - $DOCKER_CONFIG_DIR/dictionary/db/data:/var/lib/postgresql/data
+      - $DOCKER_CONFIG_DIR/dictionary/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     env_file: .env
     networks:
       - dictionary
