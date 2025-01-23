@@ -118,7 +118,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         if (!rasPassport.get().getIss().equals(this.rasPassportIssuer)) {
             logger.error("validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ " +
-                    "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
+                         "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
                     user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code"));
             return null;
         }
@@ -126,14 +126,12 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         logger.info("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport.get(), authRequest.get("code"));
 
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4gpPassportToRasDbgapPermissions(rasPassport.get().getGa4ghPassportV1());
-        Optional<Set<String>> dbgapRoleNames = this.roleService.getRoleNamesForDbgapPermissions(dbgapPermissions);
-        if (dbgapRoleNames.isPresent()) {
-            user = userService.updateUserRoles(user, dbgapRoleNames.get());
-            logger.debug("USER {} ROLES UPDATED {} ___ CODE {}",
-                    user.getSubject(),
-                    user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).toArray(),
-                    authRequest.get("code"));
-        }
+        Set<String> dbgapRoleNames = this.roleService.getRoleNamesForDbgapPermissions(dbgapPermissions);
+        user = userService.updateUserRoles(user, dbgapRoleNames);
+        logger.debug("USER {} ROLES UPDATED {} ___ CODE {}",
+                user.getSubject(),
+                user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).toArray(),
+                authRequest.get("code"));
 
         String passport = introspectResponse.get("passport_jwt_v11").toString();
         user.setPassport(passport);
@@ -183,7 +181,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
      * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's
      * role and other information.
      *
-     * @param user               The user
+     * @param user The user
      * @return The user metadata as an ObjectNode
      */
     protected ObjectNode generateRasUserMetadata(User user) {

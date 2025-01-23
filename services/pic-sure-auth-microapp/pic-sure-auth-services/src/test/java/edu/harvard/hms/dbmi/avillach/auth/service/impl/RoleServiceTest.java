@@ -290,7 +290,7 @@ public class RoleServiceTest {
 
     @Test
     public void getRoleNamesForDbgapPermissions_PermissionsAreNull() {
-        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(null);
+        Set<String> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(null);
         assertNotNull(rolesForDbgapPermissions);
         assertTrue(rolesForDbgapPermissions.isEmpty());
     }
@@ -298,8 +298,7 @@ public class RoleServiceTest {
     @Test
     public void getRoleNamesForDbgapPermissions_PermissionsEmpty() {
         Set<RasDbgapPermission> rasDbgapPermissions = new HashSet<>();
-
-        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
+        Set<String> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
         assertNotNull(rolesForDbgapPermissions);
         assertTrue(rolesForDbgapPermissions.isEmpty());
     }
@@ -330,7 +329,7 @@ public class RoleServiceTest {
         rasDbgapPermissions.add(rasDbgapPermissionV1);
         rasDbgapPermissions.add(rasDbgapPermissionV2);
 
-        Optional<Set<String>> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
+        Set<String> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(rasDbgapPermissions);
         assertNotNull(rolesForDbgapPermissions);
         System.out.println(rolesForDbgapPermissions);
     }

@@ -25,7 +25,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
  */
 @Tag(name = "Role Management")
 @Controller
-@RequestMapping(value = "/role")
+@RequestMapping("/role")
 public class RoleController {
 
     private final RoleService roleService;
@@ -49,8 +49,8 @@ public class RoleController {
     }
 
     @Operation(description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
-    @GetMapping(produces = "application/json")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
+    @GetMapping
     public ResponseEntity<List<Role>> getRoleAll() {
         List<Role> allRoles = this.roleService.getAllRoles();
         return PICSUREResponse.success(allRoles);

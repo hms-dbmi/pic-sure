@@ -49,7 +49,7 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
-    @GetMapping(value = "/", produces = "application/json")
+    @GetMapping
     @Secured({SUPER_ADMIN, ADMIN})
     public ResponseEntity<List<Connection>> getAllConnections() {
         List<Connection> allConnections = connectionWebService.getAllConnections();
