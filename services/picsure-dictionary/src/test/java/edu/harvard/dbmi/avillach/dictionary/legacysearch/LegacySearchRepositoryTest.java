@@ -44,7 +44,7 @@ public class LegacySearchRepositoryTest {
     void shouldGetLegacySearchResults() {
         List<SearchResult> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.unpaged());
 
-        Assertions.assertEquals(30, searchResults.size());
+        Assertions.assertEquals(31, searchResults.size());
     }
 
     @Test

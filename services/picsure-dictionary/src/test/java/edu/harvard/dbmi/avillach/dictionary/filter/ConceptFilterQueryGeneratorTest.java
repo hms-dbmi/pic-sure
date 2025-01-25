@@ -41,6 +41,28 @@ class ConceptFilterQueryGeneratorTest {
     NamedParameterJdbcTemplate template;
 
     @Test
+    void shouldSortValueMatchesAboveSearchMatches() {
+        Filter filter = new Filter(List.of(), "origin", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertEquals(List.of(271, 270), actual);
+    }
+
+    @Test
+    void shouldFindValuesNotInSearchString() {
+        Filter filter = new Filter(List.of(), "gremlin", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertEquals(List.of(271), actual);
+    }
+
+    @Test
     void shouldPutStigvarsLastForEmptySearch() {
         Filter filter = new Filter(List.of(), "", List.of());
         QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
@@ -58,7 +80,7 @@ class ConceptFilterQueryGeneratorTest {
         String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
 
         List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
-        List<Integer> expected = List.of(270);
+        List<Integer> expected = List.of(270, 271);
 
         Assertions.assertEquals(expected, actual);
     }

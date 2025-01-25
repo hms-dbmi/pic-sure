@@ -396,6 +396,7 @@ COPY public.concept_node (concept_node_id, dataset_id, name, display, concept_ty
 268	14	WES	WES	categorical	\\Variant Data Type\\WES\\	265	'data':2 'exom':7 'sequenc':8 'true':9 'type':3 'variant':1 'wes':4,5 'whole':6
 269	14	WGS	WGS	categorical	\\Variant Data Type\\WGS\\	265	'data':2 'genom':7 'sequenc':8 'true':9 'type':3 'variant':1 'wgs':4,5 'whole':6
 270	26	harmonized_var	harmonized_var	continuous	\\phs003566\\harmonized_var\\	263	'ecgsamplebas':5,8 'origin':4,7 'phs003566':1 'visit01':2,3,6
+271	26	value_example	value_example	continuous	\\phs003566\\value_example\\	263	'ecgsamplebas':5,8 'origin':4,7 'phs003566':1 'visit01':2,3,6
 \.
 
 
@@ -520,6 +521,7 @@ COPY public.concept_node_meta (concept_node_meta_id, concept_node_id, key, value
 36	222	values	[0, 150]
 66	242	values	[0, 30]
 134	270	values	[0, 21]
+135	271	values	['gremlin', 'origin']
 \.
 
 
