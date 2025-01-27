@@ -30,6 +30,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -207,7 +208,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         checkQuery(resultRequest);
         HttpResponse response = postRequest(resultRequest, "/query/" + queryId + "/result");
         try {
-            String responseBody = httpClientUtil.readObjectFromResponse(response);
+            String responseBody = httpClientUtil.readObjectFromResponse(response, StandardCharsets.UTF_8);
             return Response.ok(responseBody).build();
         } finally {
             HttpClientUtil.closeHttpResponse(response);

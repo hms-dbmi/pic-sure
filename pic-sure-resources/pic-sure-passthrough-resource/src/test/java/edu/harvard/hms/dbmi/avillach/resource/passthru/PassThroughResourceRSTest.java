@@ -139,7 +139,7 @@ class PassThroughResourceRSTest {
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
         when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
-        when(httpClient.readObjectFromResponse(any(HttpResponse.class))).thenReturn("4");
+        when(httpClient.readObjectFromResponse(any(HttpResponse.class), StandardCharsets.UTF_8)).thenReturn("4");
 
         assertThrows(ProtocolException.class, () -> {
             resource.queryResult("", null);
