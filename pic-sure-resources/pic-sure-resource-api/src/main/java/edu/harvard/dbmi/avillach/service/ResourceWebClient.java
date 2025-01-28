@@ -21,6 +21,7 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -240,15 +241,16 @@ public class ResourceWebClient {
                 HttpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse, StandardCharsets.ISO_8859_1);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 HttpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return Response.ok(content).build();
+            return Response.ok(resourcesResponse.getEntity().getContent()).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         } finally {
             closeHttpResponse(resourcesResponse);
         }
