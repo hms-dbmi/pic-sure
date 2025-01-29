@@ -241,16 +241,15 @@ public class ResourceWebClient {
                 HttpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
 
+            byte[] content = httpClientUtil.readBytesFromResponse(resourcesResponse);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 HttpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
-            return Response.ok(resourcesResponse.getEntity().getContent()).build();
+            return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         } finally {
             closeHttpResponse(resourcesResponse);
         }

@@ -150,6 +150,17 @@ public class HttpClientUtil {
         }
     }
 
+    public byte[] readBytesFromResponse(HttpResponse response) {
+        logger.debug("HttpClientUtil readObjectFromResponse(HttpResponse response)");
+        try {
+            byte[] responseBody = EntityUtils.toByteArray(response.getEntity());
+            logger.debug("readObjectFromResponse() responseBody {}", responseBody);
+            return responseBody;
+        } catch (IOException e) {
+            throw new ApplicationException("Incorrect object type returned", e);
+        }
+    }
+
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
