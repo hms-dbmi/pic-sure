@@ -20,8 +20,7 @@ import org.slf4j.LoggerFactory;
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -242,6 +241,12 @@ public class ResourceWebClient {
             );
 
             byte[] content = httpClientUtil.readBytesFromResponse(resourcesResponse);
+            FileOutputStream fos = new FileOutputStream("/tmp/test.avro");
+            fos.write(content);
+
+            String contentString = new String(content, StandardCharsets.ISO_8859_1);
+            logger.info("Query result:");
+            logger.info(contentString);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 HttpClientUtil.throwResponseError(resourcesResponse, rsURL);
@@ -250,6 +255,10 @@ public class ResourceWebClient {
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
             throw new NotAuthorizedException("Unable to encode resource credentials", e);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         } finally {
             closeHttpResponse(resourcesResponse);
         }
