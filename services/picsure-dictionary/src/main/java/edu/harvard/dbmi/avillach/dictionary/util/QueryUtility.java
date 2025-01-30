@@ -16,4 +16,9 @@ public class QueryUtility {
                 concept_node.concept_node_id
         )
         """;
+
+    public static final String SEARCH_QUERY =
+        "CAST(LOWER(categorical_values.VALUE) LIKE '%' || LOWER(:search) || '%' as integer) * 10 + ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery)";
+    public static final String SEARCH_WHERE =
+        "(LOWER(categorical_values.VALUE) LIKE '%' || LOWER(:search) || '%' OR concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery)";
 }

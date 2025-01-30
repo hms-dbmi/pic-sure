@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary.concept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
+import edu.harvard.dbmi.avillach.dictionary.util.QueryUtility;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
@@ -88,23 +89,21 @@ public class ConceptFilterQueryGenerator {
     }
 
     private String createValuelessNodeFilter(String search, List<String> consents) {
-        String rankQuery = "0 as rank";
+        String rankQuery = "0";
         String rankWhere = "";
         if (StringUtils.hasLength(search)) {
             // we rank search results via two factors:
             // 1. (more important) does the raw search term appear in the concept's values?
             // 2. (less important) does psql think the tokenized search term matches something in the searchable_fields
-            rankQuery = "(CAST(LOWER(categorical_values.VALUE) LIKE '%' || LOWER(:search) || '%' as integer) * 10) + "
-                + "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery) as rank";
-            rankWhere = "(LOWER(categorical_values.VALUE) LIKE '%' || LOWER(:search) || '%' OR "
-                + "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery) AND";
+            rankQuery = QueryUtility.SEARCH_QUERY;
+            rankWhere = QueryUtility.SEARCH_WHERE + " AND ";
         }
         String consentWhere = CollectionUtils.isEmpty(consents) ? "" : CONSENT_QUERY;
         // concept nodes that have no values and no min/max should not get returned by search
         return """
             SELECT
                 concept_node.concept_node_id,
-                %s
+                (%s) as rank
             FROM
                 concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
@@ -135,8 +134,8 @@ public class ConceptFilterQueryGenerator {
             String rankQuery = "0";
             String rankWhere = "";
             if (StringUtils.hasLength(filter.search())) {
-                rankQuery = "ts_rank(searchable_fields, (phraseto_tsquery(:search)::text || ':*')::tsquery)";
-                rankWhere = "concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery AND";
+                rankQuery = QueryUtility.SEARCH_QUERY;
+                rankWhere = QueryUtility.SEARCH_WHERE + " AND ";
             }
             return """
                 (
@@ -147,6 +146,7 @@ public class ConceptFilterQueryGenerator {
                         LEFT JOIN facet__concept_node ON facet__concept_node.facet_id = facet.facet_id
                         JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = facet__concept_node.concept_node_id
+                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                         LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                     WHERE
                         %s
@@ -155,7 +155,8 @@ public class ConceptFilterQueryGenerator {
                     GROUP BY
                         facet__concept_node.concept_node_id
                 )
-                """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
+                """
+                .formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
         }).toList();
     }
 

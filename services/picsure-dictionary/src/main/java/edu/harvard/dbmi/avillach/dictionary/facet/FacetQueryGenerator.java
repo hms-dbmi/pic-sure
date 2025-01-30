@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.dictionary.facet;
 
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
+import edu.harvard.dbmi.avillach.dictionary.util.QueryUtility;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -102,7 +103,7 @@ public class FacetQueryGenerator {
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
                         (fc.name, facet.name) IN (:facets_in_cat_%s)
-                        AND concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
+                        AND %s
                         AND (
                             continuous_min.value <> '' OR
                             continuous_max.value <> '' OR
@@ -110,7 +111,7 @@ public class FacetQueryGenerator {
                         )
                 )
                 """
-                .formatted(categoryKeys.get(category), categoryKeys.get(category));
+                .formatted(categoryKeys.get(category), categoryKeys.get(category), QueryUtility.SEARCH_WHERE);
         }).collect(Collectors.joining(",\n"));
         /*
          * Categories with no selected facets contribute no concepts, so ignore them for now. Now, for each category with selected facets,
@@ -298,7 +299,7 @@ public class FacetQueryGenerator {
                 WHERE
                     %s
                     fc.name = :facet_category_name
-                    AND concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
+                    AND %s
                     AND (
                         continuous_min.value <> '' OR
                         continuous_max.value <> '' OR
@@ -325,7 +326,7 @@ public class FacetQueryGenerator {
                     WHERE
                         fc.name = :facet_category_name
                         AND facet.name IN (:facets)
-                        AND concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
+                        AND %s
                         AND (
                             continuous_min.value <> '' OR
                             continuous_max.value <> '' OR
@@ -350,7 +351,7 @@ public class FacetQueryGenerator {
                     facet_count DESC
             )
             """
-            .formatted(consentWhere, consentWhere);
+            .formatted(consentWhere, QueryUtility.SEARCH_WHERE, QueryUtility.SEARCH_WHERE, consentWhere);
     }
 
     private String createSingleCategorySQLNoSearch(List<Facet> facets, String consentWhere, MapSqlParameterSource params) {
@@ -447,7 +448,7 @@ public class FacetQueryGenerator {
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
                 %s
-                concept_node.searchable_fields @@ (phraseto_tsquery(:search)::text || ':*')::tsquery
+                %s
                 AND (
                     continuous_min.value <> '' OR
                     continuous_max.value <> '' OR
@@ -458,7 +459,7 @@ public class FacetQueryGenerator {
             ORDER BY
                 facet_count DESC
             """
-            .formatted(consentWhere);
+            .formatted(consentWhere, QueryUtility.SEARCH_WHERE);
 
     }
 

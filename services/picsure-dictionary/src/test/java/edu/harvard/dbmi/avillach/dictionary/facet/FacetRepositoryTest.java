@@ -71,8 +71,8 @@ class FacetRepositoryTest {
             new FacetCategory(
                 "nsrr_harmonized", "Common Data Element Collection", "",
                 List.of(
+                    new Facet("PhenX", "PhenX", null, null, 2, List.of(), "nsrr_harmonized", null),
                     new Facet("LOINC", "LOINC", null, null, 1, List.of(), "nsrr_harmonized", null),
-                    new Facet("PhenX", "PhenX", null, null, 1, List.of(), "nsrr_harmonized", null),
                     new Facet(
                         "gad_7", "Generalized Anxiety Disorder Assessment (GAD-7)", null, null, 0, List.of(), "nsrr_harmonized", null
                     ),

@@ -739,6 +739,7 @@ COPY public.facet__concept_node (facet__concept_node_id, facet_id, concept_node_
 91	18	261
 92	20	229
 93	21	229
+94	21	271
 \.
 
 
