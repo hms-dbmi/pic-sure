@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -138,7 +137,8 @@ class PassThroughResourceRSTest {
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
         when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
-        when(httpClient.readObjectFromResponse(any(HttpResponse.class), eq(StandardCharsets.UTF_8))).thenReturn("4");
+        byte[] byteResponse = {101};
+        when(httpClient.readBytesFromResponse(any(HttpResponse.class))).thenReturn(byteResponse);
 
         assertThrows(ProtocolException.class, () -> {
             resource.queryResult("", null);
@@ -166,7 +166,7 @@ class PassThroughResourceRSTest {
         when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
         GeneralQueryRequest queryRequest = newQueryRequest(null);
         javax.ws.rs.core.Response returnVal = resource.queryResult(queryId.toString(), queryRequest);
-        assertEquals("4", returnVal.getEntity());
+        assertArrayEquals(byteResponse, (byte[]) returnVal.getEntity());
         // assertEquals(resultId, returnVal.getHeaderString("resultId"));
     }
 

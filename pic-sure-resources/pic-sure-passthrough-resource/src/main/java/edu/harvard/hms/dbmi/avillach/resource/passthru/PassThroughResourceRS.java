@@ -164,7 +164,7 @@ public class PassThroughResourceRS implements IResourceRS {
             String payload = objectMapper.writeValueAsString(chainRequest);
             response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-            String content = httpClient.readObjectFromResponse(response, StandardCharsets.UTF_8);
+            byte[] content = httpClient.readBytesFromResponse(response);
             if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
                     "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
