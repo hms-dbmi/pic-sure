@@ -2,8 +2,7 @@ package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -139,7 +138,7 @@ class PassThroughResourceRSTest {
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpResponse.getEntity()).thenReturn(httpResponseEntity);
         when(httpClient.retrievePostResponse(anyString(), any(Header[].class), anyString())).thenReturn(httpResponse);
-        when(httpClient.readObjectFromResponse(any(HttpResponse.class), StandardCharsets.ISO_8859_1)).thenReturn("4");
+        when(httpClient.readObjectFromResponse(any(HttpResponse.class), eq(StandardCharsets.UTF_8))).thenReturn("4");
 
         assertThrows(ProtocolException.class, () -> {
             resource.queryResult("", null);

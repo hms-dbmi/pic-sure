@@ -292,7 +292,7 @@ public class ResourceWebClientTest {
     @Test
     public void testQueryResult() throws JsonProcessingException {
         String testId = "230048";
-        String mockResult = "{}";
+        byte[] mockResult = new byte[] {};
 
 
 
@@ -341,8 +341,8 @@ public class ResourceWebClientTest {
         Response result = cut.queryResult(testURL, testId, queryRequest);
         assertNotNull("Result should not be null", result);
         // String resultContent = IOUtils.toString((InputStream) result.getEntity(), "UTF-8");
-        String resultContent = (String) result.getEntity();
-        assertEquals("Result should match " + mockResult, mockResult, resultContent);
+        byte[] resultContent = (byte[]) result.getEntity();
+        assertArrayEquals("Result should match " + mockResult, mockResult, resultContent);
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlMatching("/query/.*/result")).willReturn(aResponse().withStatus(500)));
