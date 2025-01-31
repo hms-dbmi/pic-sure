@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -19,7 +20,6 @@ import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -139,10 +139,21 @@ public class HttpClientUtil {
         }
     }
 
-    public String readObjectFromResponse(HttpResponse response) {
+    public String readObjectFromResponse(HttpResponse response, Charset charset) {
         logger.debug("HttpClientUtil readObjectFromResponse(HttpResponse response)");
         try {
-            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            String responseBody = EntityUtils.toString(response.getEntity(), charset);
+            logger.debug("readObjectFromResponse() responseBody {}", responseBody);
+            return responseBody;
+        } catch (IOException e) {
+            throw new ApplicationException("Incorrect object type returned", e);
+        }
+    }
+
+    public byte[] readBytesFromResponse(HttpResponse response) {
+        logger.debug("HttpClientUtil readObjectFromResponse(HttpResponse response)");
+        try {
+            byte[] responseBody = EntityUtils.toByteArray(response.getEntity());
             logger.debug("readObjectFromResponse() responseBody {}", responseBody);
             return responseBody;
         } catch (IOException e) {

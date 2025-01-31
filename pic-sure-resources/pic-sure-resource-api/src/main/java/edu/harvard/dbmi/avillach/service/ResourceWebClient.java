@@ -14,15 +14,15 @@ import org.apache.http.HttpResponse;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
-import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import java.io.IOException;
+import java.io.*;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
@@ -240,7 +240,7 @@ public class ResourceWebClient {
                 HttpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            byte[] content = httpClientUtil.readBytesFromResponse(resourcesResponse);
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 HttpClientUtil.throwResponseError(resourcesResponse, rsURL);
@@ -281,7 +281,7 @@ public class ResourceWebClient {
                 httpClientUtil.throwResponseError(resourcesResponse, rsURL);
             }
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse, StandardCharsets.UTF_8);
             return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             logger.error("Unable to encode resource credentials");
@@ -311,7 +311,7 @@ public class ResourceWebClient {
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse, StandardCharsets.UTF_8);
             int status = resourcesResponse.getStatusLine().getStatusCode();
             if (status != 200) {
                 logger.error("Query format request did not return a 200:  {}", resourcesResponse.getStatusLine().getStatusCode());
@@ -360,7 +360,7 @@ public class ResourceWebClient {
                 throwError(resourcesResponse, rsURL);
             }
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse, StandardCharsets.UTF_8);
             if (resourcesResponse.containsHeader(QUERY_METADATA_FIELD)) {
                 Header metadataHeader = ((Header[]) resourcesResponse.getHeaders(QUERY_METADATA_FIELD))[0];
                 return Response.ok(content).header(QUERY_METADATA_FIELD, metadataHeader.getValue()).build();
@@ -417,7 +417,7 @@ public class ResourceWebClient {
                 throwError(resourcesResponse, rsURL);
             }
 
-            String content = httpClientUtil.readObjectFromResponse(resourcesResponse);
+            String content = httpClientUtil.readObjectFromResponse(resourcesResponse, StandardCharsets.UTF_8);
             return Response.ok(content).build();
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);

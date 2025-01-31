@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.resource.passthru;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import javax.inject.Inject;
@@ -13,7 +14,6 @@ import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
-import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,7 +69,7 @@ public class PassThroughResourceRS implements IResourceRS {
     public ResourceInfo info(QueryRequest infoRequest) {
         String pathName = "/info";
 
-		HttpResponse response = null;
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             if (infoRequest != null) {
@@ -101,8 +101,8 @@ public class PassThroughResourceRS implements IResourceRS {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
         } finally {
-			closeHttpResponse(response);
-		}
+            closeHttpResponse(response);
+        }
     }
 
     @POST
@@ -154,7 +154,7 @@ public class PassThroughResourceRS implements IResourceRS {
 
         String pathName = "/query/" + queryId + "/result";
 
-		HttpResponse response = null;
+        HttpResponse response = null;
         try {
             QueryRequest chainRequest = new GeneralQueryRequest();
             chainRequest.setQuery(resultRequest.getQuery());
@@ -164,8 +164,8 @@ public class PassThroughResourceRS implements IResourceRS {
             String payload = objectMapper.writeValueAsString(chainRequest);
             response = httpClient
                 .retrievePostResponse(httpClient.composeURL(properties.getTargetPicsureUrl(), pathName), createAuthHeader(), payload);
-			String content = httpClient.readObjectFromResponse(response);
-			if (response.getStatusLine().getStatusCode() != 200) {
+            byte[] content = httpClient.readBytesFromResponse(response);
+            if (response.getStatusLine().getStatusCode() != 200) {
                 logger.error(
                     "{}{} calling resource with id {} did not return a 200: {} {} ", properties.getTargetPicsureUrl(), pathName,
                     chainRequest.getResourceUUID(), response.getStatusLine().getStatusCode(), response.getStatusLine().getReasonPhrase()
@@ -180,8 +180,8 @@ public class PassThroughResourceRS implements IResourceRS {
             logger.error(e.getMessage());
             throw new ProtocolException(ProtocolException.INCORRECTLY_FORMATTED_REQUEST);
         } finally {
-			closeHttpResponse(response);
-		}
+            closeHttpResponse(response);
+        }
     }
 
     @POST
