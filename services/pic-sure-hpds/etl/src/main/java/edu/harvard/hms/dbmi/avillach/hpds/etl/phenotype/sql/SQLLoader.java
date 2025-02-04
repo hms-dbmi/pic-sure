@@ -1,24 +1,19 @@
-package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
+package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.sql;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.io.*;
 import java.nio.charset.Charset;
-import java.util.Date;
 import java.util.Properties;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import com.google.common.cache.CacheLoader.InvalidCacheLoadException;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
+import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

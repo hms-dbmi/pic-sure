@@ -4,7 +4,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.BucketIndexBySample;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantStore;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.NewVCFLoader;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.genotype.VariantMetadataLoader;
-import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.CSVLoader;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv.CSVLoader;
 
 import java.io.IOException;
 

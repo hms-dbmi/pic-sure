@@ -135,7 +135,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.CSVLoaderNewSearch</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv.CSVLoaderNewSearch</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -155,7 +155,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.CSVLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv.CSVLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -175,7 +175,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.SQLLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.sql.SQLLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -195,7 +195,7 @@
 						<configuration>
 							<archive>
 								<manifest>
-									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.SequentialLoader</mainClass>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.sequential.SequentialLoader</mainClass>
 								</manifest>
 							</archive>
 							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
@@ -204,6 +204,26 @@
 							</descriptorRefs>
 							<classifier>SequentialLoader</classifier>
 							<finalName>SequentialLoader</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>buildLiteCSVLoader</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.litecsv.LowRAMMultiCSVLoader</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>LowRAMMultiCSVLoader</classifier>
+							<finalName>LowRAMMultiCSVLoader</finalName>
 						</configuration>
 						<phase>package</phase>
 						<goals>

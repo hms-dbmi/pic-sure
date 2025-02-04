@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
+package edu.harvard.hms.dbmi.avillach.hpds.etl;
 
 import java.io.*;
 import java.nio.file.Files;

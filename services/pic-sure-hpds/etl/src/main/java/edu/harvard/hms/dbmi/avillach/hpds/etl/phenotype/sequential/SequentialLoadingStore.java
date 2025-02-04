@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
+package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.sequential;
 
 import java.io.*;
 import java.util.*;

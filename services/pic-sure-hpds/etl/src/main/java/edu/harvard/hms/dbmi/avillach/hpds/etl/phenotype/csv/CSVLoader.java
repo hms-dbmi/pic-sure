@@ -1,9 +1,10 @@
-package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype;
+package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv;
 
 import java.io.*;
 import java.util.Date;
 import java.util.concurrent.ExecutionException;
 
+import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.slf4j.Logger;

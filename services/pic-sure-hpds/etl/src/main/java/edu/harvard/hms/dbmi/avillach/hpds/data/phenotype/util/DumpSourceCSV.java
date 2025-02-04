@@ -21,7 +21,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
-import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.LoadingStore;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.LoadingStore;
 
 public class DumpSourceCSV {
 	protected static LoadingCache<String, PhenoCube<?>> store;
