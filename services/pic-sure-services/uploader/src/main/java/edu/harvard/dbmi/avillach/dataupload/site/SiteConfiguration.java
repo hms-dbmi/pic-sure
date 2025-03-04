@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -26,6 +28,9 @@ public class SiteConfiguration {
     @Value("${institution.short-display}")
     private String display;
 
+    @Value("${cumulus.bucket:}")
+    private String cumulus;
+
     @Autowired
     private ConfigurableApplicationContext context;
 
@@ -40,6 +45,12 @@ public class SiteConfiguration {
 
         // we want the home inst first. Makes frontend display a bit nicer
         List<String> sites = Stream.concat(Stream.of(home), otherSites.stream()).toList();
+
+        if (StringUtils.hasLength(cumulus)) {
+            LOG.info("Adding cumulus to sites");
+            sites = new ArrayList<>(sites);
+            sites.addLast("cumulus");
+        }
 
         return new SiteListing(sites, home, display);
     }

@@ -94,5 +94,10 @@ public enum ResultType {
 	 * is suitable to time series analysis and/or loading into another 
 	 * instance of HPDS.
 	 */
-	DATAFRAME_TIMESERIES
+	DATAFRAME_TIMESERIES,
+
+	/**
+	 * Patients associated with this query
+	 */
+	PATIENTS
 }

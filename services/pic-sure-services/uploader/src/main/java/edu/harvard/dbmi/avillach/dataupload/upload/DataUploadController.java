@@ -5,6 +5,7 @@ import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Result
 import edu.harvard.dbmi.avillach.dataupload.status.DataUploadStatuses;
 import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
+import edu.harvard.dbmi.avillach.dataupload.upload.lambda.CumulusUploadService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ public class DataUploadController {
     @Autowired
     private StatusService statusService;
 
+    @Autowired
+    private CumulusUploadService cumulusUploadService;
+
     @Value("${aws.s3.institution:}")
     private List<String> institutions;
 
@@ -41,6 +45,11 @@ public class DataUploadController {
     public ResponseEntity<DataUploadStatuses> startUpload(
         @RequestBody Query query, @PathVariable String site, @RequestParam(value = "dataType") DataType dataType
     ) {
+        if ("cumulus".equals(site)) {
+            LOG.info("Detected cumulus upload. Switching to cumulus upload service.");
+            boolean success = cumulusUploadService.asyncUpload(query);
+            return success ? ResponseEntity.ok(null) : ResponseEntity.internalServerError().body(null);
+        }
         site = site.toLowerCase();
         query.setExpectedResultType(ResultType.DATAFRAME_TIMESERIES);
         if (!institutions.contains(site)) {

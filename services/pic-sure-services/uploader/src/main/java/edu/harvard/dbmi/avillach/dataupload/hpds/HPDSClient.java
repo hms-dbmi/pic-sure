@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dataupload.hpds;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
+import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.ResultType;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import org.apache.http.HttpResponse;
@@ -43,6 +44,11 @@ public class HPDSClient {
 
     public boolean writeGenomicData(Query query) {
         return writeData(query, "genomic");
+    }
+
+    public boolean writePatientData(Query query) {
+        query.setExpectedResultType(ResultType.PATIENTS);
+        return writeData(query, "patients");
     }
 
     public boolean initializeQuery(Query query) {
@@ -104,9 +110,5 @@ public class HPDSClient {
             LOG.error("Error creating request body", e);
             return null;
         }
-    }
-
-    public boolean writePatientData(Query query) {
-        return writeData(query, "patients");
     }
 }
