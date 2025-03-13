@@ -42,6 +42,12 @@ class ConceptRepositoryTest {
     }
 
     @Test
+    void shouldMarkConceptThatHasNoStimatizedMetaAsAllowFiltering() {
+        Boolean actual = subject.getConcept("1", "\\Variant Data Type\\WGS\\").map(Concept::allowFiltering).get();
+        Assertions.assertTrue(actual);
+    }
+
+    @Test
     void shouldListAllConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
 

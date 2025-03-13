@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
+import edu.harvard.dbmi.avillach.dictionary.util.QueryUtility;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
@@ -14,8 +15,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import static edu.harvard.dbmi.avillach.dictionary.util.QueryUtility.ALLOW_FILTERING_Q;
 
 
 @Repository
@@ -47,7 +46,7 @@ public class ConceptRepository {
 
     public List<Concept> getConcepts(Filter filter, Pageable pageable) {
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
-        String sql = ALLOW_FILTERING_Q + ", " + filterQ.query()
+        String sql = QueryUtility.ALLOW_FILTERING_Q + ", " + filterQ.query()
             + """
                 SELECT
                     concept_node.*,
@@ -55,7 +54,7 @@ public class ConceptRepository {
                     ds.abbreviation AS studyAcronym,
                     continuous_min.VALUE as min, continuous_max.VALUE as max,
                     categorical_values.VALUE as values,
-                    allow_filtering.allowFiltering AS allowFiltering,
+                    coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
                     meta_description.VALUE AS description
                 FROM
                     concept_node
@@ -82,7 +81,7 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConcept(String dataset, String conceptPath) {
-        String sql = ALLOW_FILTERING_Q
+        String sql = QueryUtility.ALLOW_FILTERING_Q
             + """
                 SELECT
                     concept_node.*,
@@ -90,7 +89,7 @@ public class ConceptRepository {
                     ds.abbreviation AS studyAcronym,
                     continuous_min.VALUE as min, continuous_max.VALUE as max,
                     categorical_values.VALUE as values,
-                    allow_filtering.allowFiltering AS allowFiltering,
+                    coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
                     meta_description.VALUE AS description
                 FROM
                     concept_node
@@ -146,7 +145,7 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConceptTree(String dataset, String conceptPath, int depth) {
-        String sql = ALLOW_FILTERING_Q
+        String sql = QueryUtility.ALLOW_FILTERING_Q
             + """
                     , core_query AS (
                         WITH RECURSIVE nodes AS (
@@ -207,7 +206,7 @@ public class ConceptRepository {
                         continuous_min.VALUE AS min, continuous_max.VALUE AS max,
                         categorical_values.VALUE AS values,
                         meta_description.VALUE AS description,
-                        allow_filtering.allowFiltering AS allowFiltering,
+                        coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
                         core_query.depth AS depth
                     FROM
                         concept_node
@@ -232,7 +231,7 @@ public class ConceptRepository {
 
 
     public List<Concept> getConceptsByPathWithMetadata(List<String> conceptPaths) {
-        String sql = ALLOW_FILTERING_Q + ", "
+        String sql = QueryUtility.ALLOW_FILTERING_Q + ", "
             + """
                 filtered_concepts AS (
                      SELECT
@@ -261,7 +260,7 @@ public class ConceptRepository {
                      ds.abbreviation AS studyAcronym,
                      continuous_min.VALUE as min, continuous_max.VALUE as max,
                      categorical_values.VALUE as values,
-                     allow_filtering.allowFiltering AS allowFiltering,
+                     coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
                      meta_description.VALUE AS description,
                      aggregated_meta.metadata AS metadata
                  FROM
