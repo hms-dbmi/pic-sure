@@ -173,14 +173,20 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         }
         if(filter.numericVariantInfoFilters != null && !filter.numericVariantInfoFilters.isEmpty()) {
             filter.numericVariantInfoFilters.forEach((String column, Filter.FloatFilter doubleFilter)->{
-                FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+                Optional<FileBackedByteIndexedInfoStore> infoStoreOptional = getInfoStore(column);
 
                 doubleFilter.getMax();
                 Range<Float> filterRange = Range.closed(doubleFilter.getMin(), doubleFilter.getMax());
-                List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
-                for(String value : valuesInRange) {
-                    variantIndices.add(variantIndexCache.get(column, value));
-                }
+                infoStoreOptional.ifPresentOrElse(infoStore -> {
+                    List<String> valuesInRange = infoStore.continuousValueIndex.getValuesInRange(filterRange);
+                    for(String value : valuesInRange) {
+                        variantIndices.add(variantIndexCache.get(column, value));
+                    }},
+                    () -> {
+                        variantIndices.add(VariantIndex.empty());
+                    }
+                );
+
             });
         }
         return variantIndices;
@@ -190,9 +196,10 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         String column = entry.getKey();
         String[] values = entry.getValue();
         Arrays.sort(values);
-        FileBackedByteIndexedInfoStore infoStore = getInfoStore(column);
+        Optional<FileBackedByteIndexedInfoStore> infoStoreOptional = getInfoStore(column);
 
-        List<String> infoKeys = filterInfoCategoryKeys(values, infoStore);
+        List<String> infoKeys = infoStoreOptional.map(infoStore -> filterInfoCategoryKeys(values, infoStore))
+                .orElseGet(ArrayList::new);
 
         if(infoKeys.size()>1) {
             // These should be ANDed
@@ -227,8 +234,8 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return new VariantMaskBitmaskImpl(patientVariantJoinHandler.createMaskForPatientSet(patientSubset));
     }
 
-    private FileBackedByteIndexedInfoStore getInfoStore(String column) {
-        return infoStores.get(column);
+    private Optional<FileBackedByteIndexedInfoStore> getInfoStore(String column) {
+        return Optional.ofNullable(infoStores.get(column));
     }
 
     private VariantIndex addVariantsForInfoFilter(VariantIndex unionOfInfoFilters, Query.VariantInfoFilter filter) {

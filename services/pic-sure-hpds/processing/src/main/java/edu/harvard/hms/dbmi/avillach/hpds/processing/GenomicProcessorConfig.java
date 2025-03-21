@@ -34,11 +34,7 @@ public class GenomicProcessorConfig {
     @Bean(name = "localDistributedGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localDistributed")
     public GenomicProcessor localDistributedGenomicProcessor() {
-        List<GenomicProcessor> genomicProcessors = Flux.range(1, 22)
-                .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
-                .collectList()
-                .block();
-        genomicProcessors.add(new GenomicProcessorNodeImpl(hpdsGenomicDataDirectory + "/X/"));
+        List<GenomicProcessor> genomicProcessors = getGenomicProcessors(new File(hpdsGenomicDataDirectory));
         return new GenomicProcessorParentImpl(genomicProcessors);
     }
 
@@ -54,16 +50,27 @@ public class GenomicProcessorConfig {
         List<GenomicProcessor> studyGroupedGenomicProcessors = new ArrayList<>();
 
         for (File directory : directories) {
-            List<GenomicProcessor> genomicProcessors = Flux.range(1, 22)
-                    .flatMap(i -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorNodeImpl(directory.getAbsolutePath() + "/" + i + "/")).subscribeOn(Schedulers.boundedElastic()))
-                    .collectList()
-                    .block();
-            genomicProcessors.add(new GenomicProcessorNodeImpl(directory + "/X/"));
+            List<GenomicProcessor> genomicProcessors = getGenomicProcessors(directory);
             studyGroupedGenomicProcessors.add(new GenomicProcessorParentImpl(genomicProcessors));
         }
 
         return new GenomicProcessorPatientMergingParentImpl(studyGroupedGenomicProcessors);
     }
+
+    private static List<GenomicProcessor> getGenomicProcessors(File directory) {
+        File[] secondLevelDirectories = directory.listFiles(File::isDirectory);
+        if (secondLevelDirectories.length > 50) {
+            throw new IllegalArgumentException("Number of chromosome partitions exceeds maximum of 50 (" + secondLevelDirectories.length + ")");
+        }
+
+        return Flux.fromArray(secondLevelDirectories)
+                .flatMap(i -> Mono.fromCallable(() -> {
+                    return (GenomicProcessor) new GenomicProcessorNodeImpl(i.getAbsolutePath() + "/");
+                }).subscribeOn(Schedulers.boundedElastic()))
+                .collectList()
+                .block();
+    }
+
     @Bean(name = "localPatientOnlyDistributedGenomicProcessor")
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "localPatientOnlyDistributed")
     public GenomicProcessor localPatientOnlyDistributedGenomicProcessor() {

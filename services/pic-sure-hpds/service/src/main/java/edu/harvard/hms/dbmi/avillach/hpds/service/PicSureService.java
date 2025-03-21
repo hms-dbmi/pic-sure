@@ -275,8 +275,10 @@ public class PicSureService {
         if (roundTripUUID(query.getPicSureId()).map(id -> !id.equalsIgnoreCase(query.getPicSureId())).orElse(true)) {
             return ResponseEntity.status(400).body("The query pic-sure ID is not a UUID");
         }
-        if (query.getExpectedResultType() != ResultType.DATAFRAME_TIMESERIES && query.getExpectedResultType() != ResultType.PATIENTS) {
-            return ResponseEntity.status(400).body("The write endpoint only writes time series dataframes and patients. Fix result type.");
+        if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.getExpectedResultType())) {
+            return ResponseEntity
+                    .status(400)
+					.body("The write endpoint only writes time series dataframes. Fix result type.");
         }
         String hpdsQueryID;
         try {

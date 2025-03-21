@@ -34,7 +34,7 @@ public class VariantMetadataIndex implements Serializable {
 	private final Map<String,  FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, String[]>> > indexMap = new HashMap<>();
 
 	public static final String VARIANT_METADATA_STORAGE_FILE_PREFIX = "VariantMetadataStorage";
-	private static String fileStoragePrefix = "/opt/local/hpds/all/" + VARIANT_METADATA_STORAGE_FILE_PREFIX;
+	private String fileStoragePrefix = "/opt/local/hpds/all/" + VARIANT_METADATA_STORAGE_FILE_PREFIX;
 
 	/**
 	 * This map allows us to load millions of variants without re-writing the fbbis each time (which would blow up the disk space).

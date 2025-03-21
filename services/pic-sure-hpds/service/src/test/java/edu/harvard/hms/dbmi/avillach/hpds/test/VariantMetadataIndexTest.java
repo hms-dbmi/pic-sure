@@ -23,8 +23,10 @@ public class VariantMetadataIndexTest {
 	/**
 	 * The metadataIndex is non-mutable (or should be) so we only need one object to test
 	 */
-	private static VariantMetadataIndex vmi;
-	public static String binFile = "target/VariantMetadata.javabin";
+	private static VariantMetadataIndex variantMetadataIndexChr4;
+	private static VariantMetadataIndex variantMetadataIndexChr21;
+	public static String chr4BinFile = "target/all/chr4/VariantMetadata.javabin";
+	public static String chr21BinFile = "target/all/chr21/VariantMetadata.javabin";
 	VariantBucketHolder<String[]> bucketCache = new VariantBucketHolder<String[]>();
 	
 	//Some known variant specs from the input file.  These have been designed for testing partially overlapping specs
@@ -36,11 +38,18 @@ public class VariantMetadataIndexTest {
 	
 
 	@BeforeAll
-	public static void initializeBinfile() throws Exception {
+	public static void initializeBinfiles() throws Exception {
 		BuildIntegrationTestEnvironment instance = BuildIntegrationTestEnvironment.INSTANCE;
-		if(new File(binFile).exists()) {
-			try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(binFile)))){
-				vmi = (VariantMetadataIndex) in.readObject();
+		if(new File(chr4BinFile).exists()) {
+			try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(chr4BinFile)))){
+				variantMetadataIndexChr4 = (VariantMetadataIndex) in.readObject();
+			}catch(Exception e) {
+				e.printStackTrace();
+			}
+		}
+		if(new File(chr21BinFile).exists()) {
+			try(ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(chr21BinFile)))){
+				variantMetadataIndexChr21 = (VariantMetadataIndex) in.readObject();
 			}catch(Exception e) {
 				e.printStackTrace();
 			}
@@ -51,7 +60,7 @@ public class VariantMetadataIndexTest {
 	public void findByMultipleVariantSpec_invalidSpec() {
 		List<String> variants = List.of("chr21,5032061,A,G,NOTAGENE,missense_variant");
 		Map<String,Set<String>> expectedResult = Map.of();
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr21.findByMultipleVariantSpec(variants);
 
 		assertEquals("Wrong number of records in response.", 1, data.size());
 		assertEquals("The expected values were not found.", Set.of(), data.get("chr21,5032061,A,G,NOTAGENE,missense_variant"));
@@ -62,7 +71,7 @@ public class VariantMetadataIndexTest {
 		Map<String,Set<String>> expectedResult = Map.of(
 				"chr21,5032061,A,G,LOC102723996,missense_variant"
 				, Set.of("Gene_with_variant=LOC102723996;Variant_severity=MODERATE;Variant_consequence_calculated=missense_variant;Variant_class=SNV;Variant_frequency_in_gnomAD=0.0001346;Variant_frequency_as_text=Rare"));
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr21.findByMultipleVariantSpec(variants);
 
 		assertEquals("Wrong number of records in response.", data.size(), 1);
 		variants.stream().forEach(variant->{
@@ -77,7 +86,7 @@ public class VariantMetadataIndexTest {
 				, Set.of("Gene_with_variant=LOC102723996;Variant_severity=MODERATE;Variant_consequence_calculated=missense_variant;Variant_class=SNV;Variant_frequency_in_gnomAD=0.0001346;Variant_frequency_as_text=Rare")
 				,"chr21,5033914,A,G,LOC102723996,missense_variant"
 				, Set.of("Gene_with_variant=LOC102723996;Variant_severity=MODERATE;Variant_consequence_calculated=missense_variant;Variant_class=SNV;Variant_frequency_in_gnomAD=0.0009728;Variant_frequency_as_text=Rare"));
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr21.findByMultipleVariantSpec(variants);
 
 		assertEquals("Wrong number of records in response.", data.size(), 2);
 		variants.stream().forEach(variant->{
@@ -92,7 +101,7 @@ public class VariantMetadataIndexTest {
 		Map<String,Set<String>> expectedResult = Map.of(
 				spec1, Set.of(spec1Info),
 				spec4, Set.of(spec4Info));
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr4.findByMultipleVariantSpec(variants);
 		
 		assertEquals("Wrong number of records in response.", data.size(), 2);
 		variants.stream().forEach(variant->{
@@ -106,7 +115,7 @@ public class VariantMetadataIndexTest {
 		Map<String,Set<String>> expectedResult = Map.of(
 				spec1, Set.of(spec1Info),
 				spec5, Set.of(spec5Info));
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr4.findByMultipleVariantSpec(variants);
 		
 		assertEquals("Wrong number of records in response.", data.size(), 2);
 		variants.stream().forEach(variant->{
@@ -120,7 +129,7 @@ public class VariantMetadataIndexTest {
 		Map<String,Set<String>> expectedResult = Map.of(
 				spec1, Set.of(spec1Info),
 				spec2, Set.of(spec2Info));
-		Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+		Map<String, Set<String>> data = variantMetadataIndexChr4.findByMultipleVariantSpec(variants);
 		
 		assertEquals("Wrong number of records in response.", data.size(), 2);
 		variants.stream().forEach(variant->{
@@ -137,7 +146,7 @@ public class VariantMetadataIndexTest {
 			List<String> variants = List.of(spec1, spec1);
 			Map<String, Set<String>> expectedResult = Map.of(
 					spec1, Set.of(spec1Info));
-			Map<String, Set<String>> data = vmi.findByMultipleVariantSpec(variants);
+			Map<String, Set<String>> data = variantMetadataIndexChr4.findByMultipleVariantSpec(variants);
 
 			assertEquals("Wrong number of records in response.", data.size(), 1);
 			variants.stream().forEach(variant->{

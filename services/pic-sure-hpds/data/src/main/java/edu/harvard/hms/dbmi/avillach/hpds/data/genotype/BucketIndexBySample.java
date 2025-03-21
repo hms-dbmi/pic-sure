@@ -159,7 +159,11 @@ public class BucketIndexBySample implements Serializable {
 			String bucketKey = variantSpec.split(",")[0] + ":" + (Integer.parseInt(variantSpec.split(",")[1])/1000);
 			
 			//testBit uses inverted indexes include +2 offset for bookends
-			return _bucketMask.testBit(maxIndex - Collections.binarySearch(bucketList, bucketKey)  + 2);
+			int bucketKeyIndex = Collections.binarySearch(bucketList, bucketKey);
+			if (bucketKeyIndex < 0) {
+				return false;
+			}
+			return _bucketMask.testBit(maxIndex - bucketKeyIndex + 2);
 		}).collect(Collectors.toSet());
 	}
 

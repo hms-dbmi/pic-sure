@@ -32,10 +32,12 @@ import static org.springframework.test.util.AssertionErrors.*;
  */
 public class BucketIndexBySampleTest {
 
-	private static final String STORAGE_DIR = "./target/";
+	private static final String STORAGE_DIR = "./target/all/";
 
-	private static BucketIndexBySample bucketIndexBySample;
-	
+	private static BucketIndexBySample bucketIndexBySampleChr4;
+	private static BucketIndexBySample bucketIndexBySampleChr20;
+	private static BucketIndexBySample bucketIndexBySampleChr21;
+
 	//Some known variant specs from the input file. 
 	//Some known variant specs from the input file.  These have been designed for testing partially overlapping specs
 	private static final String spec1 = "chr4,9856624,CAAAAA,C,TVP23A,splice_acceptor_variant";
@@ -58,10 +60,14 @@ public class BucketIndexBySampleTest {
 	@BeforeAll
 	public static void initializeBinfile() throws Exception {
 		BuildIntegrationTestEnvironment instance = BuildIntegrationTestEnvironment.INSTANCE;
-		VariantStore variantStore = VariantStore.readInstance(STORAGE_DIR);
-		
-		//now use that object to initialize the BucketIndexBySample object
-		bucketIndexBySample = new BucketIndexBySample(variantStore, STORAGE_DIR);
+		VariantStore variantStoreChr4 = VariantStore.readInstance(STORAGE_DIR + "chr4/");
+		bucketIndexBySampleChr4 = new BucketIndexBySample(variantStoreChr4, STORAGE_DIR + "chr4/");
+
+		VariantStore variantStoreChr20 = VariantStore.readInstance(STORAGE_DIR + "chr20/");
+		bucketIndexBySampleChr20 = new BucketIndexBySample(variantStoreChr20, STORAGE_DIR + "chr20/");
+
+		VariantStore variantStoreChr21 = VariantStore.readInstance(STORAGE_DIR + "chr21/");
+		bucketIndexBySampleChr21 = new BucketIndexBySample(variantStoreChr21, STORAGE_DIR + "chr21/");
 	}
 	
 	@BeforeEach
@@ -77,7 +83,7 @@ public class BucketIndexBySampleTest {
 		variantSet.add(spec2);
 		variantSet.add(spec3);
 		
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
 		
 		assertTrue("Empty Patient List should filter out all variants", filteredVariantSet.isEmpty());
 	}
@@ -88,7 +94,7 @@ public class BucketIndexBySampleTest {
 		patientSet.add(200689);
 		patientSet.add(200972);
 		
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
 		
 		assertTrue("Empty Variant Set should remain empty", filteredVariantSet.isEmpty());
 	}
@@ -106,7 +112,7 @@ public class BucketIndexBySampleTest {
 		patientSet.add(200706);
 		patientSet.add(200709);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
 		
 		assertTrue("Patients should not match any variants in the list", filteredVariantSet.isEmpty());
 	}
@@ -122,22 +128,23 @@ public class BucketIndexBySampleTest {
 		patientSet.add(197508);
 		patientSet.add(197509);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
 
 		assertTrue("Patients should not match any variants in the list", filteredVariantSet.isEmpty());
 	}
+
 	@Test
-	public void test_filterVariantSetForPatientSet_PatientsWithNoVariantsFirstBucketNoCall() throws IOException {
+	public void filterVariantSetForPatientSet_variantsDoNotExist_returnNoVariants() throws IOException {
 		System.out.println("test_filterVariantSetForPatientSet_PatientsWithNoVariantsFirstBucket");
 
-		variantSet.add("chr20,5032061,A,G,LOC102723996,missense_variant");
-		variantSet.add("chr21,5032061,A,G,ABCDEF123456,synonymous_variant");
+		variantSet.add(spec6);
+		variantSet.add(spec6b);
 
 		patientSet.add(197506);
 		patientSet.add(197508);
 		patientSet.add(197509);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
 
 		assertTrue("Patients should not match any variants in the list", filteredVariantSet.isEmpty());
 	}
@@ -153,7 +160,7 @@ public class BucketIndexBySampleTest {
 		patientSet.add(200689);
 		patientSet.add(200972);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr21.filterVariantSetForPatientSet(variantSet, patientSet);
 
 		assertEquals("No variants should be filtered out", 2, filteredVariantSet.size());
 	}
@@ -168,27 +175,9 @@ public class BucketIndexBySampleTest {
 		patientSet.add(200689);
 		patientSet.add(200972);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr20.filterVariantSetForPatientSet(variantSet, patientSet);
 
 		assertEquals("No variants should be filtered out", 2, filteredVariantSet.size());
-	}
-	
-	@Test
-	@Disabled
-	public void test_filterVariantSetForPatientSet_someValid() throws IOException {
-		System.out.println("test_filterVariantSetForPatientSet_someValid");
-
-		variantSet.add(spec2);
-		variantSet.add(spec6);
-
-		patientSet.add(200392);
-		patientSet.add(200689);
-		patientSet.add(200972);
-		
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
-		
-		assertEquals("One variant should be filtered out", 1, filteredVariantSet.size());
-		assertTrue("Expected variant not found", filteredVariantSet.contains(spec1));
 	}
 
 	@Test
@@ -205,7 +194,8 @@ public class BucketIndexBySampleTest {
 		patientSet.add(200710);
 		patientSet.add(198206);
 
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
+		filteredVariantSet.addAll(bucketIndexBySampleChr21.filterVariantSetForPatientSet(variantSet, patientSet));
 
 		assertEquals("No variants should be filtered out", (long)4, (long)filteredVariantSet.size());
 	}
@@ -226,8 +216,9 @@ public class BucketIndexBySampleTest {
 		patientSet.add(9);
 		patientSet.add(10);
 		
-		Collection<String> filteredVariantSet = bucketIndexBySample.filterVariantSetForPatientSet(variantSet, patientSet);
-		
+		Collection<String> filteredVariantSet = bucketIndexBySampleChr4.filterVariantSetForPatientSet(variantSet, patientSet);
+		filteredVariantSet.addAll(bucketIndexBySampleChr21.filterVariantSetForPatientSet(variantSet, patientSet));
+
 		assertEquals("One variant should be filtered out", (long)4, (long)filteredVariantSet.size());
 		assertFalse("Spec 9 should have been filtered out", filteredVariantSet.contains(spec9));
 	}

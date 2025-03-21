@@ -133,8 +133,20 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
-        // TODO: implement this. only used in variant explorer
-        throw new RuntimeException("Method not implemented");
+        VariableVariantMasks aggregatedMasks = null;
+        int size = 0;
+        for (GenomicProcessor node : nodes) {
+            VariableVariantMasks masks = node.getMasks(path, new VariantBucketHolder<>()).orElseGet(VariableVariantMasks::new);
+            int nodeSize = node.getPatientIds().size();
+            if (aggregatedMasks == null) {
+                aggregatedMasks = masks;
+                size = nodeSize;
+            } else {
+                aggregatedMasks = VariableVariantMasks.append(aggregatedMasks, size, masks, nodeSize);
+                size = size + nodeSize;
+            }
+        }
+        return Optional.of(aggregatedMasks);
     }
 
     @Override

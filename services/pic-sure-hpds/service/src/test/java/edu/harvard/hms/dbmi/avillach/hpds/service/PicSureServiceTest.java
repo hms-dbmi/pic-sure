@@ -80,7 +80,7 @@ class PicSureServiceTest {
         Mockito.when(query.getPicSureId()).thenReturn(UUID.randomUUID().toString());
         ResponseEntity<String> actual = subject.writeQueryResult(query, "patients");
         Assertions.assertEquals(HttpStatus.BAD_REQUEST, actual.getStatusCode());
-        Assertions.assertEquals("The write endpoint only writes time series dataframes and patients. Fix result type.", actual.getBody());
+        Assertions.assertEquals("The write endpoint only writes time series dataframes. Fix result type.", actual.getBody());
 
     }
 }

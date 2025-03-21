@@ -22,57 +22,77 @@ import htsjdk.samtools.util.BlockCompressedInputStream;
 
 public class NewVCFLoader {
 
+	public static final String DEFAULT_VCF_INDEX_FILE = "/opt/local/hpds/vcfIndex.tsv";
+	public static final String DEFAULT_STORAGE_DIR = "/opt/local/hpds/all";
+	public static final String DEFAULT_MERGED_DIR = "/opt/local/hpds/merged";
 	private static Logger logger = LoggerFactory.getLogger(NewVCFLoader.class);
-	private static File storageDir = null;
-	private static String storageDirStr = "/opt/local/hpds/all";
-	private static String mergedDirStr = "/opt/local/hpds/merged";
 
-	private static VariantIndexBuilder variantIndexBuilder = new VariantIndexBuilder();
+	protected File indexFile;
+	protected File storageDir;
+	protected String storageDirStr;
+	protected String mergedDirStr;
+
+	protected VariantIndexBuilder variantIndexBuilder;
 	
 	// DO NOT CHANGE THIS unless you want to reload all the data everywhere.
-	private static int CHUNK_SIZE = 1000;
+	protected static int CHUNK_SIZE = 1000;
 
 	/**
 	 * @param args - if testing, this should be an array ['vcfIndexFile path', 'output storage dir', 'merged dir'].  
 	 * by default this will be [/opt/local/hpds/vcfIndex.tsv,  "/opt/local/hpds/all", "/opt/local/hpds/merged" ]. 
 	 */
-	public static void main(String[] args) throws FileNotFoundException, IOException {
-		
-		File indexFile;
+	public static void main(String[] args) throws IOException {
+
+		NewVCFLoader vcfLoader;
 		if(args != null && args.length >= 3) {
-			logger.info("Reading parameters from input - this is a test");
-			indexFile = new File(args[0]);
-			storageDirStr = args[1];
-			storageDir = new File(args[1]);
-			mergedDirStr = args[2];
+			logger.info("Reading parameters from input");
+			vcfLoader = new NewVCFLoader(new File(args[0]), args[1], args[2]);
 		} else {
-			indexFile = new File("/opt/local/hpds/vcfIndex.tsv");
-			storageDir = new File(storageDirStr);
+			logger.info(args.length + " arguments provided");
+			logger.info("Using default values");
+			vcfLoader = new NewVCFLoader();
 		}
-		loadVCFs(indexFile);
+		vcfLoader.loadAndMerge();
 	}
 
-	private static ExecutorService chunkWriteEx = Executors.newFixedThreadPool(1);
+	protected void loadAndMerge() throws IOException {
+		createWalkers();
+		loadVCFs();
+	}
 
-	private static ConcurrentHashMap<String, InfoStore> infoStoreMap = new ConcurrentHashMap<String, InfoStore>();
+	public NewVCFLoader() {
+		this.indexFile = new File(DEFAULT_VCF_INDEX_FILE);
+		this.storageDirStr = DEFAULT_STORAGE_DIR;
+		this.storageDir = new File(DEFAULT_STORAGE_DIR);
+		this.mergedDirStr = DEFAULT_MERGED_DIR;
+		this.variantIndexBuilder = new VariantIndexBuilder();
+	}
 
-	private static HashMap<String, char[][]> zygosityMaskStrings;
+	public NewVCFLoader(File indexFile, String storageDir, String mergedDirStr) {
+		this.indexFile = indexFile;
+		this.storageDirStr = storageDir;
+		this.storageDir = new File(storageDir);
+		this.mergedDirStr = mergedDirStr;
+		this.variantIndexBuilder = new VariantIndexBuilder();
+	}
 
-	private static TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> variantMaskStorage = new TreeMap<>();
+	protected ExecutorService chunkWriteEx = Executors.newFixedThreadPool(1);
 
-	private static long startTime;
+	protected ConcurrentHashMap<String, InfoStore> infoStoreMap = new ConcurrentHashMap<String, InfoStore>();
 
-	private static List<VCFWalker> walkers = new ArrayList<>();
+	protected HashMap<String, char[][]> zygosityMaskStrings;
 
-	private static boolean contigIsHemizygous;
+	protected TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> variantMaskStorage = new TreeMap<>();
 
-	private static void loadVCFs(File indexFile) throws IOException {
+	protected long startTime;
+
+	protected List<VCFWalker> walkers = new ArrayList<>();
+
+	private boolean contigIsHemizygous;
+
+	protected void loadVCFs() throws IOException {
 		startTime = System.currentTimeMillis();
-		List<VCFIndexLine> vcfIndexLines = parseVCFIndex(indexFile);
-		for (VCFIndexLine line : vcfIndexLines) {
-			walkers.add(new VCFWalker(line));
-		}
-		TreeSet<Integer> allPatientIds = new TreeSet<Integer>();
+		TreeSet<Integer> allPatientIds = new TreeSet<>();
 
 		// Pull the INFO columns out of the headers for each walker and add all patient ids
 		walkers.stream().forEach(walker -> {
@@ -232,7 +252,14 @@ public class NewVCFLoader {
 		saveVariantStore(store, variantMaskStorage);
 	}
 
-	private static String sampleIdsForMask(String[] sampleIds, VariantMask variantMask) {
+	private void createWalkers() {
+		List<VCFIndexLine> vcfIndexLines = parseVCFIndex(indexFile);
+		for (VCFIndexLine line : vcfIndexLines) {
+			walkers.add(new VCFWalker(line));
+		}
+	}
+
+	protected String sampleIdsForMask(String[] sampleIds, VariantMask variantMask) {
 		StringBuilder idList = new StringBuilder();
 		if (variantMask != null) {
 			if (variantMask instanceof VariantMaskBitmaskImpl) {
@@ -251,7 +278,7 @@ public class NewVCFLoader {
 		return idList.toString();
 	}
 
-	private static void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
+	protected void flipChunk(String lastContigProcessed, int lastChunkProcessed, int currentChunk,
 			String currentContig, boolean isLastChunk, String currentLine) throws IOException, FileNotFoundException {
 		if (!currentContig.contentEquals(lastContigProcessed) || isLastChunk) {
 			if (infoStoreFlipped.get(lastContigProcessed) == null || !infoStoreFlipped.get(lastContigProcessed)) {
@@ -310,7 +337,7 @@ public class NewVCFLoader {
 		}
 	}
 
-	private static void saveVariantStore(VariantStore store,
+	protected void saveVariantStore(VariantStore store,
 			TreeMap<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> variantMaskStorage)
 			throws IOException, FileNotFoundException {
 		store.setVariantMaskStorage(variantMaskStorage);
@@ -323,7 +350,7 @@ public class NewVCFLoader {
 		logger.debug("Done saving variant masks.");
 	}
 
-	private static void saveInfoStores() throws IOException, FileNotFoundException {
+	protected void saveInfoStores() throws IOException, FileNotFoundException {
 		logger.debug("Saving info" + (System.currentTimeMillis() - startTime) + " seconds");
 		try (FileOutputStream fos = new FileOutputStream(new File(storageDir, "infoStores.javabin"));
 				GZIPOutputStream gzos = new GZIPOutputStream(fos);
@@ -334,7 +361,7 @@ public class NewVCFLoader {
 		logger.info("completed load in " + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	public static void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
+	public void splitInfoStoresByColumn() throws FileNotFoundException, IOException {
 		logger.debug("Splitting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreSplitter.splitAll(storageDir,  new File(mergedDirStr));
@@ -344,7 +371,7 @@ public class NewVCFLoader {
 		logger.debug("Split" + (System.currentTimeMillis() - startTime) + " seconds");
 	}
 
-	public static void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
+	public void convertInfoStoresToByteIndexed() throws FileNotFoundException, IOException {
 		logger.debug("Converting" + (System.currentTimeMillis() - startTime) + " seconds");
 		try {
 			VCFPerPatientInfoStoreToFBBIISConverter.convertAll(mergedDirStr, storageDirStr);
@@ -354,7 +381,7 @@ public class NewVCFLoader {
 		logger.debug("Converted " + ((System.currentTimeMillis() - startTime) / 1000) + " seconds");
 	}
 
-	private static void shutdownChunkWriteExecutor() {
+	protected void shutdownChunkWriteExecutor() {
 		chunkWriteEx.shutdown();
 		while (!chunkWriteEx.isTerminated()) {
 			try {
@@ -377,16 +404,16 @@ public class NewVCFLoader {
 
 	static TreeMap<String, Boolean> infoStoreFlipped = new TreeMap<String, Boolean>();
 
-	private static class VCFWalker implements Comparable<VCFWalker> {
+	protected class VCFWalker implements Comparable<VCFWalker> {
 
-		private List<Integer> indices;
-		private Integer[] vcfOffsets;
-		private Integer[] bitmaskOffsets;
-		private HashMap<Integer, Integer> vcfIndexLookup;
-		private String currentLine;
-		private String[] currentLineSplit;
-		private BufferedReader vcfReader;
-		private VCFIndexLine vcfIndexLine;
+		protected List<Integer> indices;
+		protected Integer[] vcfOffsets;
+		protected Integer[] bitmaskOffsets;
+		protected HashMap<Integer, Integer> vcfIndexLookup;
+		protected String currentLine;
+		protected String[] currentLineSplit;
+		protected BufferedReader vcfReader;
+		protected VCFIndexLine vcfIndexLine;
 		boolean hasNext = true;
 		String currentContig;
 		Integer currentPosition;
@@ -469,7 +496,7 @@ public class NewVCFLoader {
 			zygosityMaskStrings[patientZygosityIndex][bitmaskOffsets[index]] = '1';
 		}
 
-		private String currentSpecNotation() {
+		protected String currentSpecNotation() {
 			String[] variantInfo = currentLineSplit[7].split("[=;]");
 			String gene = "NULL";
 			String consequence = "NULL";
@@ -616,7 +643,7 @@ public class NewVCFLoader {
 	private static final int SAMPLE_RELATIONSHIPS_COLUMN = 6;
 	private static final int RELATED_SAMPLE_IDS_COLUMN = 7;
 
-	private static class VCFIndexLine implements Comparable<VCFIndexLine> {
+	protected static class VCFIndexLine implements Comparable<VCFIndexLine> {
 		String vcfPath;
 		String contig;
 		boolean isAnnotated;
