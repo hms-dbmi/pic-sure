@@ -3,9 +3,11 @@ package edu.harvard.dbmi.avillach.dataupload.aws;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -27,18 +29,21 @@ public class AWSClientBuilder {
     private final StsClientProvider stsClientProvider;
     private final S3ClientBuilder s3ClientBuilder;
     private final SdkHttpClient sdkHttpClient;
+    private final boolean retainRole;
 
     @Autowired
     public AWSClientBuilder(
         Map<String, SiteAWSInfo> sites,
         StsClientProvider stsClientProvider,
         S3ClientBuilder s3ClientBuilder,
-        @Autowired(required = false) SdkHttpClient sdkHttpClient
+        @Autowired(required = false) SdkHttpClient sdkHttpClient,
+        @Value("${s3.retain_role:false}") boolean retainRole
     ) {
         this.sites = sites;
         this.stsClientProvider = stsClientProvider;
         this.s3ClientBuilder = s3ClientBuilder;
         this.sdkHttpClient = sdkHttpClient;
+        this.retainRole = retainRole;
     }
 
     public Optional<S3Client> buildClientForSite(String siteName) {
@@ -46,6 +51,15 @@ public class AWSClientBuilder {
         if (!sites.containsKey(siteName)) {
             log.warn("Could not find site {}", siteName);
             return Optional.empty();
+        }
+
+        if (retainRole) {
+            log.info("s3.retain_role set to true. Will retain current role rather than assuming one for site");
+            InstanceProfileCredentialsProvider credentialsProvider = InstanceProfileCredentialsProvider.create();
+            S3Client client = s3ClientBuilder
+                .credentialsProvider(credentialsProvider)
+                .build();
+            return Optional.of(client);
         }
 
         log.info("Found site, making assume role request");

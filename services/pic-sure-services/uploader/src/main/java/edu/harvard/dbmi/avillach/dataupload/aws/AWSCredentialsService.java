@@ -54,10 +54,12 @@ public class AWSCredentialsService {
         if (Strings.isBlank(key)) {
             LOG.error("No AWS key. Can't create client. Exiting");
             context.close();
+            return null;
         }
         if (Strings.isBlank(secret)) {
             LOG.error("No AWS secret. Can't create client. Exiting");
             context.close();
+            return null;
         }
         if (Strings.isBlank(token)) {
             return AwsBasicCredentials.create(key, secret);

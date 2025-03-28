@@ -7,11 +7,11 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.SpyBean;
-import org.springframework.context.annotation.Profile;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
@@ -42,6 +42,19 @@ class AWSClientBuilderTest {
 
     @Autowired
     AWSClientBuilder subject;
+
+    @Test
+    void shouldCreateCredentialsWithoutAssumingRole() {
+        S3Client s3Client = Mockito.mock(S3Client.class);
+        Mockito.when(sites.containsKey("bch")).thenReturn(true);
+        Mockito.when(s3ClientBuilder.credentialsProvider(Mockito.any(InstanceProfileCredentialsProvider.class)))
+            .thenReturn(s3ClientBuilder);
+        Mockito.when(s3ClientBuilder.build())
+            .thenReturn(s3Client);
+        ReflectionTestUtils.setField(subject, "retainRole",  true);
+        Optional<S3Client> actual = subject.buildClientForSite("bch");
+        Assertions.assertEquals(Optional.of(s3Client), actual);
+    }
 
     @Test
     void shouldNotBuildClientIfSiteDNE() {
@@ -80,6 +93,7 @@ class AWSClientBuilderTest {
 
     @Test
     void shouldBuildClient() {
+        ReflectionTestUtils.setField(subject, "retainRole",  false);
         SiteAWSInfo siteAWSInfo = new SiteAWSInfo("bch", "aws:arn:420", "external", "bucket", "aws:kms:420");
         Mockito.when(sites.get("bch"))
             .thenReturn(siteAWSInfo);

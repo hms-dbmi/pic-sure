@@ -5,25 +5,22 @@ import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Result
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 @SpringBootTest
 class HPDSConnectionVerifierTest {
 
-    @MockBean
+    @MockitoBean
     private HPDSClient client;
 
-    @MockBean
+    @MockitoBean
     private UUIDGenerator generator;
 
     private final Query query = new Query();
