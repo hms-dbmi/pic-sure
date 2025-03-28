@@ -14,7 +14,7 @@ FROM amazoncorretto:21.0.1-alpine3.18
 COPY --from=build target/dictionary-*.jar /dictionary.jar
 
 # Time zone
-ENV TZ="US/Eastern"
+ENV TZ="UTC"
 
 ARG DATASOURCE_URL
 ARG DATASOURCE_USERNAME
