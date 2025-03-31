@@ -16,6 +16,7 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -293,5 +294,42 @@ public class GenomicProcessorPatientMergingParentImplTest {
         assertNull(masks.get().heterozygousMask);
         assertNull(masks.get().heterozygousNoCallMask);
         assertNull(masks.get().homozygousNoCallMask);
+    }
+
+    @Test
+    public void getVariantList_oneNode_returnVariants() {
+        DistributableQuery distributableQuery = new DistributableQuery();
+        when(mockProcessor1.getVariantList(distributableQuery)).thenReturn(Mono.just(Set.of("variant1", "variant2")));
+
+        patientMergingParent = new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1));
+
+        Set<String> variantList = patientMergingParent.getVariantList(distributableQuery).block();
+        assertEquals(Set.of("variant1", "variant2"), variantList);
+    }
+
+    @Test
+    public void getVariantMetadata_mixedEmptyVariants_mergedCorrectly() {
+        List<String> variantList = List.of("variant1", "variant2", "variant3");
+        when(mockProcessor1.getVariantMetadata(variantList)).thenReturn(Map.of());
+        when(mockProcessor2.getVariantMetadata(variantList)).thenReturn(Map.of("variant1", Set.of("metadata1", "metadata2")));
+        when(mockProcessor3.getVariantMetadata(variantList)).thenReturn(Map.of("variant3", Set.of("metadata31", "metadata32")));
+
+        Map<String, Set<String>> variantMetadata = patientMergingParent.getVariantMetadata(variantList);
+        assertEquals(Set.of("metadata1", "metadata2"), variantMetadata.get("variant1"));
+        assertEquals(Set.of("metadata31", "metadata32"), variantMetadata.get("variant3"));
+        assertEquals(2, variantMetadata.size());
+    }
+
+    @Test
+    public void getVariantMetadata_overlappingVariants_mergedCorrectly() {
+        List<String> variantList = List.of("variant1", "variant2", "variant3");
+        when(mockProcessor1.getVariantMetadata(variantList)).thenReturn(Map.of("variant1", Set.of("metadata1", "metadata2")));
+        when(mockProcessor2.getVariantMetadata(variantList)).thenReturn(Map.of("variant1", Set.of("metadata1", "metadata3")));
+        when(mockProcessor3.getVariantMetadata(variantList)).thenReturn(Map.of("variant3", Set.of("metadata31", "metadata32")));
+
+        Map<String, Set<String>> variantMetadata = patientMergingParent.getVariantMetadata(variantList);
+        assertEquals(Set.of("metadata1", "metadata2", "metadata3"), variantMetadata.get("variant1"));
+        assertEquals(Set.of("metadata31", "metadata32"), variantMetadata.get("variant3"));
+        assertEquals(2, variantMetadata.size());
     }
 }

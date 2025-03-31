@@ -12,7 +12,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.math.BigInteger;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -45,20 +44,20 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
         infoColumnsMeta = initInfoColumnsMeta();
     }
 
-    private class SizedVariantMask {
-        private final VariantMask variantMask;
+    private class SizedResult<T> {
+        private final T result;
         private final int size;
 
-        public VariantMask getVariantMask() {
-            return variantMask;
+        public T getResult() {
+            return result;
         }
 
         public int getSize() {
             return size;
         }
 
-        public SizedVariantMask(VariantMask variantMask, int size) {
-            this.variantMask = variantMask;
+        public SizedResult(T result, int size) {
+            this.result = result;
             this.size = size;
         }
     }
@@ -68,19 +67,19 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
         Mono<VariantMask> result = Flux.just(nodes.toArray(GenomicProcessor[]::new))
                 .flatMapSequential(node -> {
                     return node.getPatientMask(distributableQuery).map(mask -> {
-                        return new SizedVariantMask(mask, node.getPatientIds().size());
+                        return new SizedResult<>(mask, node.getPatientIds().size());
                     });
                 })
                 .reduce(this::appendMask)
-                .map(SizedVariantMask::getVariantMask);
+                .map(SizedResult::getResult);
         return result;
     }
 
     /** A little bit of a hack for now since the masks don't have sizes at this point and they are needed to merge
      */
-    public SizedVariantMask appendMask(SizedVariantMask mask1, SizedVariantMask mask2) {
-        VariantMask variantMask = VariableVariantMasks.appendMask(mask1.variantMask, mask2.variantMask, mask1.size, mask2.size);
-        return new SizedVariantMask(variantMask != null ? variantMask : VariantMask.emptyInstance(), mask1.size + mask2.size);
+    private SizedResult<VariantMask> appendMask(SizedResult<VariantMask> mask1, SizedResult<VariantMask> mask2) {
+        VariantMask variantMask = VariableVariantMasks.appendMask(mask1.result, mask2.result, mask1.size, mask2.size);
+        return new SizedResult<>(variantMask != null ? variantMask : VariantMask.emptyInstance(), mask1.size + mask2.size);
     }
 
     @Override
@@ -91,9 +90,9 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
     @Override
     public VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         return nodes.stream()
-                .map(node -> new SizedVariantMask(node.createMaskForPatientSet(patientSubset), node.getPatientIds().size()))
+                .map(node -> new SizedResult<>(node.createMaskForPatientSet(patientSubset), node.getPatientIds().size()))
                 .reduce(this::appendMask)
-                .map(SizedVariantMask::getVariantMask)
+                .map(SizedResult::getResult)
                 .orElseGet(VariantMask::emptyInstance);
     }
 
@@ -133,20 +132,18 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
 
     @Override
     public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
-        VariableVariantMasks aggregatedMasks = null;
-        int size = 0;
-        for (GenomicProcessor node : nodes) {
-            VariableVariantMasks masks = node.getMasks(path, new VariantBucketHolder<>()).orElseGet(VariableVariantMasks::new);
-            int nodeSize = node.getPatientIds().size();
-            if (aggregatedMasks == null) {
-                aggregatedMasks = masks;
-                size = nodeSize;
-            } else {
-                aggregatedMasks = VariableVariantMasks.append(aggregatedMasks, size, masks, nodeSize);
-                size = size + nodeSize;
-            }
-        }
-        return Optional.of(aggregatedMasks);
+        return Optional.ofNullable(Flux.just(nodes.toArray(GenomicProcessor[]::new))
+                .flatMapSequential(node -> {
+                    VariableVariantMasks masks = node.getMasks(path, new VariantBucketHolder<>()).orElseGet(VariableVariantMasks::new);
+                    return Mono.fromCallable(() -> new SizedResult<>(masks, node.getPatientIds().size())).subscribeOn(Schedulers.boundedElastic());
+                })
+                .reduce((masks1, masks2) -> {
+                    int combinedSize = masks1.size + masks2.size;
+                    VariableVariantMasks appendedMasks = VariableVariantMasks.append(masks1.result, masks1.size, masks2.result, masks2.size);
+                    return new SizedResult<>(appendedMasks, combinedSize);
+                })
+                .map(SizedResult::getResult)
+                .block());
     }
 
     @Override
@@ -177,7 +174,12 @@ public class GenomicProcessorPatientMergingParentImpl implements GenomicProcesso
                 .map(node -> node.getVariantMetadata(variantList))
                 .reduce((p1, p2) -> {
                     Map<String, Set<String>> mapCopy = new HashMap<>(p1);
-                    mapCopy.putAll(p2);
+
+                    for (Map.Entry<String, Set<String>> map2Entry : p2.entrySet()) {
+                        Set<String> metadataValues = new HashSet<>(mapCopy.getOrDefault(map2Entry.getKey(), new HashSet<>()));
+                        metadataValues.addAll(map2Entry.getValue());
+                        mapCopy.put(map2Entry.getKey(), metadataValues);
+                    }
                     return mapCopy;
                 }).orElseGet(Map::of);
     }
