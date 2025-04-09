@@ -36,6 +36,20 @@ public class AbstractProcessorIntegrationTest {
     }
 
     @Test
+    public void getPatientSubsetForQuery_validEmptyQuery() {
+        Query query = new Query();
+        List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
+        Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
+        variantInfoFilter.categoryVariantInfoFilters = Map.of();
+        variantInfoFilter.numericVariantInfoFilters = Map.of();
+        variantInfoFilters.add(variantInfoFilter);
+        query.setVariantInfoFilters(variantInfoFilters);
+
+        Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(4978, idList.size());
+    }
+
+    @Test
     public void getPatientSubsetForQuery_validGeneWithVariantQuery() {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();

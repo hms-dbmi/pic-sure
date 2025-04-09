@@ -27,12 +27,15 @@ public class PfbWriter implements ResultWriter {
 
     public static final String PATIENT_TABLE_PREFIX = "pic-sure-patients-";
     public static final String DATA_DICTIONARY_TABLE_PREFIX = "pic-sure-data-dictionary-";
+    public static final List<String> DATA_DICTIONARY_FIELDS = List.of("concept_path", "display", "dataset", "description", "drs_uri");
     private Logger log = LoggerFactory.getLogger(PfbWriter.class);
 
     private final DictionaryService dictionaryService;
 
     private final Schema metadataSchema;
     private final Schema nodeSchema;
+
+    private final Schema propertiesSchema;
 
     private final String queryId;
 
@@ -61,10 +64,28 @@ public class PfbWriter implements ResultWriter {
                 .namespace("edu.harvard.dbmi")
                 .fields();
 
+
+        Schema linksSchema = SchemaBuilder.record("Link")
+                .fields()
+                .requiredString("dst")
+                .name("multiplicity").type(
+                        SchemaBuilder.enumeration("Multiplicity").symbols("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")
+                ).noDefault()
+                .endRecord();
+
+        propertiesSchema = SchemaBuilder.record("Property")
+                .fields()
+                .requiredString("name")
+                .requiredString("ontology_reference")
+                .name("values").type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault()
+                .endRecord();
+
         SchemaBuilder.FieldAssembler<Schema> nodeRecord = SchemaBuilder.record("nodes")
                 .fields()
                 .requiredString("name")
                 .nullableString("ontology_reference", "null")
+                .name("links").type(SchemaBuilder.array().items(linksSchema)).noDefault()
+                .name("properties").type(SchemaBuilder.array().items(propertiesSchema)).noDefault()
                 .name("values").type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault();
         nodeSchema = nodeRecord.endRecord();
 
@@ -203,17 +224,42 @@ public class PfbWriter implements ResultWriter {
         GenericRecord entityRecord = new GenericData.Record(entitySchema);
 
         List<GenericRecord> nodeList = new ArrayList<>();
+        List<GenericRecord> propertiesList = new ArrayList<>();
+        GenericRecord nodeData = new GenericData.Record(nodeSchema);
+        nodeData.put("name", this.patientTableName);
+        nodeData.put("ontology_reference", "");
+        nodeData.put("values", Map.of());
+        nodeData.put("links", List.of());
         for (String field : formattedFields) {
-            GenericRecord nodeData = new GenericData.Record(nodeSchema);
-            nodeData.put("name", field);
-            nodeData.put("ontology_reference", "");
-            nodeData.put("values", Map.of());
-            nodeList.add(nodeData);
+            GenericRecord properties = new GenericData.Record(propertiesSchema);
+            properties.put("name", field);
+            properties.put("ontology_reference", "");
+            properties.put("values", Map.of());
+            propertiesList.add(properties);
         }
+        nodeData.put("properties", propertiesList);
+        nodeList.add(nodeData);
+
+
+        propertiesList = new ArrayList<>();
+        nodeData = new GenericData.Record(nodeSchema);
+        nodeData.put("name", this.dataDictionaryTableName);
+        nodeData.put("ontology_reference", "");
+        nodeData.put("values", Map.of());
+        nodeData.put("links", List.of());
+        for (String field : DATA_DICTIONARY_FIELDS) {
+            GenericRecord properties = new GenericData.Record(propertiesSchema);
+            properties.put("name", field);
+            properties.put("ontology_reference", "");
+            properties.put("values", Map.of());
+            propertiesList.add(properties);
+        }
+        nodeData.put("properties", propertiesList);
+        nodeList.add(nodeData);
+
         GenericRecord metadata = new GenericData.Record(metadataSchema);
         metadata.put("misc", "");
         metadata.put("nodes", nodeList);
-
 
         entityRecord.put("object", metadata);
         entityRecord.put("name", "metadata");
