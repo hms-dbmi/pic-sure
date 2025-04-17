@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.dictionary.facet;
 
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpInputMessage;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.shaded.com.fasterxml.jackson.databind.type.SimpleType;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
 @SpringBootTest
@@ -20,13 +22,22 @@ class FilterPreProcessorTest {
     @Autowired
     private FilterPreProcessor subject;
 
+    public class Foo {
+        public void bar() {}
+    }
+
+    private static MethodParameter someParam; // you can't mock these
+
+    @BeforeAll
+    static void init() throws NoSuchMethodException {
+        someParam = new MethodParameter(Foo.class.getMethod("bar"), -1);
+    }
+
     @Test
     void shouldSortFilter() {
         Filter filter = new Filter(List.of(new Facet("b", ""), new Facet("a", "")), "", List.of("c", "b", "a"));
-        Filter actual = (Filter) subject.afterBodyRead(
-            filter, Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class), SimpleType.constructUnsafe(Filter.class),
-            null
-        );
+        Filter actual = (Filter) subject
+            .afterBodyRead(filter, Mockito.mock(HttpInputMessage.class), someParam, SimpleType.constructUnsafe(Filter.class), null);
 
         Filter expected = new Filter(List.of(new Facet("a", ""), new Facet("b", "")), "", List.of("a", "b", "c"));
         Assertions.assertEquals(expected, actual);
@@ -36,8 +47,8 @@ class FilterPreProcessorTest {
     @Test
     void shouldProcessFilter() {
         Object processedFilter = subject.afterBodyRead(
-            new Filter(List.of(), "I_love_underscores", List.of()), Mockito.mock(HttpInputMessage.class),
-            Mockito.mock(MethodParameter.class), SimpleType.constructUnsafe(Filter.class), null
+            new Filter(List.of(), "I_love_underscores", List.of()), Mockito.mock(HttpInputMessage.class), someParam,
+            SimpleType.constructUnsafe(Filter.class), null
         );
 
         Assertions.assertEquals(new Filter(List.of(), "I/love/underscores", List.of()), processedFilter);
@@ -46,8 +57,7 @@ class FilterPreProcessorTest {
     @Test
     void shouldNotProcessOtherBodies() {
         Object actual = subject.afterBodyRead(
-            "I'm an object!", Mockito.mock(HttpInputMessage.class), Mockito.mock(MethodParameter.class),
-            SimpleType.constructUnsafe(Filter.class), null
+            "I'm an object!", Mockito.mock(HttpInputMessage.class), someParam, SimpleType.constructUnsafe(Filter.class), null
         );
 
         Assertions.assertEquals("I'm an object!", actual);

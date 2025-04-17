@@ -53,3 +53,22 @@ docker exec -ti dictionary-db psql -U picsure dictionary
 ```shell
 docker compose up -d --build
 ```
+
+### Run DB Migrations
+
+Set up your flyway conf:
+```shell
+source .env
+rm -f db/flyway/flyway.conf
+echo "flyway.url=jdbc:postgresql://$POSTGRES_HOST:5432/$POSTGRES_DB" >> db/flyway/flyway.conf
+echo "flyway.user=$POSTGRES_USER" >> db/flyway/flyway.conf
+echo "flyway.password=$POSTGRES_PASSWORD" >> db/flyway/flyway.conf
+```
+```shell
+docker run --rm -ti --name dictionary-flyway \
+  --env-file $DOCKER_CONFIG_DIR/dictionary/dictionary.env \
+  -v ./db/flyway:/flyway/sql \
+  -v ./db/flyway/flyway.conf:/flyway/conf/flyway.conf \
+  --network dictionary \
+  flyway/flyway:11-alpine -connectRetries=60 -validateMigrationNaming=true migrate
+```

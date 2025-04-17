@@ -57,3 +57,4 @@ build/
 .vscode/
 
 .env
+db/flyway/flyway.conf

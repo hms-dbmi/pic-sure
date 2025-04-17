@@ -300,6 +300,18 @@ ALTER TABLE public.facet_meta ALTER COLUMN facet_meta_id ADD GENERATED ALWAYS AS
 );
 
 
+CREATE TABLE IF NOT EXISTS public.update_info (
+    LAST_UPDATED TIMESTAMP NOT NULL DEFAULT '2000-01-01 00:00:00'
+);
+
+CREATE TABLE IF NOT EXISTS public.remote_dictionary (
+    REMOTE_DICTIONARY_ID SERIAL PRIMARY KEY,
+    NAME CHARACTER VARYING(512) NOT NULL,
+    UUID UUID NOT NULL,
+    LAST_UPDATED TIMESTAMP
+);
+
+
 --
 -- Data for Name: concept_node; Type: TABLE DATA; Schema: dict; Owner: picsure
 --
@@ -1074,6 +1086,17 @@ INSERT INTO public.dataset_harmonization (dataset_harmonization_id, harmonized_d
     (1, 26, 23),
     (1, 26, 22);
 
+
+INSERT INTO public.update_info (LAST_UPDATED) VALUES
+    ('2020-02-02 00:00:00');
+
+
+CREATE TABLE IF NOT EXISTS public.concept_node__remote_dictionary (
+    CONCEPT_NODE_ID integer NOT NULL,
+    REMOTE_DICTIONARY_ID integer NOT NULL,
+    CONSTRAINT fk_remote_dictionary FOREIGN KEY (REMOTE_DICTIONARY_ID) REFERENCES public.remote_dictionary(REMOTE_DICTIONARY_ID),
+    CONSTRAINT fk_concept_node FOREIGN KEY (CONCEPT_NODE_ID) REFERENCES public.concept_node(CONCEPT_NODE_ID)
+);
 
 --
 -- PostgreSQL database dump complete
