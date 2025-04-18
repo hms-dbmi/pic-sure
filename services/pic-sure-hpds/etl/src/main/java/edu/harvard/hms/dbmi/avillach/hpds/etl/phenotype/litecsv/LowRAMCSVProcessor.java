@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.litecsv;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.CSVConfig;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.ConfigLoader;
 import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv.CSVParserUtil;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -21,11 +23,20 @@ public class LowRAMCSVProcessor {
     private final LowRAMLoadingStore store;
     private final boolean doVarNameRollup;
     private final double maxChunkSizeGigs;
+    private final ConfigLoader configLoader;
 
     public LowRAMCSVProcessor(LowRAMLoadingStore store, boolean doVarNameRollup, double maxChunkSizeGigs) {
         this.store = store;
         this.doVarNameRollup = doVarNameRollup;
         this.maxChunkSizeGigs = maxChunkSizeGigs;
+        this.configLoader = null;
+    }
+
+    public LowRAMCSVProcessor(LowRAMLoadingStore store, boolean doVarNameRollup, double maxChunkSizeGigs, ConfigLoader configLoader) {
+        this.store = store;
+        this.doVarNameRollup = doVarNameRollup;
+        this.maxChunkSizeGigs = maxChunkSizeGigs;
+        this.configLoader = configLoader;
     }
 
     public IngestStatus process(File csv) {
@@ -34,6 +45,7 @@ public class LowRAMCSVProcessor {
         try (Reader r = new FileReader(csv); Stream<String> rawLines = Files.lines(csv.toPath())) {
             CSVParser parser = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(r));
 
+            CSVConfig csvConfig = configLoader != null ? configLoader.getConfigFor(csv.getName()) : null;
             // we want to read the file in reasonably sized chunks so that we can handle chunks naively
             // in memory without going OOM
             // to do this, we're going to assume that over the course of thousands of lines, each line
@@ -65,7 +77,7 @@ public class LowRAMCSVProcessor {
                     // let us keep more valuable things in RAM
                     lines.sort(Comparator.comparing(a -> a.get(1)));
                     log.info("Finished sorting chunk {}", chunkCount);
-                    Set<String> chunkConcepts = ingest(lines);
+                    Set<String> chunkConcepts = ingest(lines, csvConfig);
                     concepts.addAll(chunkConcepts);
                     log.info("Finished ingesting chunk {} with {} unique concepts", chunkCount, chunkConcepts.size());
                     lines = new ArrayList<>();
@@ -82,7 +94,7 @@ public class LowRAMCSVProcessor {
     }
 
 
-    private Set<String> ingest(List<CSVRecord> sortedRecords) {
+    private Set<String> ingest(List<CSVRecord> sortedRecords, CSVConfig csvConfig) {
         Set<String> concepts = new HashSet<>();
         for (CSVRecord record : sortedRecords) {
             if (record.size() < 4) {
@@ -90,9 +102,8 @@ public class LowRAMCSVProcessor {
                 continue;
             }
 
-            String conceptPath = CSVParserUtil.parseConceptPath(record, doVarNameRollup);
-            // TODO: check logic
-            IngestFn ingestFn = Strings.isEmpty(record.get(CSVParserUtil.NUMERIC_VALUE)) ? this::ingestNonNumeric : this::ingestNumeric;
+            String conceptPath = CSVParserUtil.parseConceptPath(record, doVarNameRollup, csvConfig);
+            IngestFn ingestFn = Strings.isBlank(record.get(CSVParserUtil.NUMERIC_VALUE)) ? this::ingestNonNumeric : this::ingestNumeric;
             Date date = CSVParserUtil.parseDate(record);
             int patientId = Integer.parseInt(record.get(CSVParserUtil.PATIENT_NUM));
             if (ingestFn.attemptIngest(record, conceptPath, patientId, date)) {
@@ -123,12 +134,14 @@ public class LowRAMCSVProcessor {
                 rows with an nval_num but no tval_char.
                 Offending record #{}
                 """, conceptPath, record.get(CSVParserUtil.NUMERIC_VALUE), record.getRecordNumber());
+
             return false;
         }
         try {
             String rawNumericValue = CSVParserUtil.trim(record.get(CSVParserUtil.NUMERIC_VALUE));
             double parsedValue = Double.parseDouble(rawNumericValue);
             concept.add(patientId, parsedValue, date);
+            store.allIds.add(patientId);
             return true;
         } catch (NumberFormatException e) {
             log.warn("Could not parse numeric value in line {}", record);
@@ -142,6 +155,7 @@ public class LowRAMCSVProcessor {
             concept = new PhenoCube<>(conceptPath, String.class);
             store.loadingCache.put(conceptPath, concept);
         }
+
         if (!concept.vType.equals(String.class)) {
             log.error("""
                 Concept bucket {} was configured for numeric types, but received non-numeric value {}
@@ -149,6 +163,7 @@ public class LowRAMCSVProcessor {
                 rows with an nval_num but no tval_char.
                 Offending record #{}
                 """, conceptPath, record.get(CSVParserUtil.TEXT_VALUE), record.getRecordNumber());
+            log.error("Entire record: {}", record);
             return false;
         }
         String rawTextValue = CSVParserUtil.trim(record.get(CSVParserUtil.TEXT_VALUE));
@@ -157,6 +172,7 @@ public class LowRAMCSVProcessor {
         }
         concept.setColumnWidth(Math.max(rawTextValue.getBytes().length, concept.getColumnWidth()));
         concept.add(patientId, rawTextValue, date);
+        store.allIds.add(patientId);
         return true;
     }
 }

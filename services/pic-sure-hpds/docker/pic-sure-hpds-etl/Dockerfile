@@ -32,4 +32,4 @@ COPY --from=build /app/docker/pic-sure-hpds-etl/SequentialLoader-jar-with-depend
 COPY --from=build /app/docker/pic-sure-hpds-etl/LowRAMMultiCSVLoader-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/create_key.sh .
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Xmx${HEAPSIZE:-2048}m -jar ${LOADER_NAME:-CSVLoader}-jar-with-dependencies.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Xmx${HEAPSIZE:-2048}m -jar ${LOADER_NAME:-CSVLoader}-jar-with-dependencies.jar $LOADER_ARGS"]

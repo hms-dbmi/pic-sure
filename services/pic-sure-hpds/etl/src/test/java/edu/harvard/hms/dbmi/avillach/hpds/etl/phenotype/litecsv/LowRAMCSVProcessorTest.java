@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.litecsv;
 
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.CSVConfig;
+import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.ConfigLoader;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -148,6 +150,40 @@ class LowRAMCSVProcessorTest {
             new NumericMeta("\\my\\concept\\path\\00000\\", 24399, 24399, 0.0, 8.0),
             new NumericMeta("\\my\\concept\\path\\00099\\", 24400, 24400, 0.0, 8.0)
         );
+        verifyStoreMeta(expectedMetas, testDir.getAbsolutePath() + "/columnMeta.javabin");
+    }
+
+    @Test
+    void shouldPrependDatasetNameWithConfigLoader(@TempDir File testDir) throws IOException, ClassNotFoundException {
+        String content = """
+            PATIENT_NUM,CONCEPT_PATH,NUMERIC_VALUE,TEXT_VALUE,DATETIME
+            1,\\foo\\1\\,,val,1
+            1,\\foo\\2\\,0,,1
+            2,\\foo\\1\\,,lav,1
+            2,\\foo\\2\\,99,,1
+            """;
+        Path csvPath = Path.of(testDir.getAbsolutePath(), "test.csv");
+        Files.writeString(csvPath, content);
+        LowRAMLoadingStore store = new LowRAMLoadingStore(
+                testDir.getAbsolutePath() + "/allObservationsTemp.javabin", testDir.getAbsolutePath() + "/columnMeta.javabin",
+                testDir.getAbsolutePath() + "/allObservationsStore.javabin", "TEST_KEY"
+        );
+
+        CSVConfig csvConfig = new CSVConfig();
+        csvConfig.setDataset_name("TEST_DATASET_NAME");
+        csvConfig.setDataset_name_as_root_node(true);
+        ConfigLoader configLoader = new ConfigLoader();
+        configLoader.add("test", csvConfig);
+        IngestStatus status = new LowRAMCSVProcessor(store, false, 1D, configLoader).process(csvPath.toFile());
+
+        Assertions.assertEquals(2, status.conceptCount());
+        Assertions.assertEquals(5, status.lineCount());
+        Assertions.assertEquals(csvPath, status.file());
+
+        Crypto.loadKey("TEST_KEY", TEST_KEY_PATH);
+        store.saveStore();
+        List<Meta> expectedMetas =
+                List.of(new CategoricalMeta("\\TEST_DATASET_NAME\\foo\\1\\", 2, 2, List.of("lav", "val")), new NumericMeta("\\TEST_DATASET_NAME\\foo\\2\\", 2, 2, 0.0, 99.0));
         verifyStoreMeta(expectedMetas, testDir.getAbsolutePath() + "/columnMeta.javabin");
     }
 
