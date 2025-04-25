@@ -23,6 +23,7 @@ COPY --from=build /app/docker/pic-sure-hpds-etl/CSVDumper-jar-with-dependencies.
 COPY --from=build /app/docker/pic-sure-hpds-etl/VCFLocalLoader-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/SplitChromosomeVcfLoader-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/VariantMetadataLoader-jar-with-dependencies.jar .
+COPY --from=build /app/docker/pic-sure-hpds-etl/GenomicDatasetFinalizer-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/UnifiedVCFLocalLoader-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/MultialleleCounter-jar-with-dependencies.jar .
 COPY --from=build /app/docker/pic-sure-hpds-etl/RekeyDataset-jar-with-dependencies.jar .
