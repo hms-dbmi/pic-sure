@@ -61,15 +61,13 @@ public class PatientVariantJoinHandler {
                     })).values();
             ArrayList<List<String>> variantBucketsInScope = new ArrayList<List<String>>(values);
 
-            log.info("found " + variantBucketsInScope.size() + " buckets");
 
             //don't error on small result sets (make sure we have at least one element in each partition)
             int partitionSize = variantBucketsInScope.size() / Runtime.getRuntime().availableProcessors();
             List<List<List<String>>> variantBucketPartitions = Lists.partition(variantBucketsInScope, partitionSize > 0 ? partitionSize : 1);
 
-            log.info("and partitioned those into " + variantBucketPartitions.size() + " groups");
+            log.debug("found " + variantBucketsInScope.size() + " buckets and partitioned those into " + variantBucketPartitions.size() + " groups");
 
-            int patientsInScopeSize = patientsInScope.size();
             VariantMask patientsInScopeMask = new VariantMaskBitmaskImpl(createMaskForPatientSet(patientsInScope));
             for(int x = 0;
                 x < variantBucketPartitions.size() /*&& matchingPatients[0].bitCount() < patientsInScopeSize + 4*/;
@@ -96,14 +94,15 @@ public class PatientVariantJoinHandler {
                         }, () -> missingVariants.add(variantSpec));
                     });
                     if (!missingVariants.isEmpty()) {
-                        log.info(missingVariants.size() + " variant masks not found");
-                        log.info("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, Math.min(100, missingVariants.size()))));
+                        log.debug(missingVariants.size() + " variant masks not found");
+                        log.debug("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, Math.min(100, missingVariants.size()))));
                     }
                 });
             }
             return matchingPatients[0].intersection(patientsInScopeMask);
         }else {
-            log.error("No matches found for info filters.");
+            // This will happen regularly, for example if someone is searching for a gene that is not on this partition
+            log.debug("No matches found for info filters.");
             return new VariantMaskSparseImpl(Set.of());
         }
     }

@@ -36,7 +36,7 @@ public class LoadingStore {
 
 				@Override
 				public void onRemoval(RemovalNotification<String, PhenoCube> arg0) {
-					log.info("removing " + arg0.getKey());
+					log.debug("removing " + arg0.getKey());
 					if(arg0.getValue().getLoadingMap()!=null) {
 						complete(arg0.getValue());
 					}
@@ -105,7 +105,7 @@ public class LoadingStore {
 			.build(
 					new CacheLoader<String, PhenoCube>() {
 						public PhenoCube load(String key) throws Exception {
-							log.info("Loading cube: " + key);
+							log.debug("Loading cube: " + key);
 							return null;
 						}
 					});

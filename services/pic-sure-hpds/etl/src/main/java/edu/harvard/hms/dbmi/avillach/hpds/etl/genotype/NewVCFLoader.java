@@ -284,7 +284,7 @@ public class NewVCFLoader {
 			if (infoStoreFlipped.get(lastContigProcessed) == null || !infoStoreFlipped.get(lastContigProcessed)) {
 				infoStoreFlipped.put(lastContigProcessed, true);
 				File infoFile = new File(storageDir, lastContigProcessed + "_infoStores.javabin");
-				System.out.println(Thread.currentThread().getName() + " : " + "Flipping info : "
+				logger.debug(Thread.currentThread().getName() + " : " + "Flipping info : "
 						+ infoFile.getAbsolutePath() + " " + lastContigProcessed + " ");
 				try (FileOutputStream fos = new FileOutputStream(infoFile);
 						GZIPOutputStream gzos = new GZIPOutputStream(fos);

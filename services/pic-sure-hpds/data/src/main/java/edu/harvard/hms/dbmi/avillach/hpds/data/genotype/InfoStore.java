@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.genotype;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +15,7 @@ import java.util.stream.Collectors;
 public class InfoStore implements Serializable {
 	
 	private static final long serialVersionUID = 6478256007934827195L;
+	private static final Logger log = LoggerFactory.getLogger(InfoStore.class);
 	public final String column_key;
 	public final String description;
 
@@ -38,7 +42,7 @@ public class InfoStore implements Serializable {
 	public boolean isNumeric() {
 		int nonNumericCount = 0;
 		int numericCount = 0;
-		System.out.println("Testing for numeric : " + this.column_key + " : " + allValues.size() + " values");
+		log.debug("Testing for numeric : " + this.column_key + " : " + allValues.size() + " values");
 		KeySetView<String, ConcurrentSkipListSet<Integer>> allKeys = allValues.keySet();
 		for(String key : allKeys){
 			try {
@@ -58,15 +62,15 @@ public class InfoStore implements Serializable {
 				}
 			}
 			if(nonNumericCount > 1) {
-				System.out.println(this.column_key + " is not numeric");
+				log.debug(this.column_key + " is not numeric");
 				return false;
 			}
 			if(numericCount > 10000 || numericCount > (allKeys.size()/2)) {
-				System.out.println(this.column_key + " is numeric");
+				log.debug(this.column_key + " is numeric");
 				return true;
 			}
 		};
-		System.out.println(this.column_key + " is not numeric");
+		log.debug(this.column_key + " is not numeric");
 		return false;
 	}
 

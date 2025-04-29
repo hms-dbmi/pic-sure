@@ -10,10 +10,13 @@ import java.util.zip.GZIPOutputStream;
 import edu.harvard.hms.dbmi.avillach.hpds.data.storage.FileBackedStorageVariantIndexImpl;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedByteIndexedStorage;
 import edu.harvard.hms.dbmi.avillach.hpds.storage.FileBackedJavaIndexedStorage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileBackedByteIndexedInfoStore implements Serializable {
 
 	private static final long serialVersionUID = 6478256007934827195L;
+	private static final Logger log = LoggerFactory.getLogger(FileBackedByteIndexedInfoStore.class);
 	public final String column_key;
 	public final String description;
 	public boolean isContinuous;
@@ -57,16 +60,15 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		if(isContinuous) {
 			normalizeNumericStore(infoStore);
 		}
-		System.out.println("" + infoStore.allValues.values().stream().collect(Collectors.summingInt((value)->{return value.size();})));
 		TreeSet<String> sortedKeys = new TreeSet<String>(infoStore.allValues.keySet());
-		System.out.println(infoStore.column_key + " : " + sortedKeys.size() + " values");
+		log.debug(infoStore.column_key + " : " + sortedKeys.size() + " values");
 		int x = 0;
 		for(String key : sortedKeys){
 			if(key.contentEquals(".")) {
-				System.out.println("Skipping . value for " + infoStore.column_key);
+				log.debug("Skipping . value for " + infoStore.column_key);
 			}else {
 				if(x%10000 == 0) {
-					System.out.println(infoStore.column_key + " " + ((((double)x) / sortedKeys.size()) * 100) + "% done");
+					log.debug(infoStore.column_key + " " + ((((double)x) / sortedKeys.size()) * 100) + "% done");
 				}
 				ConcurrentSkipListSet<Integer> variantIds = infoStore.allValues.get(key);
 				addEntry(key, variantIds.toArray(new Integer[variantIds.size()]));
@@ -75,7 +77,7 @@ public class FileBackedByteIndexedInfoStore implements Serializable {
 		}
 		this.allValues.complete();
 		if(isContinuous) {
-			System.out.println(this.column_key + " is continuous, building continuousValueIndex and nulling continuousValueMap.");
+			log.debug(this.column_key + " is continuous, building continuousValueIndex and nulling continuousValueMap.");
 			this.continuousValueIndex = new CompressedIndex();
 			TreeMap<Float, TreeSet<String>> continuousValueMap = this.continuousValueIndex.buildContinuousValuesMap(this.allValues);
 			this.continuousValueIndex.buildIndex(continuousValueMap);

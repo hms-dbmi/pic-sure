@@ -213,7 +213,7 @@ public class VariantListProcessor implements HpdsProcessor {
 			index++;
 
 			if(patientIndexMap.size() >= patientSubset.size()) {
-				log.info("Found all " + patientIndexMap.size() + " patient Indices at index " + index);
+				log.debug("Found all " + patientIndexMap.size() + " patient Indices at index " + index);
 				break;
 			}
 		}

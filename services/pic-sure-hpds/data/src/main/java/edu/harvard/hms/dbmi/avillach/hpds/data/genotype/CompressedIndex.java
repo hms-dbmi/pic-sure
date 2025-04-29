@@ -122,7 +122,7 @@ public class CompressedIndex implements Serializable {
 
 	public List<String> getValuesInRange(Range<Float> targetRange) {
 
-		System.out.println("Getting valuesInRange : " + targetRange);
+		log.debug("Getting valuesInRange : " + targetRange);
 		// Get a list of ranges that are connected to the target range
 		List<Range> connectedRanges = compressedRangeMap.keySet().stream().filter((range)->{
 			return range.isConnected(targetRange);
@@ -151,11 +151,11 @@ public class CompressedIndex implements Serializable {
 		connectedRanges.forEach(
 				range ->{
 					TreeMap<Float, TreeSet<String>> continousValueMap = retrieveRangeMap(range);
-					System.out.println("Searching within : " + range.lowerEndpoint() + " : " + range.upperEndpoint());
+					log.debug("Searching within : " + range.lowerEndpoint() + " : " + range.upperEndpoint());
 					continousValueMap.entrySet().stream().forEach(
 							entry->{
 								if(targetRange.contains(entry.getKey())) {
-									System.out.println("Adding : " + entry.getValue().first() + " : " + entry.getValue().last());
+									log.debug("Adding : " + entry.getValue().first() + " : " + entry.getValue().last());
 									valuesInRange.addAll(entry.getValue());
 								}
 							});

@@ -79,13 +79,12 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         return Mono.fromCallable(() -> runGetPatientMask(distributableQuery)).subscribeOn(Schedulers.boundedElastic());
     }
     public VariantMask runGetPatientMask(DistributableQuery distributableQuery) {
-//		log.debug("filterdIDSets START size: " + filteredIdSets.size());
         /* VARIANT INFO FILTER HANDLING IS MESSY */
         if(distributableQuery.hasFilters()) {
             VariantIndex intersectionOfInfoFilters = null;
             for(Query.VariantInfoFilter filter : distributableQuery.getVariantInfoFilters()){
                 List<VariantIndex> variantSets = getVariantsMatchingFilters(filter);
-                log.info("Found " + variantSets.size() + " groups of sets for patient identification");
+                log.debug("Found " + variantSets.size() + " groups of sets for patient identification");
                 if(!variantSets.isEmpty()) {
                     // INTERSECT all the variant sets.
                     if (intersectionOfInfoFilters == null) {
@@ -207,14 +206,13 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                     .map(key -> variantIndexCache.get(column, key))
                     .reduce(VariantIndex::union)
                     .orElseGet(() -> {
-                        log.info("No variant index computed for category filter. This should never happen");
+                        log.warn("No variant index computed for category filter. This should never happen");
                         return VariantIndex.empty();
                     });
         } else if(infoKeys.size() == 1) {
             return variantIndexCache.get(column, infoKeys.get(0));
         } else { // infoKeys.size() == 0
-            log.info("No indexes found for column [" + column + "] for values [" + Joiner.on(",").join(values) + "]");
-            // todo: test this case. should this be empty list or a list with an empty VariantIndex?
+            log.debug("No indexes found for column [" + column + "] for values [" + Joiner.on(",").join(values) + "]");
             return VariantIndex.empty();
         }
     }
@@ -225,7 +223,7 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
             int insertionIndex = Arrays.binarySearch(values, key);
             return insertionIndex > -1 && insertionIndex < values.length;
         }).collect(Collectors.toList());
-        log.info("found " + infoKeys.size() + " keys");
+        log.debug("found " + infoKeys.size() + " keys for info category filters");
         return infoKeys;
     }
 
@@ -244,7 +242,6 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
         if(!variantSets.isEmpty()) {
             VariantIndex intersectionOfInfoFilters = variantSets.get(0);
             for(VariantIndex variantSet : variantSets) {
-                //						log.info("Variant Set : " + Arrays.deepToString(variantSet.toArray()));
                 intersectionOfInfoFilters = intersectionOfInfoFilters.intersection(variantSet);
             }
             unionOfInfoFilters = unionOfInfoFilters.union(intersectionOfInfoFilters);

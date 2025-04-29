@@ -110,7 +110,7 @@ public class VariantService {
                     try (ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(VARIANT_INDEX_FBBIS_FILE)));
                     ){
 
-                        log.info("Writing Cache Object in blocks of " + VARIANT_INDEX_BLOCK_SIZE);
+                        log.debug("Writing Cache Object in blocks of " + VARIANT_INDEX_BLOCK_SIZE);
 
                         int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
                         int index = 0;
@@ -122,7 +122,7 @@ public class VariantService {
                             fbbis.put(i, variantArrayBlock);
 
                             index += blockSize;
-                            log.info("saved " + index + " variants");
+                            log.debug("saved " + index + " variants");
                         }
                         fbbis.complete();
                         oos.writeObject("" + variantIndex.length);
@@ -148,13 +148,13 @@ public class VariantService {
                             ex.submit(() -> {
                                 String[] variantIndexBucket = indexStore.get(_i);
                                 System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
-                                log.info("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
+                                log.debug("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
                             });
                         }
                         objectInputStream.close();
                         ex.shutdown();
                         while(! ex.awaitTermination(60, TimeUnit.SECONDS)) {
-                            System.out.println("Waiting for tasks to complete");
+                            log.info("Waiting for tasks to complete");
                             Thread.sleep(10000);
                         }
                     } catch (IOException | ClassNotFoundException | NumberFormatException e) {
