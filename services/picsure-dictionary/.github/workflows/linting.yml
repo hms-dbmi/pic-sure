@@ -28,4 +28,4 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Lint Project
-      run: mvn spotless:check
+      run: mvn spotless:check && cd aggregate && mvn spotless:check

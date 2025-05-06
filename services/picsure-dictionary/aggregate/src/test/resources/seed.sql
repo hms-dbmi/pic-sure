@@ -141,7 +141,7 @@ CREATE TABLE public.dataset (
 
 ALTER TABLE public.dataset ALTER COLUMN dataset_id ADD GENERATED ALWAYS AS IDENTITY (
     SEQUENCE NAME public.dataset_dataset_id_seq
-    START WITH 1
+    START WITH 30
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
@@ -771,6 +771,7 @@ COPY public.facet_category (facet_category_id, name, display, description) FROM 
 --
 
 COPY public.facet_category_meta (facet_category_meta_id, facet_category_id, key, value) FROM stdin;
+1	1	my_key	my_value
 \.
 
 

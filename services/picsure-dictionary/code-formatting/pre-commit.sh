@@ -25,4 +25,13 @@ if [ -n "$STAGED_JAVA_FILES_AS_REGEX" ]; then
    git add $FILES_TO_RESTAGE
 fi
 
+cd aggregate
+STAGED_JAVA_FILES_AS_REGEX=$(git diff --staged --name-only --diff-filter=ACMR | grep '.java$' | tr '\n' ',' | sed -e 's/,/$,^.*/g' | sed 's/.\{4\}$//')
+FILES_TO_RESTAGE=$(git diff --staged --name-only --diff-filter=ACMR)
+if [ -n "$STAGED_JAVA_FILES_AS_REGEX" ]; then
+   echo "Found the following staged java files to format: $STAGED_JAVA_FILES_AS_REGEX"
+   mvn spotless:apply -DspotlessFiles=^.*$STAGED_JAVA_FILES_AS_REGEX
+   git add $FILES_TO_RESTAGE
+fi
+
 cd $CWD

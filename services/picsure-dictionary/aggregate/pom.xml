@@ -9,15 +9,30 @@
 		<relativePath/> <!-- lookup children from repository -->
 	</parent>
 	<groupId>edu.harvard.dbmi.avillach</groupId>
-	<artifactId>dictionary</artifactId>
+	<artifactId>dump</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>dictionary</name>
-	<description>Data Dictionary API</description>
+	<name>dump</name>
+	<description>Data Dictionary Dump API</description>
 	<properties>
 		<java.version>21</java.version>
 		<spotless.version>2.41.1</spotless.version>
 	</properties>
 	<dependencies>
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
+			<version>2.19.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+			<version>2.19.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.19.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-jdbc</artifactId>
@@ -30,16 +45,6 @@
 			<groupId>org.springframework.data</groupId>
 			<artifactId>spring-data-commons</artifactId>
 			<version>3.3.0</version>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-cache</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>com.github.ben-manes.caffeine</groupId>
-			<artifactId>caffeine</artifactId>
-			<version>3.1.8</version>
 		</dependency>
 
 		<dependency>
@@ -73,12 +78,6 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>com.amazonaws.secretsmanager</groupId>
-			<artifactId>aws-secretsmanager-jdbc</artifactId>
-			<version>2.0.2</version>
-		</dependency>
-		<!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
-		<dependency>
 			<groupId>org.apache.httpcomponents</groupId>
 			<artifactId>httpclient</artifactId>
 			<version>4.5.14</version>
@@ -99,7 +98,7 @@
 					<java>
 						<eclipse>
 							<version>4.26</version>
-							<file>code-formatting/eclipse-formatter.xml</file>
+							<file>../code-formatting/eclipse-formatter.xml</file>
 						</eclipse>
 						<toggleOffOn />
 					</java>
