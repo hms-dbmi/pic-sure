@@ -116,7 +116,7 @@ public class VariantStore implements Serializable {
 		if (indexedStorage == null) {
 			return List.of();
 		} else {
-			ConcurrentHashMap<String, VariableVariantMasks> specToMaskMap = indexedStorage.get(chrOffset);
+			ConcurrentHashMap<String, VariableVariantMasks> specToMaskMap = indexedStorage.getOrELse(chrOffset, new ConcurrentHashMap<>());
 			return specToMaskMap.entrySet().stream()
 					.filter(entry -> entry.getKey().startsWith(variant))
 					.map(Map.Entry::getValue)

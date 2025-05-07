@@ -253,13 +253,14 @@ public class AbstractProcessor {
 				Set<Integer> ids = new TreeSet<>();
 				if (VariantUtils.pathIsVariantSpec(entry.getKey())) {
 					distributableQuery.addVariantSpecCategoryFilter(entry.getKey(), entry.getValue());
+					return null;
 				} else {
 					for (String category : entry.getValue()) {
 						ids.addAll(getCube(entry.getKey()).getKeysForValue(category));
 					}
 				}
 				return ids;
-			}).collect(Collectors.toList());
+			}).filter(Objects::nonNull).collect(Collectors.toList());
 		}
         return List.of();
 	}

@@ -108,6 +108,14 @@ public class GenomicProcessorNodeImpl implements GenomicProcessor {
                 patientMask = createMaskForPatientSet(distributableQuery.getPatientIds());
             }
 
+            for (String snp : distributableQuery.getCategoryFilters().keySet()) {
+                VariantMask patientsForVariantSpec = getVariantIndexesForSpec(distributableQuery.getCategoryFilters().get(snp), snp);
+                if (patientMask == null) {
+                    patientMask = patientsForVariantSpec;
+                } else {
+                    patientMask = patientMask.intersection(patientsForVariantSpec);
+                }
+            }
 
             VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder = new VariantBucketHolder<>();
             if (!distributableQuery.getRequiredFields().isEmpty() ) {
