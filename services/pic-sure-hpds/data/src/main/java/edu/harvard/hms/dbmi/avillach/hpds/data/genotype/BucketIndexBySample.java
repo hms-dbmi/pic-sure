@@ -189,4 +189,8 @@ public class BucketIndexBySample implements Serializable {
 		}
 		return _emptyBucketMaskChar.clone();
 	}
+
+	public void updateStorageDirectory(File storageDirectory) {
+		patientBucketMasks.updateStorageDirectory(storageDirectory);
+	}
 }

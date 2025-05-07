@@ -181,6 +181,7 @@ public class VariantService {
                 try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
                     log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
                     bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
+                    bucketIndex.updateStorageDirectory(new File(genomicDataDirectory));
                 } catch (IOException | ClassNotFoundException e) {
                     log.error("an error occurred", e);
                 }
