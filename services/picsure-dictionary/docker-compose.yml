@@ -8,6 +8,7 @@ services:
       - $DOCKER_CONFIG_DIR/dictionary/db/data:/var/lib/postgresql/data
       - $DOCKER_CONFIG_DIR/dictionary/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     env_file: .env
+    restart: always
     networks:
       - dictionary
   dictionary-api:
@@ -18,6 +19,20 @@ services:
       - dictionary-db
     restart: always
     env_file: .env
+    networks:
+      - dictionary
+      - hpdsNet
+      - picsure
+  dictionary-dump:
+    container_name: dictionary-dump
+    image: avillach/dictionary-dump:latest
+    build: ./aggregate
+    depends_on:
+      - dictionary-db
+    restart: always
+    env_file: .env
+    volumes:
+      - $DOCKER_CONFIG_DIR/dictionary/dump/application.properties:/application.properties
     networks:
       - dictionary
       - hpdsNet

@@ -28,4 +28,16 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -B package --file pom.xml && cd aggregate && mvn -B package --file pom.xml
+      run: mvn -B package --file pom.xml
+  build-aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '24'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build with Maven
+        run: cd aggregate && mvn -B package --file pom.xml

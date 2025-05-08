@@ -5,23 +5,23 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
 @SpringBootTest
-@ActiveProfiles("production")
+@ActiveProfiles("aggregate")
 class RemoteDumpSchedulingServiceTest {
 
-    @MockBean
+    @MockitoBean
     RemoteDictionaryRepository repository;
 
-    @MockBean
+    @MockitoBean
     RemoteDictionaryAPI api;
 
-    @MockBean
+    @MockitoBean
     DataRefreshService dataRefreshService;
 
     @Autowired
@@ -29,10 +29,10 @@ class RemoteDumpSchedulingServiceTest {
 
     @Test
     void shouldUpdateNewDictionary() {
-        Mockito.when(api.fetchUpdateTimestamp("bch")).thenReturn(Optional.of(LocalDateTime.MIN));
-        Mockito.when(api.fetchUpdateTimestamp("foo")).thenReturn(Optional.of(LocalDateTime.MIN));
-        Mockito.when(repository.getUpdateTimestamp("bch")).thenReturn(LocalDateTime.now());
-        Mockito.when(repository.getUpdateTimestamp("foo")).thenReturn(LocalDateTime.now());
+        Mockito.when(api.fetchUpdateTimestamp("bch")).thenReturn(Optional.of(LocalDateTime.now()));
+        Mockito.when(api.fetchUpdateTimestamp("foo")).thenReturn(Optional.of(LocalDateTime.now()));
+        Mockito.when(repository.getUpdateTimestamp("bch")).thenReturn(LocalDateTime.MIN);
+        Mockito.when(repository.getUpdateTimestamp("foo")).thenReturn(LocalDateTime.MIN);
 
         subject.pollForUpdates();
 

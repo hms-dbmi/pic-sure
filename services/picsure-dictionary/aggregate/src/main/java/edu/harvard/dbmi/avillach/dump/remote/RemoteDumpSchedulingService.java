@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.dump.remote.api.RemoteDictionaryAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-@Profile("production")
+@Profile({"aggregate"})
 public class RemoteDumpSchedulingService {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteDumpSchedulingService.class);
@@ -51,7 +52,7 @@ public class RemoteDumpSchedulingService {
         log.info("The remote dictionary for {} was last updated at {}", dictionary.fullName(), remoteUpdate);
         LocalDateTime localUpdate = repository.getUpdateTimestamp(dictionary.name());
         log.info("The last local update for {} was {}", dictionary.fullName(), localUpdate);
-        return localUpdate.isAfter(remoteUpdate);
+        return localUpdate.isBefore(remoteUpdate);
     }
 
 }

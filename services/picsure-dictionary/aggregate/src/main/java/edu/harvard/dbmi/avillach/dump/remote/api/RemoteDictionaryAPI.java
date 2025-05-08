@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,54 +29,54 @@ public class RemoteDictionaryAPI {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
     private static final Logger log = LoggerFactory.getLogger(RemoteDictionaryAPI.class);
     private final CloseableHttpClient client;
-    private final ObjectMapper mapper =
-        new ObjectMapper().registerModule(new ParameterNamesModule()).setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE)
-            .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-    private static final String rootURL = "http://passthru:80/dictionary-dump/?/last-updated";
+    private final ObjectMapper mapper;
+    private static final String rootURL = "http://passthru:80/dictionary-dump/";
 
     @Autowired
-    public RemoteDictionaryAPI(CloseableHttpClient client) {
+    public RemoteDictionaryAPI(CloseableHttpClient client, ObjectMapper mapper) {
         this.client = client;
+        this.mapper = mapper;
         mapper.registerModule(new JavaTimeModule());
     }
 
     public Optional<LocalDateTime> fetchUpdateTimestamp(String name) {
         HttpGet request = new HttpGet(rootURL + name + "/last-updated");
-        return runRequest(new TypeReference<String>() {}, request).map(iso -> LocalDateTime.parse(iso, formatter));
+        return runRequest(new TypeReference<String>() {}, request).filter(StringUtils::hasLength)
+            .map(iso -> LocalDateTime.parse(iso, formatter));
     }
 
     public Optional<List<ConceptNodeDump>> fetchConcepts(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.ConceptNode.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.ConceptNode.name());
         return runRequest(new TypeReference<List<ConceptNodeDump>>() {}, request);
     }
 
     public Optional<List<FacetCategoryDump>> fetchFacetCategories(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.FacetCategory.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.FacetCategory.name());
         return runRequest(new TypeReference<List<FacetCategoryDump>>() {}, request);
     }
 
     public Optional<List<FacetDump>> fetchFacets(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.FacetCategory.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.Facet.name());
         return runRequest(new TypeReference<List<FacetDump>>() {}, request);
     }
 
     public Optional<List<ConceptNodeMetaDump>> fetchConceptMetas(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.ConceptNode.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.ConceptNodeMeta.name());
         return runRequest(new TypeReference<List<ConceptNodeMetaDump>>() {}, request);
     }
 
     public Optional<List<FacetCategoryMetaDump>> fetchFacetCategoryMetas(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.FacetCategory.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.FacetCategoryMeta.name());
         return runRequest(new TypeReference<List<FacetCategoryMetaDump>>() {}, request);
     }
 
     public Optional<List<FacetMetaDump>> fetchFacetMetas(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.FacetCategory.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.FacetMeta.name());
         return runRequest(new TypeReference<List<FacetMetaDump>>() {}, request);
     }
 
     public Optional<List<FacetConceptPair>> fetchFacetConceptPairs(String siteName) {
-        HttpGet request = new HttpGet(rootURL + siteName + "/" + DumpTable.FacetCategory.name());
+        HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.FacetConceptNode.name());
         return runRequest(new TypeReference<List<FacetConceptPair>>() {}, request);
     }
 

@@ -1,5 +1,7 @@
 package edu.harvard.dbmi.avillach.dump.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -9,9 +11,10 @@ public final class FacetDump implements DumpRow {
     private String display;
     private String description;
     private String facetCategoryName;
-    private List<FacetDump> children;
+    private List<FacetDump> children = new ArrayList<>();
     private int facetID;
     private Integer parentID;
+    private String parentName;
 
     public FacetDump() {}
 
@@ -76,10 +79,12 @@ public final class FacetDump implements DumpRow {
             + "facetCategoryName=" + facetCategoryName + ", " + "children=" + children + ']';
     }
 
+    @JsonIgnore
     public int facetID() {
         return facetID;
     }
 
+    @JsonIgnore
     public Integer parentID() {
         return parentID;
     }
@@ -110,5 +115,13 @@ public final class FacetDump implements DumpRow {
 
     public void setParentID(Integer parentID) {
         this.parentID = parentID;
+    }
+
+    public String parentName() {
+        return parentName;
+    }
+
+    public void setParentName(String parentName) {
+        this.parentName = parentName;
     }
 }

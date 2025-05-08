@@ -42,8 +42,6 @@ public class RemoteDictionaryRepository {
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("dictName", name);
         int unpairedConcepts = template.update(sql, params);
         log.info("Unpaired {} concepts while dropping values for site {}", unpairedConcepts, name);
-        sql = "DELETE FROM remote_dictionary WHERE NAME = :dictName";
-        template.update(sql, params);
     }
 
     public void setUpdateTimestamp(String name, LocalDateTime updateTime) {
@@ -160,17 +158,25 @@ public class RemoteDictionaryRepository {
         String remoteIDQuery = "SELECT REMOTE_DICTIONARY_ID FROM remote_dictionary WHERE NAME = :name";
         Integer siteId = template.queryForObject(remoteIDQuery, new MapSqlParameterSource("name", name), Integer.class);
 
-        // for each
-        List<Integer[]> pairs = allConcepts.stream().map(id -> new Integer[] {id, siteId}).toList();
-        String pairSQL = "INSERT INTO concept_node__remote_dictionary (CONCEPT_NODE_ID, REMOTE_DICTIONARY_ID) VALUES :pairs";
-        template.update(pairSQL, new MapSqlParameterSource("pairs", pairs));
+        String pairSQL = "INSERT INTO concept_node__remote_dictionary (CONCEPT_NODE_ID, REMOTE_DICTIONARY_ID) VALUES (:nodeID, :dictID)";
+        allConcepts.stream().map(id -> new MapSqlParameterSource().addValue("nodeID", id).addValue("dictID", siteId))
+            .forEach(params -> template.update(pairSQL, params));
+
     }
 
     private Set<Integer> addConcepts(List<ConceptNodeDump> concepts, Map<String, Integer> datasets) {
-        String insertSQL = """
-            INSERT INTO concept_node
-                (DATASET_ID, NAME, DISPLAY, CONCEPT_TYPE, CONCEPT_PATH, PARENT_ID)
-            VALUES (:datasetID, :name, :display, :conceptType, :conceptPath, :parentID)
+        concepts.forEach(c -> c.setParentId(null));
+        String childSQL = """
+            INSERT INTO concept_node (DATASET_ID, NAME, DISPLAY, CONCEPT_TYPE, CONCEPT_PATH, PARENT_ID)
+            SELECT :datasetID, :name, :display, :conceptType, :conceptPath, CONCEPT_NODE_ID
+            FROM concept_node AS parent
+            WHERE parent.CONCEPT_PATH = :parentConceptPath
+            ON CONFLICT (md5(concept_path::text)) DO UPDATE SET NAME = EXCLUDED.NAME
+            RETURNING concept_node.CONCEPT_NODE_ID
+            """;
+        String rootSQL = """
+            INSERT INTO concept_node (DATASET_ID, NAME, DISPLAY, CONCEPT_TYPE, CONCEPT_PATH)
+            VALUES (:datasetID, :name, :display, :conceptType, :conceptPath)
             ON CONFLICT (md5(concept_path::text)) DO UPDATE SET NAME = EXCLUDED.NAME
             RETURNING CONCEPT_NODE_ID
             """;
@@ -178,9 +184,9 @@ public class RemoteDictionaryRepository {
         List<ConceptNodeDump> currentTier = concepts;
         while (!currentTier.isEmpty()) {
             for (ConceptNodeDump concept : currentTier) {
-                Integer conceptID = template.queryForObject(insertSQL, createParamMap(concept, datasets), Integer.class);
-                concept.setConceptNodeId(conceptID);
-                concept.children().forEach(ch -> ch.setParentId(conceptID));
+                concept.children().forEach(c -> c.setParentPath(concept.conceptPath()));
+                String sql = concept.parentId() == null ? rootSQL : childSQL;
+                Integer conceptID = template.queryForObject(sql, createParamMap(concept, datasets), Integer.class);
                 allConcepts.add(conceptID);
             }
             currentTier = currentTier.stream().map(ConceptNodeDump::children).flatMap(List::stream).toList();
@@ -191,7 +197,7 @@ public class RemoteDictionaryRepository {
     private MapSqlParameterSource createParamMap(ConceptNodeDump concept, Map<String, Integer> datasets) {
         return new MapSqlParameterSource().addValue("datasetID", datasets.get(concept.datasetRef())).addValue("name", concept.name())
             .addValue("display", concept.display()).addValue("conceptType", concept.conceptType())
-            .addValue("conceptPath", concept.conceptPath()).addValue("parentID", concept.parentId());
+            .addValue("conceptPath", concept.conceptPath()).addValue("parentConceptPath", concept.parentPath());
     }
 
     private Map<String, Integer> getDatasetRefs() {
@@ -212,26 +218,104 @@ public class RemoteDictionaryRepository {
     }
 
     public void addFacetCategoriesForSite(String name, List<FacetCategoryDump> categories) {
+        String sql = """
+            INSERT INTO facet_category (NAME, DISPLAY, DESCRIPTION)
+            VALUES (:name, :display, :description)
+            ON CONFLICT (NAME) DO NOTHING
+            """;
+        categories.stream()
+            .map(
+                c -> new MapSqlParameterSource().addValue("name", c.name()).addValue("display", c.display())
+                    .addValue("description", c.description())
+            ).forEach(params -> template.update(sql, params));
 
     }
 
     public void addFacetsForSite(String name, List<FacetDump> facets) {
-
+        // set all parent names
+        String sql = """
+            INSERT INTO facet (NAME, DISPLAY, DESCRIPTION, FACET_CATEGORY_ID, PARENT_ID)
+            SELECT :name, :display, :description, facet_category.FACET_CATEGORY_ID, parent.FACET_ID
+            FROM facet_category
+                LEFT JOIN facet AS parent ON parent.FACET_CATEGORY_ID = facet_category.FACET_CATEGORY_ID AND parent.name = :parentName
+            WHERE facet_category.NAME = :facetCategoryName
+            ON CONFLICT DO NOTHING
+            """;
+        List<FacetDump> currentTier = facets;
+        while (!currentTier.isEmpty()) {
+            for (FacetDump facet : currentTier) {
+                MapSqlParameterSource params = new MapSqlParameterSource().addValue("name", facet.name())
+                    .addValue("display", facet.display()).addValue("description", facet.description())
+                    .addValue("parentName", facet.parentName()).addValue("facetCategoryName", facet.facetCategoryName());
+                template.update(sql, params);
+                facet.children().forEach(c -> c.setParentName(facet.name()));
+            }
+            currentTier = currentTier.stream().map(FacetDump::children).flatMap(List::stream).toList();
+        }
     }
 
     public void addFacetCategoryMetasForSite(String name, List<FacetCategoryMetaDump> categoryMetas) {
-
+        String sql = """
+            INSERT INTO facet_category_meta (FACET_CATEGORY_ID, KEY, VALUE)
+            SELECT FACET_CATEGORY_ID, :key, :value
+            FROM facet_category
+            WHERE NAME = :facetCategoryName
+            ON CONFLICT DO NOTHING
+            """;
+        for (FacetCategoryMetaDump meta : categoryMetas) {
+            MapSqlParameterSource params = new MapSqlParameterSource().addValue("key", meta.key()).addValue("value", meta.value())
+                .addValue("facetCategoryName", meta.categoryName());
+            template.update(sql, params);
+        }
     }
 
-    public void addFacetMetasForSite(String name, List<FacetMetaDump> categoryMetas) {
-
+    public void addFacetMetasForSite(String name, List<FacetMetaDump> facetMetas) {
+        String sql = """
+            INSERT INTO facet_meta (FACET_ID, KEY, VALUE)
+            SELECT FACET_ID, :key, :value
+            FROM facet
+                JOIN facet_category ON facet.FACET_CATEGORY_ID = facet_category.FACET_CATEGORY_ID
+            WHERE facet.name = :facetName AND facet_category.name = :categoryName
+            ON CONFLICT DO NOTHING
+            """;
+        for (FacetMetaDump meta : facetMetas) {
+            MapSqlParameterSource params = new MapSqlParameterSource().addValue("key", meta.key()).addValue("value", meta.value())
+                .addValue("facetName", meta.facetName()).addValue("categoryName", meta.categoryName());
+            template.update(sql, params);
+        }
     }
 
     public void addConceptMetasForSite(String name, List<ConceptNodeMetaDump> conceptMetas) {
-
+        String sql = """
+            INSERT INTO concept_node_meta (CONCEPT_NODE_ID, KEY, VALUE)
+            SELECT CONCEPT_NODE_ID, :key, :value
+            FROM concept_node
+            WHERE CONCEPT_PATH = :conceptPath
+            ON CONFLICT DO NOTHING
+            """;
+        for (ConceptNodeMetaDump meta : conceptMetas) {
+            MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", meta.conceptPath())
+                .addValue("key", meta.key()).addValue("value", meta.value());
+            template.update(sql, params);
+        }
     }
 
     public void addFacetConceptPairsForSite(String name, List<FacetConceptPair> pairs) {
-
+        String sql = """
+            INSERT INTO facet__concept_node (FACET_ID, CONCEPT_NODE_ID)
+            SELECT FACET_ID, CONCEPT_NODE_ID
+            FROM facet
+                JOIN facet_category ON facet.FACET_CATEGORY_ID = facet_category.FACET_CATEGORY_ID
+                INNER JOIN concept_node ON concept_node.CONCEPT_PATH = :conceptPath
+            WHERE
+                facet.NAME = :facetName
+                AND facet_category.NAME = :categoryName
+            ON CONFLICT DO NOTHING
+            """;
+        for (FacetConceptPair pair : pairs) {
+            MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", pair.conceptPath())
+                .addValue("facetName", pair.facetName()).addValue("categoryName", pair.facetCategory());
+            template.update(sql, params);
+        }
     }
 }

@@ -1,7 +1,7 @@
 package edu.harvard.dbmi.avillach.dump.entities;
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +17,7 @@ public final class ConceptNodeDump implements DumpRow {
     private List<ConceptNodeDump> children = new ArrayList<>();
     private Integer conceptNodeId;
     private Integer parentId;
+    private String parentPath;
 
     public ConceptNodeDump() {}
 
@@ -115,5 +116,14 @@ public final class ConceptNodeDump implements DumpRow {
     @JsonIgnore
     public Integer parentId() {
         return parentId;
+    }
+
+    @JsonIgnore
+    public String parentPath() {
+        return parentPath;
+    }
+
+    public void setParentPath(String parentPath) {
+        this.parentPath = parentPath;
     }
 }

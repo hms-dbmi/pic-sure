@@ -58,9 +58,7 @@ class RemoteDictionaryRepositoryTest {
         subject.dropValuesForSite("bch");
 
         count = template.queryForObject(sql, Integer.class);
-        siteCount = template.queryForObject("SELECT count(*) FROM remote_dictionary WHERE NAME = 'bch'", Integer.class);
         Assertions.assertEquals(0, count);
-        Assertions.assertEquals(0, siteCount);
     }
 
     @Test
