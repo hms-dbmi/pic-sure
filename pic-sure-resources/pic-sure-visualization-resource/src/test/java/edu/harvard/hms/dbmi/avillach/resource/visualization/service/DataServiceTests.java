@@ -68,7 +68,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.requiredFields.add("\\DCC Harmonized data set\\demographic\\subcohort_1\\");
+            query.requiredFields.add("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\");
             query.expectedResultType = ResultType.COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -84,7 +84,7 @@ class DataServiceTests {
             variableMap.put("JHS: No Subcohort Structure", 3581);
             variableMap.put("SAS: No Subcohort Structure", 3181);
             variableMap.put("WHI Observational Study", 80922); //1
-            crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\", variableMap);
 
             List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
@@ -115,7 +115,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.requiredFields.add("\\DCC Harmonized data set\\demographic\\subcohort_1\\");
+            query.requiredFields.add("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\");
             query.expectedResultType = ResultType.COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -131,7 +131,7 @@ class DataServiceTests {
             variableMap.put("JHS: No Subcohort Structure", 3581);
             variableMap.put("SAS: No Subcohort Structure", 3181);
             variableMap.put("WHI Observational Study", 80922); //1
-            crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\", variableMap);
 
             List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
@@ -155,7 +155,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.requiredFields.add("\\DCC Harmonized data set\\demographic\\subcohort_1\\");
+            query.requiredFields.add("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\");
             query.expectedResultType = ResultType.COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -168,7 +168,7 @@ class DataServiceTests {
             variableMap.put("COPDGene: No Subcohort Structure", 11234);
             variableMap.put("CHS Original Cohort", 4540);
             variableMap.put("WHI Observational Study", 80922);
-            crossCountsMap.put("\\DCC Harmonized data set\\demographic\\subcohort_1\\", variableMap);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\demographic\\subcohort_1\\", variableMap);
 
             List<CategoricalData> list = dataProcessingService.getCategoricalData(crossCountsMap);
             Map<String, Integer> varMap = list.get(0).getCategoricalMap();
@@ -264,9 +264,9 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.numericFilters.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
-            query.numericFilters.put("\\DCC Harmonized data set\\blood_cell_count\\platelet_ncnc_bld_1\\", new Filter.DoubleFilter(100.0, 45000.0));
-            query.numericFilters.put("\\DCC Harmonized data set\\lipids\\hdl_1\\", new Filter.DoubleFilter(11.0, 150.0));
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\blood_cell_count\\platelet_ncnc_bld_1\\", new Filter.DoubleFilter(100.0, 45000.0));
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\lipids\\hdl_1\\", new Filter.DoubleFilter(11.0, 150.0));
             query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -293,9 +293,9 @@ class DataServiceTests {
                 int randomCount = (int)Math.round(Math.random() * 100);
                 variableMap3.put(String.valueOf(randomDouble), randomCount);
             }
-            crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
-            crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\platelet_ncnc_bld_1\\", variableMap2);
-            crossCountsMap.put("\\DCC Harmonized data set\\lipids\\hdl_1\\", variableMap3);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\blood_cell_count\\platelet_ncnc_bld_1\\", variableMap2);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\lipids\\hdl_1\\", variableMap3);
             List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals("Variable distribution of blood_cell_count: hemoglobin_mcnc_bld_1", list.get(0).getTitle());
@@ -318,7 +318,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.numericFilters.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
             query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -353,7 +353,7 @@ class DataServiceTests {
             expectedOutputMap.put("12.0 - 22.0", 1128);
             expectedOutputMap.put("23.0 +", 434);
 
-            crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
             List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap.size(), list.get(0).getContinuousMap().size());
@@ -367,7 +367,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.numericFilters.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
             query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -467,7 +467,7 @@ class DataServiceTests {
             expectedOutputMap.put("12.0 - 22.0", 1128);
             expectedOutputMap.put("23.0 +", 434);
 
-            crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
             List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             List<Map.Entry<String,Integer>> entryList =
@@ -485,7 +485,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.numericFilters.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", new Filter.DoubleFilter());
             query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -577,7 +577,7 @@ class DataServiceTests {
             expectedOutputMap.put("61.0 - 90.0", 7316);
             expectedOutputMap.put("91.0 +", 7350);
 
-            crossCountsMap.put("\\DCC Harmonized data set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\blood_cell_count\\hemoglobin_mcnc_bld_1\\", variableMap1);
             List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(crossCountsMap.size(), list.size());
             assertEquals(expectedOutputMap, list.get(0).getContinuousMap());
@@ -590,7 +590,7 @@ class DataServiceTests {
             goodQueryRequest.setResourceUUID(UUID.randomUUID());
             goodQueryRequest.getResourceCredentials().put("Authorization", "some token");
             Query query = new Query();
-            query.numericFilters.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", new Filter.DoubleFilter());
+            query.numericFilters.put("\\DCC_Harmonized_data_set\\baseline_common_covariates\\bmi_baseline_1\\", new Filter.DoubleFilter());
             query.expectedResultType = ResultType.CONTINUOUS_CROSS_COUNT;
             goodQueryRequest.setQuery(query);
             Map<String, Map<String, Integer>> crossCountsMap = new LinkedHashMap<>();
@@ -625,7 +625,7 @@ class DataServiceTests {
                 variableMap1.put(key, 1);
                 n -= 1;
             }
-            crossCountsMap.put("\\DCC Harmonized data set\\baseline_common_covariates\\bmi_baseline_1\\", variableMap1);
+            crossCountsMap.put("\\DCC_Harmonized_data_set\\baseline_common_covariates\\bmi_baseline_1\\", variableMap1);
             List<ContinuousData> list = dataProcessingService.getContinuousData(crossCountsMap, false, false);
             assertEquals(1, list.size());
             assertTrue(1 < list.get(0).getContinuousMap().size());
