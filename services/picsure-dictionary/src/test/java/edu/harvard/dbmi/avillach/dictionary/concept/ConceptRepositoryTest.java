@@ -85,15 +85,15 @@ class ConceptRepositoryTest {
         List<? extends Record> expected = List.of(
             new ContinuousConcept(
                 "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
-                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0D, 3D, "FHS", null
             ),
             new ContinuousConcept(
                 "\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007",
-                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0D, 1D, "FHS", null
             ),
             new ContinuousConcept(
                 "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
-                true, 0F, 5F, "FHS", null
+                true, 0D, 5D, "FHS", null
             )
         );
 
@@ -106,15 +106,15 @@ class ConceptRepositoryTest {
         List<? extends Record> expected = List.of(
             new ContinuousConcept(
                 "\\phs000007\\pht000021\\phv00003844\\FL200\\", "phv00003844", "FL200", "phs000007",
-                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 3F, "FHS", null
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0D, 3D, "FHS", null
             ),
             new ContinuousConcept(
                 "\\phs000007\\pht000022\\phv00004260\\FM219\\", "phv00004260", "FM219", "phs000007",
-                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0F, 1F, "FHS", null
+                "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", true, 0D, 1D, "FHS", null
             ),
             new ContinuousConcept(
                 "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY",
-                true, 0F, 5F, "FHS", null
+                true, 0D, 5D, "FHS", null
             )
         );
 
@@ -159,7 +159,7 @@ class ConceptRepositoryTest {
     void shouldGetDetailForConcept() {
         ContinuousConcept expected = new ContinuousConcept(
             "\\phs000007\\pht000033\\phv00008849\\D080\\", "phv00008849", "D080", "phs000007", "# 12 OZ CUPS OF CAFFEINATED COLA/DAY", true,
-            0F, 5F, "FHS", null
+            0D, 5D, "FHS", null
         );
         Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
 
@@ -300,7 +300,7 @@ class ConceptRepositoryTest {
     void shouldGetStigmatizingConcept() {
         Optional<Concept> actual = subject.getConcept("phs002385", "\\phs002385\\TXNUM\\");
         ContinuousConcept expected = new ContinuousConcept(
-            "\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0F, 0F, "HCT_for_SCD", Map.of()
+            "\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0D, 0D, "HCT_for_SCD", Map.of()
         );
 
         Assertions.assertTrue(actual.isPresent());
@@ -316,8 +316,8 @@ class ConceptRepositoryTest {
 
         Assertions.assertTrue(actual.isPresent());
         ContinuousConcept concept = (ContinuousConcept) actual.get();
-        Assertions.assertEquals((float) min, concept.min());
-        Assertions.assertEquals((float) max, concept.max());
+        Assertions.assertEquals(min, concept.min());
+        Assertions.assertEquals(max, concept.max());
     }
 
     @Test
@@ -326,8 +326,8 @@ class ConceptRepositoryTest {
 
         Assertions.assertTrue(actual.isPresent());
         ContinuousConcept concept = (ContinuousConcept) actual.get();
-        Assertions.assertEquals(0.57f, concept.min());
-        Assertions.assertEquals(6.77f, concept.max());
+        Assertions.assertEquals(0.57D, concept.min());
+        Assertions.assertEquals(6.77D, concept.max());
     }
 
     @Test

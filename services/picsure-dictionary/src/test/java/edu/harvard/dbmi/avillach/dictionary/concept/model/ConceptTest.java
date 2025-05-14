@@ -62,7 +62,7 @@ class ConceptTest {
             }
             """;
 
-        ContinuousConcept expected = new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0F, 1F, "", Map.of());
+        ContinuousConcept expected = new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0D, 1D, "", Map.of());
         Concept actual = new ObjectMapper().readValue(json, Concept.class);
 
         Assertions.assertEquals(expected, actual);
@@ -72,7 +72,7 @@ class ConceptTest {
     @Test
     void shouldIncludeTypeInList() throws JsonProcessingException {
         List<Record> concepts = List.of(
-            new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0F, 1F, "", Map.of()),
+            new ContinuousConcept("/foo//baz", "baz", "Baz", "study_a", null, true, 0D, 1D, "", Map.of()),
             new CategoricalConcept("/foo//bar", "bar", "Bar", "study_a", null, List.of("a", "b"), true, "", null, Map.of())
         );
 

@@ -9,7 +9,6 @@ import org.json.JSONException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -17,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Component
 public class JsonBlobParser {
@@ -40,35 +38,35 @@ public class JsonBlobParser {
         }
     }
 
-    public Float parseMin(String valuesArr) {
+    public Double parseMin(String valuesArr) {
         return parseFromIndex(valuesArr, 0);
     }
 
-    private Float parseFromIndex(String valuesArr, int index) {
+    protected Double parseFromIndex(String valuesArr, int index) {
         try {
             JSONArray arr = new JSONArray(valuesArr);
             if (arr.length() != 2) {
-                return 0F;
+                return 0D;
             }
             Object raw = arr.get(index);
             return switch (raw) {
-                case Double d -> d.floatValue();
-                case Integer i -> i.floatValue();
-                case String s -> Double.valueOf(s).floatValue();
-                case BigDecimal d -> d.floatValue();
-                case BigInteger i -> i.floatValue();
-                default -> 0f;
+                case Double d -> d;
+                case Integer i -> i.doubleValue();
+                case BigDecimal d -> d.doubleValue();
+                case BigInteger i -> i.doubleValue();
+                case String s -> Double.parseDouble(s);
+                default -> 0D;
             };
         } catch (JSONException ex) {
             log.warn("Invalid json array for values: ", ex);
-            return 0F;
+            return 0D;
         } catch (NumberFormatException ex) {
             log.warn("Valid json array but invalid val within: ", ex);
-            return 0F;
+            return 0D;
         }
     }
 
-    public Float parseMax(String valuesArr) {
+    public Double parseMax(String valuesArr) {
         return parseFromIndex(valuesArr, 1);
     }
 
