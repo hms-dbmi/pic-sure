@@ -68,7 +68,7 @@ public class DataUploadController {
         }
         // no-op if already uploading
         if (statuses.phenotypic() == UploadStatus.Uploading || statuses.genomic() == UploadStatus.Uploading) {
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(statuses);
+            LOG.warn("Attempting to reupload query {} which is stuck in Uploading status.", query.getPicSureId());
         }
         return ResponseEntity.ok(uploadService.asyncUpload(query, site, dataType));
     }

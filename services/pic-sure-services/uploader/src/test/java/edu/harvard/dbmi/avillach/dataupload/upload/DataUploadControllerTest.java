@@ -112,17 +112,4 @@ class DataUploadControllerTest {
         Assertions.assertEquals(HttpStatus.UNAUTHORIZED, actual.getStatusCode());
     }
 
-    @Test
-    void shouldNoOpWhenAlreadyUploading() {
-        Query query = new Query();
-        query.setPicSureId("my id");
-        DataUploadStatuses uploading =
-            new DataUploadStatuses(UploadStatus.Uploading, UploadStatus.Uploading, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.EPOCH, "bch");
-        Mockito.when(statusService.getStatus(query.getPicSureId()))
-            .thenReturn(Optional.of(uploading));
-
-        ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
-
-        Assertions.assertEquals(HttpStatus.ACCEPTED, actual.getStatusCode());
-    }
 }

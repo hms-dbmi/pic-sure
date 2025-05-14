@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dataupload.upload.lambda;
 import edu.harvard.dbmi.avillach.dataupload.hpds.HPDSClient;
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
 import edu.harvard.dbmi.avillach.dataupload.status.StatusService;
+import edu.harvard.dbmi.avillach.dataupload.status.UploadStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,6 +66,9 @@ public class CumulusUploadService {
         log.info("File location verified. Uploading for {} to AWS", query.getPicSureId());
         try {
             boolean uploaded = uploadFileToPresignedUrl(uploadURL.get(), data);
+            if (uploaded) {
+                statusService.setPatientStatus(query, UploadStatus.Uploaded);
+            }
         } catch (IOException e) {
             log.error("Error uploading data: ", e);
         }

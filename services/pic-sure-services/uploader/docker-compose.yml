@@ -15,6 +15,7 @@ services:
       - $DOCKER_CONFIG_DIR/aws_uploads/:/gic_query_results/
     networks:
       - picsure
+      - uploader
     profiles:
       - "production"
   uploader-db:
@@ -35,7 +36,7 @@ services:
       timeout: 20s
       retries: 10
     networks:
-      - picsure
+      - uploader
     restart: always
     volumes:
       - /usr/local/pic-sure-services/uploader/data/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
@@ -49,7 +50,7 @@ services:
     volumes:
       - ./flyway:/flyway/sql
     networks:
-      - picsure
+      - uploader
     profiles:
       - "migrate"
     depends_on:

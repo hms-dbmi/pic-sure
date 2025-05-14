@@ -48,28 +48,8 @@ public class S3StateVerifier {
         LOG.info("Checking S3 connection to {} ...", institution.siteName());
         createTempFileWithText(institution)
             .flatMap(p -> uploadFileFromPath(p, institution))
-            .map(this::waitABit)
-            .flatMap(s1 -> deleteFileFromBucket(s1, institution))
             .orElseThrow();
         LOG.info("S3 connection to {} verified.", institution.siteName());
-    }
-
-    private Optional<String> deleteFileFromBucket(String s, SiteAWSInfo info) {
-        LOG.info("Verifying delete capabilities");
-        DeleteObjectRequest request = DeleteObjectRequest.builder().bucket(info.bucket()).key(s).build();
-        return clientBuilder.buildClientForSite(info.siteName())
-            .map(c -> c.deleteObject(request))
-            .map(DeleteObjectResponse::deleteMarker)
-            .map((ignored) -> s);
-    }
-
-    private String waitABit(String s) {
-        try {
-            Thread.sleep(Duration.of(10, ChronoUnit.SECONDS));
-        } catch (InterruptedException e) {
-            LOG.warn("Error sleeping: ", e);
-        }
-        return s;
     }
 
     private Optional<String> uploadFileFromPath(Path p, SiteAWSInfo info) {
@@ -89,6 +69,7 @@ public class S3StateVerifier {
     private Optional<Path> createTempFileWithText(SiteAWSInfo info) {
         try {
             Path path = Files.createTempFile(testTempPrefix + "_" + info.siteName(), null);
+            LOG.info("Created a file with name {} to upload to {}", path.toString(), info.siteName());
             Files.writeString(path, "Howdy!");
             return Optional.of(path);
         } catch (IOException e) {
