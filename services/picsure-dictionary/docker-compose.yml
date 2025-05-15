@@ -21,7 +21,6 @@ services:
     env_file: .env
     networks:
       - dictionary
-      - hpdsNet
       - picsure
   dictionary-dump:
     container_name: dictionary-dump
@@ -35,7 +34,6 @@ services:
       - $DOCKER_CONFIG_DIR/dictionary/dump/application.properties:/application.properties
     networks:
       - dictionary
-      - hpdsNet
       - picsure
 
 volumes:
@@ -45,6 +43,4 @@ networks:
   dictionary:
     external: true
   picsure:
-    external: true
-  hpdsNet:
     external: true
