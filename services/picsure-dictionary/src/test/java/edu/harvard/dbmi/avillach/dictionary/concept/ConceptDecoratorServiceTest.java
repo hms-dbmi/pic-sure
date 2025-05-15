@@ -34,13 +34,15 @@ class ConceptDecoratorServiceTest {
         CategoricalConcept table = new CategoricalConcept("\\study\\table\\", "dataset");
         Dataset study = new Dataset("dataset", "", "", "");
 
-        Mockito.when(conceptService.conceptDetail("dataset", table.dataset())).thenReturn(Optional.of(table));
+        Mockito.when(conceptService.conceptDetailWithoutAncestors(table.dataset(), table.conceptPath())).thenReturn(Optional.of(table));
         Mockito.when(datasetService.getDataset("dataset")).thenReturn(Optional.of(study));
 
         Concept actual = subject.populateParentConcepts(concept);
         Concept expected = concept.withStudy(study).withTable(table);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected.study(), actual.study());
+        Assertions.assertEquals(expected.table(), actual.table());
     }
 
     @Test
@@ -49,13 +51,15 @@ class ConceptDecoratorServiceTest {
         CategoricalConcept table = new CategoricalConcept("\\study\\table\\", "dataset");
         Dataset study = new Dataset("dataset", "", "", "");
 
-        Mockito.when(conceptService.conceptDetail("dataset", table.dataset())).thenReturn(Optional.of(table));
+        Mockito.when(conceptService.conceptDetailWithoutAncestors(table.dataset(), table.conceptPath())).thenReturn(Optional.of(table));
         Mockito.when(datasetService.getDataset("dataset")).thenReturn(Optional.of(study));
 
         Concept actual = subject.populateParentConcepts(concept);
         Concept expected = concept.withStudy(study).withTable(table);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected.study(), actual.study());
+        Assertions.assertEquals(expected.table(), actual.table());
     }
 
     @Test
@@ -69,13 +73,24 @@ class ConceptDecoratorServiceTest {
         Concept expected = concept.withStudy(study);
 
         Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected.study(), actual.study());
+        Assertions.assertEquals(expected.table(), actual.table());
     }
 
     @Test
-    void shouldNotPopulateWeirdConcept() {
-        CategoricalConcept concept = new CategoricalConcept("\\1\\2\\3\\4\\5\\6\\", "dataset");
-        Concept actual = subject.populateParentConcepts(concept);
+    void shouldPopulateLongOnes() {
+        CategoricalConcept concept = new CategoricalConcept("\\phs003461\\RECOVER_Congenital\\rcnsurveys\\cbcl\\cbcl_56\\2\\", "phs003461");
+        CategoricalConcept table = new CategoricalConcept("\\phs003461\\RECOVER_Congenital\\", "phs003461");
+        Dataset study = new Dataset("phs003461", "", "", "");
 
-        Assertions.assertEquals(concept, actual);
+        Mockito.when(conceptService.conceptDetailWithoutAncestors(table.dataset(), table.conceptPath())).thenReturn(Optional.of(table));
+        Mockito.when(datasetService.getDataset("phs003461")).thenReturn(Optional.of(study));
+
+        Concept actual = subject.populateParentConcepts(concept);
+        Concept expected = concept.withStudy(study).withTable(table);
+
+        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected.study(), actual.study());
+        Assertions.assertEquals(expected.table(), actual.table());
     }
 }

@@ -23,7 +23,7 @@ public class ConceptDecoratorService {
     private final ConceptService conceptService;
     private final DatasetService datasetService;
 
-    private static final int COMPLIANT = 4, NON_COMPLIANT_TABLED = 3, NON_COMPLIANT_UNTABLED = 2;
+    private static final int COMPLIANT = 4, NON_COMPLIANT_TABLED = 3, NON_COMPLIANT_UNTABLED = 2, WEIRD_1 = 1, WEIRD_0 = 0;
 
     @Autowired
     public ConceptDecoratorService(
@@ -42,28 +42,16 @@ public class ConceptDecoratorService {
         }
 
         // In some environments, certain parent concepts have critical details that we need to add to the detailed response
-        List<String> conceptNodes = Stream.of(concept.conceptPath().split("\\\\")).filter(Predicate.not(String::isBlank)).toList(); // you
-                                                                                                                                    // have
-                                                                                                                                    // to
-                                                                                                                                    // double
-                                                                                                                                    // escape
-                                                                                                                                    // the
-                                                                                                                                    // slash.
-                                                                                                                                    // Once
-                                                                                                                                    // for
-                                                                                                                                    // strings,
-                                                                                                                                    // and
-                                                                                                                                    // once
-                                                                                                                                    // for
-                                                                                                                                    // regex
+        List<String> conceptNodes = Stream.of(concept.conceptPath().split("\\\\")).filter(Predicate.not(String::isBlank)).toList();
+        // you have to double escape the slash. Once for strings, and once for regex
 
         return switch (conceptNodes.size()) {
-            case COMPLIANT, NON_COMPLIANT_TABLED -> populateTabledConcept(concept, conceptNodes);
             case NON_COMPLIANT_UNTABLED -> populateNonCompliantTabledConcept(concept, conceptNodes);
-            default -> {
+            case WEIRD_0, WEIRD_1 -> {
                 LOG.warn("Ignoring decoration request for weird concept path {}", concept.conceptPath());
                 yield concept;
             }
+            default -> populateTabledConcept(concept, conceptNodes);
         };
     }
 
