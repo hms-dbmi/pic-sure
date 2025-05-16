@@ -41,4 +41,13 @@ class DumpControllerTest {
         Assertions.assertEquals(200, actual.getStatusCode().value());
         Assertions.assertEquals("2020-01-01T00:00:00.000", actual.getBody());
     }
+
+    @Test
+    void shouldGetDatabaseVersion() {
+        Mockito.when(service.getDatabaseVersion()).thenReturn(3);
+        ResponseEntity<Integer> actual = subject.getDBVersion();
+
+        Assertions.assertEquals(200, actual.getStatusCode().value());
+        Assertions.assertEquals(3, actual.getBody());
+    }
 }

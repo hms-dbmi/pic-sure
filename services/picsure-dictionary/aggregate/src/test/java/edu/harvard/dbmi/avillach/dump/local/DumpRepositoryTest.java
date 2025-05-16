@@ -97,4 +97,10 @@ class DumpRepositoryTest {
         List<? extends DumpRow> actual = subject.getAllFacetConceptPairs();
         Assertions.assertEquals(94, actual.size());
     }
+
+    @Test
+    void shouldGetDatabaseVersion() {
+        Integer actual = subject.getDatabaseVersion();
+        Assertions.assertEquals(3, actual);
+    }
 }

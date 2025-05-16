@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dump.remote;
 
+import edu.harvard.dbmi.avillach.dump.local.DumpRepository;
 import edu.harvard.dbmi.avillach.dump.remote.api.RemoteDictionaryAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,16 +21,18 @@ public class RemoteDumpSchedulingService {
     private static final Logger log = LoggerFactory.getLogger(RemoteDumpSchedulingService.class);
     private final List<RemoteDictionary> dictionaries;
     private final RemoteDictionaryRepository repository;
+    private final DumpRepository localRepository;
     private final RemoteDictionaryAPI api;
     private final DataRefreshService refreshService;
 
     @Autowired
     public RemoteDumpSchedulingService(
-        List<RemoteDictionary> dictionaries, RemoteDictionaryRepository repository, RemoteDictionaryAPI api,
+        List<RemoteDictionary> dictionaries, RemoteDictionaryRepository repository, DumpRepository localRepository, RemoteDictionaryAPI api,
         DataRefreshService refreshService
     ) {
         this.dictionaries = dictionaries;
         this.repository = repository;
+        this.localRepository = localRepository;
         this.api = api;
         this.refreshService = refreshService;
     }
@@ -44,10 +47,19 @@ public class RemoteDumpSchedulingService {
     private boolean shouldUpdate(RemoteDictionary dictionary) {
         log.info("Polling {} for last update time", dictionary.fullName());
         Optional<LocalDateTime> maybeRemoteUpdate = api.fetchUpdateTimestamp(dictionary.name());
-        if (maybeRemoteUpdate.isEmpty()) {
-            log.info("Error reaching server {}. Will not update.", dictionary.fullName());
+        Optional<Integer> maybeDatabaseVersion = api.fetchDatabaseVersion(dictionary.name());
+        if (maybeRemoteUpdate.isEmpty() || maybeDatabaseVersion.isEmpty()) {
+            log.warn("Error reaching server {}. Will not update.", dictionary.fullName());
             return false;
         }
+
+        Integer remoteVersion = maybeDatabaseVersion.get();
+        Integer localVersion = localRepository.getDatabaseVersion();
+        if (!localVersion.equals(remoteVersion)) {
+            log.warn("Database version mismatch. Remote: {} != Local: {}", remoteVersion, localVersion);
+            return false;
+        }
+
         LocalDateTime remoteUpdate = maybeRemoteUpdate.get();
         log.info("The remote dictionary for {} was last updated at {}", dictionary.fullName(), remoteUpdate);
         LocalDateTime localUpdate = repository.getUpdateTimestamp(dictionary.name());

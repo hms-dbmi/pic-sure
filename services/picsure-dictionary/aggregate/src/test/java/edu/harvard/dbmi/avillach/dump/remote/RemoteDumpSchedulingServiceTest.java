@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.dump.remote;
 
+import edu.harvard.dbmi.avillach.dump.local.DumpRepository;
 import edu.harvard.dbmi.avillach.dump.remote.api.RemoteDictionaryAPI;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -24,6 +25,9 @@ class RemoteDumpSchedulingServiceTest {
     @MockitoBean
     DataRefreshService dataRefreshService;
 
+    @MockitoBean
+    DumpRepository dumpRepository;
+
     @Autowired
     RemoteDumpSchedulingService subject;
 
@@ -33,6 +37,9 @@ class RemoteDumpSchedulingServiceTest {
         Mockito.when(api.fetchUpdateTimestamp("foo")).thenReturn(Optional.of(LocalDateTime.now()));
         Mockito.when(repository.getUpdateTimestamp("bch")).thenReturn(LocalDateTime.MIN);
         Mockito.when(repository.getUpdateTimestamp("foo")).thenReturn(LocalDateTime.MIN);
+        Mockito.when(api.fetchDatabaseVersion("bch")).thenReturn(Optional.of(3));
+        Mockito.when(api.fetchDatabaseVersion("foo")).thenReturn(Optional.of(3));
+        Mockito.when(dumpRepository.getDatabaseVersion()).thenReturn(3);
 
         subject.pollForUpdates();
 
@@ -46,6 +53,24 @@ class RemoteDumpSchedulingServiceTest {
         Mockito.when(api.fetchUpdateTimestamp("foo")).thenReturn(Optional.of(LocalDateTime.MIN));
         Mockito.when(repository.getUpdateTimestamp("bch")).thenReturn(LocalDateTime.MIN);
         Mockito.when(repository.getUpdateTimestamp("foo")).thenReturn(LocalDateTime.MIN);
+        Mockito.when(api.fetchDatabaseVersion("bch")).thenReturn(Optional.of(3));
+        Mockito.when(api.fetchDatabaseVersion("foo")).thenReturn(Optional.of(3));
+        Mockito.when(dumpRepository.getDatabaseVersion()).thenReturn(3);
+
+        subject.pollForUpdates();
+
+        Mockito.verifyNoInteractions(dataRefreshService);
+    }
+
+    @Test
+    void shouldNotUpdateDictionaryWhenVersionsNotMatched() {
+        Mockito.when(api.fetchUpdateTimestamp("bch")).thenReturn(Optional.of(LocalDateTime.now()));
+        Mockito.when(api.fetchUpdateTimestamp("foo")).thenReturn(Optional.of(LocalDateTime.now()));
+        Mockito.when(repository.getUpdateTimestamp("bch")).thenReturn(LocalDateTime.MIN);
+        Mockito.when(repository.getUpdateTimestamp("foo")).thenReturn(LocalDateTime.MIN);
+        Mockito.when(api.fetchDatabaseVersion("bch")).thenReturn(Optional.of(3));
+        Mockito.when(api.fetchDatabaseVersion("foo")).thenReturn(Optional.of(3));
+        Mockito.when(dumpRepository.getDatabaseVersion()).thenReturn(4);
 
         subject.pollForUpdates();
 

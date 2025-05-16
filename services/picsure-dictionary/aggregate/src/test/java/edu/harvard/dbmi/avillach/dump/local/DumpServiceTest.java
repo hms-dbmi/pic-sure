@@ -42,4 +42,11 @@ class DumpServiceTest {
         LocalDateTime actual = subject.getLastUpdate();
         Assertions.assertEquals(LocalDateTime.MIN, actual);
     }
+
+    @Test
+    void shouldGetDatabaseVersion() {
+        Mockito.when(repository.getDatabaseVersion()).thenReturn(3);
+        Integer actual = subject.getDatabaseVersion();
+        Assertions.assertEquals(3, actual);
+    }
 }

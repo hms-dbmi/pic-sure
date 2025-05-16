@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach.dump.remote.api;
 
-import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dump.entities.*;
@@ -16,12 +15,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
-
-import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.*;
 
 @SpringBootTest
 class RemoteDictionaryAPITest {
@@ -47,6 +45,21 @@ class RemoteDictionaryAPITest {
 
         Optional<LocalDateTime> actual = subject.fetchUpdateTimestamp("bch");
         Optional<LocalDateTime> expected = Optional.of(now);
+
+        Assertions.assertEquals(expected, actual);
+    }
+
+    @Test
+    void shouldFetchDatabaseVersion() throws IOException {
+        CloseableHttpResponse response = Mockito.mock(CloseableHttpResponse.class);
+        BasicHttpEntity body = new BasicHttpEntity();
+        Integer version = 3;
+        body.setContent(new ByteArrayInputStream(version.toString().getBytes()));
+        Mockito.when(response.getEntity()).thenReturn(body);
+        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+
+        Optional<Integer> actual = subject.fetchDatabaseVersion("bch");
+        Optional<Integer> expected = Optional.of(version);
 
         Assertions.assertEquals(expected, actual);
     }

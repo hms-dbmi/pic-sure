@@ -173,4 +173,9 @@ public class DumpRepository {
             """;
         return template.query(sql, NO_PARAMS, facetConceptPairMapper);
     }
+
+    public Integer getDatabaseVersion() {
+        String sql = "SELECT DATABASE_VERSION FROM update_info";
+        return template.queryForObject(sql, NO_PARAMS, Integer.class);
+    }
 }

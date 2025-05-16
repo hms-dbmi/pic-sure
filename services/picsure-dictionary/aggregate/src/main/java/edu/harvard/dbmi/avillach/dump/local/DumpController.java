@@ -27,4 +27,9 @@ public class DumpController {
     public ResponseEntity<String> getLastUpdated() {
         return ResponseEntity.ok(dumpService.getLastUpdate().format(isoFormat));
     }
+
+    @GetMapping("/database-version")
+    public ResponseEntity<Integer> getDBVersion() {
+        return ResponseEntity.ok(dumpService.getDatabaseVersion());
+    }
 }

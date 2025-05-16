@@ -30,4 +30,8 @@ public class DumpService {
     public LocalDateTime getLastUpdate() {
         return repository.getLastUpdated();
     }
+
+    public Integer getDatabaseVersion() {
+        return repository.getDatabaseVersion();
+    }
 }

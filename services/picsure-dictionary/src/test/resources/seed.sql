@@ -301,7 +301,8 @@ ALTER TABLE public.facet_meta ALTER COLUMN facet_meta_id ADD GENERATED ALWAYS AS
 
 
 CREATE TABLE IF NOT EXISTS public.update_info (
-    LAST_UPDATED TIMESTAMP NOT NULL DEFAULT '2000-01-01 00:00:00'
+    LAST_UPDATED TIMESTAMP NOT NULL DEFAULT '2000-01-01 00:00:00',
+    DATABASE_VERSION INT NOT NULL DEFAULT 3
 );
 
 CREATE TABLE IF NOT EXISTS public.remote_dictionary (
@@ -771,6 +772,7 @@ COPY public.facet_category (facet_category_id, name, display, description) FROM 
 --
 
 COPY public.facet_category_meta (facet_category_meta_id, facet_category_id, key, value) FROM stdin;
+1	1	my_key	my_value
 \.
 
 
@@ -1087,8 +1089,8 @@ INSERT INTO public.dataset_harmonization (dataset_harmonization_id, harmonized_d
     (1, 26, 22);
 
 
-INSERT INTO public.update_info (LAST_UPDATED) VALUES
-    ('2020-02-02 00:00:00');
+INSERT INTO public.update_info (LAST_UPDATED, DATABASE_VERSION) VALUES
+    ('2020-02-02 00:00:00', 3);
 
 
 CREATE TABLE IF NOT EXISTS public.concept_node__remote_dictionary (

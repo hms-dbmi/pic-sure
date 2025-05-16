@@ -45,6 +45,11 @@ public class RemoteDictionaryAPI {
             .map(iso -> LocalDateTime.parse(iso, formatter));
     }
 
+    public Optional<Integer> fetchDatabaseVersion(String siteName) {
+        HttpGet request = new HttpGet(rootURL + siteName + "/database-version");
+        return runRequest(new TypeReference<Integer>() {}, request);
+    }
+
     public Optional<List<ConceptNodeDump>> fetchConcepts(String siteName) {
         HttpGet request = new HttpGet(rootURL + siteName + "/dump/" + DumpTable.ConceptNode.name());
         return runRequest(new TypeReference<List<ConceptNodeDump>>() {}, request);
