@@ -242,9 +242,9 @@ class ConceptRepositoryTest {
 
         Optional<Concept> actual =
             subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 3);
-        Optional<Concept> expected = Optional.of(d0);
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertTrue(actual.isPresent());
+        compareWithChildren(List.of(actual.get()), List.of(d0));
     }
 
     @Test
@@ -274,9 +274,9 @@ class ConceptRepositoryTest {
 
         Optional<Concept> actual =
             subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 30);
-        Optional<Concept> expected = Optional.of(d0);
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertTrue(actual.isPresent());
+        compareWithChildren(List.of(actual.get()), List.of(d0));
     }
 
     @Test
@@ -355,6 +355,14 @@ class ConceptRepositoryTest {
         // compare the maps to each other.
         Map<String, String> actualMeta = concept.meta();
         Assertions.assertEquals(actualMeta, expectedMeta);
+    }
+
+    private static void compareWithChildren(List<Concept> actualConcepts, List<Concept> expectedConcepts) {
+        while (!expectedConcepts.isEmpty()) {
+            Assertions.assertEquals(expectedConcepts, actualConcepts);
+            actualConcepts = actualConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
+            expectedConcepts = expectedConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
+        }
     }
 
 }
