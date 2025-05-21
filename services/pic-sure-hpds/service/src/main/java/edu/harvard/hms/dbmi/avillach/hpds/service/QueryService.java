@@ -129,6 +129,7 @@ public class QueryService {
 		switch(query.getExpectedResultType()) {
 			case PATIENTS:
 				p = patientProcessor;
+				break;
 			case SECRET_ADMIN_DATAFRAME:
 				p = queryProcessor;
 				break;
