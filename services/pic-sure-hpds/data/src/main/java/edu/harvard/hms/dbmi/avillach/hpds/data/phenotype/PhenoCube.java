@@ -218,6 +218,8 @@ public class PhenoCube<V extends Comparable<V>> implements Serializable {
 	}
 
 	public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
+		patientIds = new TreeSet<>(patientIds);
+
 		List<KeyAndValue<V>> values = new ArrayList<>();
 		int x = 0;
 		for(Integer id : patientIds) {
