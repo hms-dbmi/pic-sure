@@ -50,7 +50,7 @@ public class Query {
     public List<String> fields = new ArrayList<String>();
     public List<String> requiredFields = new ArrayList<String>();
     public List<String> anyRecordOf = new ArrayList<String>();
-    private List<List<String>> anyRecordOfMulti = new ArrayList<>();
+    public List<List<String>> anyRecordOfMulti = new ArrayList<>();
     public Map<String, Filter.DoubleFilter> numericFilters = new TreeMap<String, Filter.DoubleFilter>();
     public Map<String, String[]> categoryFilters = new TreeMap<String, String[]>();
     public List<VariantInfoFilter> variantInfoFilters = new ArrayList<VariantInfoFilter>();
