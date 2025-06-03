@@ -59,5 +59,6 @@ volumes:
   uploader-db-data:
 
 networks:
+  uploader:
   picsure:
     external: true
