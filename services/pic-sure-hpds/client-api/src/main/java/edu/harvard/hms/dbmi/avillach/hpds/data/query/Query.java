@@ -62,6 +62,7 @@ public class Query {
 		return requiredFields;
 	}
 
+	@Deprecated
 	public List<String> getAnyRecordOf() {
 		return anyRecordOf;
 	}
