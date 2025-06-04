@@ -161,8 +161,24 @@ public class HttpClientUtil {
 
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
-        try (InputStream is = response.getEntity().getContent()) {
-            Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+        try (InputStream is = response.getEntity().getContent();
+            /*
+             * This is a bit of a hack. Previously, we were using EntityUtils.toString(), but it isn't very performant. It would require use
+             * to convert the response to a string and then return the value. A major benefit of EntityUtils.toString() is it strips the BOM
+             * (Byte Mark Order) by default. To handle large payloads, we want to stream the response instead of having an intermediate
+             * parse to a string; however, we still need to strip the BOM from the response for clients that don't expect it. For instances
+             * gsub in R.
+             */
+            PushbackInputStream pbis = new PushbackInputStream(is, 3)
+        ) {
+
+            byte[] bom = new byte[3];
+            int bytesRead = pbis.read(bom, 0, bom.length);
+            if (!(bytesRead == 3 && bom[0] == (byte) 0xEF && bom[1] == (byte) 0xBB && bom[2] == (byte) 0xBF)) {
+                pbis.unread(bom, 0, bytesRead);
+            }
+
+            Reader reader = new InputStreamReader(pbis, StandardCharsets.UTF_8);
             return json.readValue(reader, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
             throw new ApplicationException("Incorrect object type returned", e);
