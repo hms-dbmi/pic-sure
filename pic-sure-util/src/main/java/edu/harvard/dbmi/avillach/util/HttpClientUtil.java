@@ -2,9 +2,7 @@ package edu.harvard.dbmi.avillach.util;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -163,8 +161,9 @@ public class HttpClientUtil {
 
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
-        try {
-            return json.readValue(response.getEntity().getContent(), json.getTypeFactory().constructType(expectedElementType));
+        try (InputStream is = response.getEntity().getContent()) {
+            Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+            return json.readValue(reader, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
             throw new ApplicationException("Incorrect object type returned", e);
         }
