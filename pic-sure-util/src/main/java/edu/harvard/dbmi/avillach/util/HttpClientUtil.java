@@ -164,21 +164,7 @@ public class HttpClientUtil {
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try {
-            long startTime = System.nanoTime();
-            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-            logger.debug(
-                "readObjectFromResponse() line: EntityUtils.toString(response.getEntity().getContent(), \"UTF-8\"), took {}",
-                (System.nanoTime() - startTime)
-            );
-            logger.trace("readObjectFromResponse() responseBody {}", responseBody);
-
-            startTime = System.nanoTime();
-            T t = json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
-            logger.debug(
-                "readObjectFromResponse() line: json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType)), took {}",
-                (System.nanoTime() - startTime)
-            );
-            return t;
+            return json.readValue(response.getEntity().getContent(), json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
             throw new ApplicationException("Incorrect object type returned", e);
         }
