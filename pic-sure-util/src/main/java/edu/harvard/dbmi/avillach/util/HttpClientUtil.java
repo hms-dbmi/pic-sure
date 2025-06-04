@@ -163,11 +163,10 @@ public class HttpClientUtil {
         logger.debug("HttpClientUtil readObjectFromResponse()");
         try (InputStream is = response.getEntity().getContent();
             /*
-             * This is a bit of a hack. Previously, we were using EntityUtils.toString(), but it isn't very performant. It would require use
-             * to convert the response to a string and then return the value. A major benefit of EntityUtils.toString() is it strips the BOM
-             * (Byte Mark Order) by default. To handle large payloads, we want to stream the response instead of having an intermediate
-             * parse to a string; however, we still need to strip the BOM from the response for clients that don't expect it. For instances
-             * gsub in R.
+             * Note: We previously used EntityUtils.toString(), which was convenient because it automatically removed the UTF-8 BOM (Byte
+             * Order Mark) and decoded the content. However, it buffers the entire response into memory, which is inefficient for large
+             * payloads. To support streaming while maintaining BOM safety for downstream clients (e.g., R's gsub, which fails if a BOM is
+             * present), we now manually strip the BOM using a PushbackInputStream before passing the stream to Jackson for deserialization.
              */
             PushbackInputStream pbis = new PushbackInputStream(is, 3)
         ) {
