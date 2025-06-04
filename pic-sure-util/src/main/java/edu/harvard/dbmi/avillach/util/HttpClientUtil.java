@@ -2,9 +2,7 @@ package edu.harvard.dbmi.avillach.util;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
@@ -163,22 +161,24 @@ public class HttpClientUtil {
 
     public static <T> T readObjectFromResponse(HttpResponse response, Class<T> expectedElementType) {
         logger.debug("HttpClientUtil readObjectFromResponse()");
-        try {
-            long startTime = System.nanoTime();
-            String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-            logger.debug(
-                "readObjectFromResponse() line: EntityUtils.toString(response.getEntity().getContent(), \"UTF-8\"), took {}",
-                (System.nanoTime() - startTime)
-            );
-            logger.trace("readObjectFromResponse() responseBody {}", responseBody);
+        try (InputStream is = response.getEntity().getContent();
+            /*
+             * Note: We previously used EntityUtils.toString(), which was convenient because it automatically removed the UTF-8 BOM (Byte
+             * Order Mark) and decoded the content. However, it buffers the entire response into memory, which is inefficient for large
+             * payloads. To support streaming while maintaining BOM safety for downstream clients (e.g., R's gsub, which fails if a BOM is
+             * present), we now manually strip the BOM using a PushbackInputStream before passing the stream to Jackson for deserialization.
+             */
+            PushbackInputStream pbis = new PushbackInputStream(is, 3)
+        ) {
 
-            startTime = System.nanoTime();
-            T t = json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType));
-            logger.debug(
-                "readObjectFromResponse() line: json.readValue(responseBody, json.getTypeFactory().constructType(expectedElementType)), took {}",
-                (System.nanoTime() - startTime)
-            );
-            return t;
+            byte[] bom = new byte[3];
+            int bytesRead = pbis.read(bom, 0, bom.length);
+            if (!(bytesRead == 3 && bom[0] == (byte) 0xEF && bom[1] == (byte) 0xBB && bom[2] == (byte) 0xBF)) {
+                pbis.unread(bom, 0, bytesRead);
+            }
+
+            Reader reader = new InputStreamReader(pbis, StandardCharsets.UTF_8);
+            return json.readValue(reader, json.getTypeFactory().constructType(expectedElementType));
         } catch (IOException e) {
             throw new ApplicationException("Incorrect object type returned", e);
         }
