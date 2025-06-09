@@ -14,11 +14,11 @@ public class QueryTest  {
 
 
     @Test
-    public void jacksonSerialization() throws JsonProcessingException {
+    public void jacksonSerialization_validValues() throws JsonProcessingException {
         ObjectMapper objectMapper = new ObjectMapper();
 
         PhenotypicFilter phenotypicFilter = new PhenotypicFilter(
-                PhenotypicFilterType.FILTER, "//abc//123///", List.of("turtle"), null, null, null
+                PhenotypicFilterType.FILTER, "//abc//123///", List.of("turtle"), 10f, 20f, true
         );
 
         List<AuthorizationFilter> authorizationFilters = List.of(new AuthorizationFilter("\\_consents\\", List.of("phs123", "phs456")));
@@ -27,7 +27,61 @@ public class QueryTest  {
         PhenotypicSubquery phenotypicSubquery2 = new PhenotypicSubquery(true, List.of(phenotypicFilter), Operator.AND);
 
         PhenotypicSubquery phenotypicQuery = new PhenotypicSubquery(null, List.of(phenotypicSubquery, phenotypicSubquery2, phenotypicFilter), Operator.OR);
-        Query query = new Query(ResultType.COUNT, authorizationFilters, List.of("PATIENT_ID"), phenotypicQuery, List.of());
+        Query query = new Query(
+                List.of("PATIENT_ID"),
+                authorizationFilters,
+                phenotypicQuery,
+                List.of(),
+                ResultType.COUNT
+        );
+
+        String serialized = objectMapper.writeValueAsString(query);
+        System.out.println(serialized);
+
+        Query deserialized = objectMapper.readValue(serialized, Query.class);
+
+        assertEquals(query, deserialized);
+    }
+    @Test
+    public void jacksonSerialization_validNullValues() throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        Query query = new Query(
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        String serialized = objectMapper.writeValueAsString(query);
+        System.out.println(serialized);
+
+        Query deserialized = objectMapper.readValue(serialized, Query.class);
+
+        assertEquals(query, deserialized);
+    }
+    @Test
+    public void jacksonSerialization_validNullSecondLevelValues() throws JsonProcessingException {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        PhenotypicFilter phenotypicFilter = new PhenotypicFilter(
+                PhenotypicFilterType.FILTER, "//abc//123///", null, null, null, null
+        );
+
+        List<AuthorizationFilter> authorizationFilters = List.of(new AuthorizationFilter(null, null));
+
+        PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(phenotypicFilter), null);
+        PhenotypicSubquery phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(phenotypicFilter), null);
+
+        PhenotypicSubquery phenotypicQuery = new PhenotypicSubquery(null, List.of(phenotypicSubquery, phenotypicSubquery2, phenotypicFilter), null);
+        Query query = new Query(
+                List.of("PATIENT_ID"),
+                authorizationFilters,
+                phenotypicQuery,
+                List.of(),
+                ResultType.COUNT
+        );
 
         String serialized = objectMapper.writeValueAsString(query);
         System.out.println(serialized);
