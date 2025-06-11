@@ -155,6 +155,10 @@ public class CountProcessor implements HpdsProcessor {
 		//For categoryFilters we need to ensure the variables included in the filter are the ones included in our count
 		//map. Then we make sure that the patients who have that variable are also in our base set.
 		query.getCategoryFilters().entrySet().parallelStream().forEach(categoryFilterEntry-> {
+			// Variant spec filter should not be included in cross count map
+			if (VariantUtils.pathIsVariantSpec(categoryFilterEntry.getKey())) {
+				return;
+			}
 			Map<String, Integer> varCount;
 			TreeMap<String, TreeSet<Integer>> categoryMap = abstractProcessor.getCube(categoryFilterEntry.getKey()).getCategoryMap();
 			varCount = new TreeMap<>();
