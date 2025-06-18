@@ -306,6 +306,63 @@ public class AbstractProcessorIntegrationTest {
 
 
     @Test
+    public void getPatientSubsetForQuery_validAnyRecordOfQuery() {
+        Query query = new Query();
+        query.setAnyRecordOf(List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"));
+
+        Set<Integer> anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(1126, anyRecordOfList.size());
+
+        query = new Query();
+        query.setAnyRecordOf(List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"));
+
+       anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(4978, anyRecordOfList.size());
+    }
+    public void getPatientSubsetForQuery_validAnyRecordOfAndCategoryQuery() {
+        Query query = new Query();
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Yoruba"}));
+
+        Set<Integer> yorubaIdList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(208, yorubaIdList.size());
+
+        query = new Query();
+        query.setAnyRecordOf(List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"));
+
+        Set<Integer> anyRecordOf = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(1126, anyRecordOf.size());
+
+
+        query = new Query();
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Yoruba"}));
+        query.setAnyRecordOf(List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"));
+
+        Set<Integer> bothIdList = abstractProcessor.getPatientSubsetForQuery(query);
+
+        assertEquals(Sets.intersection(yorubaIdList, anyRecordOf), bothIdList);
+    }
+    @Test
+    public void getPatientSubsetForQuery_validAnyRecordOfMultiQuery() {
+        Query query = new Query();
+        query.setAnyRecordOfMulti(List.of(
+                List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\")
+        ));
+
+        Set<Integer> anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(4978, anyRecordOfList.size());
+
+        query = new Query();
+        query.setAnyRecordOfMulti(List.of(
+                List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\"),
+                List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_SEX\\")
+        ));
+
+        anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
+        assertEquals(1126, anyRecordOfList.size());
+    }
+
+
+    @Test
     public void getVariantList_validGeneWithVariantQuery() {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();

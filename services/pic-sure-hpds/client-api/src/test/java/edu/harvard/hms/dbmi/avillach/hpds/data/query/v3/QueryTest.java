@@ -18,7 +18,7 @@ public class QueryTest  {
         ObjectMapper objectMapper = new ObjectMapper();
 
         PhenotypicFilter phenotypicFilter = new PhenotypicFilter(
-                PhenotypicFilterType.FILTER, "//abc//123///", List.of("turtle"), 10f, 20f, true
+                PhenotypicFilterType.FILTER, "//abc//123///", List.of("turtle"), 10.0, 20.0, true
         );
 
         List<AuthorizationFilter> authorizationFilters = List.of(new AuthorizationFilter("\\_consents\\", List.of("phs123", "phs456")));

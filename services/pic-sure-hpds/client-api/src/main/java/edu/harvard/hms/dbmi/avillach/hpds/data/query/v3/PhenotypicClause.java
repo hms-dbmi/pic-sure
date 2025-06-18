@@ -8,6 +8,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(PhenotypicSubquery.class),
         @JsonSubTypes.Type(PhenotypicFilter.class) }
 )
-sealed interface PhenotypicClause permits PhenotypicSubquery, PhenotypicFilter {
+public sealed interface PhenotypicClause permits PhenotypicSubquery, PhenotypicFilter {
 
 }
