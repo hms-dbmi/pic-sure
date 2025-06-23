@@ -8,28 +8,49 @@ public class Query {
 
     }
 
-    public Query(Query query) {
-        this.expectedResultType = query.expectedResultType;
-        this.crossCountFields = new ArrayList<String>(query.crossCountFields);
-        this.fields = new ArrayList<String>(query.fields);
-        this.requiredFields = new ArrayList<String>(query.requiredFields);
-        this.anyRecordOf = new ArrayList<String>(query.anyRecordOf);
-        this.numericFilters = new TreeMap<String, Filter.DoubleFilter>(query.numericFilters);
-        this.categoryFilters = new TreeMap<String, String[]>(query.categoryFilters);
-        this.variantInfoFilters = new ArrayList<VariantInfoFilter>();
-        if (query.variantInfoFilters != null) {
-            query.variantInfoFilters.forEach((filter) -> {
-                this.variantInfoFilters.add(new VariantInfoFilter(filter));
-            });
-        }
-        this.id = query.id;
-    }
+    public Query(Query otherQuery) {
+		if (otherQuery == null) {
+			this.expectedResultType = ResultType.COUNT;
+			this.crossCountFields = new ArrayList<>();
+			this.fields = new ArrayList<>();
+			this.requiredFields = new ArrayList<>();
+			this.anyRecordOf = new ArrayList<>();
+			this.anyRecordOfMulti = new ArrayList<>();
+			this.numericFilters = new TreeMap<>();
+			this.categoryFilters = new TreeMap<>();
+			this.variantInfoFilters = new ArrayList<>();
+			return;
+		}
+        
+		this.id = otherQuery.id;
+
+		this.crossCountFields = new ArrayList<>(otherQuery.crossCountFields);
+		this.fields = new ArrayList<>(otherQuery.fields);
+		this.requiredFields = new ArrayList<>(otherQuery.requiredFields);
+		this.anyRecordOf = new ArrayList<>(otherQuery.anyRecordOf);
+
+		this.anyRecordOfMulti = new ArrayList<>();
+		for (List<String> list : otherQuery.anyRecordOfMulti) {
+			this.anyRecordOfMulti.add(new ArrayList<>(list));
+		}
+
+		this.numericFilters = new TreeMap<String, Filter.DoubleFilter>(otherQuery.numericFilters);
+        this.categoryFilters = new TreeMap<String, String[]>(otherQuery.categoryFilters);
+
+		this.variantInfoFilters = new ArrayList<>();
+		if (otherQuery.variantInfoFilters != null) {
+			for (VariantInfoFilter filter : otherQuery.variantInfoFilters) {
+				this.variantInfoFilters.add(new VariantInfoFilter(filter));
+			}
+		}
+	}
 
     public ResultType expectedResultType = ResultType.COUNT;
     public List<String> crossCountFields = new ArrayList<String>();
     public List<String> fields = new ArrayList<String>();
     public List<String> requiredFields = new ArrayList<String>();
     public List<String> anyRecordOf = new ArrayList<String>();
+    public List<List<String>> anyRecordOfMulti = new ArrayList<>();
     public Map<String, Filter.DoubleFilter> numericFilters = new TreeMap<String, Filter.DoubleFilter>();
     public Map<String, String[]> categoryFilters = new TreeMap<String, String[]>();
     public List<VariantInfoFilter> variantInfoFilters = new ArrayList<VariantInfoFilter>();
@@ -102,6 +123,7 @@ public class Query {
         writePartFormat("Category filters", categoryFilters, builder);
         writePartFormat("Variant Info filters", variantInfoFilters, builder, false);
         writePartFormat("Any-Record-Of filters", anyRecordOf, builder, true);
+        writePartFormat("Any-Record-Of-Multi filters", anyRecordOfMulti, builder, true);
 
         return builder.toString();
     }
