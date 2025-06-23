@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dump.remote.api;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -33,9 +34,16 @@ public class HttpClientConfig {
             LOG.info("No proxy user found, making default client.");
             return HttpClients.custom().setConnectionManager(manager).build();
         }
+        RequestConfig config = RequestConfig.custom().setConnectionRequestTimeout(0) // No timeout for getting a connection from pool
+            .setConnectTimeout(0) // No timeout for establishing connection
+            .setSocketTimeout(0) // No timeout between packets
+            .build();
+
+        HttpClients.custom().setDefaultRequestConfig(config).build();
         LOG.info("Found proxy user {}, will configure proxy", proxyUser);
 
-        return HttpClients.custom().setConnectionManager(new PoolingHttpClientConnectionManager()).useSystemProperties().build();
+        return HttpClients.custom().setDefaultRequestConfig(config).setDefaultRequestConfig(config)
+            .setConnectionManager(new PoolingHttpClientConnectionManager()).useSystemProperties().build();
     }
 
 

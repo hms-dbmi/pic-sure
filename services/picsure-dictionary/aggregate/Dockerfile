@@ -26,4 +26,4 @@ ENV DATASOURCE_USERNAME=${DATASOURCE_USERNAME}
 ENV SPRING_PROFILE=${SPRING_PROFILE}
 
 # Default to no profile
-ENTRYPOINT java $DEBUG_VARS $PROXY_VARS -Xmx8192m ${JAVA_OPTS} -jar /dump.jar --spring.profiles.active=${SPRING_PROFILE:-production}
+ENTRYPOINT java $DEBUG_VARS $PROXY_VARS -Xmx4192m ${JAVA_OPTS} -jar /dump.jar --spring.profiles.active=${SPRING_PROFILE:-production}

@@ -10,11 +10,14 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Gatherer;
+import java.util.stream.Gatherers;
 
 @Repository
 public class DumpRepository {
@@ -50,7 +53,9 @@ public class DumpRepository {
     }
 
     public List<ConceptNodeDump> getAllConcepts() {
-        String getAllRootNodeSQL = """
+        List<ConceptNodeDump> roots = new ArrayList<>();
+        Map<Integer, ConceptNodeDump> parents = new HashMap<>();
+        String sql = """
             SELECT
                 dataset.REF, concept_node.CONCEPT_NODE_ID,
                 concept_node.NAME, concept_node.DISPLAY,
@@ -58,35 +63,19 @@ public class DumpRepository {
                 parent.CONCEPT_NODE_ID AS PARENT_ID
             FROM
                 concept_node
-                LEFT JOIN concept_node parent ON concept_node.PARENT_ID = parent.CONCEPT_NODE_ID
-                JOIN dataset ON concept_node.DATASET_ID = dataset.DATASET_ID
-            WHERE
-                concept_node.PARENT_ID IS NULL
-            """;
-        List<ConceptNodeDump> nodes = template.query(getAllRootNodeSQL, NO_PARAMS, conceptNodeDumpExtractor);
-        List<ConceptNodeDump> roots = nodes;
-        Map<Integer, ConceptNodeDump> parents;
-        String getNextTierSQL = """
-            SELECT
-                dataset.REF, concept_node.CONCEPT_NODE_ID,
-                concept_node.NAME, concept_node.DISPLAY,
-                concept_node.CONCEPT_TYPE, concept_node.CONCEPT_PATH,
-                parent.CONCEPT_NODE_ID AS PARENT_ID
-            FROM
-                concept_node
-                INNER JOIN concept_node parent ON concept_node.parent_id = parent.concept_node_id
+                LEFT JOIN concept_node parent ON concept_node.parent_id = parent.concept_node_id
                 JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-            WHERE parent.CONCEPT_NODE_ID IN (:parentIds)
+            ORDER BY length(concept_node.CONCEPT_PATH) ASC
             """;
-        while (!nodes.isEmpty()) {
-            parents = nodes.stream().collect(Collectors.toMap(ConceptNodeDump::conceptNodeId, Function.identity()));
-            MapSqlParameterSource params = new MapSqlParameterSource("parentIds", parents.keySet());
-            nodes = template.query(getNextTierSQL, params, conceptNodeDumpExtractor);
-            for (ConceptNodeDump node : nodes) {
+        List<ConceptNodeDump> nodes = template.query(sql, NO_PARAMS, conceptNodeDumpExtractor);
+        for (ConceptNodeDump node : nodes) {
+            parents.put(node.conceptNodeId(), node);
+            if (node.parentId() == 0) {
+                roots.add(node);
+            } else {
                 parents.get(node.parentId()).addChild(node);
             }
         }
-
         return roots;
     }
 

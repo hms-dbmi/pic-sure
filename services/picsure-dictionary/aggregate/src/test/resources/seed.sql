@@ -1130,3 +1130,5 @@ INSERT INTO public.concept_node__remote_dictionary (CONCEPT_NODE_ID, REMOTE_DICT
 -- PostgreSQL database dump complete
 --
 
+ALTER TABLE public.concept_node ADD COLUMN concept_path_md5 text GENERATED ALWAYS AS (md5(concept_path::text)) STORED;
+CREATE UNIQUE INDEX idx_concept_node_md5 ON public.concept_node(concept_path_md5);
