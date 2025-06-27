@@ -72,16 +72,28 @@ public class PhenotypicQueryExecutor {
     }
 
     public Set<Integer> getPatientSet(Query query) {
-        List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
-        List<PhenotypicClause> mergedClauses = new ArrayList<>(authorizationClauses);
-        mergedClauses.add(query.phenotypicClause());
-        PhenotypicSubquery authorizedSubquery = new PhenotypicSubquery(
-                null,
-                mergedClauses,
-                Operator.AND
-        );
-        Set<Integer> patientIdSet = evaluatePhenotypicClause(authorizedSubquery);
-        return patientIdSet;
+        List<PhenotypicClause> mergedClauses = new ArrayList<>();
+
+        if (query.authorizationFilters() != null) {
+            List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
+            mergedClauses.addAll(authorizationClauses);
+        }
+
+        if (query.phenotypicClause() != null) {
+            mergedClauses.add(query.phenotypicClause());
+        }
+
+        if (!mergedClauses.isEmpty()) {
+            PhenotypicSubquery authorizedSubquery = new PhenotypicSubquery(
+                    null,
+                    mergedClauses,
+                    Operator.AND
+            );
+            return evaluatePhenotypicClause(authorizedSubquery);
+        } else {
+            // if there are no phenotypic queries, return all patients
+            return phenotypeMetaStore.getPatientIds();
+        }
     }
 
     private List<PhenotypicClause> authorizationFiltersToPhenotypicClause(List<AuthorizationFilter> authorizationFilters) {
@@ -128,6 +140,7 @@ public class PhenotypicQueryExecutor {
                 .map(this::evaluatePhenotypicClause)
                 // todo: replace union with our own implementation. Google's Sets functions return views
                 .reduce(getReducer(phenotypicSubquery.operator()))
+                // todo: deal with empty lists
                 .get();
     }
 

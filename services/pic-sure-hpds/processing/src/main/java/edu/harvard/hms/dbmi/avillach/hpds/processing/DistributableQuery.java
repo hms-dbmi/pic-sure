@@ -30,10 +30,11 @@ public class DistributableQuery {
         return categoryFilters;
     }
 
-    public void setVariantInfoFilters(Collection<Query.VariantInfoFilter> variantInfoFilters) {
+    public DistributableQuery setVariantInfoFilters(Collection<Query.VariantInfoFilter> variantInfoFilters) {
         this.variantInfoFilters = variantInfoFilters.stream()
                 .filter(variantInfoFilter -> !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty())
                 .collect(Collectors.toList());
+        return this;
     }
     public List<Query.VariantInfoFilter> getVariantInfoFilters() {
         return new ArrayList<>(variantInfoFilters);

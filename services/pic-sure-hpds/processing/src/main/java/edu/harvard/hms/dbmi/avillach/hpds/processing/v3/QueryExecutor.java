@@ -6,12 +6,16 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.util.*;
@@ -54,14 +58,58 @@ public class QueryExecutor {
 	 */
 	public Set<Integer> getPatientSubsetForQuery(Query query) {
 		Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
-		if (patientIdSet == null) {
+		DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
+		// NULL (representing no phenotypic filters, i.e. all patients) or not empty patient ID sets require a genomic query.
+		// Otherwise, short circuit and return no patients
+		if ((distributableQuery.getPatientIds() == null || !distributableQuery.getPatientIds().isEmpty()) && distributableQuery.hasFilters()) {
+			Mono<VariantMask> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
+			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
+		}
+
+		if (distributableQuery.getPatientIds() == null) {
 			return phenotypicQueryExecutor.getPatientIds();
 		}
-		return patientIdSet;
+		return distributableQuery.getPatientIds();
+	}
+
+	private DistributableQuery queryToDistributableQuery(Query query, Set<Integer> patientIds) {
+		DistributableQuery distributableQuery = new DistributableQuery()
+				.setPatientIds(patientIds);
+
+		if (query.genomicFilters() == null || query.genomicFilters().isEmpty()) {
+			return distributableQuery;
+		}
+
+		edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter variantInfoFilters = new edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter();
+		variantInfoFilters.numericVariantInfoFilters = new HashMap<>();
+		variantInfoFilters.categoryVariantInfoFilters = new HashMap<>();
+
+		query.genomicFilters().forEach(genomicFilter -> {
+			if (VariantUtils.pathIsVariantSpec(genomicFilter.key())) {
+				if (genomicFilter.values() == null || genomicFilter.values().isEmpty()) {
+					distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), new String[] {"0/1", "1/1"});
+				}
+				else {
+					distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
+				}
+
+			} else {
+				if (genomicFilter.values() != null) {
+					variantInfoFilters.categoryVariantInfoFilters.put(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
+				} else if (genomicFilter.max() != null || genomicFilter.min() != null) {
+					variantInfoFilters.numericVariantInfoFilters.put(genomicFilter.key(), new Filter.FloatFilter(genomicFilter.min(), genomicFilter.max()));
+				}
+			}
+		});
+
+		distributableQuery.setVariantInfoFilters(List.of(variantInfoFilters));
+		return distributableQuery;
 	}
 
 	public Collection<String> getVariantList(Query query) {
-		throw new RuntimeException("Not implemented");
+		Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
+		DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
+		return genomicProcessor.getVariantList(distributableQuery).block();
 	}
 
 	public List<InfoColumnMeta> getInfoStoreMeta() {
