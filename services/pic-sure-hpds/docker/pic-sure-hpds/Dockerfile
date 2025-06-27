@@ -1,4 +1,4 @@
-FROM maven:3.9.4-amazoncorretto-21 AS build
+FROM maven:3.9.9-amazoncorretto-24 AS build
 
 RUN yum update -y && yum install -y git && yum clean all
 
@@ -10,7 +10,7 @@ COPY . .
 
 RUN mvn clean install -DskipTests
 
-FROM amazoncorretto:21.0.1-alpine3.18
+FROM amazoncorretto:24-alpine
 
 WORKDIR /app
 

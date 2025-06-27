@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.1.5</version>
+		<version>3.5.3</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
@@ -26,8 +26,8 @@
 		<module>war</module>
     </modules>
 	<properties>
-		<maven.compiler.release>21</maven.compiler.release>
-		<java.version>21</java.version>
+		<maven.compiler.release>24</maven.compiler.release>
+		<java.version>24</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<dockerfile-maven-version>1.4.10</dockerfile-maven-version>
 		<aws.version>2.20.153</aws.version>
@@ -136,7 +136,7 @@
 					<version>3.8.0</version>
 					<configuration>
 						<!--this is the target Java version-->
-						<release>21</release>
+						<release>24</release>
 					</configuration>
 				</plugin>
 				<plugin>
