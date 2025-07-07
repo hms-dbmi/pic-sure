@@ -162,4 +162,16 @@ class ConceptControllerTest {
         Assertions.assertEquals(HttpStatus.OK, listResponseEntity.getStatusCode());
         Assertions.assertEquals(concepts, listResponseEntity.getBody());
     }
+
+    @Test
+    void shouldGetAllTrees() {
+        int depth = 1;
+        List<Concept> concepts = List.of(new CategoricalConcept("\\Foo\\", "foo"), new CategoricalConcept("\\Bar\\", "bar"));
+        Mockito.when(conceptService.allConceptTrees(depth)).thenReturn(concepts);
+
+        ResponseEntity<List<Concept>> actual = subject.allConceptTrees(depth);
+
+        Assertions.assertEquals(200, actual.getStatusCode().value());
+        Assertions.assertEquals(concepts, actual.getBody());
+    }
 }

@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.dictionary.dataset;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -20,5 +21,9 @@ public class DatasetService {
     public Optional<Dataset> getDataset(String ref) {
         Map<String, String> meta = repository.getDatasetMeta(ref);
         return repository.getDataset(ref).map(ds -> ds.withMeta(meta));
+    }
+
+    public List<Dataset> getAllDatasets() {
+        return repository.getAllDatasets();
     }
 }

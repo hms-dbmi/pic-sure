@@ -73,4 +73,15 @@ public class ConceptController {
         }
         return conceptService.conceptTree(dataset, conceptPath, depth).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
+
+    @PostMapping(path = "/concepts/tree")
+    public ResponseEntity<List<Concept>> allConceptTrees(
+        @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth
+    ) {
+        if (depth < 0 || depth > MAX_DEPTH) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        return ResponseEntity.ok(conceptService.allConceptTrees(depth));
+    }
 }

@@ -4,6 +4,8 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
+import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
+import edu.harvard.dbmi.avillach.dictionary.dataset.DatasetService;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
@@ -18,12 +20,15 @@ import java.util.Optional;
 public class ConceptService {
 
     private final ConceptRepository conceptRepository;
-
+    private final DatasetService datasetService;
     private final ConceptDecoratorService conceptDecoratorService;
 
     @Autowired
-    public ConceptService(ConceptRepository conceptRepository, ConceptDecoratorService conceptDecoratorService) {
+    public ConceptService(
+        ConceptRepository conceptRepository, DatasetService datasetService, ConceptDecoratorService conceptDecoratorService
+    ) {
         this.conceptRepository = conceptRepository;
+        this.datasetService = datasetService;
         this.conceptDecoratorService = conceptDecoratorService;
     }
 
@@ -65,6 +70,11 @@ public class ConceptService {
 
     public Optional<Concept> conceptTree(String dataset, String conceptPath, int depth) {
         return conceptRepository.getConceptTree(dataset, conceptPath, depth);
+    }
+
+    public List<Concept> allConceptTrees(int depth) {
+        return datasetService.getAllDatasets().stream().map(Dataset::ref).map(ref -> conceptTree(ref, null, depth))
+            .filter(Optional::isPresent).map(Optional::get).toList();
     }
 
     public Optional<Concept> conceptDetailWithoutAncestors(String dataset, String conceptPath) {

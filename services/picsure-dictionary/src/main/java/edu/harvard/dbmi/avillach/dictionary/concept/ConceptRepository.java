@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -145,6 +146,10 @@ public class ConceptRepository {
     }
 
     public Optional<Concept> getConceptTree(String dataset, String conceptPath, int depth) {
+        // if this is for the absolute root of this dataset's ontology, conceptPath
+        // will be empty, and we should just find the parentless concept instead.
+        String rootConceptMatch =
+            StringUtils.hasLength(conceptPath) ? "concept_node.CONCEPT_PATH = :path" : "concept_node.PARENT_ID IS NULL";
         String sql = QueryUtility.ALLOW_FILTERING_Q
             + """
                     , core_query AS (
@@ -155,7 +160,7 @@ public class ConceptRepository {
                                 concept_node
                                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                             WHERE
-                                concept_node.CONCEPT_PATH = :path
+                                %s
                                 AND dataset.REF = :dataset
                         UNION
                             SELECT
@@ -179,7 +184,7 @@ public class ConceptRepository {
                             concept_node
                             LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                         WHERE
-                            concept_node.CONCEPT_PATH = :path
+                            %s
                             AND dataset.REF = :dataset
                         UNION
                         SELECT
@@ -194,7 +199,7 @@ public class ConceptRepository {
                                     concept_node
                                     LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                                 WHERE
-                                    concept_node.CONCEPT_PATH = :path
+                                    %s
                                     AND dataset.REF = :dataset
                             )
                         ORDER BY depth ASC
@@ -218,7 +223,8 @@ public class ConceptRepository {
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                         LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
                     ORDER BY LENGTH(concept_node.concept_path)
-                """;
+                """
+                .formatted(rootConceptMatch, rootConceptMatch, rootConceptMatch);
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("path", conceptPath).addValue("dataset", dataset)
             .addValue("depth", depth).addValue("disallowed_meta_keys", disallowedMetaFields);
 

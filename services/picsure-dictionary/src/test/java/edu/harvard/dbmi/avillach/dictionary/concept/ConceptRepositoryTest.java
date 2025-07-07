@@ -248,6 +248,21 @@ class ConceptRepositoryTest {
     }
 
     @Test
+    void shouldGetRootTree() {
+        Optional<Concept> actual = subject.getConceptTree("phs002715", null, 3);
+
+        Assertions.assertTrue(actual.isPresent());
+
+        CategoricalConcept expected = new CategoricalConcept("\\phs002715\\", "phs002715").withChildren(
+            List.of(
+                new CategoricalConcept("\\phs002715\\age\\", "phs002715"),
+                new CategoricalConcept("\\phs002715\\nsrr_ever_smoker\\", "phs002715")
+            )
+        );
+        compareWithChildren(List.of(expected), List.of(actual.get()));
+    }
+
+    @Test
     void shouldGetTreeForDepthThatExceedsOntology() {
         Concept d0 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\", "1");
         Concept d1 = new CategoricalConcept("\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", "1");

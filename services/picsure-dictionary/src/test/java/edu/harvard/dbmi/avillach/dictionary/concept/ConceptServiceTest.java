@@ -4,6 +4,8 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
+import edu.harvard.dbmi.avillach.dictionary.dataset.Dataset;
+import edu.harvard.dbmi.avillach.dictionary.dataset.DatasetService;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +31,9 @@ class ConceptServiceTest {
 
     @MockBean
     ConceptDecoratorService decoratorService;
+
+    @MockBean
+    DatasetService datasetService;
 
     @Autowired
     ConceptService subject;
@@ -121,5 +126,21 @@ class ConceptServiceTest {
 
         Assertions.assertTrue(actual.isPresent());
         Assertions.assertEquals(concept, actual.get());
+    }
+
+    @Test
+    void shouldGetAllTrees() {
+        int depth = 1;
+        CategoricalConcept conceptA = new CategoricalConcept("\\Root A\\", "ref_A");
+        CategoricalConcept conceptB = new CategoricalConcept("\\Root B\\", "ref_B");
+        Mockito.when(datasetService.getAllDatasets())
+            .thenReturn(List.of(new Dataset("ref_a", "", "", ""), new Dataset("ref_b", "", "", "")));
+        Mockito.when(repository.getConceptTree("ref_a", null, depth)).thenReturn(Optional.of(conceptA));
+        Mockito.when(repository.getConceptTree("ref_b", null, depth)).thenReturn(Optional.of(conceptB));
+
+        List<Concept> actual = subject.allConceptTrees(depth);
+        List<CategoricalConcept> expected = List.of(conceptA, conceptB);
+
+        Assertions.assertEquals(expected, actual);
     }
 }

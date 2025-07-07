@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -49,5 +50,15 @@ public class DatasetRepository {
             """;
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("ref", ref);
         return template.query(sql, params, metaExtractor);
+    }
+
+    public List<Dataset> getAllDatasets() {
+        String sql = """
+            SELECT
+                ref, full_name, abbreviation, description
+            FROM
+                dataset
+            """;
+        return template.query(sql, new MapSqlParameterSource(), mapper);
     }
 }
