@@ -23,6 +23,14 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Writes HPDS data in PFB format. PFB is an Avro schema specifically created for biomedical data. See <a
+ * href="https://uc-cdis.github.io/pypfb/">https://uc-cdis.github.io/pypfb/</a> for more details.
+ *
+ * Our PFB format has 4 entities currently: <ul> <li>pic-sure-patients: Contains patient data, with one row per patient</li>
+ * <li>pic-sure-data-dictionary: Contains variable metadata with one row per variable exported</li> <li>metadata: Contains ontological
+ * metadata about variables. Currently empty</li> <li>relations: Contains relational data about entities. Currently empty</li> </ul>
+ */
 public class PfbWriter implements ResultWriter {
 
     public static final String PATIENT_TABLE_PREFIX = "pic-sure-patients-";
@@ -37,69 +45,76 @@ public class PfbWriter implements ResultWriter {
 
     private final Schema propertiesSchema;
 
-    private final String queryId;
-
     private final String patientTableName;
     private final String dataDictionaryTableName;
     private SchemaBuilder.FieldAssembler<Schema> entityFieldAssembler;
 
+    /**
+     * The original (before formatting for avro) concept path values
+     */
     private List<String> originalFields;
+    /**
+     * The avro formatted concept path values. Avro only allows alphanumeric values and underscores as field names
+     */
     private List<String> formattedFields;
     private DataFileWriter<GenericRecord> dataFileWriter;
+    /**
+     * Location of the file being written to
+     */
     private File file;
+    /**
+     * The entity schema is a union of our custom entities, plus the PFB defined relation and metadata entities
+     */
     private Schema entitySchema;
+    /**
+     * Schema containing one row per patient and one column per concept path exported
+     */
     private Schema patientDataSchema;
+    /**
+     * Data dictionary schema containing one row per concept path exported and various metadata columns
+     */
     private Schema dataDictionarySchema;
+    /**
+     * Relational data about entities. Currently empty
+     */
     private Schema relationSchema;
 
+    /**
+     * A hardcoded set of fields that should be a single value instead of an array.
+     *
+     * todo: introduce an attribute on concept paths specifying if they can contain multiple values
+     */
     private static final Set<String> SINGULAR_FIELDS = Set.of("patient_id");
 
     public PfbWriter(File tempFile, String queryId, DictionaryService dictionaryService) {
         this.file = tempFile;
-        this.queryId = queryId;
         this.dictionaryService = dictionaryService;
         this.patientTableName = formatFieldName(PATIENT_TABLE_PREFIX + queryId);
         this.dataDictionaryTableName = formatFieldName(DATA_DICTIONARY_TABLE_PREFIX + queryId);
-        entityFieldAssembler = SchemaBuilder.record("entity")
-                .namespace("edu.harvard.dbmi")
-                .fields();
+        entityFieldAssembler = SchemaBuilder.record("entity").namespace("edu.harvard.dbmi").fields();
 
 
-        Schema linksSchema = SchemaBuilder.record("Link")
-                .fields()
-                .requiredString("dst")
-                .name("multiplicity").type(
-                        SchemaBuilder.enumeration("Multiplicity").symbols("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")
-                ).noDefault()
-                .endRecord();
+        Schema linksSchema = SchemaBuilder.record("Link").fields().requiredString("dst").name("multiplicity")
+            .type(SchemaBuilder.enumeration("Multiplicity").symbols("ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY")).noDefault()
+            .endRecord();
 
-        propertiesSchema = SchemaBuilder.record("Property")
-                .fields()
-                .requiredString("name")
-                .requiredString("ontology_reference")
-                .name("values").type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault()
-                .endRecord();
+        propertiesSchema = SchemaBuilder.record("Property").fields().requiredString("name").requiredString("ontology_reference")
+            .name("values").type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault().endRecord();
 
-        SchemaBuilder.FieldAssembler<Schema> nodeRecord = SchemaBuilder.record("nodes")
-                .fields()
-                .requiredString("name")
-                .nullableString("ontology_reference", "null")
-                .name("links").type(SchemaBuilder.array().items(linksSchema)).noDefault()
-                .name("properties").type(SchemaBuilder.array().items(propertiesSchema)).noDefault()
-                .name("values").type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault();
+        SchemaBuilder.FieldAssembler<Schema> nodeRecord = SchemaBuilder.record("nodes").fields().requiredString("name")
+            .nullableString("ontology_reference", "null").name("links").type(SchemaBuilder.array().items(linksSchema)).noDefault()
+            .name("properties").type(SchemaBuilder.array().items(propertiesSchema)).noDefault().name("values")
+            .type(SchemaBuilder.map().values(SchemaBuilder.nullable().stringType())).noDefault();
         nodeSchema = nodeRecord.endRecord();
 
-        SchemaBuilder.FieldAssembler<Schema> metadataRecord = SchemaBuilder.record("metadata")
-                .fields();
+        SchemaBuilder.FieldAssembler<Schema> metadataRecord = SchemaBuilder.record("metadata").fields();
         metadataRecord.requiredString("misc");
         metadataRecord = metadataRecord.name("nodes").type(SchemaBuilder.array().items(nodeSchema)).noDefault();
         metadataSchema = metadataRecord.endRecord();
 
 
-        SchemaBuilder.FieldAssembler<Schema> relationRecord = SchemaBuilder.record("Relation")
-                .fields()
-                .requiredString("dst_name")
-                .requiredString("dst_id");
+        SchemaBuilder.FieldAssembler<Schema> relationRecord =
+            SchemaBuilder.record("Relation").fields().requiredString("dst_name").requiredString("dst_id");
         relationSchema = relationRecord.endRecord();
     }
 
@@ -108,17 +123,11 @@ public class PfbWriter implements ResultWriter {
         originalFields = List.of(data);
         formattedFields = originalFields.stream().map(this::formatFieldName).collect(Collectors.toList());
 
-        dataDictionarySchema = SchemaBuilder.record(dataDictionaryTableName)
-                .fields()
-                .requiredString("concept_path")
-                .name("drs_uri").type(SchemaBuilder.array().items(SchemaBuilder.nullable().stringType())).noDefault()
-                .nullableString("display", "null")
-                .nullableString("dataset", "null")
-                .nullableString("description", "null")
-                .endRecord();
+        dataDictionarySchema = SchemaBuilder.record(dataDictionaryTableName).fields().requiredString("concept_path").name("drs_uri")
+            .type(SchemaBuilder.array().items(SchemaBuilder.nullable().stringType())).noDefault().nullableString("display", "null")
+            .nullableString("dataset", "null").nullableString("description", "null").endRecord();
 
-        SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record(patientTableName)
-                .fields();
+        SchemaBuilder.FieldAssembler<Schema> patientRecords = SchemaBuilder.record(patientTableName).fields();
         formattedFields.forEach(field -> {
             if (isSingularField(field)) {
                 patientRecords.nullableString(field, "null");
@@ -155,8 +164,8 @@ public class PfbWriter implements ResultWriter {
         GenericRecord entityRecord = new GenericData.Record(entitySchema);;
         Map<String, Concept> conceptMap = Map.of();
         try {
-            conceptMap = dictionaryService.getConcepts(originalFields).stream()
-                    .collect(Collectors.toMap(Concept::conceptPath, Function.identity()));
+            conceptMap =
+                dictionaryService.getConcepts(originalFields).stream().collect(Collectors.toMap(Concept::conceptPath, Function.identity()));
         } catch (RuntimeException e) {
             log.error("Error fetching concepts from dictionary service", e);
         }
@@ -209,8 +218,8 @@ public class PfbWriter implements ResultWriter {
     }
 
     /**
-     * Transforms our variable names to once that are valid avro fields. We replace invalid characters with underscores
-     * and add a leading underscore if the variable starts with a number
+     * Transforms our variable names to once that are valid avro fields. We replace invalid characters with underscores and add a leading
+     * underscore if the variable starts with a number
      */
     protected String formatFieldName(String s) {
         String formattedFieldName = s.replaceAll("\\W", "_");
@@ -286,7 +295,7 @@ public class PfbWriter implements ResultWriter {
             }
             GenericRecord patientData = new GenericData.Record(patientDataSchema);
             String patientId = "";
-            for(int i = 0; i < formattedFields.size(); i++) {
+            for (int i = 0; i < formattedFields.size(); i++) {
                 if ("patient_id".equals(formattedFields.get(i))) {
                     patientId = (entity.get(i) != null && !entity.get(i).isEmpty()) ? entity.get(i).get(0) : "";
                 }
