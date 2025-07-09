@@ -74,10 +74,8 @@ public class PhenotypicQueryExecutor {
     public Set<Integer> getPatientSet(Query query) {
         List<PhenotypicClause> mergedClauses = new ArrayList<>();
 
-        if (query.authorizationFilters() != null) {
-            List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
-            mergedClauses.addAll(authorizationClauses);
-        }
+        List<PhenotypicClause> authorizationClauses = authorizationFiltersToPhenotypicClause(query.authorizationFilters());
+        mergedClauses.addAll(authorizationClauses);
 
         if (query.phenotypicClause() != null) {
             mergedClauses.add(query.phenotypicClause());
@@ -112,7 +110,7 @@ public class PhenotypicQueryExecutor {
     private Set<Integer> evaluatePhenotypicFilter(PhenotypicFilter phenotypicFilter) {
         return switch (phenotypicFilter.phenotypicFilterType()) {
             case FILTER -> evaluateFilterFilter(phenotypicFilter);
-            case ANY_RECORD_OF, REQUIRED -> evaluateAnyRecordOfFilter(phenotypicFilter);
+            case REQUIRED -> evaluateRequiredFilter(phenotypicFilter);
         };
     }
 
@@ -130,7 +128,7 @@ public class PhenotypicQueryExecutor {
         }
     }
 
-    private Set<Integer> evaluateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter) {
+    private Set<Integer> evaluateRequiredFilter(PhenotypicFilter phenotypicFilter) {
         Stream<Integer> stream = getCube(phenotypicFilter.conceptPath()).keyBasedIndex().stream();
         return stream.collect(Collectors.toSet());
     }
@@ -138,7 +136,6 @@ public class PhenotypicQueryExecutor {
     private Set<Integer> evaluatePhenotypicSubquery(PhenotypicSubquery phenotypicSubquery) {
         return phenotypicSubquery.phenotypicClauses().parallelStream()
                 .map(this::evaluatePhenotypicClause)
-                // todo: replace union with our own implementation. Google's Sets functions return views
                 .reduce(getReducer(phenotypicSubquery.operator()))
                 // todo: deal with empty lists
                 .get();

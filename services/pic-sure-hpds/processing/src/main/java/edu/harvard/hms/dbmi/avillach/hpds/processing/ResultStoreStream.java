@@ -107,7 +107,7 @@ public class ResultStoreStream extends InputStream {
 		return value;
 	}
 
-	int getNumRows() {
+	public int getNumRows() {
 		return numRows;
 	}
 

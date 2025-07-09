@@ -1,11 +1,14 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
+import com.google.common.cache.CacheLoader;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariantMask;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
@@ -19,6 +22,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 
@@ -76,7 +80,7 @@ public class QueryExecutor {
 		DistributableQuery distributableQuery = new DistributableQuery()
 				.setPatientIds(patientIds);
 
-		if (query.genomicFilters() == null || query.genomicFilters().isEmpty()) {
+		if (query.genomicFilters().isEmpty()) {
 			return distributableQuery;
 		}
 
@@ -129,12 +133,17 @@ public class QueryExecutor {
 		}
 	}
 
-	//
-	//	private boolean pathIsGeneName(String key) {
-	//		return new GeneLibrary().geneNameSearch(key).size()==1;
-	//	}
+	protected PhenoCube getCube(String path) {
+		return phenotypicQueryExecutor.getCube(path);
+	}
 
+	public Optional<PhenoCube<?>> nullableGetCube(String path) {
+		return phenotypicQueryExecutor.nullableGetCube(path);
+	}
 
+	public ArrayList<Integer> useResidentCubesFirst(List<String> paths, int columnCount) {
+		return phenotypicQueryExecutor.useResidentCubesFirst(paths, columnCount);
+	}
 
 	public TreeMap<String, ColumnMeta> getDictionary() {
 		return phenotypicQueryExecutor.getMetaStore();
@@ -152,4 +161,5 @@ public class QueryExecutor {
     protected VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         return genomicProcessor.createMaskForPatientSet(patientSubset);
     }
+
 }

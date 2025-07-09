@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class QueryTest  {
 
@@ -32,7 +33,9 @@ public class QueryTest  {
                 authorizationFilters,
                 phenotypicQuery,
                 List.of(),
-                ResultType.COUNT
+                ResultType.COUNT,
+                null,
+                null
         );
 
         String serialized = objectMapper.writeValueAsString(query);
@@ -51,6 +54,8 @@ public class QueryTest  {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null
         );
 
@@ -59,7 +64,13 @@ public class QueryTest  {
 
         Query deserialized = objectMapper.readValue(serialized, Query.class);
 
-        assertEquals(query, deserialized);
+        assertEquals(List.of(), deserialized.select());
+        assertEquals(List.of(), deserialized.authorizationFilters());
+        assertNull(deserialized.phenotypicClause());
+        assertEquals(List.of(), deserialized.genomicFilters());
+        assertNull(deserialized.expectedResultType());
+        assertNull(deserialized.picsureId());
+        assertNull(deserialized.id());
     }
     @Test
     public void jacksonSerialization_validNullSecondLevelValues() throws JsonProcessingException {
@@ -80,7 +91,9 @@ public class QueryTest  {
                 authorizationFilters,
                 phenotypicQuery,
                 List.of(),
-                ResultType.COUNT
+                ResultType.COUNT,
+                null,
+                null
         );
 
         String serialized = objectMapper.writeValueAsString(query);

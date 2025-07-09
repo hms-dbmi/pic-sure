@@ -80,11 +80,6 @@ public enum ResultType {
 	 */
 	AGGREGATE_VCF_EXCERPT,
 	/**
-	 * This returns data to feed a timeline, 
-	 * TODO: add more details later.
-	 */
-	TIMELINE_DATA,
-	/**
 	 * This exports data in the same format as the HPDS csv loader, which
 	 * is suitable to time series analysis and/or loading into another 
 	 * instance of HPDS.

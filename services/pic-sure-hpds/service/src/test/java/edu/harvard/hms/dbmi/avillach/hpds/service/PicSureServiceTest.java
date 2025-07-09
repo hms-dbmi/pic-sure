@@ -4,7 +4,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.TimelineProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
@@ -13,7 +12,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,8 +31,6 @@ class PicSureServiceTest {
 
     @MockBean
     QueryService queryService;
-    @MockBean
-    TimelineProcessor timelineProcessor;
     @MockBean
     CountProcessor countProcessor;
     @MockBean

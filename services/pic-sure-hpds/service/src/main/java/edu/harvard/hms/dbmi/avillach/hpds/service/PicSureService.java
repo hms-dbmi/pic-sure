@@ -45,12 +45,11 @@ public class PicSureService {
 
     @Autowired
     public PicSureService(
-        QueryService queryService, TimelineProcessor timelineProcessor, CountProcessor countProcessor,
+        QueryService queryService, CountProcessor countProcessor,
         VariantListProcessor variantListProcessor, AbstractProcessor abstractProcessor, Paginator paginator, SignUrlService signUrlService,
         FileSharingService fileSystemService, QueryDecorator queryDecorator, TestDataService testDataService
     ) {
         this.queryService = queryService;
-        this.timelineProcessor = timelineProcessor;
         this.countProcessor = countProcessor;
         this.variantListProcessor = variantListProcessor;
         this.abstractProcessor = abstractProcessor;
@@ -68,8 +67,6 @@ public class PicSureService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private Logger log = LoggerFactory.getLogger(PicSureService.class);
-
-    private final TimelineProcessor timelineProcessor;
 
     private final CountProcessor countProcessor;
 
@@ -442,11 +439,6 @@ public class PicSureService {
 
             case AGGREGATE_VCF_EXCERPT:
                 return queryOkResponse(variantListProcessor.runVcfExcerptQuery(incomingQuery, false), incomingQuery, MediaType.TEXT_PLAIN);
-
-            case TIMELINE_DATA:
-                return queryOkResponse(
-                    mapper.writeValueAsString(timelineProcessor.runTimelineQuery(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN
-                );
 
             case COUNT:
                 return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
