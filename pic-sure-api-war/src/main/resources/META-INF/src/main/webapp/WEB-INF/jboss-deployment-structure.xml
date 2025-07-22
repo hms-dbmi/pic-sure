@@ -1,0 +1,10 @@
+<jboss-deployment-structure>
+  <deployment>
+    <exclusions>
+      <module name="com.google.guava" />
+    </exclusions>
+    <exclude-subsystems>
+      <subsystem name="jaxrs" />
+    </exclude-subsystems>
+  </deployment>
+</jboss-deployment-structure>
