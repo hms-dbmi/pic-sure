@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach.dictionary.facet;
 
-import edu.harvard.dbmi.avillach.dictionary.concept.ConceptRepository;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

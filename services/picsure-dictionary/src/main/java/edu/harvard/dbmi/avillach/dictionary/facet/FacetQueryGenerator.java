@@ -98,17 +98,11 @@ public class FacetQueryGenerator {
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                        LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
                         (fc.name, facet.name) IN (:facets_in_cat_%s)
                         AND %s
-                        AND (
-                            continuous_min.value <> '' OR
-                            continuous_max.value <> '' OR
-                            categorical_values.value <> ''
-                        )
+                        AND categorical_values.value <> ''
                 )
                 """
                 .formatted(categoryKeys.get(category), categoryKeys.get(category), QueryUtility.SEARCH_WHERE);
@@ -200,11 +194,7 @@ public class FacetQueryGenerator {
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
                         (fc.name, facet.name) IN (:facets_in_cat_%s)
-                        AND (
-                            continuous_min.value <> '' OR
-                            continuous_max.value <> '' OR
-                            categorical_values.value <> ''
-                        )
+                        AND categorical_values.value <> ''
                 )
                 """
                 .formatted(categoryKeys.get(category), categoryKeys.get(category));
@@ -300,11 +290,7 @@ public class FacetQueryGenerator {
                     %s
                     fc.name = :facet_category_name
                     AND %s
-                    AND (
-                        continuous_min.value <> '' OR
-                        continuous_max.value <> '' OR
-                        categorical_values.value <> ''
-                    )
+                    AND categorical_values.value <> ''
                 GROUP BY
                     facet.facet_id
                 ORDER BY
@@ -320,18 +306,12 @@ public class FacetQueryGenerator {
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                        LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
                         fc.name = :facet_category_name
                         AND facet.name IN (:facets)
                         AND %s
-                        AND (
-                            continuous_min.value <> '' OR
-                            continuous_max.value <> '' OR
-                            categorical_values.value <> ''
-                        )
+                        AND categorical_values.value <> ''
                 )
                 SELECT
                     facet.facet_id, count(*) as facet_count
@@ -370,17 +350,11 @@ public class FacetQueryGenerator {
                     JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                     LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                     LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                     LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                 WHERE
                     %s
                     fc.name = :facet_category_name
-                    AND (
-                        continuous_min.value <> '' OR
-                        continuous_max.value <> '' OR
-                        categorical_values.value <> ''
-                    )
+                    AND categorical_values.value <> ''
                 GROUP BY
                     facet.facet_id
                 ORDER BY
@@ -396,17 +370,11 @@ public class FacetQueryGenerator {
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                        LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                     WHERE
                         fc.name = :facet_category_name
                         AND facet.name IN (:facets)
-                        AND (
-                            continuous_min.value <> '' OR
-                            continuous_max.value <> '' OR
-                            categorical_values.value <> ''
-                        )
+                        AND categorical_values.value <> ''
                 )
                 SELECT
                     facet.facet_id, count(*) as facet_count
@@ -443,17 +411,11 @@ public class FacetQueryGenerator {
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
                 %s
                 %s
-                AND (
-                    continuous_min.value <> '' OR
-                    continuous_max.value <> '' OR
-                    categorical_values.value <> ''
-                )
+                AND categorical_values.value <> ''
             GROUP BY
                 facet.facet_id
             ORDER BY
@@ -475,16 +437,10 @@ public class FacetQueryGenerator {
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                 LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
             WHERE
                 %s
-                (
-                    continuous_min.value <> '' OR
-                    continuous_max.value <> '' OR
-                    categorical_values.value <> ''
-                )
+                categorical_values.value <> ''
             GROUP BY
                 facet.facet_id
             ORDER BY

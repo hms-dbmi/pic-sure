@@ -61,8 +61,8 @@ class FacetQueryGeneratorTest {
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
         List<IdCountPair> expected = List.of(
-            new IdCountPair(22, 13), new IdCountPair(26, 3), new IdCountPair(31, 3), new IdCountPair(27, 3), new IdCountPair(28, 3),
-            new IdCountPair(23, 2), new IdCountPair(21, 2), new IdCountPair(25, 2), new IdCountPair(20, 1)
+            new IdCountPair(22, 13), new IdCountPair(26, 3), new IdCountPair(27, 3), new IdCountPair(28, 3), new IdCountPair(31, 3),
+            new IdCountPair(25, 2), new IdCountPair(21, 2), new IdCountPair(23, 2), new IdCountPair(20, 1)
         );
 
         Assertions.assertEquals(expected, actual);
@@ -147,8 +147,8 @@ class FacetQueryGeneratorTest {
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
         List<IdCountPair> expected = List.of(
-            new IdCountPair(28, 3), new IdCountPair(26, 3), new IdCountPair(31, 3), new IdCountPair(22, 13), new IdCountPair(23, 2),
-            new IdCountPair(25, 2), new IdCountPair(27, 3)
+            new IdCountPair(22, 13), new IdCountPair(23, 2), new IdCountPair(25, 2), new IdCountPair(26, 3), new IdCountPair(27, 3),
+            new IdCountPair(28, 3), new IdCountPair(31, 3)
         );
 
         Assertions.assertEquals(expected, actual);
