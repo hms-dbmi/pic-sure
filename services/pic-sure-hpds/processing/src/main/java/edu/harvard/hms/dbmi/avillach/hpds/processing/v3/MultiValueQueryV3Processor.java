@@ -15,6 +15,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+/**
+ * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.MultiValueQueryProcessor} and updated to use new
+ * Query entity
+ */
 @Component
 public class MultiValueQueryV3Processor implements HpdsV3Processor {
 
@@ -33,7 +37,7 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
 
     @Override
     public String[] getHeaderRow(Query query) {
-        String[] header = new String[query.select().size()+1];
+        String[] header = new String[query.select().size() + 1];
         header[0] = PATIENT_ID_FIELD_NAME;
         System.arraycopy(query.select().toArray(), 0, header, 1, query.select().size());
         return header;
@@ -43,40 +47,35 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
-        Lists.partition(new ArrayList<>(idList), idBatchSize).stream()
-                .forEach(patientIds -> {
-                    Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(result, query, new TreeSet<>(patientIds));
-                    List<List<List<String>>> fieldValuesPerPatient = patientIds.stream().map(patientId -> {
-                        List<List<String>> objectStream = Arrays.stream(getHeaderRow(query)).map(field -> {
-                            if (PATIENT_ID_FIELD_NAME.equals(field)) {
-                                return List.of(patientId.toString());
-                            } else {
-                                return pathToPatientToValueMap.get(field).get(patientId);
-                            }
-                        }).collect(Collectors.toList());
-                        return objectStream;
-                    }).collect(Collectors.toList());
-                    result.appendMultiValueResults(fieldValuesPerPatient);
-                });
+        Lists.partition(new ArrayList<>(idList), idBatchSize).stream().forEach(patientIds -> {
+            Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(result, query, new TreeSet<>(patientIds));
+            List<List<List<String>>> fieldValuesPerPatient = patientIds.stream().map(patientId -> {
+                List<List<String>> objectStream = Arrays.stream(getHeaderRow(query)).map(field -> {
+                    if (PATIENT_ID_FIELD_NAME.equals(field)) {
+                        return List.of(patientId.toString());
+                    } else {
+                        return pathToPatientToValueMap.get(field).get(patientId);
+                    }
+                }).collect(Collectors.toList());
+                return objectStream;
+            }).collect(Collectors.toList());
+            result.appendMultiValueResults(fieldValuesPerPatient);
+        });
         result.closeWriter();
     }
 
     private Map<String, Map<Integer, List<String>>> buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) {
         ConcurrentHashMap<String, Map<Integer, List<String>>> pathToPatientToValueMap = new ConcurrentHashMap<>();
-        List<ColumnMeta> columns = query.select().stream()
-                .map(queryExecutor.getDictionary()::get)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-        List<String> paths = columns.stream()
-                .map(ColumnMeta::getName)
-                .collect(Collectors.toList());
+        List<ColumnMeta> columns =
+            query.select().stream().map(queryExecutor.getDictionary()::get).filter(Objects::nonNull).collect(Collectors.toList());
+        List<String> paths = columns.stream().map(ColumnMeta::getName).collect(Collectors.toList());
         int columnCount = paths.size() + 1;
 
         ArrayList<Integer> columnIndex = queryExecutor.useResidentCubesFirst(paths, columnCount);
 
         // todo: investigate if the parallel stream will thrash the cache if the number of executors is > number of resident cubes
-        columnIndex.parallelStream().forEach((columnId)->{
-            String columnPath = paths.get(columnId-1);
+        columnIndex.parallelStream().forEach((columnId) -> {
+            String columnPath = paths.get(columnId - 1);
             Map<Integer, List<String>> patientIdToValueMap = processColumn(ids, columnPath);
             pathToPatientToValueMap.put(columnPath, patientIdToValueMap);
         });
@@ -92,12 +91,12 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
         KeyAndValue<?>[] cubeValues = cube.sortedByKey();
 
         int idPointer = 0;
-        for(int patientId : patientIds) {
-            while(idPointer < cubeValues.length) {
+        for (int patientId : patientIds) {
+            while (idPointer < cubeValues.length) {
                 int key = cubeValues[idPointer].getKey();
-                if(key < patientId) {
+                if (key < patientId) {
                     idPointer++;
-                } else if(key == patientId){
+                } else if (key == patientId) {
                     String value = getResultField(cube, cubeValues, idPointer);
                     patientIdToValueMap.computeIfAbsent(patientId, k -> new ArrayList<>()).add(value);
                     idPointer++;
@@ -109,8 +108,7 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
         return patientIdToValueMap;
     }
 
-    private String getResultField(PhenoCube<?> cube, KeyAndValue<?>[] cubeValues,
-                                 int idPointer) {
+    private String getResultField(PhenoCube<?> cube, KeyAndValue<?>[] cubeValues, int idPointer) {
         Comparable<?> value = cubeValues[idPointer].getValue();
         return value.toString();
     }

@@ -1,5 +1,35 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.util.UUIDv5;
+import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.AsyncResult;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
+import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
+import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -7,85 +37,48 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
-import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
-import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-
-import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
-import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
-import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestBody;
-
-@RequestMapping(value = "PIC-SURE", produces = "application/json")
+@RequestMapping(value = "PIC-SURE/V3", produces = "application/json")
 @RestController
-public class PicSureService {
+public class PicSureV3Service {
 
     @Autowired
-    public PicSureService(
-        QueryService queryService, CountProcessor countProcessor, VariantListProcessor variantListProcessor,
-        AbstractProcessor abstractProcessor, Paginator paginator, SignUrlService signUrlService, FileSharingService fileSystemService,
-        QueryDecorator queryDecorator, TestDataService testDataService
+    public PicSureV3Service(
+        QueryV3Service queryService, CountV3Processor countProcessor, VariantListV3Processor variantListProcessor,
+        QueryExecutor queryExecutor, Paginator paginator, SignUrlService signUrlService, FileSharingV3Service fileSharingService,
+        TestDataService testDataService
     ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
         this.variantListProcessor = variantListProcessor;
-        this.abstractProcessor = abstractProcessor;
+        this.queryExecutor = queryExecutor;
         this.paginator = paginator;
-        this.fileSystemService = fileSystemService;
-        this.queryDecorator = queryDecorator;
+        this.fileSharingService = fileSharingService;
         this.signUrlService = signUrlService;
-        Crypto.loadDefaultKey();
         this.testDataService = testDataService;
         Crypto.loadDefaultKey();
     }
 
-    private final QueryService queryService;
+    private final QueryV3Service queryService;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    private Logger log = LoggerFactory.getLogger(PicSureService.class);
+    private static final Logger log = LoggerFactory.getLogger(PicSureV3Service.class);
 
-    private final CountProcessor countProcessor;
+    private final CountV3Processor countProcessor;
 
-    private final VariantListProcessor variantListProcessor;
+    private final VariantListV3Processor variantListProcessor;
 
-    private final AbstractProcessor abstractProcessor;
+    private final QueryExecutor queryExecutor;
 
     private final Paginator paginator;
 
     private final SignUrlService signUrlService;
 
-    private final FileSharingService fileSystemService;
-
-    private final QueryDecorator queryDecorator;
+    private final FileSharingV3Service fileSharingService;
 
     private final TestDataService testDataService;
 
     private static final String QUERY_METADATA_FIELD = "queryMetadata";
-    private static final int RESPONSE_CACHE_SIZE = 50;
 
     @PostMapping("/info")
     public ResourceInfo info(@RequestBody QueryRequest request) {
@@ -164,20 +157,18 @@ public class PicSureService {
 
     @PostMapping("/search")
     public SearchResults search(@RequestBody QueryRequest searchJson) {
-        Set<Entry<String, ColumnMeta>> allColumns = abstractProcessor.getDictionary().entrySet();
+        Set<Entry<String, ColumnMeta>> allColumns = queryExecutor.getDictionary().entrySet();
 
         // Phenotype Values
         Object phenotypeResults = searchJson.getQuery() != null ? allColumns.stream().filter((entry) -> {
             String lowerCaseSearchTerm = searchJson.getQuery().toString().toLowerCase(Locale.ENGLISH);
-            return entry.getKey().toLowerCase(Locale.ENGLISH).contains(lowerCaseSearchTerm)
-                || (entry.getValue().isCategorical() && entry.getValue().getCategoryValues().stream().map(String::toLowerCase)
-                    .collect(Collectors.toList()).contains(lowerCaseSearchTerm));
+            return entry.getKey().toLowerCase(Locale.ENGLISH).contains(lowerCaseSearchTerm) || (entry.getValue().isCategorical()
+                && entry.getValue().getCategoryValues().stream().map(String::toLowerCase).toList().contains(lowerCaseSearchTerm));
         }).collect(Collectors.toMap(Entry::getKey, Entry::getValue)) : allColumns;
 
         // Info Values
-        Map<String, Map> infoResults = new TreeMap<String, Map>();
-        abstractProcessor.getInfoStoreMeta().stream().forEach(infoColumnMeta -> {
-            // FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
+        Map<String, Map<String, Object>> infoResults = new TreeMap<>();
+        queryExecutor.getInfoStoreMeta().forEach(infoColumnMeta -> {
             String query = searchJson.getQuery().toString();
             String lowerCase = query.toLowerCase(Locale.ENGLISH);
             boolean storeIsNumeric = infoColumnMeta.continuous();
@@ -189,15 +180,14 @@ public class PicSureService {
                     infoColumnMeta.key(),
                     ImmutableMap.of(
                         "description", infoColumnMeta.description(), "values",
-                        storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""),
+                        storeIsNumeric ? new ArrayList<String>() : queryExecutor.searchInfoConceptValues(infoColumnMeta.key(), ""),
                         "continuous", storeIsNumeric
                     )
                 );
             }
         });
 
-        return new SearchResults()
-            .setResults(ImmutableMap.of("phenotypes", phenotypeResults, /* "genes", resultMap, */ "info", infoResults))
+        return new SearchResults().setResults(ImmutableMap.of("phenotypes", phenotypeResults, "info", infoResults))
             .setSearchQuery(searchJson.getQuery().toString());
     }
 
@@ -234,9 +224,8 @@ public class PicSureService {
         status.setStartTime(entity.getQueuedTime());
         status.setStatus(entity.getStatus().toPicSureStatus());
 
-        Map<String, Object> metadata = new HashMap<String, Object>();
-        queryDecorator.setId(entity.getQuery());
-        metadata.put("picsureQueryId", UUIDv5.UUIDFromString(entity.getQuery().getId()));
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("picsureQueryId", entity.getQuery().id());
         status.setResultMetadata(metadata);
         return status;
     }
@@ -244,7 +233,7 @@ public class PicSureService {
     @PostMapping(value = "/query/{resourceQueryId}/result")
     public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
         throws IOException {
-        AsyncResult result = queryService.getResultFor(queryId.toString());
+        AsyncResult result = queryService.getResultFor(queryId);
         if (result == null) {
             return ResponseEntity.status(404).build();
         }
@@ -267,12 +256,12 @@ public class PicSureService {
     @PostMapping("/write/{dataType}")
     public ResponseEntity<String> writeQueryResult(@RequestBody() Query query, @PathVariable("dataType") String datatype) {
         if ("test_upload".equals(datatype)) {
-            return testDataService.uploadTestFile(query.getPicSureId()) ? ResponseEntity.ok().build() : ResponseEntity.status(500).build();
+            return testDataService.uploadTestFile(query.picsureId()) ? ResponseEntity.ok().build() : ResponseEntity.status(500).build();
         }
-        if (roundTripUUID(query.getPicSureId()).map(id -> !id.equalsIgnoreCase(query.getPicSureId())).orElse(true)) {
+        if (roundTripUUID(query.picsureId()).map(id -> !id.equalsIgnoreCase(query.picsureId())).orElse(true)) {
             return ResponseEntity.status(400).body("The query pic-sure ID is not a UUID");
         }
-        if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.getExpectedResultType())) {
+        if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.expectedResultType())) {
             return ResponseEntity.status(400).body("The write endpoint only writes time series dataframes. Fix result type.");
         }
         String hpdsQueryID;
@@ -289,7 +278,7 @@ public class PicSureService {
             return ResponseEntity.internalServerError().build();
         }
 
-        AsyncResult result = queryService.getResultFor(hpdsQueryID);
+        AsyncResult result = queryService.getResultFor(UUID.fromString(hpdsQueryID));
         // the queryResult has this DIY retry logic that blocks a system thread.
         // I'm not going to do that here. If the service can't find it, you get a 404.
         // Retry it client side.
@@ -306,13 +295,13 @@ public class PicSureService {
         // at least for now, this is going to block until we finish writing
         // Not very restful, but it will make this API very easy to consume
         boolean success = false;
-        query.setId(hpdsQueryID);
+        Query queryCopy = query.generateId();
         if ("phenotypic".equals(datatype)) {
-            success = fileSystemService.createPhenotypicData(query);
+            success = fileSharingService.createPhenotypicData(queryCopy);
         } else if ("genomic".equals(datatype)) {
-            success = fileSystemService.createGenomicData(query);
+            success = fileSharingService.createGenomicData(queryCopy);
         } else if ("patients".equals(datatype)) {
-            success = ResultType.PATIENTS.equals(query.getExpectedResultType()) && fileSystemService.createPatientList(query);
+            success = ResultType.PATIENTS.equals(queryCopy.expectedResultType()) && fileSharingService.createPatientList(queryCopy);
         }
         return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
     }
@@ -320,7 +309,7 @@ public class PicSureService {
     @PostMapping(value = "/query/{resourceQueryId}/signed-url")
     public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
         throws IOException {
-        AsyncResult result = queryService.getResultFor(queryId.toString());
+        AsyncResult result = queryService.getResultFor(queryId);
         if (result == null) {
             return ResponseEntity.status(404).build();
         }
@@ -376,7 +365,7 @@ public class PicSureService {
         if (size < 1) {
             throw new IllegalArgumentException("Size must be greater than 0");
         }
-        final List<String> matchingValues = abstractProcessor.searchInfoConceptValues(genomicConceptPath, query);
+        final List<String> matchingValues = queryExecutor.searchInfoConceptValues(genomicConceptPath, query);
         return paginator.paginate(matchingValues, page, size);
     }
 
@@ -384,10 +373,10 @@ public class PicSureService {
         Query incomingQuery;
         incomingQuery = convertIncomingQuery(resultRequest);
         log.info("Query Converted");
-        switch (incomingQuery.getExpectedResultType()) {
+        switch (incomingQuery.expectedResultType()) {
 
             case INFO_COLUMN_LISTING:
-                List<InfoColumnMeta> infoColumnMeta = abstractProcessor.getInfoStoreMeta();
+                List<InfoColumnMeta> infoColumnMeta = queryExecutor.getInfoStoreMeta();
                 return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(infoColumnMeta);
 
             case DATAFRAME:
@@ -400,7 +389,7 @@ public class PicSureService {
                 }
                 log.info(status.toString());
 
-                AsyncResult result = queryService.getResultFor(status.getResourceResultId());
+                AsyncResult result = queryService.getResultFor(UUID.fromString(status.getResourceResultId()));
                 if (result.getStatus() == AsyncResult.Status.SUCCESS) {
                     result.getStream().open();
                     return queryOkResponse(
@@ -451,9 +440,9 @@ public class PicSureService {
     }
 
     private ResponseEntity queryOkResponse(Object obj, Query incomingQuery, MediaType mediaType) {
-        queryDecorator.setId(incomingQuery);
+        Query query = incomingQuery.generateId();
         HttpHeaders responseHeaders = new HttpHeaders();
-        responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(incomingQuery.toString()).toString());
+        responseHeaders.set(QUERY_METADATA_FIELD, UUIDv5.UUIDFromString(query.toString()).toString());
         return ResponseEntity.ok().contentType(mediaType).headers(responseHeaders).body(obj);
     }
 }

@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import com.google.common.cache.CacheLoader;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
@@ -24,142 +25,152 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 @Component
 public class QueryExecutor {
 
-	private static Logger log = LoggerFactory.getLogger(QueryExecutor.class);
+    private static Logger log = LoggerFactory.getLogger(QueryExecutor.class);
 
 
-	private final GenomicProcessor genomicProcessor;
+    private final GenomicProcessor genomicProcessor;
 
-	private final PhenotypicQueryExecutor phenotypicQueryExecutor;
+    private final PhenotypicQueryExecutor phenotypicQueryExecutor;
 
 
-	@Autowired
-	public QueryExecutor(
-			GenomicProcessor genomicProcessor,
-			PhenotypicQueryExecutor phenotypicQueryExecutor
-	) throws ClassNotFoundException, IOException, InterruptedException {
-		this.genomicProcessor = genomicProcessor;
-		this.phenotypicQueryExecutor = phenotypicQueryExecutor;
-	}
+    @Autowired
+    public QueryExecutor(GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor)
+        throws ClassNotFoundException, IOException, InterruptedException {
+        this.genomicProcessor = genomicProcessor;
+        this.phenotypicQueryExecutor = phenotypicQueryExecutor;
+    }
 
-	public Set<String> getInfoStoreColumns() {
-		return genomicProcessor.getInfoStoreColumns();
-	}
-
+    public Set<String> getInfoStoreColumns() {
+        return genomicProcessor.getInfoStoreColumns();
+    }
 
 
 
-	/**
-	 * Process each filter in the query and return a list of patient ids that should be included in the
-	 * result.
-	 *
-	 * @param query
-	 * @return
-	 */
-	public Set<Integer> getPatientSubsetForQuery(Query query) {
-		Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
-		DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
-		// NULL (representing no phenotypic filters, i.e. all patients) or not empty patient ID sets require a genomic query.
-		// Otherwise, short circuit and return no patients
-		if ((distributableQuery.getPatientIds() == null || !distributableQuery.getPatientIds().isEmpty()) && distributableQuery.hasFilters()) {
-			Mono<VariantMask> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
-			return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
-		}
+    /**
+     * Process each filter in the query and return a list of patient ids that should be included in the result.
+     *
+     * @param query
+     * @return
+     */
+    public Set<Integer> getPatientSubsetForQuery(Query query) {
+        Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
+        DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
+        // NULL (representing no phenotypic filters, i.e. all patients) or not empty patient ID sets require a genomic query.
+        // Otherwise, short circuit and return no patients
+        if (
+            (distributableQuery.getPatientIds() == null || !distributableQuery.getPatientIds().isEmpty()) && distributableQuery.hasFilters()
+        ) {
+            Mono<VariantMask> patientMaskForVariantInfoFilters = genomicProcessor.getPatientMask(distributableQuery);
+            return patientMaskForVariantInfoFilters.map(genomicProcessor::patientMaskToPatientIdSet).block();
+        }
 
-		if (distributableQuery.getPatientIds() == null) {
-			return phenotypicQueryExecutor.getPatientIds();
-		}
-		return distributableQuery.getPatientIds();
-	}
+        if (distributableQuery.getPatientIds() == null) {
+            return phenotypicQueryExecutor.getPatientIds();
+        }
+        return distributableQuery.getPatientIds();
+    }
 
-	private DistributableQuery queryToDistributableQuery(Query query, Set<Integer> patientIds) {
-		DistributableQuery distributableQuery = new DistributableQuery()
-				.setPatientIds(patientIds);
+    private DistributableQuery queryToDistributableQuery(Query query, Set<Integer> patientIds) {
+        DistributableQuery distributableQuery = new DistributableQuery().setPatientIds(patientIds);
 
-		if (query.genomicFilters().isEmpty()) {
-			return distributableQuery;
-		}
+        if (query.genomicFilters().isEmpty()) {
+            return distributableQuery;
+        }
 
-		edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter variantInfoFilters = new edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter();
-		variantInfoFilters.numericVariantInfoFilters = new HashMap<>();
-		variantInfoFilters.categoryVariantInfoFilters = new HashMap<>();
+        edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter variantInfoFilters =
+            new edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.VariantInfoFilter();
+        variantInfoFilters.numericVariantInfoFilters = new HashMap<>();
+        variantInfoFilters.categoryVariantInfoFilters = new HashMap<>();
 
-		query.genomicFilters().forEach(genomicFilter -> {
-			if (VariantUtils.pathIsVariantSpec(genomicFilter.key())) {
-				if (genomicFilter.values() == null || genomicFilter.values().isEmpty()) {
-					distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), new String[] {"0/1", "1/1"});
-				}
-				else {
-					distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
-				}
+        query.genomicFilters().forEach(genomicFilter -> {
+            if (VariantUtils.pathIsVariantSpec(genomicFilter.key())) {
+                if (genomicFilter.values() == null || genomicFilter.values().isEmpty()) {
+                    distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), new String[] {"0/1", "1/1"});
+                } else {
+                    distributableQuery.addVariantSpecCategoryFilter(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
+                }
 
-			} else {
-				if (genomicFilter.values() != null) {
-					variantInfoFilters.categoryVariantInfoFilters.put(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
-				} else if (genomicFilter.max() != null || genomicFilter.min() != null) {
-					variantInfoFilters.numericVariantInfoFilters.put(genomicFilter.key(), new Filter.FloatFilter(genomicFilter.min(), genomicFilter.max()));
-				}
-			}
-		});
+            } else {
+                if (genomicFilter.values() != null) {
+                    variantInfoFilters.categoryVariantInfoFilters.put(genomicFilter.key(), genomicFilter.values().toArray(new String[0]));
+                } else if (genomicFilter.max() != null || genomicFilter.min() != null) {
+                    variantInfoFilters.numericVariantInfoFilters
+                        .put(genomicFilter.key(), new Filter.FloatFilter(genomicFilter.min(), genomicFilter.max()));
+                }
+            }
+        });
 
-		distributableQuery.setVariantInfoFilters(List.of(variantInfoFilters));
-		return distributableQuery;
-	}
+        distributableQuery.setVariantInfoFilters(List.of(variantInfoFilters));
+        return distributableQuery;
+    }
 
-	public Collection<String> getVariantList(Query query) {
-		Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
-		DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
-		return genomicProcessor.getVariantList(distributableQuery).block();
-	}
+    public Collection<String> getVariantList(Query query) {
+        Set<Integer> patientIdSet = phenotypicQueryExecutor.getPatientSet(query);
+        DistributableQuery distributableQuery = queryToDistributableQuery(query, patientIdSet);
+        return genomicProcessor.getVariantList(distributableQuery).block();
+    }
 
-	public List<InfoColumnMeta> getInfoStoreMeta() {
-		return genomicProcessor.getInfoColumnMeta();
-	}
+    public List<InfoColumnMeta> getInfoStoreMeta() {
+        return genomicProcessor.getInfoColumnMeta();
+    }
 
-	public List<String> searchInfoConceptValues(String conceptPath, String query) {
-		try {
-			return genomicProcessor.getInfoStoreValues(conceptPath).stream()
-					.filter(variableValue -> variableValue.toUpperCase(Locale.ENGLISH).contains(query.toUpperCase(Locale.ENGLISH)))
-					.collect(Collectors.toList());
-		} catch (UncheckedExecutionException e) {
-			if(e.getCause() instanceof RuntimeException) {
-				throw (RuntimeException) e.getCause();
-			}
-			throw e;
-		}
-	}
+    public List<String> searchInfoConceptValues(String conceptPath, String query) {
+        try {
+            return genomicProcessor.getInfoStoreValues(conceptPath).stream()
+                .filter(variableValue -> variableValue.toUpperCase(Locale.ENGLISH).contains(query.toUpperCase(Locale.ENGLISH)))
+                .collect(Collectors.toList());
+        } catch (UncheckedExecutionException e) {
+            if (e.getCause() instanceof RuntimeException) {
+                throw (RuntimeException) e.getCause();
+            }
+            throw e;
+        }
+    }
 
-	protected PhenoCube getCube(String path) {
-		return phenotypicQueryExecutor.getCube(path);
-	}
+    protected PhenoCube getCube(String path) {
+        return phenotypicQueryExecutor.getCube(path);
+    }
 
-	public Optional<PhenoCube<?>> nullableGetCube(String path) {
-		return phenotypicQueryExecutor.nullableGetCube(path);
-	}
+    public Optional<PhenoCube<?>> nullableGetCube(String path) {
+        return phenotypicQueryExecutor.nullableGetCube(path);
+    }
 
-	public ArrayList<Integer> useResidentCubesFirst(List<String> paths, int columnCount) {
-		return phenotypicQueryExecutor.useResidentCubesFirst(paths, columnCount);
-	}
+    public ArrayList<Integer> useResidentCubesFirst(List<String> paths, int columnCount) {
+        return phenotypicQueryExecutor.useResidentCubesFirst(paths, columnCount);
+    }
 
-	public TreeMap<String, ColumnMeta> getDictionary() {
-		return phenotypicQueryExecutor.getMetaStore();
-	}
+    public Map<String, ColumnMeta> getDictionary() {
+        return phenotypicQueryExecutor.getMetaStore();
+    }
 
-	public List<String> getPatientIds() {
-		return genomicProcessor.getPatientIds();
-	}
+    public List<String> getPatientIds() {
+        return genomicProcessor.getPatientIds();
+    }
 
-	public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
-		return genomicProcessor.getMasks(path, variantMasksVariantBucketHolder);
-	}
+    public Optional<VariableVariantMasks> getMasks(String path, VariantBucketHolder<VariableVariantMasks> variantMasksVariantBucketHolder) {
+        return genomicProcessor.getMasks(path, variantMasksVariantBucketHolder);
+    }
 
     // todo: handle this locally, we do not want this in the genomic processor
     protected VariantMask createMaskForPatientSet(Set<Integer> patientSubset) {
         return genomicProcessor.createMaskForPatientSet(patientSubset);
+    }
+
+    public SequencedSet<String> getAllConceptPaths(Query query) {
+        SequencedSet<String> allConceptPaths = new LinkedHashSet<>(query.select());
+        List<String> allFilterPaths =
+            query.allFilters().stream().flatMap(phenotypicFilter -> (switch (phenotypicFilter.phenotypicFilterType()) {
+                case FILTER, REQUIRED -> List.of(phenotypicFilter.conceptPath());
+                case ANY_RECORD_OF -> phenotypicQueryExecutor.getChildConceptPaths(phenotypicFilter.conceptPath());
+            }).stream()).toList();
+        allConceptPaths.addAll(allFilterPaths);
+        return allConceptPaths;
     }
 
 }
