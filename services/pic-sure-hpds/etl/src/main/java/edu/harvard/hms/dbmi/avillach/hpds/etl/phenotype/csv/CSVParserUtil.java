@@ -2,9 +2,9 @@ package edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.csv;
 
 import edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.config.CSVConfig;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.stream.Collectors;
@@ -17,15 +17,13 @@ public class CSVParserUtil {
     public static final int DATETIME = 4;
 
     private static final String MU = "µ";
-    
+
     public static String parseConceptPath(CSVRecord record, boolean doVarNameRollup, CSVConfig config) {
         String conceptPathFromRow = record.get(CONCEPT_PATH);
 
         // replace the mu character with a backslash, see 1000 genome dataset
         conceptPathFromRow = conceptPathFromRow.replace(MU, "\\");
-        conceptPathFromRow = Arrays.stream(conceptPathFromRow.split("\\\\"))
-            .map(String::trim)
-            .collect(Collectors.joining("\\")) + "\\";
+        conceptPathFromRow = Arrays.stream(conceptPathFromRow.split("\\\\")).map(String::trim).collect(Collectors.joining("\\")) + "\\";
         conceptPathFromRow = stripWeirdUnicodeChars(conceptPathFromRow);
 
         // \\ufffd = �
@@ -47,7 +45,7 @@ public class CSVParserUtil {
         return conceptPathFromRow;
     }
 
-    private static String stripWeirdUnicodeChars(@Nonnull String raw) {
+    private static String stripWeirdUnicodeChars(@NonNull String raw) {
         return raw.replaceAll("\\ufffd", "");
     }
 
