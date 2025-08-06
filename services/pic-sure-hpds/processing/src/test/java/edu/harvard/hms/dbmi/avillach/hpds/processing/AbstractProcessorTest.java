@@ -41,27 +41,20 @@ public class AbstractProcessorTest {
     @BeforeEach
     public void setup() {
         abstractProcessor = new AbstractProcessor(
-                new PhenotypeMetaStore(
-                        new TreeMap<>(),
-                        new TreeSet<>()
-                ),
-                mockLoadingCache,
-                infoStores,
-                null,
-                genomicProcessor,
-                ""
+            new PhenotypeMetaStore(new TreeMap<>(), new TreeSet<>(), 500), mockLoadingCache, infoStores, null, genomicProcessor, ""
         );
     }
 
     @Test
     public void getPatientSubsetForQuery_oneVariantCategoryFilter_indexFound() {
-        Map<String, String[]> categoryVariantInfoFilters =
-                Map.of(GENE_WITH_VARIANT_KEY, new String[] {EXAMPLE_GENES_WITH_VARIANT.get(0)});
+        Map<String, String[]> categoryVariantInfoFilters = Map.of(GENE_WITH_VARIANT_KEY, new String[] {EXAMPLE_GENES_WITH_VARIANT.get(0)});
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
         variantInfoFilter.categoryVariantInfoFilters = categoryVariantInfoFilters;
 
-        when(genomicProcessor.getPatientMask(isA(DistributableQuery.class))).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("1100110011"))));
-        when(genomicProcessor.patientMaskToPatientIdSet(eq(new VariantMaskBitmaskImpl(new BigInteger("1100110011"))))).thenReturn(Set.of(42, 99));
+        when(genomicProcessor.getPatientMask(isA(DistributableQuery.class)))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("1100110011"))));
+        when(genomicProcessor.patientMaskToPatientIdSet(eq(new VariantMaskBitmaskImpl(new BigInteger("1100110011")))))
+            .thenReturn(Set.of(42, 99));
 
         List<Query.VariantInfoFilter> variantInfoFilters = List.of(variantInfoFilter);
 

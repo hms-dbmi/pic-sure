@@ -35,9 +35,12 @@ public class QueryV3Processor implements HpdsV3Processor {
 
     private final QueryExecutor queryExecutor;
 
+    private final PhenotypicObservationStore phenotypicObservationStore;
+
     @Autowired
-    public QueryV3Processor(QueryExecutor queryExecutor) {
+    public QueryV3Processor(QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore) {
         this.queryExecutor = queryExecutor;
+        this.phenotypicObservationStore = phenotypicObservationStore;
         ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
     }
 
@@ -45,7 +48,7 @@ public class QueryV3Processor implements HpdsV3Processor {
     public String[] getHeaderRow(Query query) {
         String[] header = new String[query.select().size() + 1];
         header[0] = "Patient ID";
-        System.arraycopy(query.select().toArray(), 0, header, 1, query.select().size());
+        System.arraycopy(query.select().toArray(new String[0]), 0, header, 1, query.select().size());
         return header;
     }
 
@@ -84,13 +87,14 @@ public class QueryV3Processor implements HpdsV3Processor {
                 idInSubsetPointer++;
             }
         } else {
-            PhenoCube<?> cube = queryExecutor.getCube(path);
-            ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
-            int idInSubsetPointer = 0;
-            for (int id : ids) {
-                writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
-                idInSubsetPointer++;
-            }
+            phenotypicObservationStore.getCube(path).ifPresent(cube -> {
+                ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
+                int idInSubsetPointer = 0;
+                for (int id : ids) {
+                    writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
+                    idInSubsetPointer++;
+                }
+            });
         }
     }
 
@@ -120,29 +124,29 @@ public class QueryV3Processor implements HpdsV3Processor {
                 idInSubsetPointer++;
             }
         } else {
-            PhenoCube<?> cube = queryExecutor.getCube(path);
+            phenotypicObservationStore.getCube(path).ifPresent(cube -> {
+                KeyAndValue<?>[] cubeValues = cube.sortedByKey();
 
-            KeyAndValue<?>[] cubeValues = cube.sortedByKey();
+                int idPointer = 0;
 
-            int idPointer = 0;
-
-            ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
-            int idInSubsetPointer = 0;
-            for (int id : ids) {
-                while (idPointer < cubeValues.length) {
-                    int key = cubeValues[idPointer].getKey();
-                    if (key < id) {
-                        idPointer++;
-                    } else if (key == id) {
-                        idPointer = writeResultField(results, x, cube, cubeValues, idPointer, doubleBuffer, idInSubsetPointer);
-                        break;
-                    } else {
-                        writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
-                        break;
+                ByteBuffer doubleBuffer = ByteBuffer.allocate(Double.BYTES);
+                int idInSubsetPointer = 0;
+                for (int id : ids) {
+                    while (idPointer < cubeValues.length) {
+                        int key = cubeValues[idPointer].getKey();
+                        if (key < id) {
+                            idPointer++;
+                        } else if (key == id) {
+                            idPointer = writeResultField(results, x, cube, cubeValues, idPointer, doubleBuffer, idInSubsetPointer);
+                            break;
+                        } else {
+                            writeNullResultField(results, x, cube, doubleBuffer, idInSubsetPointer);
+                            break;
+                        }
                     }
+                    idInSubsetPointer++;
                 }
-                idInSubsetPointer++;
-            }
+            });
         }
     }
 

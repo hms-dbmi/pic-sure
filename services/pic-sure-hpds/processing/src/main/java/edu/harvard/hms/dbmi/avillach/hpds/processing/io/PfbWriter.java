@@ -36,7 +36,7 @@ public class PfbWriter implements ResultWriter {
     public static final String PATIENT_TABLE_PREFIX = "pic-sure-patients-";
     public static final String DATA_DICTIONARY_TABLE_PREFIX = "pic-sure-data-dictionary-";
     public static final List<String> DATA_DICTIONARY_FIELDS = List.of("concept_path", "display", "dataset", "description", "drs_uri");
-    private Logger log = LoggerFactory.getLogger(PfbWriter.class);
+    private static final Logger log = LoggerFactory.getLogger(PfbWriter.class);
 
     private final DictionaryService dictionaryService;
 

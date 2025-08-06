@@ -80,16 +80,14 @@ public class VariantListProcessor implements HpdsProcessor {
     }
 
     /**
-     * 
      * The incomingQuery is a normal query, the same as COUNT result type.
      * 
      * This should not actually do any filtering based on bitmasks, just INFO columns.
      * 
      * @param query
      * @return a List of VariantSpec strings that would be eligible to filter patients if the incomingQuery was run as a COUNT query.
-     * @throws IOException
      */
-    public String runVariantListQuery(Query query) throws IOException {
+    public String runVariantListQuery(Query query) {
 
         if (!VARIANT_LIST_ENABLED) {
             log.warn("VARIANT_LIST query attempted, but not enabled.");
@@ -97,20 +95,6 @@ public class VariantListProcessor implements HpdsProcessor {
         }
 
         return Arrays.toString(abstractProcessor.getVariantList(query).toArray());
-    }
-
-    /**
-     * Process only variantInfoFilters to count the number of variants that would be included in evaluating the query.
-     * 
-     * @param query
-     * @return the number of variants that would be used to filter patients if the incomingQuery was run as a COUNT query.
-     * @throws IOException
-     */
-    public int runVariantCount(Query query) throws IOException {
-        if (!query.getVariantInfoFilters().isEmpty()) {
-            return abstractProcessor.getVariantList(query).size();
-        }
-        return 0;
     }
 
     /**

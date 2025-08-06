@@ -28,17 +28,22 @@ import java.util.*;
 @Component
 public class TimeseriesV3Processor implements HpdsV3Processor {
 
-    private Logger log = LoggerFactory.getLogger(TimeseriesV3Processor.class);
+    private static final Logger log = LoggerFactory.getLogger(TimeseriesV3Processor.class);
 
     private final QueryExecutor queryExecutor;
     private final TimeSeriesConversionService conversionService;
 
+    private final PhenotypicObservationStore phenotypicObservationStore;
+
     private final int ID_BATCH_SIZE;
 
     @Autowired
-    public TimeseriesV3Processor(QueryExecutor queryExecutor, TimeSeriesConversionService conversionService) {
+    public TimeseriesV3Processor(
+        QueryExecutor queryExecutor, TimeSeriesConversionService conversionService, PhenotypicObservationStore phenotypicObservationStore
+    ) {
         this.queryExecutor = queryExecutor;
         this.conversionService = conversionService;
+        this.phenotypicObservationStore = phenotypicObservationStore;
         // todo: handle these via spring annotations
         ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
     }
@@ -64,17 +69,8 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
         } else {
             throw new RuntimeException("Data Export is not authorized for this system");
         }
-        return;
     }
 
-    /**
-     * //no variant data exported in this processor
-     * 
-     * @param query
-     * @param result
-     * @param idList
-     * @throws IOException
-     */
     private void exportTimeData(Query query, AsyncResult result, Set<Integer> idList) throws IOException {
         log.info("Starting export for time series data of query {} (HPDS ID {})", query.picsureId(), query.id());
         Set<String> exportedConceptPaths = new HashSet<>();
@@ -91,8 +87,8 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
             if (exportedConceptPaths.contains(conceptPath)) {
                 continue;
             }
-            ArrayList<String[]> dataEntries = new ArrayList<String[]>();
-            Optional<PhenoCube<?>> maybeCube = queryExecutor.nullableGetCube(conceptPath);
+            ArrayList<String[]> dataEntries = new ArrayList<>();
+            Optional<PhenoCube<?>> maybeCube = phenotypicObservationStore.getCube(conceptPath);
             if (maybeCube.isEmpty()) {
                 log.warn("Attempting export of non-existant concept: {}", conceptPath);
                 continue;
@@ -117,7 +113,7 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
                 // batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
                 if (dataEntries.size() >= (ID_BATCH_SIZE > 0 ? 10 : ID_BATCH_SIZE)) {
                     result.appendResults(dataEntries);
-                    dataEntries = new ArrayList<String[]>();
+                    dataEntries = new ArrayList<>();
                 }
             }
             result.appendResults(dataEntries);

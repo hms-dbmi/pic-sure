@@ -18,7 +18,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 @Service
 public class QueryV3Service {
@@ -123,18 +122,12 @@ public class QueryV3Service {
         return result;
     }
 
-
-    private List<String> includingOnlyDictionaryFields(Set<String> fields, Set<String> dictionaryFields) {
-        return fields.stream().filter(dictionaryFields::contains).collect(Collectors.toList());
-    }
-
     public AsyncResult getStatusFor(String queryId) {
         AsyncResult asyncResult = results.get(queryId);
         int queueDepth =
             asyncResult.getQuery().select().size() > SMALL_JOB_LIMIT ? largeTaskExecutionQueue.size() : smallTaskExecutionQueue.size();
         // note: code copied from this method in QueryService was removed, it was obviously not working
-        asyncResult.setQueueDepth(queueDepth);
-        return asyncResult;
+        return asyncResult.setQueueDepth(queueDepth);
     }
 
     public AsyncResult getResultFor(UUID queryId) {

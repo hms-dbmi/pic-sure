@@ -37,7 +37,7 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
-@RequestMapping(value = "PIC-SURE/V3", produces = "application/json")
+@RequestMapping(value = "PIC-SURE/v3", produces = "application/json")
 @RestController
 public class PicSureV3Service {
 
@@ -231,8 +231,7 @@ public class PicSureV3Service {
     }
 
     @PostMapping(value = "/query/{resourceQueryId}/result")
-    public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
-        throws IOException {
+    public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) {
         AsyncResult result = queryService.getResultFor(queryId);
         if (result == null) {
             return ResponseEntity.status(404).build();
@@ -406,11 +405,6 @@ public class PicSureV3Service {
 
             case CONTINUOUS_CROSS_COUNT:
                 return queryOkResponse(countProcessor.runContinuousCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
-
-            case OBSERVATION_COUNT:
-                return queryOkResponse(
-                    String.valueOf(countProcessor.runObservationCount(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN
-                );
 
             case OBSERVATION_CROSS_COUNT:
                 return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);

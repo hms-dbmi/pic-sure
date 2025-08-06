@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -20,13 +21,16 @@ import java.util.*;
 @Component
 public class CountV3Processor implements HpdsV3Processor {
 
-    private Logger log = LoggerFactory.getLogger(CountV3Processor.class);
+    private final static Logger log = LoggerFactory.getLogger(CountV3Processor.class);
 
     private final QueryExecutor queryExecutor;
 
+    private final PhenotypicObservationStore phenotypicObservationStore;
+
     @Autowired
-    public CountV3Processor(QueryExecutor queryExecutor) {
+    public CountV3Processor(QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore) {
         this.queryExecutor = queryExecutor;
+        this.phenotypicObservationStore = phenotypicObservationStore;
     }
 
     /**
@@ -47,23 +51,6 @@ public class CountV3Processor implements HpdsV3Processor {
         return queryExecutor.getPatientSubsetForQuery(query).size();
     }
 
-    /**
-     * Retrieves a list of patient ids that are valid for the query result and total number of observations recorded for all concepts
-     * included in the fields array for those patients.
-     * 
-     * @param query
-     * @return
-     */
-    public int runObservationCount(Query query) {
-        Set<Integer> patients = queryExecutor.getPatientSubsetForQuery(query);
-        int[] observationCount = {0};
-        query.select().stream().forEach(field -> {
-            observationCount[0] += Arrays.stream(queryExecutor.getCube(field).sortedByKey()).filter(keyAndValue -> {
-                return patients.contains(keyAndValue.getKey());
-            }).count();
-        });
-        return observationCount[0];
-    }
 
     /**
      * Returns a separate observation count for each field in query.crossCountFields when that field is added as a requiredFields entry for
@@ -77,12 +64,12 @@ public class CountV3Processor implements HpdsV3Processor {
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
         query.select().parallelStream().forEach((String concept) -> {
             try {
-                // breaking these statements to allow += operator to cast long to int.
-                int observationCount = 0;
-                observationCount += (Long) Arrays.stream(queryExecutor.getCube(concept).sortedByKey()).filter(keyAndValue -> {
-                    return baseQueryPatientSet.contains(keyAndValue.getKey());
-                }).count();
-                counts.put(concept, observationCount);
+                phenotypicObservationStore.getCube(concept).ifPresent(cube -> {
+                    int observationCount = (int) Arrays.stream(cube.sortedByKey()).filter(keyAndValue -> {
+                        return baseQueryPatientSet.contains(keyAndValue.getKey());
+                    }).count();
+                    counts.put(concept, observationCount);
+                });
             } catch (Exception e) {
                 counts.put(concept, -1);
             }
@@ -127,7 +114,8 @@ public class CountV3Processor implements HpdsV3Processor {
             .filter(phenotypicFilter -> PhenotypicFilterType.REQUIRED.equals(phenotypicFilter.phenotypicFilterType()))
             .map(PhenotypicFilter::conceptPath).forEach(concept -> {
                 Map<String, Integer> varCount = new TreeMap<>();;
-                TreeMap<String, TreeSet<Integer>> categoryMap = queryExecutor.getCube(concept).getCategoryMap();
+                TreeMap<String, TreeSet<Integer>> categoryMap = (TreeMap<String, TreeSet<Integer>>) phenotypicObservationStore
+                    .getCube(concept).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
                 // We do not have all the categories (aka variables) for required fields, so we need to get them and
                 // then ensure that our base patient set, which is filtered down by our filters. Which may include
                 // not only other required filters, but categorical filters, numerical filters, or genomic filters.
@@ -164,7 +152,8 @@ public class CountV3Processor implements HpdsV3Processor {
                 return;
             }
             Map<String, Integer> varCount;
-            TreeMap<String, TreeSet<Integer>> categoryMap = queryExecutor.getCube(categoryFilter.conceptPath()).getCategoryMap();
+            TreeMap<String, TreeSet<Integer>> categoryMap = (TreeMap<String, TreeSet<Integer>>) phenotypicObservationStore
+                .getCube(categoryFilter.conceptPath()).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
             varCount = new TreeMap<>();
             categoryMap.forEach((String category, TreeSet<Integer> patientSet) -> {
                 if (categoryFilter.values().contains(category)) {
@@ -186,8 +175,9 @@ public class CountV3Processor implements HpdsV3Processor {
         TreeMap<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
         query.allFilters().parallelStream().filter(PhenotypicFilter::isCategoricalFilter).forEach(numericFilter -> {
-            KeyAndValue[] pairs =
-                queryExecutor.getCube(numericFilter.conceptPath()).getEntriesForValueRange(numericFilter.min(), numericFilter.max());
+            KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(numericFilter.conceptPath()).map(phenoCube -> {
+                return ((PhenoCube<Double>) phenoCube).getEntriesForValueRange(numericFilter.min(), numericFilter.max());
+            }).orElseGet(() -> new KeyAndValue[] {});
             Map<Double, Integer> countMap = new TreeMap<>();
             Arrays.stream(pairs).forEach(patientConceptPair -> {
                 // The key of the patientConceptPair is the patient id. We need to make sure the patient matches our query.
@@ -237,7 +227,7 @@ public class CountV3Processor implements HpdsV3Processor {
     public PatientAndConceptCount runPatientAndConceptCount(Query incomingQuery) {
         log.info("Starting Patient and Concept Count query {}", incomingQuery.picsureId());
         log.info("Calculating available concepts");
-        long concepts = incomingQuery.select().stream().map(queryExecutor::nullableGetCube).filter(Optional::isPresent).count();
+        long concepts = incomingQuery.select().stream().map(phenotypicObservationStore::getCube).filter(Optional::isPresent).count();
         log.info("Calculating patient counts");
         int patients = runCounts(incomingQuery);
         PatientAndConceptCount patientAndConceptCount = new PatientAndConceptCount();

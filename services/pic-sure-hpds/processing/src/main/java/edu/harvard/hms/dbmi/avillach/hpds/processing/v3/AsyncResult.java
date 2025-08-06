@@ -157,7 +157,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
     }
 
     @JsonIgnore
-    private String[] headerRow;
+    private final String[] headerRow;
 
     /*
      * The result needs access to the jobQueue so it can requeue itself if it fails due to insufficient available heap to build its result
@@ -178,7 +178,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
     }
 
     @JsonIgnore
-    private HpdsV3Processor processor;
+    private final HpdsV3Processor processor;
 
     public HpdsV3Processor getProcessor() {
         return processor;

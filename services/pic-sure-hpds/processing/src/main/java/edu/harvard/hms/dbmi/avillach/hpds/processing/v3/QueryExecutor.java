@@ -14,6 +14,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.Filter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.DistributableQuery;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.GenomicProcessor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,12 +39,16 @@ public class QueryExecutor {
 
     private final PhenotypicQueryExecutor phenotypicQueryExecutor;
 
+    private final PhenotypeMetaStore phenotypeMetaStore;
+
 
     @Autowired
-    public QueryExecutor(GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor)
-        throws ClassNotFoundException, IOException, InterruptedException {
+    public QueryExecutor(
+        GenomicProcessor genomicProcessor, PhenotypicQueryExecutor phenotypicQueryExecutor, PhenotypeMetaStore phenotypeMetaStore
+    ) {
         this.genomicProcessor = genomicProcessor;
         this.phenotypicQueryExecutor = phenotypicQueryExecutor;
+        this.phenotypeMetaStore = phenotypeMetaStore;
     }
 
     public Set<String> getInfoStoreColumns() {
@@ -53,7 +58,7 @@ public class QueryExecutor {
 
 
     /**
-     * Process each filter in the query and return a list of patient ids that should be included in the result.
+     * Executes a query and returns the ids of all matching patients
      *
      * @param query
      * @return
@@ -133,13 +138,6 @@ public class QueryExecutor {
         }
     }
 
-    protected PhenoCube getCube(String path) {
-        return phenotypicQueryExecutor.getCube(path);
-    }
-
-    public Optional<PhenoCube<?>> nullableGetCube(String path) {
-        return phenotypicQueryExecutor.nullableGetCube(path);
-    }
 
     public ArrayList<Integer> useResidentCubesFirst(List<String> paths, int columnCount) {
         return phenotypicQueryExecutor.useResidentCubesFirst(paths, columnCount);
@@ -167,7 +165,7 @@ public class QueryExecutor {
         List<String> allFilterPaths =
             query.allFilters().stream().flatMap(phenotypicFilter -> (switch (phenotypicFilter.phenotypicFilterType()) {
                 case FILTER, REQUIRED -> List.of(phenotypicFilter.conceptPath());
-                case ANY_RECORD_OF -> phenotypicQueryExecutor.getChildConceptPaths(phenotypicFilter.conceptPath());
+                case ANY_RECORD_OF -> phenotypeMetaStore.getChildConceptPaths(phenotypicFilter.conceptPath());
             }).stream()).toList();
         allConceptPaths.addAll(allFilterPaths);
         return allConceptPaths;

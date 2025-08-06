@@ -26,20 +26,25 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     private final int idBatchSize;
     private final QueryExecutor queryExecutor;
 
-    private Logger log = LoggerFactory.getLogger(MultiValueQueryV3Processor.class);
+    private final PhenotypicObservationStore phenotypicObservationStore;
+
+    private static final Logger log = LoggerFactory.getLogger(MultiValueQueryV3Processor.class);
 
 
     @Autowired
-    public MultiValueQueryV3Processor(QueryExecutor queryExecutor, @Value("${ID_BATCH_SIZE:0}") int idBatchSize) {
+    public MultiValueQueryV3Processor(
+        QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+    ) {
         this.queryExecutor = queryExecutor;
         this.idBatchSize = idBatchSize;
+        this.phenotypicObservationStore = phenotypicObservationStore;
     }
 
     @Override
     public String[] getHeaderRow(Query query) {
         String[] header = new String[query.select().size() + 1];
         header[0] = PATIENT_ID_FIELD_NAME;
-        System.arraycopy(query.select().toArray(), 0, header, 1, query.select().size());
+        System.arraycopy(query.select().toArray(new String[0]), 0, header, 1, query.select().size());
         return header;
     }
 
@@ -47,27 +52,25 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
-        Lists.partition(new ArrayList<>(idList), idBatchSize).stream().forEach(patientIds -> {
-            Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(result, query, new TreeSet<>(patientIds));
-            List<List<List<String>>> fieldValuesPerPatient = patientIds.stream().map(patientId -> {
-                List<List<String>> objectStream = Arrays.stream(getHeaderRow(query)).map(field -> {
+        Lists.partition(new ArrayList<>(idList), idBatchSize).forEach(patientIds -> {
+            Map<String, Map<Integer, List<String>>> pathToPatientToValueMap = buildResult(query, new TreeSet<>(patientIds));
+            // A list of values per concept path, per patient
+            List<List<List<String>>> fieldValuesPerPatient =
+                patientIds.stream().map(patientId -> Arrays.stream(getHeaderRow(query)).map(field -> {
                     if (PATIENT_ID_FIELD_NAME.equals(field)) {
                         return List.of(patientId.toString());
                     } else {
                         return pathToPatientToValueMap.get(field).get(patientId);
                     }
-                }).collect(Collectors.toList());
-                return objectStream;
-            }).collect(Collectors.toList());
+                }).collect(Collectors.toList())).collect(Collectors.toList());
             result.appendMultiValueResults(fieldValuesPerPatient);
         });
         result.closeWriter();
     }
 
-    private Map<String, Map<Integer, List<String>>> buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) {
+    private Map<String, Map<Integer, List<String>>> buildResult(Query query, TreeSet<Integer> ids) {
         ConcurrentHashMap<String, Map<Integer, List<String>>> pathToPatientToValueMap = new ConcurrentHashMap<>();
-        List<ColumnMeta> columns =
-            query.select().stream().map(queryExecutor.getDictionary()::get).filter(Objects::nonNull).collect(Collectors.toList());
+        List<ColumnMeta> columns = query.select().stream().map(queryExecutor.getDictionary()::get).filter(Objects::nonNull).toList();
         List<String> paths = columns.stream().map(ColumnMeta::getName).collect(Collectors.toList());
         int columnCount = paths.size() + 1;
 
@@ -86,29 +89,31 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
     private Map<Integer, List<String>> processColumn(TreeSet<Integer> patientIds, String path) {
 
         Map<Integer, List<String>> patientIdToValueMap = new HashMap<>();
-        PhenoCube<?> cube = queryExecutor.getCube(path);
+        Optional<PhenoCube<?>> cubeOptional = phenotypicObservationStore.getCube(path);
 
-        KeyAndValue<?>[] cubeValues = cube.sortedByKey();
+        return cubeOptional.map(cube -> {
+            KeyAndValue<?>[] cubeValues = cube.sortedByKey();
 
-        int idPointer = 0;
-        for (int patientId : patientIds) {
-            while (idPointer < cubeValues.length) {
-                int key = cubeValues[idPointer].getKey();
-                if (key < patientId) {
-                    idPointer++;
-                } else if (key == patientId) {
-                    String value = getResultField(cube, cubeValues, idPointer);
-                    patientIdToValueMap.computeIfAbsent(patientId, k -> new ArrayList<>()).add(value);
-                    idPointer++;
-                } else {
-                    break;
+            int idPointer = 0;
+            for (int patientId : patientIds) {
+                while (idPointer < cubeValues.length) {
+                    int key = cubeValues[idPointer].getKey();
+                    if (key < patientId) {
+                        idPointer++;
+                    } else if (key == patientId) {
+                        String value = getResultField(cubeValues, idPointer);
+                        patientIdToValueMap.computeIfAbsent(patientId, k -> new ArrayList<>()).add(value);
+                        idPointer++;
+                    } else {
+                        break;
+                    }
                 }
             }
-        }
-        return patientIdToValueMap;
+            return patientIdToValueMap;
+        }).orElseGet(Map::of);
     }
 
-    private String getResultField(PhenoCube<?> cube, KeyAndValue<?>[] cubeValues, int idPointer) {
+    private String getResultField(KeyAndValue<?>[] cubeValues, int idPointer) {
         Comparable<?> value = cubeValues[idPointer].getValue();
         return value.toString();
     }

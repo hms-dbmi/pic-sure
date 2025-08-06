@@ -18,7 +18,7 @@ public class PhenotypicFilterValidator {
         switch (phenotypicFilter.phenotypicFilterType()) {
             case FILTER -> validateFilterFilter(phenotypicFilter, metaStore);
             case REQUIRED -> validateRequiredFilter(phenotypicFilter, metaStore);
-            case ANY_RECORD_OF -> validateAnyRecordOfFilter(phenotypicFilter, metaStore);
+            case ANY_RECORD_OF -> validateAnyRecordOfFilter(phenotypicFilter);
         }
     }
 
@@ -59,7 +59,7 @@ public class PhenotypicFilterValidator {
         }
     }
 
-    private void validateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter, Map<String, ColumnMeta> metaStore) {
+    private void validateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter) {
         if (phenotypicFilter.min() != null || phenotypicFilter.max() != null || phenotypicFilter.values() != null) {
             throw new IllegalArgumentException(
                 "Required filter with concept path " + phenotypicFilter.conceptPath() + " cannot have categorical values or min/max set"
