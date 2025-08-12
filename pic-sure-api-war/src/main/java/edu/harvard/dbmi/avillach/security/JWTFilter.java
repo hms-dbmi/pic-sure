@@ -87,6 +87,9 @@ public class JWTFilter implements ContainerRequestFilter {
             String authorizationHeader = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
             boolean isOpenAccessEnabled = picSureWarInit.isOpenAccessEnabled();
             // get referer header
+
+            logger.info("Open access enabled: {}", isOpenAccessEnabled);
+            logger.info("Authorization header: {}", authorizationHeader);
             if (
                 (StringUtils.isBlank(authorizationHeader) && isOpenAccessEnabled)
                     || (StringUtils.isNotBlank(authorizationHeader) && authorizationHeader.length() <= 7 && isOpenAccessEnabled)
