@@ -38,6 +38,7 @@ public class PicSureWarInit {
     @PostConstruct
     public void init() {
         this.open_access_enabled = Boolean.parseBoolean(open_access_enabled_str);
+        logger.info("Open access enabled: {}", open_access_enabled);
     }
 
     // to be able to pre modified
