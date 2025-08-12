@@ -91,14 +91,6 @@ public class JWTFilter implements ContainerRequestFilter {
                 (StringUtils.isBlank(authorizationHeader) && isOpenAccessEnabled)
                     || (StringUtils.isNotBlank(authorizationHeader) && authorizationHeader.length() <= 7 && isOpenAccessEnabled)
             ) {
-                String referer = requestContext.getHeaderString("Referer");
-                boolean isExplorer = referer != null && referer.contains("/explorer");
-                if (isExplorer) {
-                    // If the request is coming from the explorer, we should not allow open access
-                    logger.error("User is not authorized.");
-                    requestContext.abortWith(PICSUREResponse.unauthorizedError("Your session has expired. Please log in again."));
-                }
-
                 boolean isAuthorized = callOpenAccessValidationEndpoint(requestContext);
                 if (!isAuthorized) {
                     logger.error("User is not authorized.");
@@ -242,9 +234,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
             Query initialQuery = null;
             // Read the query from the backing store if we are getting the results (full query may not be specified in request)
-            if (requestPath.startsWith("/query/") &&
-                    (requestPath.endsWith("result") || requestPath.endsWith("result/") ||
-                            requestPath.endsWith("signed-url") || requestPath.endsWith("signed-url/"))
+            if (
+                requestPath.startsWith("/query/") && (requestPath.endsWith("result") || requestPath.endsWith("result/")
+                    || requestPath.endsWith("signed-url") || requestPath.endsWith("signed-url/"))
             ) {
                 // Path: /query/{queryId}/result
                 String[] pathParts = requestPath.split("/");
