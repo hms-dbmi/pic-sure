@@ -62,7 +62,7 @@ public class HpdsService {
             logger.debug("Getting {} cross counts map from query:", type, queryRequest);
             sanityCheck(queryRequest, resultType, type);
             HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, type);
-            String url = applicationProperties.getOrigin() + "/query/sync/";
+            String url = applicationProperties.getOrigin() + "/query/sync";
             queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
             return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), typeRef).getBody();
         } catch (Exception e) {
