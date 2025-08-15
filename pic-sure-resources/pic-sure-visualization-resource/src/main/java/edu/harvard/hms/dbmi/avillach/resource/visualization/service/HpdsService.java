@@ -98,7 +98,8 @@ public class HpdsService {
             );
         }
 
-        headers.add("request-source", accessType);
+        headers.add("Request-Source", accessType);
+        headers.add("Content-type", "application/json");
 
         Query query;
         try {
