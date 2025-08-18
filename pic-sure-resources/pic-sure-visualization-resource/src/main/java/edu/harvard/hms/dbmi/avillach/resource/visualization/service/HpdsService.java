@@ -100,6 +100,7 @@ public class HpdsService {
 
         headers.add("Request-Source", accessType);
         headers.add("Content-type", "application/json");
+        headers.add("Accept", "*/*");
 
         Query query;
         try {
