@@ -12,6 +12,8 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.MediaType;
+import java.util.Collections;
 
 import javax.ejb.Stateless;
 import javax.inject.Inject;
@@ -62,7 +64,7 @@ public class HpdsService {
             logger.debug("Getting {} cross counts map from query:", type, queryRequest);
             sanityCheck(queryRequest, resultType, type);
             HttpHeaders requestHeaders = prepareQueryRequest(queryRequest, resultType, type);
-            String url = applicationProperties.getOrigin() + "/query/sync/";
+            String url = applicationProperties.getOrigin() + "/query/sync";
             queryRequest.getResourceCredentials().remove("BEARER_TOKEN");
             return restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(queryRequest, requestHeaders), typeRef).getBody();
         } catch (Exception e) {
@@ -98,7 +100,9 @@ public class HpdsService {
             );
         }
 
-        headers.add("request-source", accessType);
+        headers.set("Request-Source", accessType);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.ALL));
 
         Query query;
         try {
