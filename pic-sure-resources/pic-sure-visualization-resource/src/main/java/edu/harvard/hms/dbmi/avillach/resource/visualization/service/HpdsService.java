@@ -12,6 +12,8 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.MediaType;
+import java.util.Collections;
 
 import javax.ejb.Stateless;
 import javax.inject.Inject;
@@ -98,9 +100,9 @@ public class HpdsService {
             );
         }
 
-        headers.add("Request-Source", accessType);
-        headers.add("Content-type", "application/json");
-        headers.add("Accept", "*/*");
+        headers.set("Request-Source", accessType);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.ALL));
 
         Query query;
         try {
