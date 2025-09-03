@@ -244,21 +244,11 @@ public class PicSureV3Service {
         }
     }
 
-    private Optional<String> roundTripUUID(String uuid) {
-        try {
-            return Optional.ofNullable(UUID.fromString(uuid).toString());
-        } catch (IllegalArgumentException ignored) {
-            return Optional.empty();
-        }
-    }
-
     @PostMapping("/write/{dataType}")
     public ResponseEntity<String> writeQueryResult(@RequestBody() Query query, @PathVariable("dataType") String datatype) {
         if ("test_upload".equals(datatype)) {
-            return testDataService.uploadTestFile(query.picsureId()) ? ResponseEntity.ok().build() : ResponseEntity.status(500).build();
-        }
-        if (roundTripUUID(query.picsureId()).map(id -> !id.equalsIgnoreCase(query.picsureId())).orElse(true)) {
-            return ResponseEntity.status(400).body("The query pic-sure ID is not a UUID");
+            return testDataService.uploadTestFile(query.picsureId().toString()) ? ResponseEntity.ok().build()
+                : ResponseEntity.status(500).build();
         }
         if (!List.of(ResultType.DATAFRAME_TIMESERIES, ResultType.PATIENTS).contains(query.expectedResultType())) {
             return ResponseEntity.status(400).body("The write endpoint only writes time series dataframes. Fix result type.");

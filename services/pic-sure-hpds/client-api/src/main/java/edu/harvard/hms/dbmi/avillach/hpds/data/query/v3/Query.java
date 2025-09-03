@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public record Query(
     List<String> select, List<AuthorizationFilter> authorizationFilters, PhenotypicClause phenotypicClause,
-    List<GenomicFilter> genomicFilters, ResultType expectedResultType, String picsureId, UUID id
+    List<GenomicFilter> genomicFilters, ResultType expectedResultType, UUID picsureId, UUID id
 ) {
 
     @Override

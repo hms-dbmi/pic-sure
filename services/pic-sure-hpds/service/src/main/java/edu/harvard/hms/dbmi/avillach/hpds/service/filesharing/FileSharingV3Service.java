@@ -39,7 +39,7 @@ public class FileSharingV3Service {
 
     public boolean createGenomicData(Query query) {
         String vcf = variantListProcessor.runVcfExcerptQuery(query, true);
-        return fileWriter.writeResultToFile("genomic_data.tsv", vcf, query.picsureId());
+        return fileWriter.writeResultToFile("genomic_data.tsv", vcf, query.picsureId().toString());
     }
 
     private boolean createAndWriteData(Query query, String fileName) {
@@ -47,6 +47,6 @@ public class FileSharingV3Service {
         if (result == null || result.getStatus() != AsyncResult.Status.SUCCESS) {
             return false;
         }
-        return fileWriter.writeResultToFile(fileName, result, query.picsureId());
+        return fileWriter.writeResultToFile(fileName, result, query.picsureId().toString());
     }
 }
