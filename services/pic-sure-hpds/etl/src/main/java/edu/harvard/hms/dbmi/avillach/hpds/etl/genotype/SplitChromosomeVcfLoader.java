@@ -41,7 +41,7 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
 
     public static void main(String[] args) throws IOException {
         NewVCFLoader vcfLoader;
-        if(args != null && args.length >= 3) {
+        if (args != null && args.length >= 3) {
             logger.info("Reading parameters from input");
             vcfLoader = new SplitChromosomeVcfLoader(new File(args[0]), args[1], args[2]);
         } else {
@@ -62,11 +62,11 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
         // Pull the INFO columns out of the headers for each walker and add all patient ids
         walkers.stream().forEach(walker -> {
             try {
-                logger.info("Reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]");
+                logger.info("Reading headers of VCF [" + walker.vcfIndexLine.getVcfPath() + "]");
                 walker.readHeaders(infoStoreMap);
-                allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.patientIds));
+                allPatientIds.addAll(Arrays.asList(walker.vcfIndexLine.getPatientIds()));
             } catch (IOException e) {
-                logger.error("Error while reading headers of VCF [" + walker.vcfIndexLine.vcfPath + "]", e);
+                logger.error("Error while reading headers of VCF [" + walker.vcfIndexLine.getVcfPath() + "]", e);
                 System.exit(-1);
             }
         });
@@ -75,11 +75,11 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
         allSampleIds = new String[allPatientIds.size()];
 
         walkers.parallelStream().forEach(walker -> {
-            logger.info("Setting bitmask offsets for VCF [" + walker.vcfIndexLine.vcfPath + "]");
+            logger.info("Setting bitmask offsets for VCF [" + walker.vcfIndexLine.getVcfPath() + "]");
             walker.setBitmaskOffsets(patientIds);
-            for (int x = 0; x < walker.vcfIndexLine.sampleIds.length; x++) {
-                allSampleIds[Arrays.binarySearch(patientIds,
-                        walker.vcfIndexLine.patientIds[x])] = walker.vcfIndexLine.sampleIds[x];
+            for (int x = 0; x < walker.vcfIndexLine.getSampleIds().length; x++) {
+                allSampleIds[Arrays.binarySearch(patientIds, walker.vcfIndexLine.getPatientIds()[x])] =
+                    walker.vcfIndexLine.getSampleIds()[x];
             }
         });
 
@@ -106,7 +106,7 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
         int lastChunkProcessed = 0;
         int currentChunk = 0;
         String[] currentContig = new String[1];
-        int[] currentPosition = { -1 };
+        int[] currentPosition = {-1};
         String[] currentRef = new String[1];
         String[] currentAlt = new String[1];
         String[] currentVariantSpec = new String[1];
@@ -114,7 +114,7 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
         zygosityMaskStrings = new HashMap<String/* variantSpec */, char[][]/* string bitmasks */>();
 
         List<Integer> positionsProcessedInChunk = new ArrayList<>();
-        
+
         while (walker.hasNext) {
             String currentSpecNotation = walker.currentSpecNotation();
             currentContig[0] = walker.currentContig;
@@ -129,12 +129,11 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
                 lastContigProcessed = walker.currentContig;
             }
 
-            flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], false,
-                    walker.currentLine);
+            flipChunk(lastContigProcessed, lastChunkProcessed, currentChunk, currentContig[0], false, walker.currentLine);
             lastContigProcessed = walker.currentContig;
             lastChunkProcessed = currentChunk;
 
-            char[][][] maskStringsForVariantSpec = { zygosityMaskStrings.get(currentSpecNotation) };
+            char[][][] maskStringsForVariantSpec = {zygosityMaskStrings.get(currentSpecNotation)};
             if (maskStringsForVariantSpec[0] == null) {
                 maskStringsForVariantSpec[0] = new char[7][allPatientIds.size()];
                 for (int x = 0; x < maskStringsForVariantSpec[0].length; x++) {
@@ -169,11 +168,11 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
 
         if (logger.isDebugEnabled()) {
             // Log out the first and last 50 variants
-            int[] count = { 0 };
+            int[] count = {0};
             for (String contig : store.getVariantMaskStorage().keySet()) {
                 ArrayList<Integer> chunkIds = new ArrayList<>();
-                FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> chromosomeStorage = store.getVariantMaskStorage()
-                        .get(contig);
+                FileBackedByteIndexedStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> chromosomeStorage =
+                    store.getVariantMaskStorage().get(contig);
                 if (chromosomeStorage != null) {
                     // print out the top and bottom 50 variants in the store (that have masks)
                     chunkIds.addAll(chromosomeStorage.keys());
@@ -193,8 +192,7 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
                                     logger.debug(variantSpec + " : homozygous : " + homoIdList);
                             }
                         }
-                        if (count[0] > 50)
-                            break;
+                        if (count[0] > 50) break;
                     }
 
                     count[0] = 0;
@@ -215,8 +213,7 @@ public class SplitChromosomeVcfLoader extends NewVCFLoader {
                                     logger.debug(variantSpec + " : homozygous : " + homoIdList);
                             }
                         });
-                        if (count[0] > 50)
-                            break;
+                        if (count[0] > 50) break;
                     }
                 }
             }
