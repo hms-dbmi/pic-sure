@@ -410,6 +410,26 @@
 							<goal>single</goal>
 						</goals>
 					</execution>
+					<execution>
+						<id>CreateColumnmetaCSV</id>
+						<configuration>
+							<archive>
+								<manifest>
+									<mainClass>edu.harvard.hms.dbmi.avillach.hpds.etl.phenotype.columnmeta.CreateColumnmetaCSV</mainClass>
+								</manifest>
+							</archive>
+							<outputDirectory>${project.basedir}/../docker/pic-sure-hpds-etl</outputDirectory>
+							<descriptorRefs>
+								<descriptorRef>jar-with-dependencies</descriptorRef>
+							</descriptorRefs>
+							<classifier>CreateColumnmetaCSV</classifier>
+							<finalName>CreateColumnmetaCSV</finalName>
+						</configuration>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
 				</executions>
 			</plugin>
 		</plugins>
