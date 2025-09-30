@@ -13,16 +13,6 @@ public class CreateColumnmetaCSV {
 
        private static Logger log = LoggerFactory.getLogger(CSVLoader.class);
 
-       private static final int PATIENT_NUM = 0;
-
-       private static final int CONCEPT_PATH = 1;
-
-       private static final int NUMERIC_VALUE = 2;
-
-       private static final int TEXT_VALUE = 3;
-
-       private static final int DATETIME = 4;
-
        private static String HPDS_DIRECTORY = "/opt/local/hpds/";
 
        public static void main(String[] args) throws IOException {
