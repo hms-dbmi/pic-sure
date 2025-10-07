@@ -294,7 +294,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
     private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl)
         throws JsonProcessingException {
         String queryString = objectMapper.writeValueAsString(queryRequest);
-        String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, pathName);
+        String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, "/v3" + pathName);
 
         logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
         HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
