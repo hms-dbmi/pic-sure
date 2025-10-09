@@ -40,7 +40,7 @@ import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.readObjectFromResponse;
 
-@Path("/aggregate-data-sharing-v3")
+@Path("/v3/aggregate-data-sharing")
 @Produces("application/json")
 @Consumes("application/json")
 @Singleton
