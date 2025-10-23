@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor} and updated to use new Query entity
@@ -85,7 +86,7 @@ public class CountV3Processor implements HpdsV3Processor {
      * @return
      */
     public Map<String, Integer> runCrossCounts(Query query) {
-        TreeMap<String, Integer> counts = new TreeMap<>();
+        ConcurrentHashMap<String, Integer> counts = new ConcurrentHashMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
         query.select().parallelStream().forEach((String concept) -> {
             try {
@@ -93,7 +94,8 @@ public class CountV3Processor implements HpdsV3Processor {
                     List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.REQUIRED, concept, null, null, null, null), List.of(),
                     null, null, null
                 );
-                counts.put(concept, Sets.intersection(queryExecutor.getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size());
+                int matchingPatients = Sets.intersection(queryExecutor.getPatientSubsetForQuery(safeCopy), baseQueryPatientSet).size();
+                counts.put(concept, matchingPatients);
             } catch (Exception e) {
                 counts.put(concept, -1);
             }
