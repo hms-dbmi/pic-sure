@@ -6,7 +6,6 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptShell;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +20,10 @@ import org.testcontainers.utility.MountableFile;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
 @SpringBootTest
@@ -44,14 +47,14 @@ class ConceptRepositoryTest {
     @Test
     void shouldMarkConceptThatHasNoStimatizedMetaAsAllowFiltering() {
         Boolean actual = subject.getConcept("1", "\\Variant Data Type\\WGS\\").map(Concept::allowFiltering).get();
-        Assertions.assertTrue(actual);
+        assertTrue(actual);
     }
 
     @Test
     void shouldListAllConcepts() {
         List<Concept> actual = subject.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
 
-        Assertions.assertEquals(31, actual.size());
+        assertEquals(31, actual.size());
     }
 
     @Test
@@ -62,7 +65,7 @@ class ConceptRepositoryTest {
             "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\J45 Asthma\\J45.9 Other and unspecified asthma\\J45.90 Unspecified asthma\\J45.901 Unspecified asthma with (acute) exacerbation\\"
         );
 
-        Assertions.assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
+        assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
     }
 
     @Test
@@ -73,7 +76,7 @@ class ConceptRepositoryTest {
             "\\Bio Specimens\\HumanFluid\\Blood (Whole)\\SPECIMENS:HF.BLD.000 Quantity\\"
         );
 
-        Assertions.assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
+        assertEquals(expectedPaths, actual.stream().map(Concept::conceptPath).toList());
     }
 
     @Test
@@ -97,7 +100,7 @@ class ConceptRepositoryTest {
             )
         );
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -118,7 +121,7 @@ class ConceptRepositoryTest {
             )
         );
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -138,21 +141,21 @@ class ConceptRepositoryTest {
             )
         );
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
     void shouldGetCount() {
         long actual = subject.countConcepts(new Filter(List.of(), "", List.of()));
 
-        Assertions.assertEquals(31L, actual);
+        assertEquals(31L, actual);
     }
 
     @Test
     void shouldGetCountWithFilter() {
         Long actual = subject
             .countConcepts(new Filter(List.of(new Facet("phs002715", "", "", "", 1, null, "study_ids_dataset_ids", null)), "", List.of()));
-        Assertions.assertEquals(2L, actual);
+        assertEquals(2L, actual);
     }
 
     @Test
@@ -163,7 +166,7 @@ class ConceptRepositoryTest {
         );
         Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
 
-        Assertions.assertEquals(Optional.of(expected), actual);
+        assertEquals(Optional.of(expected), actual);
     }
 
     @Test
@@ -171,24 +174,24 @@ class ConceptRepositoryTest {
         Map<String, String> actual = subject.getConceptMeta("AGE_CATEGORY", "\\phs002715\\age\\");
         Map<String, String> expected = Map.of();
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
     void shouldNotGetConceptThatDNE() {
         Optional<Concept> actual = subject.getConcept("invalid.invalid", "fake");
-        Assertions.assertEquals(Optional.empty(), actual);
+        assertEquals(Optional.empty(), actual);
 
         actual = subject.getConcept("fake", "\\\\B\\\\2\\\\Z\\\\");
-        Assertions.assertEquals(Optional.empty(), actual);
+        assertEquals(Optional.empty(), actual);
     }
 
     @Test
     void shouldGetStigmatizedConcept() {
         Optional<Concept> actual = subject.getConcept("phs002385", "\\phs002385\\TXNUM\\");
 
-        Assertions.assertTrue(actual.isPresent());
-        Assertions.assertFalse(actual.get().allowFiltering());
+        assertTrue(actual.isPresent());
+        assertFalse(actual.get().allowFiltering());
     }
 
     @Test
@@ -212,7 +215,7 @@ class ConceptRepositoryTest {
                 "# 12 OZ CUPS OF CAFFEINATED COLA / DAY", "free_text", "false"
             )
         );
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -243,7 +246,7 @@ class ConceptRepositoryTest {
         Optional<Concept> actual =
             subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 3);
 
-        Assertions.assertTrue(actual.isPresent());
+        assertTrue(actual.isPresent());
         compareWithChildren(List.of(actual.get()), List.of(d0));
     }
 
@@ -251,7 +254,7 @@ class ConceptRepositoryTest {
     void shouldGetRootTree() {
         Optional<Concept> actual = subject.getConceptTree("phs002715", null, 3);
 
-        Assertions.assertTrue(actual.isPresent());
+        assertTrue(actual.isPresent());
 
         CategoricalConcept expected = new CategoricalConcept("\\phs002715\\", "phs002715").withChildren(
             List.of(
@@ -290,7 +293,7 @@ class ConceptRepositoryTest {
         Optional<Concept> actual =
             subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", 30);
 
-        Assertions.assertTrue(actual.isPresent());
+        assertTrue(actual.isPresent());
         compareWithChildren(List.of(actual.get()), List.of(d0));
     }
 
@@ -299,7 +302,7 @@ class ConceptRepositoryTest {
         Optional<Concept> actual = subject.getConceptTree("1", "\\ACT Top Secret ICD-69\\", 30);
         Optional<Concept> expected = Optional.empty();
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -308,7 +311,7 @@ class ConceptRepositoryTest {
             subject.getConceptTree("1", "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\", -1);
         Optional<Concept> expected = Optional.empty();
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 
     @Test
@@ -318,8 +321,8 @@ class ConceptRepositoryTest {
             "\\phs002385\\TXNUM\\", "TXNUM", "TXNUM", "phs002385", "Transplant Number", false, 0D, 0D, "HCT_for_SCD", Map.of()
         );
 
-        Assertions.assertTrue(actual.isPresent());
-        Assertions.assertEquals(expected, actual.get());
+        assertTrue(actual.isPresent());
+        assertEquals(expected, actual.get());
     }
 
     @Test
@@ -329,20 +332,20 @@ class ConceptRepositoryTest {
 
         Optional<Concept> actual = subject.getConcept("phs000284", "\\phs000284\\pht001902\\phv00122507\\age\\");
 
-        Assertions.assertTrue(actual.isPresent());
+        assertTrue(actual.isPresent());
         ContinuousConcept concept = (ContinuousConcept) actual.get();
-        Assertions.assertEquals(min, concept.min());
-        Assertions.assertEquals(max, concept.max());
+        assertEquals(min, concept.min());
+        assertEquals(max, concept.max());
     }
 
     @Test
     void shouldGetContConceptWithDecimalNotation() {
         Optional<Concept> actual = subject.getConcept("phs000007", "\\phs000007\\pht000033\\phv00008849\\D080\\");
 
-        Assertions.assertTrue(actual.isPresent());
+        assertTrue(actual.isPresent());
         ContinuousConcept concept = (ContinuousConcept) actual.get();
-        Assertions.assertEquals(0.57D, concept.min());
-        Assertions.assertEquals(6.77D, concept.max());
+        assertEquals(0.57D, concept.min());
+        assertEquals(6.77D, concept.max());
     }
 
     @Test
@@ -353,15 +356,15 @@ class ConceptRepositoryTest {
             "\\phs002715\\age\\"
         );
         List<Concept> conceptsByPath = subject.getConceptsByPathWithMetadata(conceptPaths);
-        Assertions.assertFalse(conceptsByPath.isEmpty());
-        Assertions.assertEquals(6, conceptsByPath.size());
+        assertFalse(conceptsByPath.isEmpty());
+        assertEquals(6, conceptsByPath.size());
     }
 
     @Test
     void shouldGetSameConceptMetaAsConceptDetails() {
         List<String> conceptPaths = List.of("\\phs002385\\TXNUM\\", "\\phs000284\\pht001902\\phv00122507\\age\\");
         List<Concept> conceptsByPath = subject.getConceptsByPathWithMetadata(conceptPaths);
-        Assertions.assertFalse(conceptsByPath.isEmpty());
+        assertFalse(conceptsByPath.isEmpty());
 
         // Verify the meta data is correctly retrieve by comparing against known good query.
         Concept concept = conceptsByPath.getFirst();
@@ -369,12 +372,37 @@ class ConceptRepositoryTest {
 
         // compare the maps to each other.
         Map<String, String> actualMeta = concept.meta();
-        Assertions.assertEquals(actualMeta, expectedMeta);
+        assertEquals(actualMeta, expectedMeta);
     }
+
+    @Test
+    void shouldGetConceptHierarchy() {
+        List<Concept> conceptHierarchy = subject.getConceptHierarchy("phs000284", "\\phs000284\\pht001902\\phv00122507\\age\\");
+        assertEquals(4, conceptHierarchy.size());
+        Set<String> conceptsInHierarchy = conceptHierarchy.stream().map(Concept::conceptPath).collect(Collectors.toSet());
+        Set<String> expectedConceptsInHierarchy = Set.of(
+            "\\phs000284\\pht001902\\phv00122507\\age\\", "\\phs000284\\pht001902\\phv00122507\\", "\\phs000284\\pht001902\\",
+            "\\phs000284\\"
+        );
+        assertEquals(conceptsInHierarchy, expectedConceptsInHierarchy);
+    }
+
+    @Test
+    void shouldReturnEmptyConceptHierarchyIfNotExists() {
+        List<Concept> conceptHierarchy = subject.getConceptHierarchy("phs000284", "\\phs000284\\pht001902\\phv00122507\\NOT_A_CONCEPT\\");
+        assertEquals(0, conceptHierarchy.size());
+    }
+
+    @Test
+    void shoulNotGetConceptHierarchyFromOtherDataset() {
+        List<Concept> conceptHierarchy = subject.getConceptHierarchy("phs000999", "\\phs000284\\pht001902\\phv00122507\\age\\");
+        assertEquals(0, conceptHierarchy.size());
+    }
+
 
     private static void compareWithChildren(List<Concept> actualConcepts, List<Concept> expectedConcepts) {
         while (!expectedConcepts.isEmpty()) {
-            Assertions.assertEquals(expectedConcepts, actualConcepts);
+            assertEquals(expectedConcepts, actualConcepts);
             actualConcepts = actualConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
             expectedConcepts = expectedConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
         }

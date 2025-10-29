@@ -74,6 +74,17 @@ public class ConceptController {
         return conceptService.conceptTree(dataset, conceptPath, depth).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PostMapping(path = "/concepts/hierarchy/{dataset}")
+    public ResponseEntity<List<Concept>> conceptHierarchy(
+        @PathVariable(name = "dataset") String dataset, @RequestBody() String conceptPath
+    ) {
+        List<Concept> body = conceptService.conceptHierarchy(dataset, conceptPath);
+        if (body.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(body);
+    }
+
     @GetMapping(path = "/concepts/tree")
     public ResponseEntity<List<Concept>> allConceptTrees(
         @RequestParam(name = "depth", required = false, defaultValue = "2") Integer depth

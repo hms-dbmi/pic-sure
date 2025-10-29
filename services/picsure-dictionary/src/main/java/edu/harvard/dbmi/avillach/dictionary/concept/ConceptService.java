@@ -72,6 +72,11 @@ public class ConceptService {
         return conceptRepository.getConceptTree(dataset, conceptPath, depth);
     }
 
+    public List<Concept> conceptHierarchy(String dataset, String conceptPath) {
+        return conceptRepository.getConceptHierarchy(dataset, conceptPath);
+    }
+
+
     public List<Concept> allConceptTrees(int depth) {
         return datasetService.getAllDatasets().stream().map(Dataset::ref).map(ref -> conceptTree(ref, null, depth))
             .filter(Optional::isPresent).map(Optional::get).toList();
