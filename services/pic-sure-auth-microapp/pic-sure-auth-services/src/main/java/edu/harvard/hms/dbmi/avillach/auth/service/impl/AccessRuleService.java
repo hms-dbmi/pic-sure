@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.AccessRule;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.model.AccessRuleEvaluationNode;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import io.micrometer.common.util.StringUtils;
 import jakarta.annotation.PostConstruct;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class AccessRuleService {
@@ -45,6 +47,10 @@ public class AccessRuleService {
     private final String fence_harmonized_concept_path;
 
     private String[] underscoreFields;
+
+    private final ThreadLocal<Stack<AccessRuleEvaluationNode>> evaluationTreeStack = 
+        ThreadLocal.withInitial(Stack::new);
+    private final ThreadLocal<AccessRuleEvaluationNode> rootNode = new ThreadLocal<>();
 
     @Autowired
     public AccessRuleService(AccessRuleRepository accessRuleRepo,
@@ -131,6 +137,31 @@ public class AccessRuleService {
             accessRuleCache.put(accessRule.getName(), accessRule);
         }
         return this.accessRuleRepo.save(accessRule);
+    }
+
+    /**
+     * Prints the evaluation tree for the most recently evaluated access rule.
+     * This method should be called after evaluateAccessRule() has been called.
+     * 
+     * @return A string representation of the evaluation tree
+     */
+    public String printEvaluationTree() {
+        AccessRuleEvaluationNode root = rootNode.get();
+        if (root == null) {
+            return "No evaluation tree available";
+        }
+
+
+        return "ACCESS RULE EVALUATION TREE:\n" + root.generateTreeString();
+    }
+
+    /**
+     * Clears the evaluation tree data.
+     * This should be called after processing is complete to prevent memory leaks.
+     */
+    public void clearEvaluationTree() {
+        rootNode.remove();
+        evaluationTreeStack.remove();
     }
 
     public AccessRule getAccessRuleByName(String arName) {
@@ -282,79 +313,117 @@ public class AccessRuleService {
     }
 
     public boolean evaluateAccessRule(Object parsedRequestBody, AccessRule accessRule) {
-        logger.trace("evaluateAccessRule() starting with: {}", parsedRequestBody);
-        logger.trace("evaluateAccessRule() access rule: {}", accessRule.getName());
+        String ruleName = accessRule.getMergedName().isEmpty() ?
+                          accessRule.getName() : 
+                          accessRule.getMergedName();
 
-        Set<AccessRule> gates = accessRule.getGates();
-        boolean gatesPassed = true;
+        boolean isGate = !evaluationTreeStack.get().isEmpty() &&
+                         evaluationTreeStack.get().peek().getRule().getGates() != null &&
+                         evaluationTreeStack.get().peek().getRule().getGates().contains(accessRule);
+        boolean isSubRule = !evaluationTreeStack.get().isEmpty() && 
+                            evaluationTreeStack.get().peek().getRule().getSubAccessRule() != null &&
+                            evaluationTreeStack.get().peek().getRule().getSubAccessRule().contains(accessRule);
+        boolean isOrRelationship = accessRule.getGateAnyRelation() != null && accessRule.getGateAnyRelation();
 
-        // depends on the flag getGateAnyRelation is true or false,
-        // the logic of checking if apply gate will be changed
-        // the following cases are gate passed:
-        // 1. if gates are null or empty
-        // 2. if getGateAnyRelation is false, all gates passed
-        // 3. if getGateAnyRelation is true, one of the gate passed
-        if (gates != null && !gates.isEmpty()) {
-            if (accessRule.getGateAnyRelation() == null || !accessRule.getGateAnyRelation()) {
-                // All gates are AND relationship
-                // means one fails all fail
-                for (AccessRule gate : gates) {
-                    if (!evaluateAccessRule(parsedRequestBody, gate)) {
-                        logger.info("evaluateAccessRule() gate {} failed: {} ____ {}", gate.getName(), gate.getRule(), gate.getValue());
-                        gatesPassed = false;
-                        break;
+        AccessRuleEvaluationNode currentNode = new AccessRuleEvaluationNode(accessRule, isGate, isSubRule, isOrRelationship);
+
+        if (evaluationTreeStack.get().isEmpty()) {
+            rootNode.set(currentNode);
+        } else {
+            evaluationTreeStack.get().peek().addChild(currentNode);
+        }
+
+        evaluationTreeStack.get().push(currentNode);
+
+        try {
+            logger.trace("evaluateAccessRule() starting with: {}", parsedRequestBody);
+            logger.debug("evaluateAccessRule() evaluating rule: {}", ruleName);
+
+            Set<AccessRule> gates = accessRule.getGates();
+            boolean gatesPassed = true;
+
+            // depends on the flag getGateAnyRelation is true or false,
+            // the logic of checking if apply gate will be changed
+            // the following cases are gate passed:
+            // 1. if gates are null or empty
+            // 2. if getGateAnyRelation is false, all gates passed
+            // 3. if getGateAnyRelation is true, one of the gate passed
+            if (gates != null && !gates.isEmpty()) {
+                if (accessRule.getGateAnyRelation() == null || !accessRule.getGateAnyRelation()) {
+                    // All gates are AND relationship
+                    // means one fails all fail
+                    for (AccessRule gate : gates) {
+                        if (!evaluateAccessRule(parsedRequestBody, gate)) {
+                            logger.info("evaluateAccessRule() gate {} failed", gate.getName());
+                            gatesPassed = false;
+                            break;
+                        }
                     }
-                }
-            } else {
-                // All gates are OR relationship
-                // means one passes all pass
-                gatesPassed = false;
-                for (AccessRule gate : gates) {
-                    if (evaluateAccessRule(parsedRequestBody, gate)) {
-                        logger.debug("evaluateAccessRule() gate {} passed ", gate.getName());
-                        gatesPassed = true;
-                        break;
+                } else {
+                    // All gates are OR relationship
+                    // means one passes all pass
+                    gatesPassed = false;
+                    for (AccessRule gate : gates) {
+                        if (evaluateAccessRule(parsedRequestBody, gate)) {
+                            logger.debug("evaluateAccessRule() gate {} passed", gate.getName());
+                            gatesPassed = true;
+                            break;
+                        }
                     }
-                }
 
-                if (!gatesPassed) {
-                    logger.debug("all OR gates failed");
+                    if (!gatesPassed) {
+                        logger.debug("All OR gates failed");
+                    }
                 }
             }
-        }
 
-        if (accessRule.getEvaluateOnlyByGates() != null && accessRule.getEvaluateOnlyByGates()) {
-            logger.debug("evaluateAccessRule() eval only by gates");
-            return gatesPassed;
-        }
+            boolean result = false;
+            if (accessRule.getEvaluateOnlyByGates() != null && accessRule.getEvaluateOnlyByGates()) {
+                logger.debug("evaluateAccessRule() eval only by gates");
+                result = gatesPassed;
+                currentNode.setResult(result);
+                if (!result) {
+                    currentNode.setFailureReason("Gates evaluation failed");
+                }
+                return result;
+            }
 
-        if (gatesPassed) {
-            logger.debug("evaluateAccessRule() gates passed");
-            if (!extractAndCheckRule(accessRule, parsedRequestBody)) {
-                logger.debug("Query Rejected by rule(1) {} :: {} :: {}", accessRule.getRule(), accessRule.getType(), accessRule.getValue());
-                return false;
-            } else {
-                if (accessRule.getSubAccessRule() != null) {
-                    // We need to check all the sub rules as merged rules; they can overlap
-                    Set<AccessRule> mergedSubRules = preProcessARBySortedKeys(accessRule.getSubAccessRule());
-                    for (AccessRule subAccessRule : mergedSubRules) {
-                        if (!extractAndCheckRule(subAccessRule, parsedRequestBody)) {
-                            logger.debug("Query Rejected by rule(2) {} :: {} :: {}", subAccessRule.getRule(), subAccessRule.getType(), subAccessRule.getValue());
-                            return false;
+            if (gatesPassed) {
+                logger.debug("evaluateAccessRule() gates passed");
+                if (!extractAndCheckRule(accessRule, parsedRequestBody)) {
+                    logger.debug("Query Rejected by rule(1) {}, with request body {}", accessRule,  parsedRequestBody);
+                    currentNode.setResult(false);
+                    currentNode.setFailureReason("Rule check failed: " + accessRule.getRule());
+                    return false;
+                } else {
+                    if (accessRule.getSubAccessRule() != null) {
+                        // We need to check all the sub rules as merged rules; they can overlap
+                        Set<AccessRule> mergedSubRules = preProcessARBySortedKeys(accessRule.getSubAccessRule());
+                        for (AccessRule subAccessRule : mergedSubRules) {
+                            if (!evaluateAccessRule(parsedRequestBody, subAccessRule)) {
+                                logger.debug("Query Rejected by rule(2) {}", subAccessRule);
+                                currentNode.setResult(false);
+                                currentNode.setFailureReason("Sub-rule check failed");
+                                return false;
+                            }
                         }
                     }
                 }
+            } else {
+                logger.debug("evaluateAccessRule() gates failed");
+                currentNode.setResult(false);
+                currentNode.setFailureReason("Gates evaluation failed");
+                return false;
             }
-        } else {
-            logger.debug("evaluateAccessRule() gates failed");
-            return false;
-        }
 
-        return true;
+            currentNode.setResult(true);
+            return true;
+        } finally {
+            evaluationTreeStack.get().pop();
+        }
     }
 
     public boolean extractAndCheckRule(AccessRule accessRule, Object parsedRequestBody) {
-        logger.debug("extractAndCheckRule() starting");
         String rule = accessRule.getRule();
 
         if (rule == null || rule.isEmpty())
@@ -366,7 +435,7 @@ public class AccessRuleService {
         int accessRuleType = accessRule.getType();
 
         try {
-            logger.debug("extractAndCheckRule() -> JsonPath.parse().read() with parsedRequestBody - {} - {}", parsedRequestBody, rule);
+            logger.trace("extractAndCheckRule() -> JsonPath.parse().read() with parsedRequestBody - {} - {}", parsedRequestBody, rule);
             requestBodyValue = JsonPath.parse(parsedRequestBody).read(rule);
 
             if (accessRule.getCheckMapNode() != null && accessRule.getCheckMapNode()) {
@@ -377,31 +446,62 @@ public class AccessRuleService {
             }
         } catch (PathNotFoundException ex) {
             if (accessRuleType == AccessRule.TypeNaming.IS_EMPTY) {
-                // We could return accessRuleType == AccessRule.TypeNaming.IS_EMPTY directly, but we want to log the reason
-                logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing IS_EMPTY rule {}", rule);
+                // We could return true directly, but we want to log the reason
+                logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing rule {} for type {}", rule, accessRuleType);
                 return true;
             }
-            logger.debug("extractAndCheckRule() -> JsonPath.parse().read() throws exception with parsedRequestBody - {} : {} - {}", parsedRequestBody, ex.getClass().getSimpleName(), ex.getMessage());
+
+            if (accessRuleType == AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY ||
+                accessRuleType == AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY_IGNORE_CASE) {
+                logger.debug("extractAndCheckRule() -> JsonPath.parse().read() PathNotFound;  passing rule {} for type {}", rule, accessRuleType);
+                return true;
+            }
+
+            logger.info("extractAndCheckRule() -> JsonPath.parse().read() throws exception with parsedRequestBody - {} : {} - {}", parsedRequestBody, ex.getClass().getSimpleName(), ex.getMessage());
+
+            // Record failure reason in the evaluation tree
+            if (!evaluationTreeStack.get().isEmpty()) {
+                AccessRuleEvaluationNode currentNode = evaluationTreeStack.get().peek();
+                currentNode.setFailureReason("Path not found: " + rule + " - " + ex.getMessage());
+            }
+
             return false;
         }
 
         if (accessRuleType == AccessRule.TypeNaming.IS_EMPTY
-                || accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY) {
+            || accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY) {
             if (requestBodyValue == null
-                    || (requestBodyValue instanceof String && ((String) requestBodyValue).isEmpty())
-                    || (requestBodyValue instanceof Collection && ((Collection) requestBodyValue).isEmpty())
-                    || (requestBodyValue instanceof Map && ((Map) requestBodyValue).isEmpty())) {
-                return accessRuleType == AccessRule.TypeNaming.IS_EMPTY;
+                || (requestBodyValue instanceof String && ((String) requestBodyValue).isEmpty())
+                || (requestBodyValue instanceof Collection && ((Collection) requestBodyValue).isEmpty())
+                || (requestBodyValue instanceof Map && ((Map) requestBodyValue).isEmpty())) {
+                boolean result = accessRuleType == AccessRule.TypeNaming.IS_EMPTY;
+                if (!result && !evaluationTreeStack.get().isEmpty()) {
+                    AccessRuleEvaluationNode currentNode = evaluationTreeStack.get().peek();
+                    currentNode.setFailureReason("Expected empty path but found value: " + requestBodyValue);
+                }
+                return result;
             } else {
-                return accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY;
+                boolean result = accessRuleType == AccessRule.TypeNaming.IS_NOT_EMPTY;
+                if (!result && !evaluationTreeStack.get().isEmpty()) {
+                    AccessRuleEvaluationNode currentNode = evaluationTreeStack.get().peek();
+                    currentNode.setFailureReason("Expected non-empty path but found empty value");
+                }
+                return result;
             }
         }
 
-        return evaluateNode(requestBodyValue, accessRule);
+        boolean result = evaluateNode(requestBodyValue, accessRule);
+        if (!result && !evaluationTreeStack.get().isEmpty()) {
+            AccessRuleEvaluationNode currentNode = evaluationTreeStack.get().peek();
+            if (currentNode.getFailureReason() == null) {
+                currentNode.setFailureReason("Rule evaluation failed for path: " + rule);
+            }
+        }
+        return result;
     }
 
     private boolean evaluateNode(Object requestBodyValue, AccessRule accessRule) {
-        logger.debug("evaluateNode() starting: {} :: {} :: {}", accessRule.getRule(), accessRule.getType(), accessRule.getMergedValues().isEmpty() ? accessRule.getValue() : ("Merged " + Arrays.deepToString(accessRule.getMergedValues().toArray())));
+        logger.trace("evaluateNode() starting: {} :: {} :: {}", accessRule.getRule(), accessRule.getType(), accessRule.getMergedValues().isEmpty() ? accessRule.getValue() : ("Merged " + Arrays.deepToString(accessRule.getMergedValues().toArray())));
         logger.trace("evaluateNode() requestBody {}  {}", requestBodyValue.getClass().getName(), requestBodyValue instanceof Collection ?
                 Arrays.deepToString(((Collection) requestBodyValue).toArray()) :
                 requestBodyValue.toString());
@@ -428,30 +528,25 @@ public class AccessRuleService {
                         return true;
 
                     if ((accessRule.getCheckMapKeyOnly() == null || !accessRule.getCheckMapKeyOnly())
-                            && evaluateNode(entry.getValue(), accessRule))
+                        && evaluateNode(entry.getValue(), accessRule))
                         return true;
                 }
                 return false;
             default:
                 if (((Map) requestBodyValue).isEmpty()) {
-                    switch (accessRule.getType()) {
-                        case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE):
-                        case (AccessRule.TypeNaming.ALL_EQUALS):
-                        case (AccessRule.TypeNaming.ALL_CONTAINS):
-                        case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE):
-                            return false;
-                        case (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY):
-                        case (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY_IGNORE_CASE):
-                        default:
-                            return true;
-                    }
+                    return switch (accessRule.getType()) {
+                        case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE), (AccessRule.TypeNaming.ALL_EQUALS),
+                             (AccessRule.TypeNaming.ALL_CONTAINS), (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE) ->
+                                false;
+                        default -> true;
+                    };
                 }
                 for (Map.Entry entry : ((Map<String, Object>) requestBodyValue).entrySet()) {
                     if (!decisionMaker(accessRule, (String) entry.getKey()))
                         return false;
 
                     if ((accessRule.getCheckMapKeyOnly() == null || !accessRule.getCheckMapKeyOnly())
-                            && !evaluateNode(entry.getValue(), accessRule))
+                        && !evaluateNode(entry.getValue(), accessRule))
                         return false;
                 }
 
@@ -461,6 +556,7 @@ public class AccessRuleService {
     }
 
     private Boolean evaluateCollection(Collection requestBodyValue, AccessRule accessRule) {
+        logger.debug("evaluateCollection()");
         logger.trace("evaluateCollection() access rule:{}", accessRule.getName());
         logger.trace("evaluateCollection() request body value:{}", requestBodyValue);
 
@@ -513,6 +609,7 @@ public class AccessRuleService {
     public boolean decisionMaker(AccessRule accessRule, String requestBodyValue) {
         if (accessRule.getMergedValues().isEmpty()) {
             String value = accessRule.getValue();
+            logger.debug("decisionMaker No Merged values: {}, request body: {}, access rule: {}", value, requestBodyValue, accessRule);
             if (value == null) {
                 return requestBodyValue == null;
             }
@@ -524,6 +621,7 @@ public class AccessRuleService {
         // if there is only one element in the merged value set
         // the operation equals to _decisionMaker(accessRule, requestBodyValue, value)
         boolean res = false;
+        logger.debug("Checking {} in collection {}", requestBodyValue, Arrays.deepToString(accessRule.getMergedValues().toArray()));
         for (String s : accessRule.getMergedValues()) {
             // check the special case value is null
             // if value is null, the check will stop here and
@@ -541,6 +639,7 @@ public class AccessRuleService {
             // means if you pass one of them, you pass the rule
             if (_decisionMaker(accessRule, requestBodyValue, s)) {
                 res = true;
+                logger.info("Returning true for {} in collection {}", s, Arrays.deepToString(accessRule.getMergedValues().toArray()));
                 break;
             }
         }
@@ -548,27 +647,33 @@ public class AccessRuleService {
     }
 
     private boolean _decisionMaker(AccessRule accessRule, String requestBodyValue, String value) {
-        logger.trace("_decisionMaker() starting");
-        logger.trace("_decisionMaker() access rule:{}", accessRule.getName());
-        logger.trace("_decisionMaker() request body value:{}", requestBodyValue);
-        logger.trace("_decisionMaker() value:{}", value);
-        logger.trace("_decisionMaker() access rule type:{}", accessRule.getType());
-
-        return switch (accessRule.getType()) {
+        boolean decision = switch (accessRule.getType()) {
             case AccessRule.TypeNaming.NOT_CONTAINS -> !requestBodyValue.contains(value);
-            case AccessRule.TypeNaming.NOT_CONTAINS_IGNORE_CASE -> !requestBodyValue.toLowerCase().contains(value.toLowerCase());
+            case AccessRule.TypeNaming.NOT_CONTAINS_IGNORE_CASE ->
+                    !requestBodyValue.toLowerCase().contains(value.toLowerCase());
             case (AccessRule.TypeNaming.NOT_EQUALS) -> !value.equals(requestBodyValue);
-            case (AccessRule.TypeNaming.ANY_EQUALS), (AccessRule.TypeNaming.ALL_EQUALS) -> value.equals(requestBodyValue);
-            case (AccessRule.TypeNaming.ALL_CONTAINS), (AccessRule.TypeNaming.ANY_CONTAINS), (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY) -> requestBodyValue.contains(value);
-            case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE), (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY_IGNORE_CASE) -> requestBodyValue.toLowerCase().contains(value.toLowerCase());
+            case (AccessRule.TypeNaming.ANY_EQUALS), (AccessRule.TypeNaming.ALL_EQUALS) ->
+                    value.equals(requestBodyValue);
+            case (AccessRule.TypeNaming.ALL_CONTAINS), (AccessRule.TypeNaming.ANY_CONTAINS),
+                 (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY) -> requestBodyValue.contains(value);
+            case (AccessRule.TypeNaming.ALL_CONTAINS_IGNORE_CASE),
+                 (AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY_IGNORE_CASE) ->
+                    requestBodyValue.toLowerCase().contains(value.toLowerCase());
             case (AccessRule.TypeNaming.NOT_EQUALS_IGNORE_CASE) -> !value.equalsIgnoreCase(requestBodyValue);
             case (AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE) -> value.equalsIgnoreCase(requestBodyValue);
-            case (AccessRule.TypeNaming.ALL_REG_MATCH), (AccessRule.TypeNaming.ANY_REG_MATCH) -> requestBodyValue.matches(value);
+            case (AccessRule.TypeNaming.ALL_REG_MATCH), (AccessRule.TypeNaming.ANY_REG_MATCH) ->
+                    requestBodyValue.matches(value);
             default -> {
                 logger.warn("evaluateAccessRule() incoming accessRule type is out of scope. Just return true.");
                 yield true;
             }
         };
+
+        if (decision) {
+            logger.info("_decisionMaker() returning true for request body: {} access rule: {} value: {}", requestBodyValue, accessRule, value);
+        }
+
+        return decision;
     }
 
     /**
@@ -581,18 +686,13 @@ public class AccessRuleService {
      * @param projectAlias    The project alias.
      */
     protected void configureAccessRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias) {
-        if (ar.getGates() == null) {
-            ar.setGates(new HashSet<>());
-            ar.getGates().addAll(getGates(true, false, false));
+        ar.setGates(new HashSet<>(getGates(true, false, false)));
 
-            if (ar.getSubAccessRule() == null) {
-                ar.setSubAccessRule(new HashSet<>());
-            }
-            ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
-            ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
-            ar.getSubAccessRule().addAll(getTopmedRestrictedSubRules());
-        }
+        addUniqueSubRules(ar, getAllowedQueryTypeRules());
+        addUniqueSubRules(ar, getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
+        addUniqueSubRules(ar, getTopmedRestrictedSubRules());
     }
+
 
     /**
      * Configures the harmonized AccessRule with gates and sub-rules.
@@ -601,34 +701,21 @@ public class AccessRuleService {
      * @param studyIdentifier The study identifier.
      * @param conceptPath     The concept path.
      * @param projectAlias    The project alias.
-     * @return
      */
     protected void configureHarmonizedAccessRule(AccessRule ar, String studyIdentifier, String conceptPath, String projectAlias) {
-        if (ar.getGates() == null) {
-            ar.setGates(new HashSet<>());
-            ar.getGates().add(upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data"));
+        ar.setGates(new HashSet<>(Collections.singleton(upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data"))));
 
-            if (ar.getSubAccessRule() == null) {
-                ar.setSubAccessRule(new HashSet<>());
-            }
-            ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
-            ar.getSubAccessRule().addAll(getHarmonizedSubRules());
-            ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
-        }
+        addUniqueSubRules(ar, getAllowedQueryTypeRules());
+        addUniqueSubRules(ar, getHarmonizedSubRules());
+        addUniqueSubRules(ar, getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
     }
 
     protected AccessRule configureClinicalAccessRuleWithPhenoSubRule(AccessRule ar, String studyIdentifier, String consent_group, String conceptPath, String projectAlias) {
-        if (ar.getGates() == null) {
-            ar.setGates(new HashSet<>());
-            ar.getGates().addAll(getGates(true, false, true));
+        ar.setGates(new HashSet<>(getGates(true, false, true)));
 
-            if (ar.getSubAccessRule() == null) {
-                ar.setSubAccessRule(new HashSet<>());
-            }
-            ar.getSubAccessRule().addAll(getAllowedQueryTypeRules());
-            ar.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
-            ar.getSubAccessRule().add(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
-        }
+        addUniqueSubRules(ar, getAllowedQueryTypeRules());
+        addUniqueSubRules(ar, getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
+        addUniqueSubRules(ar, Collections.singleton(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true)));
 
         return ar;
     }
@@ -678,7 +765,6 @@ public class AccessRuleService {
     }
 
 
-
     private Collection<? extends AccessRule> getTopmedRestrictedSubRules() {
         Set<AccessRule> rules = new HashSet<AccessRule>();
         rules.add(upsertTopmedRestrictedSubRule("CATEGORICAL", "$.query.query.variantInfoFilters[*].categoryVariantInfoFilters.*"));
@@ -702,7 +788,7 @@ public class AccessRuleService {
         AccessRule ar = this.getAccessRuleByName(ar_name);
         if (ar != null) {
             // Log and return the existing rule
-            logger.debug("Found existing rule: {}", ar.getName());
+            logger.trace("Found existing rule: {}", ar.getName());
             return ar;
         }
 
@@ -722,7 +808,6 @@ public class AccessRuleService {
     }
 
     protected Collection<? extends AccessRule> getPhenotypeSubRules(String studyIdentifier, String conceptPath, String alias) {
-
         Set<AccessRule> rules = new HashSet<AccessRule>();
         //categorical filters will always contain at least one entry (for the consent groups); it will never be empty
         rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
@@ -731,12 +816,16 @@ public class AccessRuleService {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
         }
 
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.numericFilters", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC", true));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS", false));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
 
         return rules;
     }
@@ -759,12 +848,16 @@ public class AccessRuleService {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
         }
 
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.numericFilters", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC", true));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS", false));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
 
         return rules;
     }
@@ -784,6 +877,8 @@ public class AccessRuleService {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
         }
 
         rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, "$.query.query.numericFilters.[*]", AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_NUMERIC", false));
@@ -811,33 +906,20 @@ public class AccessRuleService {
     }
 
     protected AccessRule populateTopmedAccessRule(AccessRule rule, boolean includeParent) {
-        if (rule.getGates() == null) {
-            rule.setGates(new HashSet<>(getGates(includeParent, false, true)));
-        } else {
-            rule.getGates().addAll(getGates(includeParent, false, true));
-        }
-
-        if (rule.getSubAccessRule() == null) {
-            rule.setSubAccessRule(new HashSet<>(getAllowedQueryTypeRules()));
-        } else {
-            rule.getSubAccessRule().addAll(getAllowedQueryTypeRules());
-        }
+        rule.setGates(new HashSet<>(getGates(includeParent, false, true)));
+        addUniqueSubRules(rule, getAllowedQueryTypeRules());
 
         return rule;
     }
 
     protected AccessRule populateHarmonizedAccessRule(AccessRule rule, String parentConceptPath, String studyIdentifier, String projectAlias) {
-        if (rule.getGates() == null) {
-            rule.setGates(new HashSet<>(Collections.singletonList(
-                    upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data")
-            )));
-        }
+        rule.setGates(new HashSet<>(Collections.singletonList(
+                upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data")
+        )));
 
-        if (rule.getSubAccessRule() == null) {
-            rule.setSubAccessRule(new HashSet<>(getAllowedQueryTypeRules()));
-            rule.getSubAccessRule().addAll(getHarmonizedSubRules());
-            rule.getSubAccessRule().addAll(getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
-        }
+        addUniqueSubRules(rule, getAllowedQueryTypeRules());
+        addUniqueSubRules(rule, getHarmonizedSubRules());
+        addUniqueSubRules(rule, getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
 
         return rule;
     }
@@ -918,7 +1000,7 @@ public class AccessRuleService {
 
         String conceptPath = fence_topmed_consent_group_concept_path;
         // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
-        if(conceptPath != null && conceptPath.contains("\\\\")) {
+        if (conceptPath != null && conceptPath.contains("\\\\")) {
             // This will convert all `\\\\` to `\\`.
             conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
         }
@@ -949,7 +1031,7 @@ public class AccessRuleService {
      */
     protected AccessRule upsertHarmonizedAccessRule(String project_name, String consent_group) {
         String ar_name = "AR_TOPMED_" + project_name + "_" + consent_group + "_" + "HARMONIZED";
-        logger.debug("upsertHarmonizedAccessRule() Creating new access rule {}", ar_name);
+        logger.trace("upsertHarmonizedAccessRule() Creating new access rule {}", ar_name);
         String description = "MANAGED AR for " + project_name + "." + consent_group + " Topmed data";
         String ruleText = "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]";
         String arValue = project_name + "." + consent_group;
@@ -998,11 +1080,11 @@ public class AccessRuleService {
 
     protected AccessRule createPhenotypeSubRule(String conceptPath, String alias, String rule, int ruleType, String label, boolean useMapKey) {
         String ar_name = "AR_PHENO_" + alias + "_" + label;
-        logger.debug("createPhenotypeSubRule() Creating new access rule {}", ar_name);
+        logger.trace("createPhenotypeSubRule() Creating new access rule {}", ar_name);
 
         // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
-        if(conceptPath != null && conceptPath.contains("\\\\")) {
-           // This will convert all `\\\\` to `\\`.
+        if (conceptPath != null && conceptPath.contains("\\\\")) {
+            // This will convert all `\\\\` to `\\`.
             conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
         }
 
@@ -1023,8 +1105,9 @@ public class AccessRuleService {
         return accessRuleCache.computeIfAbsent(name, key -> {
             AccessRule ar = this.getAccessRuleByName(key);
             if (ar == null) {
-                logger.debug("Creating new access rule {}", key);
+                logger.trace("Creating new access rule {}", key);
                 ar = new AccessRule();
+
                 ar.setName(name);
                 ar.setDescription(description);
                 ar.setRule(rule);
@@ -1051,4 +1134,29 @@ public class AccessRuleService {
     public List<AccessRule> getAccessRulesByPrivilegeIds(List<UUID> privilegeIds) {
         return this.accessRuleRepo.getAccessRulesByPrivilegeIds(privilegeIds);
     }
+
+    /**
+     * Adds unique sub-rules to the provided parent access rule. This method ensures that duplicate sub-rules,
+     * based on their names, are not added to the parent access rule.
+     *
+     * @param accessRule    the parent access rule to which the sub-rules are added
+     * @param subRulesToAdd the collection of sub-rules to be added to the parent access rule
+     */
+    private void addUniqueSubRules(AccessRule accessRule, Collection<? extends AccessRule> subRulesToAdd) {
+        if (accessRule.getSubAccessRule() == null) {
+            accessRule.setSubAccessRule(new HashSet<>());
+        }
+
+        Set<String> existingRuleNames = accessRule.getSubAccessRule().stream()
+                .map(AccessRule::getName)
+                .collect(Collectors.toSet());
+
+        for (AccessRule subRule : subRulesToAdd) {
+            if (!existingRuleNames.contains(subRule.getName())) {
+                accessRule.getSubAccessRule().add(subRule);
+                existingRuleNames.add(subRule.getName());
+            }
+        }
+    }
+
 }

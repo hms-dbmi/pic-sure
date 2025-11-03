@@ -4,7 +4,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
+
 import edu.harvard.hms.dbmi.avillach.auth.model.*;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
@@ -476,7 +476,7 @@ public class TokenServiceTest {
 
     private Role createTestRole() {
         Role role = new Role();
-        role.setName(SecurityRoles.ADMIN.name());
+        role.setName(AuthNaming.AuthRoleNaming.ADMIN);
         role.setUuid(UUID.randomUUID());
         role.setPrivileges(Collections.singleton(createTestPrivilege()));
         return role;

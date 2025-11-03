@@ -6,9 +6,9 @@ import edu.harvard.hms.dbmi.avillach.auth.service.impl.ConnectionWebService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.security.RolesAllowed;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.annotation.Secured;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,7 +36,7 @@ public class ConnectionWebController {
 
     @Operation(description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
-    @Secured({SUPER_ADMIN, ADMIN})
+    @RolesAllowed({SUPER_ADMIN, ADMIN})
     public ResponseEntity<?> getConnectionById(
             @Parameter(required = true, description = "The UUID of the Connection to fetch information about")
             @PathVariable("connectionId") String connectionId) {
@@ -50,14 +50,14 @@ public class ConnectionWebController {
 
     @Operation(description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
     @GetMapping
-    @Secured({SUPER_ADMIN, ADMIN})
+    @RolesAllowed({SUPER_ADMIN, ADMIN})
     public ResponseEntity<List<Connection>> getAllConnections() {
         List<Connection> allConnections = connectionWebService.getAllConnections();
         return ResponseEntity.ok(allConnections);
     }
 
     @Operation(description = "POST a list of Connections, requires SUPER_ADMIN role")
-    @Secured({SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<?> addConnection(
             @Parameter(required = true, description = "A list of Connections in JSON format")
@@ -72,7 +72,7 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role")
-    @Secured({SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
             @Parameter(required = true, description = "A list of Connection with fields to be updated in JSON format")
@@ -82,7 +82,7 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role")
-    @Secured({SUPER_ADMIN})
+    @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
     public ResponseEntity<List<Connection>> removeById(
             @Parameter(required = true, description = "A valid connection Id")

@@ -2,13 +2,11 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +14,6 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,8 +26,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RoleService.class, PrivilegeService.class})
+@ContextConfiguration(classes = {RoleService.class, PrivilegeService.class, UserRepository.class})
 public class RoleServiceTest {
+
+    @MockBean
+    private UserRepository userRepository;
 
     @MockBean
     private ApplicationService applicationService;
@@ -162,12 +162,11 @@ public class RoleServiceTest {
 
     @Test
     public void testRemoveRoleById_Success() {
-        User user = createTestUser();
-        configureUserSecurityContext(user);
-
-        Set<Role> roles = user.getRoles();
-        Role role = roles.iterator().next();
-        UUID roleId = role.getUuid();
+        Role role = new Role();
+        UUID roleId = UUID.randomUUID();
+        role.setUuid(roleId);
+        role.setName("Test Role");
+        role.setDescription("Test Description");
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
         when(roleRepository.findAll()).thenReturn(Collections.singletonList(role));
@@ -185,23 +184,6 @@ public class RoleServiceTest {
         UUID roleId = UUID.randomUUID();
 
         when(roleRepository.findById(roleId)).thenReturn(Optional.empty());
-
-        Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
-
-        assertFalse(result.isPresent());
-        verify(roleRepository, never()).deleteById(any());
-    }
-
-    @Test
-    public void testRemoveRoleById_InsufficientPrivileges() {
-        UUID roleId = UUID.randomUUID();
-        Role role = new Role();
-        role.setUuid(roleId);
-
-        User user = createTestUserWithoutPrivileges();
-        configureUserSecurityContext(user);
-
-        when(roleRepository.findById(roleId)).thenReturn(Optional.of(role));
 
         Optional<List<Role>> result = roleService.removeRoleById(roleId.toString());
 
@@ -234,60 +216,6 @@ public class RoleServiceTest {
         });
     }
 
-    private Role createTopAdminRole() {
-        Role role = new Role();
-        role.setName(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole());
-        role.setUuid(UUID.randomUUID());
-        role.setPrivileges(Collections.singleton(createSuperAdminPrivilege()));
-        return role;
-    }
-
-    private Privilege createSuperAdminPrivilege() {
-        Privilege privilege = new Privilege();
-        privilege.setName(AuthNaming.AuthRoleNaming.SUPER_ADMIN);
-        privilege.setUuid(UUID.randomUUID());
-        return privilege;
-    }
-
-    private void configureUserSecurityContext(User user) {
-        CustomUserDetails customUserDetails = new CustomUserDetails(user);
-
-        // configure security context
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
-        when(securityContext.getAuthentication()).thenReturn(authentication);
-    }
-
-    private User createTestUser() {
-        User user = new User();
-        user.setUuid(UUID.randomUUID());
-        user.setRoles(new HashSet<>(Collections.singleton(createTopAdminRole())));
-        user.setSubject("TEST_SUBJECT");
-        user.setEmail("test@email.com");
-        user.setAcceptedTOS(new Date());
-        user.setActive(true);
-
-        return user;
-    }
-
-    private User createTestUserWithoutPrivileges() {
-        User user = new User();
-        user.setUuid(UUID.randomUUID());
-        user.setRoles(new HashSet<>());
-        user.setSubject("TEST_SUBJECT");
-        user.setEmail("test@email.com");
-        user.setAcceptedTOS(new Date());
-        user.setActive(true);
-        return user;
-    }
-
-    private Role createTopAdminRoleWithoutPrivs() {
-        Role role = new Role();
-        role.setName(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole());
-        role.setUuid(UUID.randomUUID());
-        role.setPrivileges(Collections.emptySet());
-        return role;
-    }
-
     @Test
     public void getRoleNamesForDbgapPermissions_PermissionsAreNull() {
         Set<String> rolesForDbgapPermissions = roleService.getRoleNamesForDbgapPermissions(null);
@@ -305,8 +233,8 @@ public class RoleServiceTest {
 
     @Test
     public void getRoleNamesForDbgapPermissions() {
-//      {consentName='General Research Use', phsId='phs000006', version='v1', participantSet='p1', consentGroup='c1', role='pi', expiration=1641013200},
-//      RasDbgapPermission{consentName='Exchange Area', phsId='phs000300', version='v1', participantSet='p1', consentGroup='c999', role='pi', expiration=1641013200}
+        // {consentName='General Research Use', phsId='phs000006', version='v1', participantSet='p1', consentGroup='c1', role='pi', expiration=1641013200},
+        // RasDbgapPermission{consentName='Exchange Area', phsId='phs000300', version='v1', participantSet='p1', consentGroup='c999', role='pi', expiration=1641013200}
         RasDbgapPermission rasDbgapPermissionV1 = new RasDbgapPermission();
         rasDbgapPermissionV1.setRole("pi");
         rasDbgapPermissionV1.setConsentGroup("c1");

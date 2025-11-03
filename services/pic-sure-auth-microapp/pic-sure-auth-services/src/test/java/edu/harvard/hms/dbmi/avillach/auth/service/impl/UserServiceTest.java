@@ -4,7 +4,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
+
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
@@ -477,14 +477,14 @@ public class UserServiceTest {
     }
 
     @Test
-    public void testAddUsers_withUserHavingNullRoleSet() {
+    public void testAddUsers_withUserHavingEmptyRoleSet() {
         User user = createTestUser();
         user.setRoles(null);
 
         configureUserSecurityContext(user);
         when(userRepository.saveAll(List.of(user))).thenReturn(List.of(user));
 
-        assertThrows(NullPointerException.class, () -> {
+        assertThrows(IllegalArgumentException.class, () -> {
             List<User> result = userService.addUsers(List.of(user));
             assertNull(result.getFirst().getRoles());
         });
@@ -631,7 +631,7 @@ public class UserServiceTest {
 
     private Role createSuperAdminRole() {
         Role role = new Role();
-        role.setName(SecurityRoles.SUPER_ADMIN.name());
+        role.setName(AuthNaming.AuthRoleNaming.SUPER_ADMIN);
         role.setUuid(UUID.randomUUID());
         role.setPrivileges(Collections.singleton(createSuperAdminPrivilege()));
         return role;

@@ -10,6 +10,6 @@ public class IsHarmonizedDeserializer extends JsonDeserializer<Boolean> {
     @Override
     public Boolean deserialize(JsonParser jsonParser, DeserializationContext deserializationContext) throws IOException {
         String text = jsonParser.getText();
-        return "Y".equalsIgnoreCase(text);
+        return "Y".equalsIgnoreCase(text) || "Yes".equalsIgnoreCase(text);
     }
 }

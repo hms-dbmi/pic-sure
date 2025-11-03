@@ -4,8 +4,12 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.PagingAndSortingRepository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -38,5 +42,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailAndConnectionId(String email, String id);
 
     Set<User> findByPassportIsNotNull();
+
+    @Modifying
+    @Query(value = "DELETE FROM user_role where role_id in (:roleIDs)", nativeQuery = true)
+    @Transactional
+    void deleteUserRoles(@Param("roleIDs") List<UUID> roleIDs);
 
 }

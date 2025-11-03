@@ -6,7 +6,6 @@ import edu.harvard.hms.dbmi.avillach.auth.repository.TermsOfServiceRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TermsOfServiceController;
 import jakarta.annotation.Nullable;
-import jakarta.persistence.NoResultException;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,16 +34,17 @@ public class TOSService {
 
 
     @Autowired
-    public TOSService(TermsOfServiceRepository termsOfServiceRepo, UserRepository userRepo,
-                      @Value("${application.tos.enabled}") boolean isToSEnabled) {
+    public TOSService(
+        TermsOfServiceRepository termsOfServiceRepo, UserRepository userRepo, @Value("${application.tos.enabled}") boolean isToSEnabled
+    ) {
         this.termsOfServiceRepo = termsOfServiceRepo;
         this.userRepo = userRepo;
         this.isToSEnabled = isToSEnabled;
     }
 
 
-    public boolean hasUserAcceptedLatest(String userId) {
-        logger.info("Checking if user {} has accepted the latest TOS", userId);
+    public boolean hasUserAcceptedLatest(String userSubj) {
+        logger.info("Checking if user {} has accepted the latest TOS", userSubj);
         // If TOS is not enabled, then the user has accepted it
         if (!isToSEnabled) {
             logger.info("TOS is disabled");
@@ -57,7 +57,7 @@ public class TOSService {
             return true;
         }
 
-        return checkAgainstTOSDate(userId);
+        return checkAgainstTOSDate(userSubj);
     }
 
     public Optional<TermsOfService> updateTermsOfService(String html) {
@@ -77,9 +77,9 @@ public class TOSService {
         }
     }
 
-    public User acceptTermsOfService(String userId) {
-        logger.info("User {} accepting TOS", userId);
-        User user = userRepo.findBySubject(userId);
+    public User acceptTermsOfService(String userSubj) {
+        logger.info("User {} accepting TOS", userSubj);
+        User user = userRepo.findBySubject(userSubj);
         if (user == null) {
             throw new RuntimeException("User does not exist");
         }
@@ -94,21 +94,20 @@ public class TOSService {
         return user;
     }
 
-    private boolean checkAgainstTOSDate(String userId) {
-        Optional<User> optUser = this.userRepo.findById(UUID.fromString(userId));
-        if (optUser.isPresent()) {
-            User user = optUser.get();
-            Date acceptedTOS = user.getAcceptedTOS();
-            logger.info("User {} accepted TOS on {}", userId, acceptedTOS);
-            if (acceptedTOS == null) {
-                return false;
-            }
-
-            Optional<TermsOfService> latestTOS = this.termsOfServiceRepo.findTopByOrderByDateUpdatedDesc();
-            return latestTOS.filter(termsOfService -> acceptedTOS.after(termsOfService.getDateUpdated())).isPresent();
+    private boolean checkAgainstTOSDate(String userSubj) {
+        User user = this.userRepo.findBySubject(userSubj);
+        if (user == null) {
+            return false;
         }
 
-        return false;
+        Date acceptedTOS = user.getAcceptedTOS();
+        logger.info("User {} accepted TOS on {}", userSubj, acceptedTOS);
+        if (acceptedTOS == null) {
+            return false;
+        }
+
+        Optional<TermsOfService> latestTOS = this.termsOfServiceRepo.findTopByOrderByDateUpdatedDesc();
+        return latestTOS.filter(termsOfService -> acceptedTOS.compareTo(termsOfService.getDateUpdated()) >= 0).isPresent();
     }
 
 }

@@ -24,6 +24,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -92,7 +93,14 @@ public class FENCEAuthenticationService implements AuthenticationService {
         // Get the Gen3/FENCE user profile. It is a JsonNode object
         try {
             logger.debug("getFENCEProfile() query FENCE for user profile with code");
-            fence_user_profile = getFENCEUserProfile(getFENCEAccessToken(callBackUrl, fence_code).get("access_token").asText());
+            JsonNode tokenJson = getFENCEAccessToken(callBackUrl, fence_code);
+            JsonNode accessTokenNode = tokenJson.get("access_token");
+            if (accessTokenNode == null || accessTokenNode.isNull() || accessTokenNode.asText().isBlank()) {
+                logger.error("getFENCEProfile() access_token missing in token response: {}", tokenJson.toString());
+                throw new NotAuthorizedException("Token response missing access_token");
+            }
+            String accessToken = accessTokenNode.asText();
+            fence_user_profile = getFENCEUserProfile(accessToken);
 
             if (logger.isTraceEnabled()) {
                 // create object mapper instance
@@ -176,24 +184,35 @@ public class FENCEAuthenticationService implements AuthenticationService {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(access_token);
 
-        logger.debug("getFENCEUserProfile() getting user profile from uri:{}/user/user", this.idp_provider_uri);
-        ResponseEntity<String> fence_user_profile_response = this.restClientUtil.retrieveGetResponseWithRequestConfiguration(
-                this.idp_provider_uri + "/user/user",
-                headers,
-                10000
-        );
+        String url = this.idp_provider_uri + "/user/user";
+        logger.debug("getFENCEUserProfile() getting user profile from uri:{}", url);
 
-        // Map the response to a JsonNode object
-        JsonNode fence_user_profile_response_json = null;
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            fence_user_profile_response_json = mapper.readTree(fence_user_profile_response.getBody());
-        } catch (JsonProcessingException e) {
-            logger.error("getFENCEUserProfile() failed to parse the user profile response from FENCE, {}", e.getMessage());
-        }
+            ResponseEntity<String> resp = this.restClientUtil.retrieveGetResponseWithRequestConfiguration(
+                    url,
+                    headers,
+                    10000
+            );
 
-        logger.debug("getFENCEUserProfile() finished, returning user profile{}", fence_user_profile_response_json != null ? fence_user_profile_response_json.asText() : null);
-        return fence_user_profile_response_json;
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                logger.error("getFENCEUserProfile() non-2xx: status={}, body={}", resp.getStatusCode(), resp.getBody());
+                throw new NotAuthorizedException("User profile request failed: " + resp.getStatusCode());
+            }
+            String body = resp.getBody();
+            if (body == null || body.isBlank()) {
+                logger.error("getFENCEUserProfile() empty response body");
+                throw new NotAuthorizedException("Empty user profile response");
+            }
+            JsonNode json = new ObjectMapper().readTree(body);
+            logger.debug("getFENCEUserProfile() finished, returning user profile: {}", json.toString());
+            return json;
+        } catch (HttpClientErrorException e) {
+            logger.error("getFENCEUserProfile() HttpClientErrorException: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new NotAuthorizedException("User profile request failed: " + e.getStatusCode());
+        } catch (Exception e) {
+            logger.error("getFENCEUserProfile() error: {}", e.getMessage(), e);
+            throw new NotAuthorizedException("Failed to parse user profile");
+        }
     }
 
     private JsonNode getFENCEAccessToken(String callback_url, String fence_code) {
@@ -211,20 +230,37 @@ public class FENCEAuthenticationService implements AuthenticationService {
         String fence_token_url = this.idp_provider_uri + "/user/oauth2/token";
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(queryMap, headers);
-        JsonNode respJson = null;
-        ResponseEntity<String> resp;
+
         try {
-            resp = this.restClientUtil.retrievePostResponse(
+            ResponseEntity<String> resp = this.restClientUtil.retrievePostResponse(
                     fence_token_url,
                     request
             );
-            respJson = new ObjectMapper().readTree(resp.getBody());
-        } catch (Exception ex) {
-            logger.error("getFENCEAccessToken() failed to call FENCE token service, {}", ex.getMessage());
-        }
 
-        logger.debug("getFENCEAccessToken() finished: {}", respJson.asText());
-        return respJson;
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                String body = resp.getBody();
+                logger.error("getFENCEAccessToken() non-2xx from FENCE: status={}, body={}", resp.getStatusCode(), body);
+                throw new NotAuthorizedException("Token endpoint returned status " + resp.getStatusCode());
+            }
+
+            String body = resp.getBody();
+            if (body == null || body.isBlank()) {
+                logger.error("getFENCEAccessToken() empty response body from FENCE token endpoint");
+                throw new NotAuthorizedException("Empty response from token endpoint");
+            }
+
+            JsonNode respJson = new ObjectMapper().readTree(body);
+            logger.debug("getFENCEAccessToken() finished: {}", respJson.toString());
+            return respJson;
+
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            logger.error("getFENCEAccessToken() HttpClientErrorException: status={}, body={}", e.getStatusCode(), body);
+            throw new NotAuthorizedException("Token request failed: " + e.getStatusCode() + ": " + e.getMessage());
+        } catch (Exception ex) {
+            logger.error("getFENCEAccessToken() failed to call FENCE token service: {}", ex.getMessage(), ex);
+            throw new NotAuthorizedException("Token request failed: " + ex.getMessage());
+        }
     }
 
     /**

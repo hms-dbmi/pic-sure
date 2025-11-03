@@ -12,13 +12,14 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.core.GrantedAuthorityDefaults;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import static org.springframework.security.config.http.SessionCreationPolicy.STATELESS;
 
 @Configuration
-@EnableMethodSecurity(prePostEnabled = false)
+@EnableMethodSecurity(prePostEnabled = false, jsr250Enabled = true)
 @EnableWebSecurity
 public class SecurityConfig {
 
@@ -29,7 +30,10 @@ public class SecurityConfig {
     private final JWTUtil jwtUtil;
 
     @Autowired
-    public SecurityConfig(JWTFilter jwtFilter, AuthenticationProvider authenticationProvider, UserService userService, CacheEvictionService cacheEvictionService, JWTUtil jwtUtil) {
+    public SecurityConfig(
+        JWTFilter jwtFilter, AuthenticationProvider authenticationProvider, UserService userService,
+        CacheEvictionService cacheEvictionService, JWTUtil jwtUtil
+    ) {
         this.jwtFilter = jwtFilter;
         this.authenticationProvider = authenticationProvider;
         this.userService = userService;
@@ -44,35 +48,32 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement((session) -> session.sessionCreationPolicy(STATELESS))
-                .authenticationProvider(authenticationProvider)
-                .authorizeHttpRequests((authorizeRequests) ->
-                    authorizeRequests.requestMatchers(
-                                    "/actuator/health",
-                                    "/actuator/info",
-                                    "/authentication",
-                                    "/authentication/**",
-                                    "/swagger.yaml",
-                                    "/swagger.json",
-                                    "/user/me/queryTemplate",
-                                    "/user/me/queryTemplate/**",
-                                    "/open/validate",
-                                    "/logout",
-                                    "/cache/**"
-                            ).permitAll()
-                            .anyRequest().authenticated()
-                )
-                .httpBasic(AbstractHttpConfigurer::disable)
-                .formLogin(AbstractHttpConfigurer::disable)
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .logout((logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler()).logoutSuccessHandler((request, response, authentication) -> {
-                    // We don't want to redirect to a login page, we just want to return a 200
-                    // We leave it to the client to handle the redirect
-                    response.setStatus(200);
-                }));
+        http.csrf(AbstractHttpConfigurer::disable).sessionManagement((session) -> session.sessionCreationPolicy(STATELESS))
+            .authenticationProvider(authenticationProvider)
+            .authorizeHttpRequests(
+                (authorizeRequests) -> authorizeRequests.requestMatchers(
+                    "/actuator/health", "/actuator/info", "/authentication", "/authentication/**", "/swagger.yaml", "/swagger.json",
+                    "/user/me/queryTemplate", "/user/me/queryTemplate/**", "/tos/latest", "/open/validate", "/logout", "/cache/**"
+                ).permitAll().anyRequest().authenticated()
+            ).httpBasic(AbstractHttpConfigurer::disable).formLogin(AbstractHttpConfigurer::disable)
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).logout(
+                (logout) -> logout.logoutUrl("/logout").addLogoutHandler(customLogoutHandler())
+                    .logoutSuccessHandler((request, response, authentication) -> {
+                        // We don't want to redirect to a login page, we just want to return a 200
+                        // We leave it to the client to handle the redirect
+                        response.setStatus(200);
+                    })
+            );
 
         return http.build();
+    }
+
+    /**
+     * Remove the default "ROLE_" prefix so that hasRole("ADMIN") and @RolesAllowed("ADMIN") match a GrantedAuthority("ADMIN").
+     */
+    @Bean
+    public GrantedAuthorityDefaults grantedAuthorityDefaults() {
+        return new GrantedAuthorityDefaults("");
     }
 
 }

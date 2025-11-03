@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.PrivilegeRepository;
 import jakarta.annotation.PostConstruct;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,10 +122,10 @@ public class PrivilegeService {
 
     public Set<Privilege> addPrivileges(Role r, Map<String, StudyMetaData> fenceMapping) {
         String roleName = r.getName();
-        logger.info("addFENCEPrivileges() starting, adding privilege(s) to role {}", roleName);
+        logger.debug("addPrivilege() starting, adding privilege(s) to role {}", roleName);
 
         //each project can have up to three privileges: Parent  |  Harmonized  | Topmed
-        //harmonized has 2 ARs for parent + harminized and harmonized only
+        //harmonized has 2 ARs for parent + harmonized and harmonized only
         //Topmed has up to three ARs for topmed / topmed + parent / topmed + harmonized
         Set<Privilege> privs = r.getPrivileges();
         if (privs == null) {
@@ -134,13 +135,13 @@ public class PrivilegeService {
         //e.g. MANAGED_phs0000xx_c2 or MANAGED_tutorial-biolinc_camp
         String project_name = extractProject(roleName);
         if (project_name.isEmpty()) {
-            logger.warn("addFENCEPrivileges() role name: {} returned an empty project name", roleName);
+            logger.warn("addPrivileges() role name: {} returned an empty project name", roleName);
         }
         String consent_group = extractConsentGroup(roleName);
         if (!consent_group.isEmpty()) {
-            logger.warn("addFENCEPrivileges() role name: {} returned an empty consent group", roleName);
+            logger.warn("addPrivileges() role name: {} returned an empty consent group", roleName);
         }
-        logger.info("addFENCEPrivileges() project name: {} consent group: {}", project_name, consent_group);
+        logger.debug("addPrivileges() project name: {} consent group: {}", project_name, consent_group);
 
         // Look up the metadata by consent group.
         StudyMetaData projectMetadata = getStudyMappingForProjectAndConsent(project_name, consent_group, fenceMapping);
@@ -151,15 +152,13 @@ public class PrivilegeService {
             return privs;
         }
 
-        logger.info("addPrivileges() This is a new privilege");
-
         String dataType = projectMetadata.getDataType();
         Boolean isHarmonized = projectMetadata.getIsHarmonized();
         String concept_path = projectMetadata.getTopLevelPath();
         String projectAlias = projectMetadata.getAbbreviatedName();
 
-        // we need to add escape sequence back in to the path for parsing later (also need to double escape the regex)
-        // we need to do this for the query Template and scopes, but should NOT do this for the rules.
+        // Need to add the escape sequence back in to the path for parsing later (also need to doubly escape the regex).
+        // Need to do this for the query Template and scopes, but should NOT do this for the rules.
         if (concept_path != null) {
             concept_path = concept_path.replaceAll("\\\\", "\\\\\\\\");
         }
@@ -171,7 +170,7 @@ public class PrivilegeService {
 
         if (dataType != null && dataType.contains("P")) {
             //insert clinical privs
-            logger.info("addPrivileges() project:{} consent_group:{} concept_path:{}", project_name, consent_group, concept_path);
+            logger.debug("addPrivileges() project:{} consent_group:{} concept_path:{}", project_name, consent_group, concept_path);
             privs.add(upsertClinicalPrivilege(project_name, projectAlias, consent_group, concept_path, false));
 
             //if harmonized study, also create harmonized privileges
@@ -208,12 +207,10 @@ public class PrivilegeService {
 
         // Check if the Privilege already exists
         Privilege priv = this.findByName(privilegeName);
-        if (priv != null) {
-            logger.info("{} already exists", privilegeName);
-            return priv;
+        if (priv == null) {
+            priv = new Privilege();
         }
 
-        priv = new Privilege();
         try {
             priv.setApplication(picSureApp);
             priv.setName(privilegeName);
@@ -234,7 +231,6 @@ public class PrivilegeService {
             }
             accessRules.addAll(this.accessRuleService.addStandardAccessRules());
             priv.setAccessRules(accessRules);
-            logger.info("Added {} access_rules to privilege", accessRules.size());
 
             priv = this.save(priv);
             logger.info("Added new privilege {} to DB", priv.getName());
@@ -254,18 +250,21 @@ public class PrivilegeService {
 
     private AccessRule createClinicalHarmonizedAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
         AccessRule ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consentGroup, "HARMONIZED", fence_harmonized_consent_group_concept_path);
+        ar.setSubAccessRule(new HashSet<>());
         this.accessRuleService.configureHarmonizedAccessRule(ar, studyIdentifier, conceptPath, projectAlias);
         return this.accessRuleService.save(ar);
     }
 
     private AccessRule createClinicalTopmedParentAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
         AccessRule ar = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED+PARENT");
+        ar.setSubAccessRule(new HashSet<>());
         ar = this.accessRuleService.configureClinicalAccessRuleWithPhenoSubRule(ar, studyIdentifier, consentGroup, conceptPath, projectAlias);
         return this.accessRuleService.save(ar);
     }
 
     private AccessRule createClinicalParentAccessRule(String studyIdentifier, String consentGroup, String conceptPath, String projectAlias) {
         AccessRule ar = this.accessRuleService.createConsentAccessRule(studyIdentifier, consentGroup, "PARENT", fence_parent_consent_group_concept_path);
+        ar.setSubAccessRule(new HashSet<>());
         this.accessRuleService.configureAccessRule(ar, studyIdentifier, consentGroup, conceptPath, projectAlias);
         return this.accessRuleService.save(ar);
     }
@@ -285,12 +284,9 @@ public class PrivilegeService {
         String privilegeName = "PRIV_MANAGED_" + studyIdentifier + "_" + consentGroup + "_TOPMED";
         Privilege priv = this.findByName(privilegeName);
 
-        if (priv != null) {
-            logger.info("upsertTopmedPrivilege() {} already exists", privilegeName);
-            return priv;
+        if (priv == null) {
+            priv = new Privilege();
         }
-
-        priv = new Privilege();
 
         try {
             buildPrivilegeObject(priv, privilegeName, studyIdentifier, consentGroup);
@@ -300,7 +296,6 @@ public class PrivilegeService {
 
             if (parentConceptPath != null) {
                 accessRules.add(createTopmedParentAccessRule(studyIdentifier, consentGroup, parentConceptPath, projectAlias));
-
                 if (isHarmonized) {
                     accessRules.add(createHarmonizedTopmedAccessRule(studyIdentifier, projectAlias, consentGroup, parentConceptPath));
                 }
@@ -322,6 +317,7 @@ public class PrivilegeService {
 
     private AccessRule createHarmonizedTopmedAccessRule(String studyIdentifier, String projectAlias, String consentGroup, String parentConceptPath) {
         AccessRule harmonizedRule = this.accessRuleService.upsertHarmonizedAccessRule(studyIdentifier, consentGroup);
+        harmonizedRule.setSubAccessRule(new HashSet<>());
         harmonizedRule = this.accessRuleService.populateHarmonizedAccessRule(harmonizedRule, parentConceptPath, studyIdentifier, projectAlias);
         this.accessRuleService.save(harmonizedRule);
         return harmonizedRule;
@@ -329,6 +325,7 @@ public class PrivilegeService {
 
     private AccessRule createTopmedParentAccessRule(String studyIdentifier, String consentGroup, String parentConceptPath, String projectAlias) {
         AccessRule topmedParentRule = this.accessRuleService.upsertTopmedAccessRule(studyIdentifier, consentGroup, "TOPMED+PARENT");
+        topmedParentRule.setSubAccessRule(new HashSet<>());
         this.accessRuleService.populateTopmedAccessRule(topmedParentRule, true);
         topmedParentRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
         topmedParentRule.getSubAccessRule().add(this.accessRuleService.createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
@@ -345,12 +342,14 @@ public class PrivilegeService {
     private void buildPrivilegeObject(Privilege priv, String privilegeName, String studyIdentifier, String consentGroup) {
         priv.setApplication(picSureApp);
         priv.setName(privilegeName);
-        priv.setDescription("MANAGED privilege for Topmed " + studyIdentifier + "." + consentGroup);
+        String consent = studyIdentifier + (StringUtils.isNotBlank(consentGroup) ? "." + consentGroup : "");
+        priv.setDescription("MANAGED privilege for Topmed " + consent);
 
         String consentConceptPath = escapePath(fence_topmed_consent_group_concept_path);
         fence_harmonized_concept_path = escapePath(fence_harmonized_concept_path);
 
-        String queryTemplateText = "{\"categoryFilters\": {\"" + consentConceptPath + "\":[\"" + studyIdentifier + "." + consentGroup + "\"]},"
+
+        String queryTemplateText = "{\"categoryFilters\": {\"" + consentConceptPath + "\":[\"" + consent + "\"]},"
                 + "\"numericFilters\":{},\"requiredFields\":[],"
                 + "\"fields\":[\"" + topmedAccessionField + "\"],"
                 + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
@@ -415,7 +414,7 @@ public class PrivilegeService {
 
     private StudyMetaData getStudyMappingForProjectAndConsent(String projectId, String consent_group, Map<String, StudyMetaData> fenceMapping) {
         String consentVal = (consent_group != null && !consent_group.isEmpty()) ? projectId + "." + consent_group : projectId;
-        logger.info("getFENCEMappingforProjectAndConsent() looking up {}", consentVal);
+        logger.debug("getStudyMappingForProjectAndConsent() looking up {}", consentVal);
 
         return fenceMapping.get(consentVal);
     }

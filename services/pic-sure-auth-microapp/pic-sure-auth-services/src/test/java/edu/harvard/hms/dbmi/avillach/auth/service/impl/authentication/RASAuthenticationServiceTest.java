@@ -1,10 +1,16 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
+import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
@@ -13,16 +19,18 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ContextConfiguration;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@ContextConfiguration(classes = {RASPassPortService.class, RASAuthenticationService.class})
+@ContextConfiguration(classes = {RASPassPortService.class, RASAuthenticationService.class, ApplicationContext.class})
 public class RASAuthenticationServiceTest {
 
     @MockBean
@@ -35,6 +43,10 @@ public class RASAuthenticationServiceTest {
     private CacheEvictionService cacheEvictionService;
     @MockBean
     private RoleService roleService;
+    @MockBean
+    private UserRepository userRepository;
+    @MockBean
+    private ApplicationContext applicationContext;
 
     private RASPassPortService rasPassPortService;
     private RASAuthenticationService rasAuthenticationService;
@@ -48,7 +60,7 @@ public class RASAuthenticationServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        RoleService roleService = new RoleService(mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class));
+        RoleService roleService = new RoleService(mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class), mock(ApplicationContext.class));
         this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
@@ -90,7 +102,6 @@ public class RASAuthenticationServiceTest {
 
         // token exchange
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(queryString))).thenReturn(ResponseEntity.ok(data));
-
         // introspect
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(payload))).thenReturn(ResponseEntity.ok(introspectionResponse));
 
@@ -102,6 +113,29 @@ public class RASAuthenticationServiceTest {
         when(userService.updateUserRoles(any(), any())).thenReturn(user);
         HashMap<String, String> authenticate = rasAuthenticationService.authenticate(authRequest, testDomain);
         assertNotNull(authenticate);
+    }
+
+    @Test
+    public void testUpdateUserRoles_withEmptyDBGapPermissions() throws JsonProcessingException {
+        String introspectionResponse =
+                "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\",\"passport_jwt_v11\":\""+ exampleRasPassport +"\"}";
+        JsonNode introspectionResponseParsed = new ObjectMapper().readTree(introspectionResponse);
+        User user = createTestUser();
+        Optional<Passport> passport = this.rasPassPortService.extractPassport(introspectionResponseParsed);
+        assertTrue(passport.isPresent());
+
+        Set<RasDbgapPermission> dbgapPermissions = new HashSet<>();
+        Set<String> dbgapRoleNames = new HashSet<>();
+
+        when(rasPassPortService.ga4gpPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
+        when(roleService.getRoleNamesForDbgapPermissions(any())).thenReturn(dbgapRoleNames);
+        when(userService.updateUserRoles(any(), any())).thenReturn(user);
+
+        user = this.rasAuthenticationService.updateRasUserRoles(code, user, passport.get());
+        assertNotNull(user);
+
+        // We are verifying that we attempt to update a users roles even if no dbgap roles are present.
+        verify(userService, times(1)).updateUserRoles(user, dbgapRoleNames);
     }
 
     private User createTestUser() {

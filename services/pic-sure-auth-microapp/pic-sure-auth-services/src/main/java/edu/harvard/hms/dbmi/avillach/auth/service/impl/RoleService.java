@@ -3,20 +3,18 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +26,7 @@ import java.util.stream.Collectors;
 public class RoleService {
 
     private final Logger logger = LoggerFactory.getLogger(RoleService.class);
+    private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PrivilegeService privilegeService;
     private final FenceMappingUtility fenceMappingUtility;
@@ -35,22 +34,29 @@ public class RoleService {
     public static final String MANAGED_ROLE_NAMED_DATASET = "MANUAL_ROLE_NAMED_DATASET";
     private final Set<Role> publicAccessRoles = new HashSet<>();
 
+    private final ApplicationContext applicationContext;
+
     @Autowired
-    public RoleService(RoleRepository roleRepository, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility) {
+    public RoleService(UserRepository userRepository, RoleRepository roleRepository, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility, ApplicationContext applicationContext) {
+        this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.privilegeService = privilegeService;
         this.fenceMappingUtility = fenceMappingUtility;
+        this.applicationContext = applicationContext;
     }
 
     @EventListener(ContextRefreshedEvent.class)
     public void createPermissionsForFenceMapping() {
         if (this.fenceMappingUtility.getFENCEMapping() != null && this.fenceMappingUtility.getFenceMappingByAuthZ() != null
-                && !this.fenceMappingUtility.getFENCEMapping().isEmpty() && !this.fenceMappingUtility.getFenceMappingByAuthZ().isEmpty()) {
+            && !this.fenceMappingUtility.getFENCEMapping().isEmpty() && !this.fenceMappingUtility.getFenceMappingByAuthZ().isEmpty()) {
             // Create all potential access rules using the fence mapping
             Set<Role> roles = this.fenceMappingUtility.getFenceMappingByAuthZ().values().parallelStream()
                     .filter(this::projectMetaIsValid)
                     .map(this::extractRole)
                     .collect(Collectors.toSet());
+
+            RoleService roleService = applicationContext.getBean(RoleService.class);
+            roleService.cleanupRolesNotInMapping(roles);
 
             this.persistAll(roles);
         } else {
@@ -60,6 +66,48 @@ public class RoleService {
         String publicAccessRolesString = publicAccessRoles.stream().map(Role::getName).collect(Collectors.joining(", "));
         logger.info("Public access roles: {}", publicAccessRolesString);
         logger.info("RoleService initialized...");
+    }
+
+    @Transactional
+    protected void cleanupRolesNotInMapping(Set<Role> roles) {
+        try {
+            // We only want to update MANAGED_ roles
+            Set<String> roleNamesInMapping = roles.stream().map(Role::getName).filter(roleName -> roleName.startsWith("MANAGED_")).collect(Collectors.toSet());
+            Set<Role> byNameNotIn = this.roleRepository.findByNameNotIn(roleNamesInMapping);
+            Set<Role> managedRoles = byNameNotIn.stream().filter(role -> role.getName().startsWith("MANAGED_")).collect(Collectors.toSet());
+            logger.info("List of roles not in the fence mapping: {}", managedRoles.stream().map(Role::getName).collect(Collectors.joining(", ")));
+
+            // First, delete the user-role associations
+            List<UUID> roleIDs = managedRoles.stream().map(Role::getUuid).collect(Collectors.toList());
+            if (!roleIDs.isEmpty()) {
+                this.userRepository.deleteUserRoles(roleIDs);
+                logger.info("Deleted user-role associations for {} roles", roleIDs.size());
+            }
+
+            // Then clear privileges from each role and delete them one by one
+            if (!managedRoles.isEmpty()) {
+                for (Role role : managedRoles) {
+                    try {
+                        // Clear privileges to remove entries from role_privilege table
+                        if (role.getPrivileges() != null && !role.getPrivileges().isEmpty()) {
+                            role.setPrivileges(new HashSet<>());
+                            roleRepository.save(role);
+                            logger.debug("Cleared privileges for role: {}", role.getName());
+                        }
+
+                        // Now delete the role
+                        roleRepository.delete(role);
+                        logger.debug("Deleted role: {}", role.getName());
+                    } catch (Exception e) {
+                        logger.error("Error deleting role {}: {}", role.getName(), e.getMessage(), e);
+                    }
+                }
+                logger.info("Deleted {} roles", managedRoles.size());
+            }
+        } catch (Exception e) {
+            logger.error("Error cleaning up roles not in mapping", e);
+            throw e;
+        }
     }
 
     private boolean projectMetaIsValid(StudyMetaData projectMetadata) {
@@ -139,17 +187,7 @@ public class RoleService {
     @Transactional
     public Optional<List<Role>> removeRoleById(String roleId) {
         Optional<Role> optionalRole = roleRepository.findById(UUID.fromString(roleId));
-
         if (optionalRole.isEmpty()) {
-            return Optional.empty();
-        }
-
-        SecurityContext context = SecurityContextHolder.getContext();
-        CustomUserDetails current_user = (CustomUserDetails) context.getAuthentication().getPrincipal();
-        Set<String> roleNames = current_user.getUser().getRoles().stream().map(Role::getName).collect(Collectors.toSet());
-
-        if (!roleNames.contains(SecurityRoles.PIC_SURE_TOP_ADMIN.getRole())){
-            logger.info("User doesn't have PIC-SURE Top Admin role, can't remove any role");
             return Optional.empty();
         }
 
@@ -191,51 +229,40 @@ public class RoleService {
         return this.roleRepository.findByName(roleName);
     }
 
+    public Role getOrCreateRole(String roleName, String roleDescription) {
+        Role existingRole = this.roleRepository.findByName(roleName);
+        if (existingRole != null) {
+            return existingRole;
+        }
+
+        return createRole(roleName, roleDescription);
+    }
+
     public Role createRole(String roleName, String roleDescription) {
         if (roleName.isEmpty()) {
             logger.info("createRole() roleName is empty");
             return null;
         }
-        logger.info("createRole() New PSAMA role name:{}", roleName);
-        // Create the Role in the repository, if it does not exist. Otherwise, add it.
+
         Role role = findByName(roleName);
         if (role != null) {
             // Role already exists
-            logger.debug("upsertRole() role already exists");
+            logger.trace("upsertRole() role: {} already exists", role.getName());
         } else {
             logger.info("createRole() New PSAMA role name:{}", roleName);
             // This is a new Role
             role = new Role();
             role.setName(roleName);
             role.setDescription(roleDescription);
-            // Since this is a new Role, we need to ensure that the
-            // corresponding Privilege (with gates) and AccessRule is added.
-            role.setPrivileges(privilegeService.addPrivileges(role, this.fenceMappingUtility.getFENCEMapping()));
-            logger.info("upsertRole() created new role");
+            logger.info("createRole() created new role");
         }
 
-        return role;
-    }
-
-    /**
-     * Only use this service if you know this is a new role. Otherwise, use createRole().
-     * @param roleName The name of the role to be created.
-     * @param roleDescription Description of the role.
-     * @return
-     */
-    public Role createNewRole(String roleName, String roleDescription) {
-        if(roleName.isEmpty()){
-            logger.info("createNewRole() roleName is empty");
-            return null;
-        }
-
-        logger.info("createNewRole() New PSAMA role name:{}", roleName);
-        Role role = new Role();
-        role.setName(roleName);
-        role.setDescription(roleDescription);
-        // Since this is a new Role, we need to ensure that the
-        // corresponding Privilege (with gates) and AccessRule is added.
+        /*
+         * Even if a role already exists, there is a chance the privileges have changed. We need to update all
+         * roles' privileges out of precaution.
+         */
         role.setPrivileges(privilegeService.addPrivileges(role, this.fenceMappingUtility.getFENCEMapping()));
+
         return role;
     }
 
@@ -316,4 +343,3 @@ public class RoleService {
     }
 
 }
-

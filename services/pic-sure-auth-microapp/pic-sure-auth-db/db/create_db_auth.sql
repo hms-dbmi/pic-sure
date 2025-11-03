@@ -92,6 +92,7 @@ CREATE TABLE `user` (
   `long_term_token` varchar(4000) COLLATE utf8_bin DEFAULT NULL,
   PRIMARY KEY (`uuid`),
   UNIQUE KEY `UK_r8xpakluitn685ua7pt8xjy9r` (`subject`),
+  UNIQUE KEY `email_UNIQUE` (`email`),
   KEY `FKn8bku0vydfcnuwbqwgnbgg8ry` (`connectionId`),
   CONSTRAINT `FKn8bku0vydfcnuwbqwgnbgg8ry` FOREIGN KEY (`connectionId`) REFERENCES `connection` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;

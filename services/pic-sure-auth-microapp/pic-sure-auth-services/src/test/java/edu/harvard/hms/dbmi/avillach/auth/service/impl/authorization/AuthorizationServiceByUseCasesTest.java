@@ -65,6 +65,7 @@ public class AuthorizationServiceByUseCasesTest {
     private static AccessRule rule_caseE;
     private static AccessRule rule_caseE_2;
     private static AccessRule rule_caseF;
+    private static AccessRule rule_caseG;
 
     private static AccessRule AR_CategoryFilter_String_contains;
     private static AccessRule AR_CategoryFilter_Array_Contains;
@@ -416,6 +417,58 @@ public class AuthorizationServiceByUseCasesTest {
             "  \"resourceCredentials\": {}\n" +
             "}";
 
+    // Sample for anyRecordOf test case (Case G)
+    public static String sample_caseG_pass = "{\n" +
+            "  \"query\": {\n" +
+            "    \"categoryFilters\": {\n" +
+            "    },\n" +
+            "    \"numericFilters\": {},\n" +
+            "    \"requiredFields\": [],\n" +
+            "    \"anyRecordOf\": [\n" +
+            "      \"\\\\phs001001\\\\pht005655\\\\phv00354560\\\\age\\\\\"\n" +
+            "    ],\n" +
+            "    \"fields\": [\n" +
+            "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" +
+            "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n" +
+            "    ],\n" +
+            "    \"variantInfoFilters\": [\n" +
+            "      {\n" +
+            "        \"categoryVariantInfoFilters\": {},\n" +
+            "        \"numericVariantInfoFilters\": {}\n" +
+            "      }\n" +
+            "    ],\n" +
+            "    \"expectedResultType\": \"COUNT\"\n" +
+            "  },\n" +
+            "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" +
+            "}";
+
+    public static String sample_caseG_fail = "{\n" +
+            "  \"query\": {\n" +
+            "    \"categoryFilters\": {\n" +
+            "      \"\\\\_consents\\\\\": [\n" +
+            "        \"phs000956.c2\",\"phs001189.c1\",\"tutorial-biolincc_digitalis\",\"phs001143.c1\",\"phs001032.c1\",\"phs001013.c1\",\"phs001013.c2\",\"phs000280.c1\",\"phs000284.c1\",\"phs000200.c1\",\"phs000280.c2\",\"phs001040.c1\",\"phs000951.c1\",\"phs000974.c1\",\"tutorial-biolincc_camp\",\"phs000997.c1\",\"phs000200.c2\",\"phs000007.c2\",\"phs000974.c2\",\"phs000007.c1\",\"phs000993.c1\",\"phs000179.c1\",\"phs000993.c2\",\"phs001062.c1\",\"phs000964.c3\",\"phs000964.c4\",\"phs000285.c2\",\"phs000285.c1\",\"tutorial-biolincc_framingham\",\"phs000964.c1\",\"phs000964.c2\",\"phs000287.c1\",\"phs001211.c2\",\"phs001211.c1\",\"phs000287.c2\",\"phs000287.c3\",\"phs000287.c4\",\"open_access-1000Genomes\",\"phs001024.c1\",\"phs000209.c1\",\"phs000209.c2\"\n" +
+            "      ]\n" +
+            "    },\n" +
+            "    \"numericFilters\": {\"age\": {\"min\": 20, \"max\": 80}},\n" +
+            "    \"requiredFields\": [\"\\\\demographics\\\\AGE\\\\\"],\n" +
+            "    \"anyRecordOf\": [\n" +
+            "      \"\\\\different_path\\\\different_value\\\\\"\n" +
+            "    ],\n" +
+            "    \"fields\": [\n" +
+            "      \"\\\\_Topmed Study Accession with Subject ID\\\\\",\n" +
+            "      \"\\\\_Parent Study Accession with Subject ID\\\\\"\n" +
+            "    ],\n" +
+            "    \"variantInfoFilters\": [\n" +
+            "      {\n" +
+            "        \"categoryVariantInfoFilters\": {},\n" +
+            "        \"numericVariantInfoFilters\": {}\n" +
+            "      }\n" +
+            "    ],\n" +
+            "    \"expectedResultType\": \"DATAFRAME\"\n" +
+            "  },\n" +
+            "  \"resourceUUID\": \"02e23f52-f354-4e8b-992c-d37c8b9ba140\"\n" +
+            "}";
+
     @BeforeAll
     public static void init() {
         initialTestCaseA();
@@ -424,6 +477,7 @@ public class AuthorizationServiceByUseCasesTest {
         initialTestCaseD();
         initialTestCaseE();
         initialTestCaseF();
+        initialTestCaseG();
     }
 
     @BeforeEach
@@ -675,4 +729,57 @@ public class AuthorizationServiceByUseCasesTest {
         rule_caseF_subRules.add(rule_caseF_subRule_4);
     }
 
+    @Test
+    public void testCaseG() throws IOException {
+        assertTrue(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseG_pass, Map.class), rule_caseG));
+        assertFalse(accessRuleService.evaluateAccessRule(mapper.readValue(sample_caseG_fail, Map.class), rule_caseG));
+    }
+
+    private static void initialTestCaseG(){
+        rule_caseG = new AccessRule();
+        rule_caseG.setUuid(UUID.randomUUID());
+        rule_caseG.setName("rule_caseG");
+        rule_caseG.setRule("$.query");
+        rule_caseG.setType(AccessRule.TypeNaming.ANY_CONTAINS);
+        rule_caseG.setValue("anyRecordOf");
+        rule_caseG.setCheckMapNode(true);
+        rule_caseG.setCheckMapKeyOnly(true);
+
+        Set<AccessRule> subRules = new HashSet<>();
+        rule_caseG.setSubAccessRule(subRules);
+
+        // Sub-rule 1: Check that expectedResultType is COUNT
+        AccessRule subRule1 = new AccessRule();
+        subRule1.setUuid(UUID.randomUUID());
+        subRule1.setName("rule_caseG_subRule1");
+        subRule1.setRule("$.query.expectedResultType");
+        subRule1.setType(AccessRule.TypeNaming.ALL_EQUALS_IGNORE_CASE);
+        subRule1.setValue("COUNT");
+        subRules.add(subRule1);
+
+        // Sub-rule 2: Check that numericFilters is empty
+        AccessRule subRule2 = new AccessRule();
+        subRule2.setUuid(UUID.randomUUID());
+        subRule2.setName("rule_caseG_subRule2");
+        subRule2.setRule("$.query.numericFilters");
+        subRule2.setType(AccessRule.TypeNaming.IS_EMPTY);
+        subRules.add(subRule2);
+
+        // Sub-rule 3: Check that requiredFields is empty
+        AccessRule subRule3 = new AccessRule();
+        subRule3.setUuid(UUID.randomUUID());
+        subRule3.setName("rule_caseG_subRule3");
+        subRule3.setRule("$.query.requiredFields");
+        subRule3.setType(AccessRule.TypeNaming.IS_EMPTY);
+        subRules.add(subRule3);
+
+        // Sub-rule 4: Check that anyRecordOf contains a specific path
+        AccessRule subRule4 = new AccessRule();
+        subRule4.setUuid(UUID.randomUUID());
+        subRule4.setName("rule_caseG_subRule4");
+        subRule4.setRule("$.query.anyRecordOf[0]");
+        subRule4.setType(AccessRule.TypeNaming.ALL_EQUALS);
+        subRule4.setValue("\\phs001001\\pht005655\\phv00354560\\age\\");
+        subRules.add(subRule4);
+    }
 }

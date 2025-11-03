@@ -15,6 +15,9 @@ import java.util.stream.Collectors;
  * Defines a model of User behavior.
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
+@Table(
+  uniqueConstraints = @UniqueConstraint(columnNames = { "email", "connectionId" })
+)
 @Entity(name = "user")
 public class User extends BaseEntity implements Serializable, Principal {
 
@@ -26,7 +29,7 @@ public class User extends BaseEntity implements Serializable, Principal {
 			joinColumns = {@JoinColumn(name = "user_id", nullable = false, referencedColumnName = "uuid")},
 			inverseJoinColumns = {@JoinColumn(name = "role_id", nullable = false, referencedColumnName = "uuid")})
 	private Set<Role> roles;
-
+	
 	private String email;
 
 	public User(User user) {

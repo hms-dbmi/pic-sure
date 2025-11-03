@@ -3,6 +3,12 @@
 ### Local Development
 At present, local development is conducted using our [All-In-One](https://github.com/hms-dbmi/pic-sure-all-in-one) Virtual Box. We offer implementations for both [CentOS](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/master) and [Redhat](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/feature/redhat)  based operating systems. To get started, please consult the [README](https://github.com/hms-dbmi/pic-sure-all-in-one/tree/master#readme) section of the [All-In-One](https://github.com/hms-dbmi/pic-sure-all-in-one) repository.
 
+Before contributing code, please set up our git hook:  
+`cp code-formatting/pre-commit.sh .git/hooks/pre-commit`  
+To skip formatting on a block of code, wrap in `spotless:off`, `spotless:on` comments
+
+
+
 #### To add an initial top admin user in the system
 If you follow the steps above, spins up the docker containers and you can see the login page in the browser, you are almost there.
 
@@ -16,12 +22,8 @@ modify the configuration data - `@user_email` with your own google email
 
 #### Terms of Service
 
-If a user logging in has not accepted the latest terms of service, they will be directed to the 'Accept Terms of Service' page.
 The content of the terms of service is stored in the termsOfService table in the database.  This is html that is rendered on the page.  
-To trigger the acceptance of the terms of service, this html must include a button with class 'accept-tos-button'.  Anything with this class,
-upon clicking, will register the logged in user as accepting terms of service.  This button can be disabled until criteria are met.  Some example termsOfService content would be:
-
-
+Some example termsOfService content would be:
 
 ```aidl
 These are the terms of service.

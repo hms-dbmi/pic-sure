@@ -9,7 +9,6 @@ import jakarta.annotation.security.RolesAllowed;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.annotation.Secured;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,7 +38,7 @@ public class AccessRuleController {
     }
 
     @Operation(description = "GET information of one AccessRule with the UUID, requires ADMIN or SUPER_ADMIN role")
-    @Secured(value = {ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(value = "/{accessRuleId}")
     public ResponseEntity<?> getAccessRuleById(
             @Parameter(description = "The UUID of the accessRule to fetch information about")
@@ -54,7 +53,7 @@ public class AccessRuleController {
     }
 
     @Operation(description = "GET a list of existing AccessRules, requires ADMIN or SUPER_ADMIN role")
-    @Secured({ADMIN, SUPER_ADMIN})
+    @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping("")
     public ResponseEntity<List<AccessRule>> getAccessRuleAll() {
         List<AccessRule> allAccessRules = this.accessRuleService.getAllAccessRules();

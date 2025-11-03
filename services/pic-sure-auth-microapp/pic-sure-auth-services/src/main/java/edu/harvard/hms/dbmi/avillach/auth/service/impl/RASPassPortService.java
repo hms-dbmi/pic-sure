@@ -8,7 +8,6 @@ import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
-import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class RASPassPortService {
@@ -161,20 +159,18 @@ public class RASPassPortService {
         return Optional.ofNullable(responseVal);
     }
 
-    public Set<RasDbgapPermission> ga4gpPassportToRasDbgapPermissions(List<String> ga4ghPassports) {
+    public Set<RasDbgapPermission> ga4gpPassportToRasDbgapPermissions(Set<Optional<Ga4ghPassportV1>> ga4ghPassports) {
         if (ga4ghPassports == null) {
             return null;
         }
 
         logger.debug("Converting ga4ghPassports to RasDbgapPermissions");
         HashSet<RasDbgapPermission> rasDbgapPermissions = new HashSet<>();
+        long date = Instant.now().toEpochMilli() / 1000;
         ga4ghPassports.forEach(ga4ghPassport -> {
-            Optional<Ga4ghPassportV1> parsedGa4ghPassportV1 = JWTUtil.parseGa4ghPassportV1(ga4ghPassport);
-            if (parsedGa4ghPassportV1.isPresent()) {
-                Ga4ghPassportV1 ga4ghPassportV1 = parsedGa4ghPassportV1.get();
-                logger.info("ga4gh_passport_v1: {}", ga4ghPassportV1);
-
-                rasDbgapPermissions.addAll(ga4ghPassportV1.getRasDbgagPermissions());
+            if (ga4ghPassport.isPresent()) {
+                Ga4ghPassportV1 ga4ghPassportV1 = ga4ghPassport.get();
+                rasDbgapPermissions.addAll(ga4ghPassportV1.getRasDbgagPermissions().stream().filter(rasDbgapPermission -> date <= rasDbgapPermission.getExpiration()).collect(Collectors.toSet()));
             }
         });
 

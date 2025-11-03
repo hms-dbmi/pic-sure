@@ -13,8 +13,7 @@ public class AuthNaming {
     public static final String PSAMA_APPLICATION_TOKEN_PREFIX = "PSAMA_APPLICATION";
 
     /**
-     * <p>Contains all preset PSAMA role naming conventions.</p>
-     * <p>Note: Only users with super admin access can edit these role names.</p>
+     * <p>Constants used to in @RolesAllowed() annotations.</p>
      */
     public static class AuthRoleNaming {
         public static final String ADMIN = "ADMIN";

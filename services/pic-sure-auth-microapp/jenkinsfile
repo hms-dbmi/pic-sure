@@ -35,7 +35,7 @@ pipeline {
                         sh "docker rm psama || true"
                         sh """docker run --name=psama --restart always \
                             --network=picsure \
-                            --env-file /usr/local/docker-config/psama/.env \
+                            --env-file /usr/local/docker-config/psama/psama.env \
                             $EMAIL_TEMPLATE_VOLUME \
                             $TRUSTSTORE_VOLUME \
                             -e JAVA_OPTS="$PSAMA_OPTS $TRUSTSTORE_JAVA_OPTS" \

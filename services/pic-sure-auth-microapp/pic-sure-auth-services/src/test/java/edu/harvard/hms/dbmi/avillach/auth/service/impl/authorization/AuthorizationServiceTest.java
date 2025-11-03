@@ -746,6 +746,54 @@ public class AuthorizationServiceTest {
     }
 
     /**
+     * Test that anyRecordOf is evaluated correctly
+     * @throws IOException
+     */
+    @Test
+    public void testAnyRecordOfEvaluation() throws IOException {
+        // Create an access rule for anyRecordOf with ANY_CONTAINS type
+        AccessRule anyRecordOfRuleAny = new AccessRule();
+        anyRecordOfRuleAny.setUuid(UUID.randomUUID());
+        anyRecordOfRuleAny.setRule("$.query.query.anyRecordOf.[*]");
+        anyRecordOfRuleAny.setType(AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY);
+        anyRecordOfRuleAny.setValue("test_concept");
+
+        // Create a request body with anyRecordOf containing the test concept
+        String requestWithAnyRecordOf = "{\"query\":{\"query\":{\"anyRecordOf\":[\"test_concept\",\"other_concept\"]}}}";
+        Map<String, Object> requestBodyWithAnyRecordOf = mapper.readValue(requestWithAnyRecordOf, Map.class);
+
+        // Create a request body with anyRecordOf not containing the test concept
+        String requestWithoutAnyRecordOf = "{\"query\":{\"query\":{\"anyRecordOf\":[\"different_concept\",\"other_concept\"]}}}";
+        Map<String, Object> requestBodyWithoutAnyRecordOf = mapper.readValue(requestWithoutAnyRecordOf, Map.class);
+
+        // Create a request body with empty anyRecordOf
+        String requestWithEmptyAnyRecordOf = "{\"query\":{\"query\":{\"anyRecordOf\":[]}}}";
+        Map<String, Object> requestBodyWithEmptyAnyRecordOf = mapper.readValue(requestWithEmptyAnyRecordOf, Map.class);
+
+        // Create a request body with only test_concept
+        String requestWithTestConceptAnyRecordOf = "{\"query\":{\"query\":{\"anyRecordOf\":[\"test_concept\"]}}}";
+        Map<String, Object> requestBodyWithTestConceptAnyRecordOf = mapper.readValue(requestWithTestConceptAnyRecordOf, Map.class);
+
+        // Print debug information
+
+        // Test that the rule fails when anyRecordOf contains more than just the test_concept
+        boolean result = accessRuleService.evaluateAccessRule(requestBodyWithAnyRecordOf, anyRecordOfRuleAny);
+        assertFalse(result);
+
+        // Test that the rule fails when anyRecordOf does not contain the test concept
+        boolean result2 = accessRuleService.evaluateAccessRule(requestBodyWithoutAnyRecordOf, anyRecordOfRuleAny);
+        assertFalse(result2);
+
+        // Test that the rule passes when anyRecordOf is empty
+        boolean result3 = accessRuleService.evaluateAccessRule(requestBodyWithEmptyAnyRecordOf, anyRecordOfRuleAny);
+        assertTrue(result3);
+
+        // Test that the rule passes when anyRecordOf contains only test_concept
+        boolean result4 = accessRuleService.evaluateAccessRule(requestBodyWithTestConceptAnyRecordOf, anyRecordOfRuleAny);
+        assertTrue(result4);
+    }
+
+    /**
      * testing gates combination either all or any
      * @throws IOException
      */

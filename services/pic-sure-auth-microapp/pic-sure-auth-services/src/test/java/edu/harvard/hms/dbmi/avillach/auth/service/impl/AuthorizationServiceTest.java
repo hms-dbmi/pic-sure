@@ -1,7 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
-import edu.harvard.hms.dbmi.avillach.auth.enums.SecurityRoles;
+
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
@@ -373,7 +373,7 @@ public class AuthorizationServiceTest {
 
     private Role createSuperAdminRole() {
         Role role = new Role();
-        role.setName(SecurityRoles.SUPER_ADMIN.name());
+        role.setName(AuthNaming.AuthRoleNaming.SUPER_ADMIN);
         role.setUuid(UUID.randomUUID());
         role.setPrivileges(Collections.singleton(createSuperAdminPrivilege()));
         return role;

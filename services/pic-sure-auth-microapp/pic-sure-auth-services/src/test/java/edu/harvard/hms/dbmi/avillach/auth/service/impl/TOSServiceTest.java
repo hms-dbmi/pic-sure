@@ -78,7 +78,7 @@ public class TOSServiceTest {
         TermsOfService latestTOS = new TermsOfService();
         latestTOS.setDateUpdated(new Date(0)); // Set an old date
 
-        when(userRepo.findById(any(UUID.class))).thenReturn(Optional.of(user));
+        when(userRepo.findBySubject(any(String.class))).thenReturn(user);
         when(termsOfServiceRepo.findTopByOrderByDateUpdatedDesc()).thenReturn(Optional.of(latestTOS));
 
         boolean result = tosService.hasUserAcceptedLatest(UUID.randomUUID().toString());

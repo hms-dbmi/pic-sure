@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.model;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.ArrayList;
@@ -15,9 +16,9 @@ public class CustomUserDetails implements UserDetails {
     public CustomUserDetails(User user) {
         this.user = user;
         if (user != null && user.getRoles() != null) {
-            this.authorities = user.getTotalPrivilege().stream()
-                    .map(privilege -> (GrantedAuthority) privilege::getName)
-                    .toList();
+            this.authorities = new ArrayList<>(user.getTotalPrivilege().stream()
+                    .map(privilege-> new SimpleGrantedAuthority(privilege.getName()))
+                    .toList());
         } else {
             this.authorities = new ArrayList<>();
         }
