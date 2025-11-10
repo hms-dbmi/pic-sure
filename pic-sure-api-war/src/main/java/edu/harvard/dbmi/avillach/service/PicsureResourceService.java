@@ -19,7 +19,7 @@ import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
  * Service handling business logic for CRUD on resources
  */
 @Path("/resource")
-public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
+public class PicsureResourceService extends PicsureBaseEntityService<Resource> {
 
     Logger logger = LoggerFactory.getLogger(PicsureResourceService.class);
 
@@ -32,8 +32,7 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
 
     @GET
     @Path("/{resourceId}")
-    public Response getEntityById(
-            @PathParam("resourceId") String resourceId) {
+    public Response getEntityById(@PathParam("resourceId") String resourceId) {
         return getEntityById(resourceId, resourceRepo);
     }
 
@@ -45,31 +44,8 @@ public class PicsureResourceService extends PicsureBaseEntityService<Resource>{
 
         resources = resourceRepo.list();
 
-        if (resources == null)
-            return PICSUREResponse.applicationError("Error occurs when listing all resources.");
+        if (resources == null) return PICSUREResponse.applicationError("Error occurs when listing all resources.");
 
         return PICSUREResponse.success(resources);
     }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/")
-    public Response addResource(List<Resource> resources){
-        return addEntity(resources, resourceRepo);
-    }
-
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Path("/")
-    public Response updateResource(List<Resource> resources){
-        return updateEntity(resources, resourceRepo);
-    }
-
-    @Transactional
-    @DELETE
-    @Path("/{resourceId}")
-    public Response removeEntityById(@PathParam("resourceId") final String resourceId) {
-        return removeEntityById(resourceId, resourceRepo);
-    }
-
 }
