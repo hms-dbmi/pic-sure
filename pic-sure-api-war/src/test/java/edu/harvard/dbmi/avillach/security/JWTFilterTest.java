@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.HttpMethod;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Request;
@@ -114,6 +115,58 @@ public class JWTFilterTest {
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
         filter.filter(ctx);
         verify(ctx).setProperty("username", "SYSTEM_MONITOR");
+    }
+
+    @Test
+    public void testExcludedFilterPaths_openapi() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/openapi.json");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+    }
+
+    @Test
+    public void testExcludedFilterPaths_config() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+    }
+
+    @Test
+    public void testExcludedFilterPaths_config_uuid() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/00000000-0000-0000-0000-000000000000");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+    }
+
+    @Test
+    public void testExcludedFilterPaths_config_validName() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/ui:(feature.flag3)?-wear[e12]");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+    }
+
+    @Test(expected = NotAuthorizedException.class)
+    public void testExcludedFilterPaths_config_invalidName_RequiresAuthHeader() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/SOME_FLA%G");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+    }
+
+    @Test(expected = NotAuthorizedException.class)
+    public void testExcludedFilterPaths_config_admin_RequiresAuthHeader() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/admin");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
     }
 
     @Test

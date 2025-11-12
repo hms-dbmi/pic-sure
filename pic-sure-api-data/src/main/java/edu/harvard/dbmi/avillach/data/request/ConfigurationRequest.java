@@ -19,11 +19,11 @@ public class ConfigurationRequest {
     private UUID uuid;
 
     @NotNull
-    @Pattern(regexp = "^[\\w\\d \\-\\\\/?+=\\[\\].():\"']+$")
+    @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String name;
 
     @NotNull
-    @Pattern(regexp = "^[\\w\\d \\-\\\\/?+=\\[\\].():\"']+$")
+    @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String kind;
 
     @NotNull
