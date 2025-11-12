@@ -44,6 +44,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     private ApplicationProperties mockProperties;
 
     private AggregateDataSharingResourceRS subject;
+    private AggregateDataSharingResourceRSV3 subjectV3;
 
     // Pick a random port between 20k and 52k
     private final static int port = 40000;
@@ -171,8 +172,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         return Integer.parseInt(matcher.group(1));
     }
 
-    private void expect_original_result_to_become_obfuscated_result(String originalResult, String obfuscatedResult)
-        throws JsonProcessingException, JsonMappingException, IOException {
+    private void expect_original_result_to_become_obfuscated_result(String originalResult, String obfuscatedResult) throws IOException {
         String responseJson = getObfuscatedResponseForResult(originalResult);
         String expectedJson = getTestJson(obfuscatedResult);
         assertTrue(equalToJson(responseJson).match(expectedJson).isExactMatch());
@@ -186,10 +186,13 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         );
 
         Response response = subject.querySync(getTestQuery());
+        Response response2 = subject.querySync(getTestQuery());
         // TODO: This is what should be sent
         // Response response = objectUnderTest.querySync(mapper.readValue(getObfuscatedTestQueryJson(), QueryRequest.class));
 
         String responseJson = (String) response.getEntity();
+        String responseJson2 = (String) response.getEntity();
+        assertEquals(responseJson, responseJson2);
         return responseJson;
     }
 
