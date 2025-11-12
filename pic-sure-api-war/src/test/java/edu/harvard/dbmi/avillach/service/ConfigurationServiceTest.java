@@ -188,13 +188,13 @@ public class ConfigurationServiceTest {
     }
 
     @Test
-    public void addConfiguration_nameCollision() {
+    public void addConfiguration_nameKindCollision() {
         // Given a valid configuration request
         ConfigurationRequest request = makeConfigurationRequest();
 
         // And there is a second configuration in the database with desired name
         List<Configuration> duplicateNames = new ArrayList<>(List.of(makeConfiguration(UUID.randomUUID())));
-        when(configurationRepository.getByColumn("name", request.getName())).thenReturn(duplicateNames);
+        when(configurationRepository.getByColumns(any(), any())).thenReturn(duplicateNames);
 
         // When the request is received
         Optional<Configuration> response = configurationService.addConfiguration(request);
@@ -253,16 +253,18 @@ public class ConfigurationServiceTest {
     }
 
     @Test
-    public void updateConfiguration_changeName_nameCollision() {
+    public void updateConfiguration_changeName_nameKindCollision() {
         // Given there is a saved configuration in the database with this id
         String newName = "FEATURE_FLAG_Y";
+        String newKind = "some kind";
         UUID configId = UUID.randomUUID();
 
-        // And there is a second configuration in the database with desired name
+        // And there is a second configuration in the database with desired name and kind
         Configuration config = makeConfiguration(UUID.randomUUID());
         config.setName(newName);
+        config.setKind(newKind);
         List<Configuration> duplicateNames = new ArrayList<>(List.of(config));
-        when(configurationRepository.getByColumn("name", newName)).thenReturn(duplicateNames);
+        when(configurationRepository.getByColumns(any(), any())).thenReturn(duplicateNames);
 
         // When the request is received with a new name
         ConfigurationRequest request = makeConfigurationRequest();

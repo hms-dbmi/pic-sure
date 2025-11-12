@@ -7,7 +7,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "A Configuration object containing name, kind, enabled status, and description.")
 @Entity(name = "configuration")
-@Table(name = "configuration", uniqueConstraints = {@UniqueConstraint(name = "unique_name", columnNames = {"uuid", "name"})})
+@Table(
+    name = "configuration",
+    uniqueConstraints = {@UniqueConstraint(name = "unique_uuid", columnNames = {"uuid"}),
+        @UniqueConstraint(name = "unique_name_kind", columnNames = {"name", "kind"})}
+)
 public class Configuration extends BaseEntity {
     @Schema(description = "The configuration name")
     @Column(length = 255)

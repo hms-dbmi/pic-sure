@@ -1,17 +1,18 @@
 package edu.harvard.dbmi.avillach.service;
 
-import javax.inject.Inject;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import javax.transaction.Transactional;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import edu.harvard.dbmi.avillach.data.entity.Configuration;
 import edu.harvard.dbmi.avillach.data.repository.ConfigurationRepository;
 import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.inject.Inject;
+import javax.transaction.Transactional;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 public class ConfigurationService {
     private final Logger logger = LoggerFactory.getLogger(ConfigurationRepository.class);
@@ -19,10 +20,13 @@ public class ConfigurationService {
     @Inject
     ConfigurationRepository configurationRepository;
 
-    // If the request has no uuid it's new so match any uuid with this name
-    // else, match any uuid with this name that isn't the one we're updating
-    private boolean nameExists(ConfigurationRequest request) {
-        return configurationRepository.getByColumn("name", request.getName()).stream().map(Configuration::getUuid)
+    // If the request has no uuid it's new so match any uuid with this name & kind
+    // else, match any uuid with this name and kind that isn't the one we're updating
+    private boolean nameKindPairExists(ConfigurationRequest request) {
+        Map<String, Object> columns = new HashMap<>();
+        columns.put("name", request.getName());
+        columns.put("kind", request.getKind());
+        return configurationRepository.getByColumns(configurationRepository.query(), columns).stream().map(Configuration::getUuid)
             .anyMatch(uuid -> request.getUuid() == null || !uuid.equals(request.getUuid()));
     }
 
@@ -55,7 +59,7 @@ public class ConfigurationService {
     @Transactional
     public Optional<Configuration> addConfiguration(ConfigurationRequest request) {
         try {
-            if (nameExists(request)) {
+            if (nameKindPairExists(request)) {
                 logger.error("Error persisting configuration: name already exists " + request.getName());
                 return Optional.empty();
             }
@@ -75,7 +79,7 @@ public class ConfigurationService {
     public Optional<Configuration> updateConfiguration(UUID configurationId, ConfigurationRequest request) {
         try {
             request.setUuid(configurationId); // make sure request has uuid as it's optional
-            if (nameExists(request)) {
+            if (nameKindPairExists(request)) {
                 logger.error("Error updating configuration: new name already exists " + request.getName());
                 return Optional.empty();
             }
