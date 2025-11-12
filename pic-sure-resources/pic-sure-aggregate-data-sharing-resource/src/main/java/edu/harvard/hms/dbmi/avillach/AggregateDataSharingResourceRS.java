@@ -323,7 +323,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         String crossCountResponse;
         switch (expectedResultType) {
             case "COUNT":
-                responseString = aggregateCount(entityString).orElse(entityString);
+                int requestVariance = generateRequestVariance(entityString);
+                responseString = aggregateCount(entityString).orElse(randomize(entityString, requestVariance));
 
                 break;
             case "CROSS_COUNT":
