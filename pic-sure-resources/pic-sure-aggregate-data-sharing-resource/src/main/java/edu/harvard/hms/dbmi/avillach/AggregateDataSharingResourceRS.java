@@ -323,7 +323,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         String crossCountResponse;
         switch (expectedResultType) {
             case "COUNT":
-                responseString = aggregateCount(entityString).orElse(entityString);
+                int requestVariance = generateRequestVariance(entityString);
+                responseString = aggregateCount(entityString).orElse(randomize(entityString, requestVariance));
 
                 break;
             case "CROSS_COUNT":
@@ -492,7 +493,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
-                if (!obfuscatedKeys.contains(key) && obfuscatedParents.contains(key)) {
+                if (!obfuscatedKeys.contains(key)) {
                     crossCounts.put(key, randomize(crossCount, requestVariance));
                 }
             });
@@ -547,7 +548,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
         Map<String, String> crossCounts = objectMapper.readValue(crossCountResponse, new TypeReference<>() {});
         int generatedVariance = this.generateVarianceWithCrossCounts(crossCounts);
-        boolean mustObfuscate = isCrossCountObfuscated(crossCounts, generatedVariance);
 
         if (canShowContinuousCrossCounts(crossCounts)) {
             return null;
@@ -563,17 +563,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             // Log the binned continuous cross counts
             logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
-            if (mustObfuscate || doObfuscateData(binnedContinuousCrossCounts)) {
-                obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
-            }
+            obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
 
             return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
         } else {
-            // If there is no visualization service resource id, we will simply return the continuous cross count response.
-            if (!mustObfuscate) {
-                return continuousCrossCountResponse;
-            }
-
             Map<String, Map<String, Object>> continuousCrossCounts =
                 objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
 
@@ -638,10 +631,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         // We have not obfuscated yet. We first process the data.
         processResults(categoricalCrossCount);
 
-        if (isCrossCountObfuscated(crossCounts, generatedVariance) || doObfuscateData(categoricalCrossCount)) {
-            // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
-            obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
-        }
+        // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
+        obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
 
         return objectMapper.writeValueAsString(categoricalCrossCount);
     }
@@ -653,50 +644,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             Map<String, Object> axisMap = VisualizationUtil.processResults(entry.getValue());
             categoricalCrossCount.put(entry.getKey(), axisMap);
         }
-    }
-
-    /**
-     * @param categoricalCrossCount The categorical cross count
-     * @return boolean based on if the categorical cross count needs to be obfuscated
-     */
-    private boolean doObfuscateData(Map<String, Map<String, Object>> categoricalCrossCount) {
-        if (!isRequestSourceOpen(getRequestSource())) {
-            return false;
-        }
-
-        return categoricalCrossCount.values().stream().anyMatch(this::checkForObfuscation);
-    }
-
-    private boolean checkForObfuscation(Map<String, Object> axisMap) {
-        for (Map.Entry<String, Object> axisEntry : axisMap.entrySet()) {
-            Object value = axisEntry.getValue();
-            if (value instanceof Integer && (Integer) value < threshold) {
-                return true;
-            }
-            if (value instanceof String && Integer.parseInt((String) value) < threshold) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isRequestSourceOpen(String requestSource) {
-        return requestSource != null && requestSource.equalsIgnoreCase("Open");
-    }
-
-    private String getRequestSource() {
-        if (requestScopedHeader == null || requestScopedHeader.getHeaders() == null) {
-            logger.warn("Request scoped header or headers are null");
-            return null;
-        }
-        List<String> requestSources = requestScopedHeader.getHeaders().get("request-source");
-        if (requestSources == null || requestSources.isEmpty()) {
-            logger.warn("Request source header is missing or empty");
-            return null;
-        }
-        String requestSource = requestSources.get(0);
-        logger.info("Request source: " + requestSource);
-        return requestSource;
     }
 
     /**
@@ -717,31 +664,6 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                 }
             });
         });
-    }
-
-    /**
-     * This method will determine if the cross count needs to be obfuscated. It will return true if any of the cross counts are less than
-     * the threshold or if any of the cross counts have a variance.
-     *
-     * @param crossCounts The cross counts
-     * @param generatedVariance The variance for the request
-     * @return boolean True if the cross count needs to be obfuscated, false otherwise
-     */
-    private boolean isCrossCountObfuscated(Map<String, String> crossCounts, int generatedVariance) {
-        String lessThanThresholdStr = "< " + this.threshold;
-        String varianceStr = " \u00B1" + variance;
-
-        boolean mustObfuscate = false;
-        Map<String, String> obfuscatedCrossCount = this.obfuscateCrossCounts(crossCounts, generatedVariance);
-        for (Map.Entry<String, String> entry : obfuscatedCrossCount.entrySet()) {
-            String v = entry.getValue();
-            if (v.contains(lessThanThresholdStr) || v.contains(varianceStr)) {
-                mustObfuscate = true;
-                break;
-            }
-        }
-
-        return mustObfuscate;
     }
 
 
