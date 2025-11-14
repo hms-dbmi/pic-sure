@@ -35,7 +35,7 @@ public class ConfigurationService {
             List<Configuration> configs = kind != null ? configurationRepository.getByColumn("kind", kind) : configurationRepository.list();
             return Optional.ofNullable(configs);
         } catch (Exception exception) {
-            logger.error("Error retrieving configurations " + (kind != null ? "with kind " + kind : ""), exception.getMessage());
+            logger.error("Error retrieving configurations " + (kind != null ? "with kind " + kind : ""), exception);
             return Optional.empty();
         }
     }
@@ -51,7 +51,7 @@ public class ConfigurationService {
             List<Configuration> configs = configurationRepository.getByColumn("name", identifier);
             return configs != null && !configs.isEmpty() ? Optional.of(configs.get(0)) : Optional.empty();
         } catch (Exception exception) {
-            logger.error("Error retrieving configurations with uuid " + identifier, exception.getMessage());
+            logger.error("Error retrieving configurations with uuid " + identifier, exception);
             return Optional.empty();
         }
     }
@@ -70,7 +70,7 @@ public class ConfigurationService {
             logger.debug("Added configuration: " + config.getUuid());
             return Optional.of(config);
         } catch (Exception exception) {
-            logger.error("Error persisting configuration " + request.getName(), exception.getMessage());
+            logger.error("Error persisting configuration " + request.getName(), exception);
             return Optional.empty();
         }
     }
@@ -94,7 +94,7 @@ public class ConfigurationService {
             logger.debug("Updated configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);
         } catch (Exception exception) {
-            logger.error("Error updating configuration " + request.getName() + " with value " + request.getValue(), exception.getMessage());
+            logger.error("Error updating configuration " + request.getName() + " with value " + request.getValue(), exception);
             return Optional.empty();
         }
     }
@@ -111,7 +111,7 @@ public class ConfigurationService {
             logger.debug("Deleted configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);
         } catch (Exception exception) {
-            logger.error("Error deleting configuration " + configurationId.toString(), exception.getMessage());
+            logger.error("Error deleting configuration " + configurationId.toString(), exception);
             return Optional.empty();
         }
     }
