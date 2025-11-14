@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
+import java.sql.Date;
 import javax.json.Json;
 import javax.persistence.*;
 
@@ -29,6 +30,9 @@ public class Configuration extends BaseEntity {
     @Schema(description = "The configuration value")
     @Column(length = 255)
     private String description;
+
+    @Schema(description = "The date this configuration was marked for delete")
+    private Date deleteRequested;
 
     public Configuration setName(String name) {
         this.name = name;
@@ -66,10 +70,20 @@ public class Configuration extends BaseEntity {
         return description;
     }
 
+    public Configuration setDeleteRequested(Date deleteRequested) {
+        this.deleteRequested = deleteRequested;
+        return this;
+    }
+
+    public Date getDeleteRequested() {
+        return deleteRequested;
+    }
+
     @Override
     public String toString() {
         return Json.createObjectBuilder().add("uuid", uuid.toString()).add("name", name != null ? name : "")
             .add("kind", kind != null ? kind : "").add("value", value != null ? value : "")
-            .add("description", description != null ? description : "").build().toString();
+            .add("description", description != null ? description : "").add("toDate", deleteRequested != null ? value : "").build()
+            .toString();
     }
 }

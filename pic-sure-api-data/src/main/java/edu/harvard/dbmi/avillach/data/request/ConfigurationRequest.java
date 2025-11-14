@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.data.request;
 
+import java.sql.Date;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
 
@@ -30,6 +31,8 @@ public class ConfigurationRequest {
     private String value;
 
     private String description;
+
+    private Date deleteRequested;
 
     public UUID getUuid() {
         return uuid;
@@ -69,5 +72,13 @@ public class ConfigurationRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public Date getDeleteRequested() {
+        return this.deleteRequested;
+    }
+
+    public void setDeleteRequested(Date deleteRequested) {
+        this.deleteRequested = deleteRequested;
     }
 }

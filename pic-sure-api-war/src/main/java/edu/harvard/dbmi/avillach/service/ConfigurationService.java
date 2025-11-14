@@ -90,7 +90,7 @@ public class ConfigurationService {
                 return Optional.empty();
             }
             config.setName(request.getName()).setValue(request.getValue()).setKind(request.getKind())
-                .setDescription(request.getDescription());
+                .setDescription(request.getDescription()).setDeleteRequested(request.getDeleteRequested());
             configurationRepository.merge(config);
             logger.debug("Updated configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);
