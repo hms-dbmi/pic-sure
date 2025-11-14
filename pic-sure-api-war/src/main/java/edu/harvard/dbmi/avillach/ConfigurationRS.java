@@ -95,11 +95,15 @@ public class ConfigurationRS {
             )}
     )
     public Response addConfiguration(@Context SecurityContext context, @Parameter @Valid ConfigurationRequest request) {
+        if (request.getName() == null || request.getKind() == null || request.getValue() == null) {
+            return PICSUREResponse.error("Name, Kind, and Value properties must not be null");
+        }
+
         return configurationService.addConfiguration(request).map(PICSUREResponse::success)
-            .orElse(PICSUREResponse.error("Could not save configuration"));
+            .orElse(PICSUREResponse.error("Could not add configuration"));
     }
 
-    @PUT
+    @PATCH
     @Path("/admin/{configurationId}/")
     @Operation(
         summary = "Updates an existing configuration.", tags = {"configuration"}, operationId = "updateConfiguration",
@@ -119,7 +123,12 @@ public class ConfigurationRS {
     public Response updateConfiguration(
         @Context SecurityContext context, @PathParam("configurationId") UUID configurationId, @Parameter @Valid ConfigurationRequest request
     ) {
-        return configurationService.updateConfiguration(configurationId, request).map(PICSUREResponse::success)
+        if (request.getUuid() != null && !configurationId.equals(request.getUuid())) {
+            return PICSUREResponse.error("UUID cannot be changed");
+        }
+
+        request.setUuid(configurationId);
+        return configurationService.updateConfiguration(request).map(PICSUREResponse::success)
             .orElse(PICSUREResponse.error("Could not update configuration"));
     }
 

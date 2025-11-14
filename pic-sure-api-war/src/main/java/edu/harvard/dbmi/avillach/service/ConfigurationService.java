@@ -20,14 +20,14 @@ public class ConfigurationService {
     @Inject
     ConfigurationRepository configurationRepository;
 
-    // If the request has no uuid it's new so match any uuid with this name & kind
-    // else, match any uuid with this name and kind that isn't the one we're updating
-    private boolean nameKindPairExists(ConfigurationRequest request) {
+    // If the request has no uuid it's new so match any uuid with this name &/or kind
+    // else, match any uuid with this name &/or kind that isn't the one we're updating
+    private boolean nameKindPairExists(Configuration config) {
         Map<String, Object> columns = new HashMap<>();
-        columns.put("name", request.getName());
-        columns.put("kind", request.getKind());
+        columns.put("name", config.getName());
+        columns.put("kind", config.getKind());
         return configurationRepository.getByColumns(configurationRepository.query(), columns).stream().map(Configuration::getUuid)
-            .anyMatch(uuid -> request.getUuid() == null || !uuid.equals(request.getUuid()));
+            .anyMatch(uuid -> config.getUuid() == null || !uuid.equals(config.getUuid()));
     }
 
     public Optional<List<Configuration>> getConfigurations(String kind) {
@@ -59,13 +59,13 @@ public class ConfigurationService {
     @Transactional
     public Optional<Configuration> addConfiguration(ConfigurationRequest request) {
         try {
-            if (nameKindPairExists(request)) {
+            Configuration config = Configuration.fromRequest(request);
+
+            if (nameKindPairExists(config)) {
                 logger.error("Error persisting configuration: name already exists " + request.getName());
                 return Optional.empty();
             }
 
-            Configuration config = new Configuration().setName(request.getName()).setKind(request.getKind()).setValue(request.getValue())
-                .setDescription(request.getDescription());
             configurationRepository.persist(config);
             logger.debug("Added configuration: " + config.getUuid());
             return Optional.of(config);
@@ -76,21 +76,20 @@ public class ConfigurationService {
     }
 
     @Transactional
-    public Optional<Configuration> updateConfiguration(UUID configurationId, ConfigurationRequest request) {
+    public Optional<Configuration> updateConfiguration(ConfigurationRequest request) {
         try {
-            request.setUuid(configurationId); // make sure request has uuid as it's optional
-            if (nameKindPairExists(request)) {
+            Configuration config = configurationRepository.getById(request.getUuid());
+            if (config == null) {
+                logger.error("Configuration not found with id " + request.getUuid().toString());
+                return Optional.empty();
+            }
+            config.patch(request);
+
+            if (nameKindPairExists(config)) {
                 logger.error("Error updating configuration: new name already exists " + request.getName());
                 return Optional.empty();
             }
 
-            Configuration config = configurationRepository.getById(configurationId);
-            if (config == null) {
-                logger.error("Configuration not found with id " + configurationId.toString());
-                return Optional.empty();
-            }
-            config.setName(request.getName()).setValue(request.getValue()).setKind(request.getKind())
-                .setDescription(request.getDescription()).setDeleteRequested(request.getDeleteRequested());
             configurationRepository.merge(config);
             logger.debug("Updated configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);

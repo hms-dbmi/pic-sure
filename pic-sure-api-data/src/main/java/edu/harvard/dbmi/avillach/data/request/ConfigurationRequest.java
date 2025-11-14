@@ -19,20 +19,17 @@ import java.util.UUID;
 public class ConfigurationRequest {
     private UUID uuid;
 
-    @NotNull
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String name;
 
-    @NotNull
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String kind;
 
-    @NotNull
     private String value;
 
     private String description;
 
-    private Date deleteRequested;
+    private Boolean delete;
 
     public UUID getUuid() {
         return uuid;
@@ -74,11 +71,11 @@ public class ConfigurationRequest {
         this.description = description;
     }
 
-    public Date getDeleteRequested() {
-        return this.deleteRequested;
+    public Boolean getDelete() {
+        return this.delete;
     }
 
-    public void setDeleteRequested(Date deleteRequested) {
-        this.deleteRequested = deleteRequested;
+    public void setDelete(Boolean delete) {
+        this.delete = delete;
     }
 }

@@ -1,9 +1,11 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
 import java.sql.Date;
+import java.util.Optional;
 import javax.json.Json;
 import javax.persistence.*;
 
+import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "A Configuration object containing name, kind, enabled status, and description.")
@@ -31,8 +33,8 @@ public class Configuration extends BaseEntity {
     @Column(length = 255)
     private String description;
 
-    @Schema(description = "The date this configuration was marked for delete")
-    private Date deleteRequested;
+    @Schema(description = "This configuration is flagged for deletion")
+    private Boolean delete = false;
 
     public Configuration setName(String name) {
         this.name = name;
@@ -70,20 +72,34 @@ public class Configuration extends BaseEntity {
         return description;
     }
 
-    public Configuration setDeleteRequested(Date deleteRequested) {
-        this.deleteRequested = deleteRequested;
+    public Configuration setDelete(Boolean delete) {
+        this.delete = delete;
         return this;
     }
 
-    public Date getDeleteRequested() {
-        return deleteRequested;
+    public Boolean getDelete() {
+        return delete;
     }
 
     @Override
     public String toString() {
         return Json.createObjectBuilder().add("uuid", uuid.toString()).add("name", name != null ? name : "")
             .add("kind", kind != null ? kind : "").add("value", value != null ? value : "")
-            .add("description", description != null ? description : "").add("toDate", deleteRequested != null ? value : "").build()
-            .toString();
+            .add("description", description != null ? description : "").add("delete", delete != null ? value : "").build().toString();
+    }
+
+    public Configuration patch(ConfigurationRequest request) {
+        if (request.getName() != null) this.setName(request.getName());
+        if (request.getKind() != null) this.setKind(request.getKind());
+        if (request.getValue() != null) this.setValue(request.getValue());
+        if (request.getDescription() != null) this.setDescription(request.getDescription());
+        if (request.getDelete() != null) this.setDelete(request.getDelete());
+
+        return this;
+    }
+
+    public static Configuration fromRequest(ConfigurationRequest request) {
+        Configuration config = new Configuration();
+        return config.patch(request);
     }
 }

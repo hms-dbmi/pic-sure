@@ -228,8 +228,9 @@ public class ConfigurationServiceTest {
         // When the request is received with updated values
         String newValue = "false";
         ConfigurationRequest request = makeConfigurationRequest();
+        request.setUuid(configId);
         request.setValue(newValue);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
@@ -246,8 +247,9 @@ public class ConfigurationServiceTest {
         // When the request is received with a new name
         String newName = "FEATURE_FLAG_Y";
         ConfigurationRequest request = makeConfigurationRequest();
+        request.setUuid(configId);
         request.setName(newName);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
@@ -263,14 +265,14 @@ public class ConfigurationServiceTest {
         when(configurationRepository.getById(configId)).thenReturn(config);
 
         // When the request is received with updated delete request date
-        Date deleteDate = Date.valueOf(LocalDate.now());
         ConfigurationRequest request = makeConfigurationRequest();
-        request.setDeleteRequested(deleteDate);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        request.setUuid(configId);
+        request.setDelete(true);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new delete requested date is saved", deleteDate, response.get().getDeleteRequested());
+        assertEquals("new delete requested date is saved", true, response.get().getDelete());
     }
 
     @Test
@@ -279,18 +281,22 @@ public class ConfigurationServiceTest {
         String newName = "FEATURE_FLAG_Y";
         String newKind = "some kind";
         UUID configId = UUID.randomUUID();
+        Configuration config = makeConfiguration(UUID.randomUUID());
+        when(configurationRepository.getById(configId)).thenReturn(config);
 
         // And there is a second configuration in the database with desired name and kind
-        Configuration config = makeConfiguration(UUID.randomUUID());
-        config.setName(newName);
-        config.setKind(newKind);
-        List<Configuration> duplicateNames = new ArrayList<>(List.of(config));
+        Configuration config2 = makeConfiguration(UUID.randomUUID());
+        config2.setName(newName);
+        config2.setKind("some kind");
+        List<Configuration> duplicateNames = new ArrayList<>(List.of(config, config2));
         when(configurationRepository.getByColumns(any(), any())).thenReturn(duplicateNames);
 
         // When the request is received with a new name
         ConfigurationRequest request = makeConfigurationRequest();
+        request.setUuid(configId);
         request.setName(newName);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        request.setKind("some other kind");
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return an empty optional
         assertTrue(response.isEmpty());
@@ -306,8 +312,9 @@ public class ConfigurationServiceTest {
         // When the request is received with a new kind
         String newKind = "backend";
         ConfigurationRequest request = makeConfigurationRequest();
+        request.setUuid(configId);
         request.setKind(newKind);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
@@ -324,8 +331,9 @@ public class ConfigurationServiceTest {
         // When the request is received with a new description
         String newDescription = "Updated description";
         ConfigurationRequest request = makeConfigurationRequest();
+        request.setUuid(configId);
         request.setDescription(newDescription);
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
@@ -340,7 +348,8 @@ public class ConfigurationServiceTest {
 
         // When the request is received
         ConfigurationRequest request = makeConfigurationRequest();
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        request.setUuid(configId);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return an empty optional
         assertTrue(response.isEmpty());
@@ -356,7 +365,8 @@ public class ConfigurationServiceTest {
 
         // When the request is received
         ConfigurationRequest request = makeConfigurationRequest();
-        Optional<Configuration> response = configurationService.updateConfiguration(configId, request);
+        request.setUuid(configId);
+        Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return an empty optional
         assertTrue(response.isEmpty());
