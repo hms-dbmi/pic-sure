@@ -11,9 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 
-import java.time.LocalDate;
 import java.util.*;
-import java.sql.Date;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -267,12 +265,12 @@ public class ConfigurationServiceTest {
         // When the request is received with updated delete request date
         ConfigurationRequest request = makeConfigurationRequest();
         request.setUuid(configId);
-        request.setDelete(true);
+        request.setMarkForDelete(true);
         Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new delete requested date is saved", true, response.get().getDelete());
+        assertEquals("new delete requested date is saved", true, response.get().getMarkForDelete());
     }
 
     @Test

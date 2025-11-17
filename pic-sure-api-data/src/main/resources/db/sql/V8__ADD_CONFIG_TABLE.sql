@@ -6,7 +6,7 @@ CREATE TABLE `configuration` (
     `kind` varchar(255) COLLATE utf8_bin NOT NULL,
     `value` TEXT NOT NULL,
     `description` varchar(255) COLLATE utf8_bin DEFAULT '',
-    `delete` bit(1) NOT NULL DEFAULT FALSE,
+    `markForDelete` bit(1) NOT NULL DEFAULT FALSE,
     PRIMARY KEY (`uuid`),
     CONSTRAINT `unique_name_kind` UNIQUE (`name`, `kind`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
