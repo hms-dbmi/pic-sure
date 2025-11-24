@@ -7,6 +7,8 @@ pipeline {
         string(name: 'DATASOURCE_URL', description: 'Datasource URL', defaultValue: '${database_host_address}')
         string(name: 'DATASOURCE_USERNAME', description: 'Datasource username', defaultValue: '${database_app_user_secret_name}')
         string(name: 'STACK_SPECIFIC_APPLICATION_ID', description: 'Application ID for base query', defaultValue: '${application_id_for_base_query}')
+        string(name: 'TARGET_STACK', description: 'Target stack for application deployment.')
+        string(name: 'STACK_S3_BUCKET', description: 'The s3 bucket', defaultValue: '${stack_s3_bucket}')
     }
 
     environment {
@@ -34,7 +36,7 @@ pipeline {
         stage('Deploy Docker Image') {
             steps {
                 sh "docker save ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG} | gzip > psama.tar.gz"
-                sh "aws s3 --sse=AES256 cp psama.tar.gz s3://$S3_BUCKET_NAME/releases/psama/psama.tar.gz"
+                sh "aws s3 --sse=AES256 cp psama.tar.gz s3://$STACK_S3_BUCKET/$TARGET_STACK/containers/psama.tar.gz"
             }
         }
     }
