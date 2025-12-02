@@ -63,7 +63,8 @@ class PathRule {
 public class JWTFilter implements ContainerRequestFilter {
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
     private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
-        new PathRule("\\/openapi\\.json$"), new PathRule("^\\/configuration(\\/?[^admin\\/][\\w\\d\\-?\\[\\].():]*)?$", HttpMethod.GET)
+        new PathRule("\\/openapi\\.json$"),
+        new PathRule("^\\/configuration(\\/(?!admin\\/?$)[\\w\\d\\-?\\[\\].():]*)?\\/?$", HttpMethod.GET)
     );
 
     @Context

@@ -1,12 +1,14 @@
 package edu.harvard.dbmi.avillach.security;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,12 +34,14 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponseError;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JWTFilterTest {
-
     private static final UUID QUERY_UUID = UUID.fromString("e830138f-2943-4661-90ae-da053bd94a18");
 
     private static final UUID RESOURCE_UUID = UUID.fromString("30ef4941-9656-4b47-af80-528f2b98cf17");
+    private static final Logger log = LoggerFactory.getLogger(JWTFilterTest.class);
 
     @Rule
     public WireMockRule wireMockRule = new WireMockRule(0);
@@ -127,46 +131,47 @@ public class JWTFilterTest {
     }
 
     @Test
-    public void testExcludedFilterPaths_config() throws IOException {
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/configuration");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
-        filter.filter(ctx);
-        verify(ctx, never()).setProperty(eq("username"), anyString());
-    }
+    public void testExcludedFilterPaths_config_validPathsWithNoAuthRequired() throws RuntimeException {
+        List<String> letters = List.of(
+            "", "/ui:(feature.flag3)?-wear[e12]", "/address", "/postadmin", "/data", "/meta", "/init", "/names", "/administrators",
+            "/00000000-0000-0000-0000-000000000000"
+        );
 
-    @Test
-    public void testExcludedFilterPaths_config_uuid() throws IOException {
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/00000000-0000-0000-0000-000000000000");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
-        filter.filter(ctx);
-        verify(ctx, never()).setProperty(eq("username"), anyString());
-    }
+        List<String> exceptions = new ArrayList<>();
+        for (String letter : letters) {
+            ContainerRequestContext ctx = createRequestContext();
+            when(ctx.getUriInfo().getPath()).thenReturn("/configuration" + letter);
+            when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
 
-    @Test
-    public void testExcludedFilterPaths_config_validName() throws IOException {
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/ui:(feature.flag3)?-wear[e12]");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
-        filter.filter(ctx);
-        verify(ctx, never()).setProperty(eq("username"), anyString());
+            try {
+                filter.filter(ctx);
+                verify(ctx, never()).setProperty(eq("username"), anyString());
+                verify(ctx, never()).abortWith(any(Response.class));
+            } catch (Exception e) {
+                exceptions.add(letter);
+            }
+        }
+        assertEquals(0, exceptions.size());
     }
 
     @Test(expected = NotAuthorizedException.class)
-    public void testExcludedFilterPaths_config_invalidName_RequiresAuthHeader() throws IOException {
+    public void testExcludedFilterPaths_config_invalidPathsHitNoAuthException() throws IOException {
         ContainerRequestContext ctx = createRequestContext();
         when(ctx.getUriInfo().getPath()).thenReturn("/configuration/SOME_FLA%G");
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+
         filter.filter(ctx);
+        // Test passes if NotAuthorizedException is thrown
     }
 
     @Test(expected = NotAuthorizedException.class)
-    public void testExcludedFilterPaths_config_admin_RequiresAuthHeader() throws IOException {
+    public void testExcludedFilterPaths_config_blockedAdminPathHitsNoAuthException() throws IOException {
         ContainerRequestContext ctx = createRequestContext();
         when(ctx.getUriInfo().getPath()).thenReturn("/configuration/admin");
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+
         filter.filter(ctx);
+        // Test passes if NotAuthorizedException is thrown
     }
 
     @Test
