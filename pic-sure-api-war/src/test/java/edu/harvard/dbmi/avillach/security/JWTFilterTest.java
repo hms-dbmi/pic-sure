@@ -34,14 +34,11 @@ import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponseError;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class JWTFilterTest {
     private static final UUID QUERY_UUID = UUID.fromString("e830138f-2943-4661-90ae-da053bd94a18");
 
     private static final UUID RESOURCE_UUID = UUID.fromString("30ef4941-9656-4b47-af80-528f2b98cf17");
-    private static final Logger log = LoggerFactory.getLogger(JWTFilterTest.class);
 
     @Rule
     public WireMockRule wireMockRule = new WireMockRule(0);
