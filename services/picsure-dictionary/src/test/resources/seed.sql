@@ -773,6 +773,7 @@ COPY public.facet_category (facet_category_id, name, display, description) FROM 
 
 COPY public.facet_category_meta (facet_category_meta_id, facet_category_id, key, value) FROM stdin;
 1	1	my_key	my_value
+2	1	order	1
 \.
 
 

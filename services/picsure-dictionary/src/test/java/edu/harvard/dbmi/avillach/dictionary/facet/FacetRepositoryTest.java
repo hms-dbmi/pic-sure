@@ -130,4 +130,12 @@ class FacetRepositoryTest {
 
         Assertions.assertEquals(expected, actual);
     }
+
+    @Test
+    void shouldGetFacetCategoryOrder() {
+        Map<String, String> actual = subject.getFacetCategoryOrder(List.of("study_ids_dataset_ids", "nsrr_harmonized"));
+        Map<String, String> expected = Map.of("study_ids_dataset_ids", "1");
+
+        Assertions.assertEquals(expected, actual);
+    }
 }

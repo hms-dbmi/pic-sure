@@ -57,6 +57,26 @@ public class FacetRepository {
         return template.query(sql, params, new FacetCategoryExtractor());
     }
 
+    public Map<String, String> getFacetCategoryOrder(List<String> categoryNames) {
+        if (categoryNames.isEmpty()) {
+            return Map.of();
+        }
+
+        String sql = """
+                SELECT
+                    facet_category.name as name,
+                    facet_category_meta.value as order
+                FROM
+                    facet_category_meta
+                    LEFT JOIN facet_category ON facet_category.facet_category_id = facet_category_meta.facet_category_id
+                WHERE
+                    facet_category_meta.key = 'order'
+                    AND facet_category.name IN (:category_names)
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("category_names", categoryNames);
+        return template.query(sql, params, new MapExtractor("name", "order"));
+    }
+
     public Optional<Facet> getFacet(String facetCategory, String facet) {
         String sql =
             """
