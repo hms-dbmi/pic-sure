@@ -64,6 +64,8 @@ public class JWTFilter implements ContainerRequestFilter {
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
     private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
         new PathRule("\\/openapi\\.json$"),
+        // Matches /configuration or /configuration/<uuid or config-name> with optional trailing slash
+        // Explicitly excludes /configuration/admin (but allows /configuration/admin/something)
         new PathRule("^\\/configuration(\\/(?!admin\\/?$)[\\w\\d\\-?\\[\\].():]*)?\\/?$", HttpMethod.GET)
     );
 

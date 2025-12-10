@@ -15,9 +15,10 @@ import java.util.UUID;
 public class ConfigurationRequest {
     private UUID uuid;
 
+    // Matches strings containing only alphanumeric characters, underscores, hyphens,
+    // question marks, brackets, parentheses, colons, and periods from start to end
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String name;
-
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
     private String kind;
 
