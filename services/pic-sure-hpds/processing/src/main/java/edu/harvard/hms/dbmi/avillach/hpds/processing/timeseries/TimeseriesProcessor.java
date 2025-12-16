@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -12,11 +11,9 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.QueryProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.harvard.dbmi.avillach.util.exception.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
-import edu.harvard.hms.dbmi.avillach.hpds.exception.NotEnoughMemoryException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -41,18 +38,16 @@ public class TimeseriesProcessor implements HpdsProcessor {
     private AbstractProcessor abstractProcessor;
     private final TimeSeriesConversionService conversionService;
 
-    private final String ID_CUBE_NAME;
-    private final int ID_BATCH_SIZE;
-    private final int CACHE_SIZE;
+
+    private final int idBatchSize;
 
     @Autowired
-    public TimeseriesProcessor(AbstractProcessor abstractProcessor, TimeSeriesConversionService conversionService) {
+    public TimeseriesProcessor(
+        AbstractProcessor abstractProcessor, TimeSeriesConversionService conversionService, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+    ) {
         this.abstractProcessor = abstractProcessor;
         this.conversionService = conversionService;
-        // todo: handle these via spring annotations
-        CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
-        ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
+        this.idBatchSize = idBatchSize;
     }
 
     /**
@@ -67,7 +62,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
 
-        if (ID_BATCH_SIZE > 0) {
+        if (idBatchSize > 0) {
             try {
                 exportTimeData(query, result, idList);
             } catch (IOException e) {
@@ -133,7 +128,7 @@ public class TimeseriesProcessor implements HpdsProcessor {
                     dataEntries.add(entryData);
                 }
                 // batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
-                if (dataEntries.size() >= (ID_BATCH_SIZE > 0 ? 10 : ID_BATCH_SIZE)) {
+                if (dataEntries.size() >= (idBatchSize > 0 ? 10 : idBatchSize)) {
                     result.appendResults(dataEntries);
                     dataEntries = new ArrayList<String[]>();
                 }
