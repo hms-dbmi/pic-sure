@@ -66,6 +66,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
         when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
         subject = new AggregateDataSharingResourceRS(mockProperties);
+        subjectV3 = new AggregateDataSharingResourceRSV3(mockProperties);
 
         // Whenever the ADSRRS submits a search for "any" we return the contents of open_access_search_result.json
         wireMockRule.stubFor(
@@ -359,6 +360,39 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         verify(postRequestedFor(urlEqualTo("/query/sync"))
             .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT1")))
             .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT2")))
+            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
+        );
+    }
+
+    @Test
+    public void testCrossCountQueryModifiesRequestV3() throws IOException {
+        // Mock /search for consents
+        String consentResponseJson = "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
+
+        wireMockRule.stubFor(
+            post(urlEqualTo("/search"))
+                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+                .willReturn(aResponse().withStatus(200).withBody(consentResponseJson))
+        );
+
+        // Mock /v3/query/sync (V3 appends /v3 prefix to path in getHttpResponse)
+        wireMockRule.stubFor(
+            post(urlEqualTo("/v3/query/sync"))
+                .willReturn(aResponse().withStatus(200).withBody("{}"))
+        );
+
+        GeneralQueryRequest request = getTestQuery();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+        queryMap.put("expectedResultType", "CROSS_COUNT");
+        request.setQuery(queryMap);
+
+        subjectV3.querySync(request);
+
+        // Verify /v3/query/sync called with modified body using "select"
+        verify(postRequestedFor(urlEqualTo("/v3/query/sync"))
+            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT1")))
+            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT2")))
             .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
         );
     }

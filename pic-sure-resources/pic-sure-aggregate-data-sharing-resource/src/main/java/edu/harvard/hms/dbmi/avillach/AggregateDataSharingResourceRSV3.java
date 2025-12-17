@@ -430,7 +430,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         }
 
         // add the ArrayNode to the query
-        ((ObjectNode) jsonNode).set("crossCountFields", arrayNode);
+        ((ObjectNode) jsonNode).set("select", arrayNode);
 
         return jsonNode;
     }
