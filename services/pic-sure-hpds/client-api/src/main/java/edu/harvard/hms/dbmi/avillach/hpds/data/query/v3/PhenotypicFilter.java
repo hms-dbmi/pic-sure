@@ -1,11 +1,25 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
 public record PhenotypicFilter(
-    PhenotypicFilterType phenotypicFilterType, String conceptPath, List<String> values, Double min, Double max, Boolean not
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED) PhenotypicFilterType phenotypicFilterType,
+    @Schema(description = "A concept path this filter must match") String conceptPath,
+    @Schema(
+        description = "Values to match on for a given `conceptPath`. Cannot be combined with `min` or `max`",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    ) List<String> values,
+    @Schema(
+        description = "Minimum value to filter for a given `conceptPath`. Cannot be combined with `values`",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    ) Double min,
+    @Schema(
+        description = "Maximum value to filter for a given `conceptPath`. Cannot be combined with `values`",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED
+    ) Double max, Boolean not
 ) implements PhenotypicClause {
 
     @JsonIgnore

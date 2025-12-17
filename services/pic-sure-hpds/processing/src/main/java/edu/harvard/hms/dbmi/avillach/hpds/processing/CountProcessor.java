@@ -50,24 +50,6 @@ public class CountProcessor implements HpdsProcessor {
     }
 
     /**
-     * Retrieves a list of patient ids that are valid for the query result and total number of observations recorded for all concepts
-     * included in the fields array for those patients.
-     * 
-     * @param query
-     * @return
-     */
-    public int runObservationCount(Query query) {
-        Set<Integer> patients = abstractProcessor.getPatientSubsetForQuery(query);
-        int[] observationCount = {0};
-        query.getFields().stream().forEach(field -> {
-            observationCount[0] += Arrays.stream(abstractProcessor.getCube(field).sortedByKey()).filter(keyAndValue -> {
-                return patients.contains(keyAndValue.getKey());
-            }).count();
-        });
-        return observationCount[0];
-    }
-
-    /**
      * Returns a separate observation count for each field in query.crossCountFields when that field is added as a requiredFields entry for
      * the base query.
      * 
@@ -227,18 +209,5 @@ public class CountProcessor implements HpdsProcessor {
             response.put("message", "No variant filters were supplied, so no query was run.");
         }
         return response;
-    }
-
-    public PatientAndConceptCount runPatientAndConceptCount(Query incomingQuery) {
-        log.info("Starting Patient and Concept Count query {}", incomingQuery.getPicSureId());
-        log.info("Calculating available concepts");
-        long concepts = incomingQuery.getFields().stream().map(abstractProcessor::nullableGetCube).filter(Optional::isPresent).count();
-        log.info("Calculating patient counts");
-        int patients = runCounts(incomingQuery);
-        PatientAndConceptCount patientAndConceptCount = new PatientAndConceptCount();
-        patientAndConceptCount.setConceptCount(concepts);
-        patientAndConceptCount.setPatientCount(patients);
-        log.info("Completed Patient and Concept Count query {}", incomingQuery.getPicSureId());
-        return patientAndConceptCount;
     }
 }

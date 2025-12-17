@@ -418,11 +418,6 @@ public class PicSureService {
             case CONTINUOUS_CROSS_COUNT:
                 return queryOkResponse(countProcessor.runContinuousCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
-            case OBSERVATION_COUNT:
-                return queryOkResponse(
-                    String.valueOf(countProcessor.runObservationCount(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN
-                );
-
             case OBSERVATION_CROSS_COUNT:
                 return queryOkResponse(countProcessor.runObservationCrossCounts(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
@@ -440,9 +435,6 @@ public class PicSureService {
 
             case COUNT:
                 return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
-
-            case PATIENT_AND_CONCEPT_COUNT:
-                return queryOkResponse(countProcessor.runPatientAndConceptCount(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
 
             default:
                 // no valid type

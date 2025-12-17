@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.data.query.v3;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.lang.NonNull;
 
 import java.util.ArrayList;
@@ -8,8 +9,17 @@ import java.util.List;
 import java.util.UUID;
 
 public record Query(
-    List<String> select, List<AuthorizationFilter> authorizationFilters, PhenotypicClause phenotypicClause,
-    List<GenomicFilter> genomicFilters, ResultType expectedResultType, UUID picsureId, UUID id
+    @Schema(
+        description = "A list of concept paths to select. Ignored for expectedResultType that do not return fields, such as COUNT"
+    ) List<String> select,
+    @Schema(
+        description = "A list of filters specifically applied for authorization purposes"
+    ) List<AuthorizationFilter> authorizationFilters,
+    @Schema(description = "An object specifying phenotypic filters") PhenotypicClause phenotypicClause,
+    @Schema(description = "A list of genomic filters") List<GenomicFilter> genomicFilters,
+    @Schema(description = "An object specifying the result type") ResultType expectedResultType,
+    @Schema(description = "An externally passed UUID to assign to this query") UUID picsureId,
+    @Schema(description = "An internally generated UUID identifying this query") UUID id
 ) {
 
     @Override

@@ -414,9 +414,6 @@ public class PicSureV3Service {
             case COUNT:
                 return queryOkResponse(String.valueOf(countProcessor.runCounts(incomingQuery)), incomingQuery, MediaType.TEXT_PLAIN);
 
-            case PATIENT_AND_CONCEPT_COUNT:
-                return queryOkResponse(countProcessor.runPatientAndConceptCount(incomingQuery), incomingQuery, MediaType.APPLICATION_JSON);
-
             default:
                 // no valid type
                 return ResponseEntity.status(500).build();
