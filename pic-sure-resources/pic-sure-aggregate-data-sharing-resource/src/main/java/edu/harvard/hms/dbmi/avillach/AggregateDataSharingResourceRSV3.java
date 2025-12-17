@@ -179,6 +179,14 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         checkQuery(queryRequest);
         HttpResponse response = null;
         try {
+            JsonNode jsonNode = objectMapper.valueToTree(queryRequest.getQuery());
+            if (!jsonNode.has("expectedResultType")) {
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
+            }
+            String expectedResultType = jsonNode.get("expectedResultType").asText();
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
+            }
             response = postRequest(queryRequest, "/query");
             return readObjectFromResponse(response, QueryStatus.class);
         } finally {
@@ -265,6 +273,10 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
                 return Response.status(Response.Status.BAD_REQUEST).build();
             }
 
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
+            }
+            
             response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
             HttpEntity entity = response.getEntity();
