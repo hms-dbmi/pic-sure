@@ -180,6 +180,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         HttpResponse response = null;
         try {
             JsonNode jsonNode = objectMapper.valueToTree(queryRequest.getQuery());
+            queryRequest.setQuery(jsonNode);
             if (!jsonNode.has("expectedResultType")) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
@@ -258,6 +259,8 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
             UUID resourceUUID = queryRequest.getResourceUUID();
 
             JsonNode jsonNode = objectMapper.valueToTree(query);
+            queryRequest.setQuery(jsonNode);
+
             if (!jsonNode.has("expectedResultType")) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
@@ -391,8 +394,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
         JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
 
-        LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>() {});
-        queryRequest.setQuery(rebuiltQuery);
+        queryRequest.setQuery(includesStudyConsents);
         return queryRequest;
     }
 
