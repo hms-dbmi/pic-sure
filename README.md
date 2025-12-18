@@ -6,7 +6,7 @@
 
 This is the git repository for version 2+ of the PIC-SURE API.
 
-## Pre-requisits
+## Pre-requisites
 
 * Java 11
 * Before contributing code, please set up our git hook:
@@ -22,9 +22,8 @@ The build consists of the following top level maven modules:
 
 To build the entire project, change directory to the projects top level, and execute:
 
-```
-mvn clean install
-
+```shell
+  mvn clean install
 ```
 
 This command will run all tests, with the included WildFly server.
@@ -38,17 +37,19 @@ PIC_SURE_USER_ID_CLAIM - This should be "email"
 
 To run the app for development, go into the pic-sure-api-wildfly folder and use this:
 
-mvn wildfly:run && mvn wildfly:shutdown
+```shell
+  mvn wildfly:run && mvn wildfly:shutdown
+```
 
 This will start the app with the console output in your terminal session and CTRL-C will kill it correctly.
 
 If you wish to debug your tests from Eclipse, use `mvnDebug clean install` and connect your debugger.
 
-If you wish to debug your services while the tests run, set the suspend=n to suspend=y in 
+If you wish to debug your services while the tests run, set the `suspend=n` to `suspend=y` in 
 the wildfly-maven-plugin configuration in the pom file for pic-sure-api-wildfly on the line that looks like:
 
+```pom
 <java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
-						
+```
+
 Both of these will pause the build allowing you to connect your debuggers.
-
-

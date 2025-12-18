@@ -6,6 +6,7 @@
 		<jta-data-source>java:jboss/datasources/PicsureDS</jta-data-source>
 		<class>edu.harvard.dbmi.avillach.data.entity.Query</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.Resource</class>
+		<class>edu.harvard.dbmi.avillach.data.entity.Configuration</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.NamedDataset</class>
 		<class>edu.harvard.dbmi.avillach.data.entity.Site</class>
 
