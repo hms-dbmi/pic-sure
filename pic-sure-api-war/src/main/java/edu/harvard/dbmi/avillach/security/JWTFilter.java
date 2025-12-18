@@ -37,13 +37,37 @@ import javax.ws.rs.ext.Provider;
 
 import java.io.*;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
+class PathRule {
+    final Pattern pattern;
+    final Set<String> allowedMethods; // null means all methods
+
+    PathRule(String regex, String... methods) {
+        this.pattern = Pattern.compile(regex);
+        this.allowedMethods = methods.length == 0 ? null : Set.of(methods);
+    }
+
+    boolean matches(String path, String method) {
+        if (!pattern.matcher(path).find()) {
+            return false;
+        }
+        return allowedMethods == null || allowedMethods.contains(method);
+    }
+}
+
+
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
-
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
+    private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
+        new PathRule("\\/openapi\\.json$"),
+        // Matches /configuration or /configuration/<uuid or config-name> with optional trailing slash
+        // Explicitly excludes /configuration/admin (but allows /configuration/admin/something)
+        new PathRule("^\\/configuration(\\/(?!admin\\/?$)[\\w\\d\\-?\\[\\].():]*)?\\/?$", HttpMethod.GET)
+    );
 
     @Context
     UriInfo uriInfo;
@@ -71,15 +95,15 @@ public class JWTFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         logger.debug("Entered jwtfilter.filter()...");
+        String path = requestContext.getUriInfo().getPath();
+        String method = requestContext.getRequest().getMethod();
 
-        if (uriInfo.getPath().endsWith("/openapi.json")) {
+        if (EXCLUDED_PATHS.stream().anyMatch(rule -> rule.matches(path, method))) {
+            logger.info("Accessing excluded path " + path + " method " + method);
             return;
         }
 
-        if (
-            requestContext.getUriInfo().getPath().contentEquals("/system/status")
-                && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)
-        ) {
+        if (path.contentEquals("/system/status") && method.contentEquals(HttpMethod.GET)) {
             // GET calls to /system/status do not require authentication or authorization
             requestContext.setProperty("username", "SYSTEM_MONITOR");
         } else {

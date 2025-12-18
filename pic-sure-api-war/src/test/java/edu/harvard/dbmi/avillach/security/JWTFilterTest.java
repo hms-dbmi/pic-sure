@@ -1,16 +1,19 @@
 package edu.harvard.dbmi.avillach.security;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.HttpMethod;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Request;
@@ -33,7 +36,6 @@ import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponseError;
 
 public class JWTFilterTest {
-
     private static final UUID QUERY_UUID = UUID.fromString("e830138f-2943-4661-90ae-da053bd94a18");
 
     private static final UUID RESOURCE_UUID = UUID.fromString("30ef4941-9656-4b47-af80-528f2b98cf17");
@@ -114,6 +116,59 @@ public class JWTFilterTest {
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
         filter.filter(ctx);
         verify(ctx).setProperty("username", "SYSTEM_MONITOR");
+    }
+
+    @Test
+    public void testExcludedFilterPaths_openapi() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/openapi.json");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        filter.filter(ctx);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+    }
+
+    @Test
+    public void testExcludedFilterPaths_config_validPathsWithNoAuthRequired() throws RuntimeException {
+        List<String> letters = List.of(
+            "", "/ui:(feature.flag3)?-wear[e12]", "/address", "/postadmin", "/data", "/meta", "/init", "/names", "/administrators",
+            "/00000000-0000-0000-0000-000000000000"
+        );
+
+        List<String> exceptions = new ArrayList<>();
+        for (String letter : letters) {
+            ContainerRequestContext ctx = createRequestContext();
+            when(ctx.getUriInfo().getPath()).thenReturn("/configuration" + letter);
+            when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+
+            try {
+                filter.filter(ctx);
+                verify(ctx, never()).setProperty(eq("username"), anyString());
+                verify(ctx, never()).abortWith(any(Response.class));
+            } catch (Exception e) {
+                exceptions.add(letter);
+            }
+        }
+        assertEquals(0, exceptions.size());
+    }
+
+    @Test(expected = NotAuthorizedException.class)
+    public void testExcludedFilterPaths_config_invalidPathsHitNoAuthException() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/SOME_FLA%G");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+
+        filter.filter(ctx);
+        // Test passes if NotAuthorizedException is thrown
+    }
+
+    @Test(expected = NotAuthorizedException.class)
+    public void testExcludedFilterPaths_config_blockedAdminPathHitsNoAuthException() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/admin");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+
+        filter.filter(ctx);
+        // Test passes if NotAuthorizedException is thrown
     }
 
     @Test
