@@ -1,4 +1,4 @@
-FROM maven:3.9.6-amazoncorretto-21 as build
+FROM maven:3.9.9-amazoncorretto-24 AS build
 
 # Copy the source code into the container
 COPY ../ /app
@@ -9,7 +9,7 @@ WORKDIR /app
 # Build the jar
 RUN mvn clean install -DskipTests
 
-FROM amazoncorretto:21.0.1-alpine3.18
+FROM amazoncorretto:24-alpine
 
 # Copy jar and access token from maven build
 #COPY target/pic-sure-auth-services.jar /pic-sure-auth-service.jar
