@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach;
 
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.glassfish.jersey.message.internal.OutboundJaxrsResponse;
 import org.glassfish.jersey.message.internal.OutboundMessageContext;
@@ -20,6 +21,8 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -63,12 +66,21 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         when(mockProperties.getTargetPicsureUrl()).thenReturn(testURL);
         when(mockProperties.getTargetPicsureToken()).thenReturn("This actually is not needed here, only for the proxy resource.");
         subject = new AggregateDataSharingResourceRS(mockProperties);
+        subjectV3 = new AggregateDataSharingResourceRSV3(mockProperties);
 
         // Whenever the ADSRRS submits a search for "any" we return the contents of open_access_search_result.json
         wireMockRule.stubFor(
             post(urlEqualTo("/search")).withRequestBody(equalToJson("{\"query\":\"any\"}"))
                 .willReturn(aResponse().withStatus(200).withBody(getTestJson("open_access_search_result")))
         );
+
+        // Stub for study consents which is now called for every CROSS_COUNT query
+        wireMockRule.stubFor(
+            post(urlEqualTo("/search"))
+                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+                .willReturn(aResponse().withStatus(200).withBody("{\"results\": {\"phenotypes\": {}}}"))
+        );
+
 
     }
 
@@ -179,8 +191,14 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     }
 
     private String getObfuscatedResponseForResult(String originalResult) throws JsonProcessingException, JsonMappingException, IOException {
+        GeneralQueryRequest requestMatcher = getTestQuery();
+        // Since we stub /search to return empty consents in setup(), the query sent to /query/sync will have empty crossCountFields
+        Map<String, Object> queryMap = (Map<String, Object>) requestMatcher.getQuery();
+        queryMap.put("crossCountFields", new ArrayList<>());
+        requestMatcher.setQuery(queryMap);
+
         wireMockRule.stubFor(
-            post(urlEqualTo("/query/sync")).withRequestBody(equalToJson(mapper.writeValueAsString(getTestQuery())))
+            post(urlEqualTo("/query/sync")).withRequestBody(equalToJson(mapper.writeValueAsString(requestMatcher)))
                 .withHeader("Authorization", equalTo("Bearer This actually is not needed here, only for the proxy resource."))
                 .willReturn(aResponse().withStatus(200).withBody(getTestJson(originalResult)))
         );
@@ -199,8 +217,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     @Test
     public void shouldPostQuery() {
         UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-        GeneralQueryRequest originalRequest = createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
-        GeneralQueryRequest postedRequest = createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
+        Map<String, Object> query = new HashMap<>();
+        query.put("q", "I seek the holy grail.");
+        query.put("expectedResultType", "COUNT");
+        GeneralQueryRequest originalRequest = createRequest(query, Map.of("name", "Sir Lancelot"), UUID.randomUUID());
+        GeneralQueryRequest postedRequest = createRequest(query, Map.of("name", "Sir Lancelot"), targetResourceId);
 
         QueryStatus expectedResponse = new QueryStatus();
         expectedResponse.setResourceID(targetResourceId);
@@ -218,8 +239,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     @Test
     public void shouldPostQueryStatus() {
         UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-        GeneralQueryRequest originalRequest = createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
-        GeneralQueryRequest postedRequest = createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
+        Map<String, Object> query = new HashMap<>();
+        query.put("q", "I seek the holy grail.");
+        query.put("expectedResultType", "COUNT");
+        GeneralQueryRequest originalRequest = createRequest(query, Map.of("name", "King Arthur"), UUID.randomUUID());
+        GeneralQueryRequest postedRequest = createRequest(query, Map.of("name", "King Arthur"), targetResourceId);
 
         QueryStatus expectedResponse = new QueryStatus();
         expectedResponse.setResourceID(targetResourceId);
@@ -240,8 +264,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     @Test
     public void shouldPostQueryResult() {
         UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-        GeneralQueryRequest originalRequest = createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), UUID.randomUUID());
-        GeneralQueryRequest postedRequest = createRequest("I seek the holy grail.", Map.of("name", "King Arthur"), targetResourceId);
+        Map<String, Object> query = new HashMap<>();
+        query.put("q", "I seek the holy grail.");
+        query.put("expectedResultType", "COUNT");
+        GeneralQueryRequest originalRequest = createRequest(query, Map.of("name", "King Arthur"), UUID.randomUUID());
+        GeneralQueryRequest postedRequest = createRequest(query, Map.of("name", "King Arthur"), targetResourceId);
 
         Response expectedResponse = new OutboundJaxrsResponse(Response.Status.OK, new OutboundMessageContext());
 
@@ -259,8 +286,11 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     @Test
     public void shouldHandleErrorResponse() {
         UUID targetResourceId = UUID.fromString(mockProperties.getTargetResourceId());
-        GeneralQueryRequest originalRequest = createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), UUID.randomUUID());
-        GeneralQueryRequest postedRequest = createRequest("I seek the holy grail.", Map.of("name", "Sir Lancelot"), targetResourceId);
+        Map<String, Object> query = new HashMap<>();
+        query.put("q", "I seek the holy grail.");
+        query.put("expectedResultType", "COUNT");
+        GeneralQueryRequest originalRequest = createRequest(query, Map.of("name", "Sir Lancelot"), UUID.randomUUID());
+        GeneralQueryRequest postedRequest = createRequest(query, Map.of("name", "Sir Lancelot"), targetResourceId);
 
         QueryStatus expectedResponse = new QueryStatus();
         expectedResponse.setResourceID(targetResourceId);
@@ -280,12 +310,113 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         assertNotNull(exception);
     }
 
-    private static GeneralQueryRequest createRequest(String query, Map<String, String> credentials, UUID resourceUUID) {
+    private static GeneralQueryRequest createRequest(Object query, Map<String, String> credentials, UUID resourceUUID) {
         GeneralQueryRequest originalRequest = new GeneralQueryRequest();
         originalRequest.setQuery(query);
         originalRequest.setResourceCredentials(credentials);
         originalRequest.setResourceUUID(resourceUUID);
         return originalRequest;
+    }
+
+    @Test(expected = ProtocolException.class)
+    public void testMissingExpectedResultType() throws IOException {
+        GeneralQueryRequest request = getTestQuery();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+        queryMap.remove("expectedResultType");
+        request.setQuery(queryMap);
+        subject.querySync(request);
+    }
+
+    @Test
+    public void testCrossCountQueryModifiesRequest() throws IOException {
+        // Mock /search for consents
+        // We need to escape backslashes for Java string literals and JSON
+        // JSON: "\\PHENO\\CONSENT1\\" -> Java String: "\"\\\\PHENO\\\\CONSENT1\\\\\""
+        String consentResponseJson = "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
+
+        wireMockRule.stubFor(
+            post(urlEqualTo("/search"))
+                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+                .willReturn(aResponse().withStatus(200).withBody(consentResponseJson))
+        );
+
+        // Mock /query/sync
+        wireMockRule.stubFor(
+            post(urlEqualTo("/query/sync"))
+                .willReturn(aResponse().withStatus(200).withBody("{}"))
+        );
+
+        GeneralQueryRequest request = getTestQuery();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+        queryMap.put("expectedResultType", "CROSS_COUNT");
+        // We don't care about existing crossCountFields as they will be overwritten
+        request.setQuery(queryMap);
+
+        subject.querySync(request);
+
+        // Verify /query/sync called with modified body
+        verify(postRequestedFor(urlEqualTo("/query/sync"))
+            .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT1")))
+            .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT2")))
+            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
+        );
+    }
+
+    @Test
+    public void testCrossCountQueryModifiesRequestV3() throws IOException {
+        // Mock /search for consents
+        String consentResponseJson = "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
+
+        wireMockRule.stubFor(
+            post(urlEqualTo("/search"))
+                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+                .willReturn(aResponse().withStatus(200).withBody(consentResponseJson))
+        );
+
+        // Mock /v3/query/sync (V3 appends /v3 prefix to path in getHttpResponse)
+        wireMockRule.stubFor(
+            post(urlEqualTo("/v3/query/sync"))
+                .willReturn(aResponse().withStatus(200).withBody("{}"))
+        );
+
+        GeneralQueryRequest request = getTestQuery();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+        queryMap.put("expectedResultType", "CROSS_COUNT");
+        request.setQuery(queryMap);
+
+        subjectV3.querySync(request);
+
+        // Verify /v3/query/sync called with modified body using "select"
+        verify(postRequestedFor(urlEqualTo("/v3/query/sync"))
+            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT1")))
+            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT2")))
+            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
+        );
+    }
+
+    @Test
+    public void testOtherQueryTypeDoesNotModifyRequest() throws IOException {
+        wireMockRule.stubFor(
+            post(urlEqualTo("/query/sync"))
+                .willReturn(aResponse().withStatus(200).withBody("100"))
+        );
+
+        GeneralQueryRequest request = getTestQuery();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+        queryMap.put("expectedResultType", "COUNT");
+        queryMap.remove("crossCountFields");
+        request.setQuery(queryMap);
+
+        subject.querySync(request);
+
+        verify(postRequestedFor(urlEqualTo("/query/sync"))
+            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
+            .withRequestBody(notMatching(".*crossCountFields.*"))
+        );
     }
 
 }

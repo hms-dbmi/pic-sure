@@ -178,6 +178,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         checkQuery(queryRequest);
         HttpResponse response = null;
         try {
+            JsonNode jsonNode = objectMapper.valueToTree(queryRequest.getQuery());
+            queryRequest.setQuery(jsonNode);
+            if (!jsonNode.has("expectedResultType")) {
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
+            }
+            String expectedResultType = jsonNode.get("expectedResultType").asText();
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
+            }
             response = postRequest(queryRequest, "/query");
             return readObjectFromResponse(response, QueryStatus.class);
         } finally {
@@ -249,6 +258,8 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             UUID resourceUUID = queryRequest.getResourceUUID();
 
             JsonNode jsonNode = objectMapper.valueToTree(query);
+            queryRequest.setQuery(jsonNode);
+
             if (!jsonNode.has("expectedResultType")) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
@@ -262,6 +273,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             if (!allowedResultTypes.contains(expectedResultType)) {
                 logger.warn("Incorrect Result Type: " + expectedResultType);
                 return Response.status(Response.Status.BAD_REQUEST).build();
+            }
+
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
             }
 
             response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
@@ -378,8 +393,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
         JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
 
-        LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>() {});
-        queryRequest.setQuery(rebuiltQuery);
+        queryRequest.setQuery(includesStudyConsents);
         return queryRequest;
     }
 

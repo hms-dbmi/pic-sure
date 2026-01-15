@@ -179,6 +179,15 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         checkQuery(queryRequest);
         HttpResponse response = null;
         try {
+            JsonNode jsonNode = objectMapper.valueToTree(queryRequest.getQuery());
+            queryRequest.setQuery(jsonNode);
+            if (!jsonNode.has("expectedResultType")) {
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
+            }
+            String expectedResultType = jsonNode.get("expectedResultType").asText();
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
+            }
             response = postRequest(queryRequest, "/query");
             return readObjectFromResponse(response, QueryStatus.class);
         } finally {
@@ -250,6 +259,8 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
             UUID resourceUUID = queryRequest.getResourceUUID();
 
             JsonNode jsonNode = objectMapper.valueToTree(query);
+            queryRequest.setQuery(jsonNode);
+
             if (!jsonNode.has("expectedResultType")) {
                 throw new ProtocolException(ProtocolException.MISSING_DATA);
             }
@@ -265,6 +276,10 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
                 return Response.status(Response.Status.BAD_REQUEST).build();
             }
 
+            if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
+                changeQueryToOpenCrossCount(queryRequest);
+            }
+            
             response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
             HttpEntity entity = response.getEntity();
@@ -379,8 +394,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         JsonNode updatedExpectedResulType = setExpectedResultTypeToCrossCount(jsonNode);
         JsonNode includesStudyConsents = addStudyConsentsToQuery(updatedExpectedResulType);
 
-        LinkedHashMap<String, Object> rebuiltQuery = objectMapper.convertValue(includesStudyConsents, new TypeReference<>() {});
-        queryRequest.setQuery(rebuiltQuery);
+        queryRequest.setQuery(includesStudyConsents);
         return queryRequest;
     }
 
@@ -418,7 +432,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         }
 
         // add the ArrayNode to the query
-        ((ObjectNode) jsonNode).set("crossCountFields", arrayNode);
+        ((ObjectNode) jsonNode).set("select", arrayNode);
 
         return jsonNode;
     }
