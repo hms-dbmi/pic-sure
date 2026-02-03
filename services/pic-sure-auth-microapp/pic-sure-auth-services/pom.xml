@@ -26,6 +26,15 @@
         <tag/>
         <url/>
     </scm>
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
     <properties>
         <java.version>24</java.version>
         <spotless.version>2.41.1</spotless.version>
@@ -220,6 +229,11 @@
             <version>5.21.0</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+            <artifactId>client-api</artifactId>
+            <version>3.0.0-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -244,4 +258,11 @@
             </plugin>
         </plugins>
     </build>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub HMS-DBMI Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+        </repository>
+    </distributionManagement>
 </project>

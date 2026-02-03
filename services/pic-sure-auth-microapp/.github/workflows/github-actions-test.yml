@@ -19,3 +19,5 @@ jobs:
           distribution: 'temurin'
       - name: Test with Maven
         run: mvn test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
