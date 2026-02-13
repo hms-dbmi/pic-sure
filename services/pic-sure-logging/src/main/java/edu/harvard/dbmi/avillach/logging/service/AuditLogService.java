@@ -27,6 +27,10 @@ public class AuditLogService {
     }
 
     public void logEvent(AuditEvent event, String authorizationHeader, String requestIdHeader) {
+        if (event == null) {
+            appLog.warn("logEvent called with null event, ignoring");
+            return;
+        }
         try {
             LinkedHashMap<String, Object> fields = new LinkedHashMap<>();
 
