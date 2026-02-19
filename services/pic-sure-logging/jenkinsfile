@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
+        string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'pic-sure-logging')
+        choice(name: 'DEPLOY_METHOD', description: 'Deployment method', choices: ['docker', 's3', 'none'])
+        string(name: 'TARGET_STACK', description: 'Target stack for deployment (required for s3 deploy)', defaultValue: '')
+        string(name: 'STACK_S3_BUCKET', description: 'S3 bucket for image upload (required for s3 deploy)', defaultValue: '')
+    }
+
+    environment {
+        DOCKER_BUILD_ARGS = "--build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg no_proxy=\"$no_proxy\" --build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy --build-arg NO_PROXY=\"$no_proxy\""
+        GIT_BRANCH_SHORT = sh(script: 'echo ${GIT_BRANCH} | cut -d "/" -f 2', returnStdout: true).trim()
+        GIT_COMMIT_SHORT = sh(script: 'echo ${GIT_COMMIT} | cut -c1-7', returnStdout: true).trim()
+        IMAGE_TAG = "${GIT_BRANCH_SHORT}_${GIT_COMMIT_SHORT}"
+    }
+
+    stages {
+        stage('build') {
+            steps {
+                script {
+                    env.LATEST_TAG = params.DEPLOY_METHOD == 's3' ? 'latest' : 'LATEST'
+                }
+                sh "docker build ${DOCKER_BUILD_ARGS} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
+            }
+        }
+        stage('deploy') {
+            steps {
+                script {
+                    if (params.DEPLOY_METHOD == 'docker') {
+                        sh "docker stop pic-sure-logging || true"
+                        sh "docker rm pic-sure-logging || true"
+                        sh """docker run --name=pic-sure-logging --restart always \
+                            --network=picsure \
+                            --env-file /usr/local/docker-config/pic-sure-logging/logging.env \
+                            -v /usr/local/docker-config/pic-sure-logging/logs:/app/logs \
+                            -d ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG}"""
+                    } else if (params.DEPLOY_METHOD == 's3') {
+                        sh "docker save ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG} | gzip > pic-sure-logging.tar.gz"
+                        sh "aws s3 --sse=AES256 cp pic-sure-logging.tar.gz s3://${params.STACK_S3_BUCKET}/${params.TARGET_STACK}/containers/pic-sure-logging.tar.gz"
+                    } else {
+                        echo "Deployment skipped."
+                    }
+                }
+            }
+        }
+    }
+}
