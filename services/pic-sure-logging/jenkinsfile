@@ -88,7 +88,7 @@ pipeline {
           } else if (params.DEPLOY_METHOD == 's3') {
             sh '''
               docker save "${IMAGE_NAME}:${LATEST_TAG}" | gzip > pic-sure-logging.tar.gz
-              aws s3 --sse=AES256 cp pic-sure-logging.tar.gz "s3://${STACK_S3_BUCKET}/${TARGET_STACK}/containers/pic-sure-logging.tar.gz"
+              aws s3 --sse=AES256 cp pic-sure-logging.tar.gz "s3://${stack_s3_bucket}/${TARGET_STACK}/containers/pic-sure-logging.tar.gz"
             '''
           } else {
             echo "Deployment skipped."
