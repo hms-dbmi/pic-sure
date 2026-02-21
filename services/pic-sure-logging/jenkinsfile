@@ -9,11 +9,6 @@ pipeline {
     string(name: 'STACK_S3_BUCKET', description: 'S3 bucket for image upload (required for s3 deploy)', defaultValue: '')
   }
 
-  environment {
-    DOCKER_BUILD_ARGS = "--build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg no_proxy=\"$no_proxy\" " +
-      "--build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy --build-arg NO_PROXY=\"$no_proxy\""
-  }
-
   stages {
     stage('init') {
       steps {
@@ -32,8 +27,17 @@ pipeline {
         sh '''
           set -euo pipefail
 
+          # DOCKER_CONFIG_DIR is set in all-in-one but not BDC.
+          # In all-in-one the host path differs from the container path.
+          # In BDC the workspace mount is an identity map (host == container).
+          if [ -n "${DOCKER_CONFIG_DIR:-}" ]; then
+            MOUNT_PATH="$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME"
+          else
+            MOUNT_PATH="$WORKSPACE"
+          fi
+
           docker run --rm \
-            -v "$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME/:/app" \
+            -v "$MOUNT_PATH/:/app" \
             -v maven_m2_cache:/root/.m2 \
             -w /app \
             maven:3.9.9-amazoncorretto-24 \
@@ -48,7 +52,16 @@ pipeline {
       steps {
         sh '''
           set -euo pipefail
-          docker build ${DOCKER_BUILD_ARGS} -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+
+          PROXY_ARGS=""
+          if [ -n "${http_proxy:-}" ]; then
+            PROXY_ARGS="--build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy"
+          fi
+          if [ -n "${no_proxy:-}" ]; then
+            PROXY_ARGS="$PROXY_ARGS --build-arg no_proxy=$no_proxy --build-arg NO_PROXY=$no_proxy"
+          fi
+
+          docker build $PROXY_ARGS -t "${IMAGE_NAME}:${IMAGE_TAG}" .
           docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
         '''
       }
@@ -64,10 +77,12 @@ pipeline {
               docker rm pic-sure-logging
               set -e
 
+              CONFIG_DIR="${DOCKER_CONFIG_DIR:-/usr/local/docker-config}/logging"
+
               docker run --name=pic-sure-logging --restart always \
                 --network=picsure \
-                --env-file $DOCKER_CONFIG_DIR/pic-sure-logging/logging.env \
-                -v $DOCKER_CONFIG_DIR/pic-sure-logging/logs:/app/logs \
+                --env-file "$CONFIG_DIR/logging.env" \
+                -v "$CONFIG_DIR/logs":/app/logs \
                 -d "${IMAGE_NAME}:${IMAGE_TAG}"
             '''
           } else if (params.DEPLOY_METHOD == 's3') {
