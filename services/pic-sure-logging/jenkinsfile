@@ -37,7 +37,7 @@ pipeline {
           fi
 
           docker run --rm \
-            -v "$MOUNT_PATH/:/app" \
+            -v "$MOUNT_PATH/:/app:Z" \
             -v maven_m2_cache:/root/.m2 \
             -w /app \
             maven:3.9.9-amazoncorretto-24 \
