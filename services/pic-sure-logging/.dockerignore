@@ -1,5 +1,6 @@
 .git
-target/
+target/*
+!target/pic-sure-logging-*.jar
 *.md
 docker-compose.yml
 .idea/
