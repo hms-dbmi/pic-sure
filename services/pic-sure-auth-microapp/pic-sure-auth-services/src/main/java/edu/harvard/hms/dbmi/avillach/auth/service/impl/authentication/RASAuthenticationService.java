@@ -92,6 +92,7 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             JsonNode userToken = handleCodeTokenExchange(host, authRequest.get("code"));
             introspectResponse = introspectToken(userToken);
             idToken = userToken.get("id_token").asText();
+            logger.debug("RAS OKTA LOGIN ATTEMPT ___ INTROSPECTION RESPONSE {}", introspectResponse);
         }
 
         if (introspectResponse == null) {
