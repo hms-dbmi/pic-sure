@@ -28,10 +28,8 @@ public record AppConfig(
         Map.entry("nih_ico", "nih_ico"),
         Map.entry("eRA_commons_id", "eRA_commons_id"),
         Map.entry("permission_group", "user_permission_group"),
-        Map.entry("session_id", "session_id"),
         Map.entry("uuid", "uuid"),
         Map.entry("roles", "roles"),
-        Map.entry("logged_in", "logged_in"),
         Map.entry("idp", "user_id_provider"),
         Map.entry("cadr_name", "cadr_name")
     );
