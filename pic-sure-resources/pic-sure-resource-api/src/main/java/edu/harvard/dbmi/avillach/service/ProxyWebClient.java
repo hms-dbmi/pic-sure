@@ -103,6 +103,9 @@ public class ProxyWebClient {
     private static final Set<String> FORWARDED_HEADERS = Set.of("authorization", "x-api-key", "x-request-id");
 
     private void forwardHeaders(HttpHeaders headers, HttpRequestBase request) {
+        if (headers == null) {
+            return;
+        }
         for (String headerName : FORWARDED_HEADERS) {
             List<String> values = headers.getRequestHeader(headerName);
             if (values != null && !values.isEmpty()) {
