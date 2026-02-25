@@ -24,6 +24,8 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Set;
 
 @ApplicationScoped
 public class ProxyWebClient {
@@ -61,6 +63,7 @@ public class ProxyWebClient {
             HttpPost request = new HttpPost(uri);
             request.setEntity(new StringEntity(body));
             request.addHeader("Content-Type", "application/json");
+            forwardHeaders(headers, request);
             return getResponse(request);
         } catch (URISyntaxException e) {
             LOG.warn("Failed to construct URI. Container: {} Path: {}", containerId, path);
@@ -82,6 +85,7 @@ public class ProxyWebClient {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
             HttpGet request = new HttpGet(uri);
+            forwardHeaders(headers, request);
             return getResponse(request);
         } catch (URISyntaxException e) {
             LOG.warn("Failed to construct URI. Container: {} Path: {}", containerId, path);
@@ -94,6 +98,17 @@ public class ProxyWebClient {
     private NameValuePair[] processParams(MultivaluedMap<String, String> params) {
         return params.entrySet().stream().flatMap(e -> e.getValue().stream().map(v -> new BasicNameValuePair(e.getKey(), v)))
             .toArray(NameValuePair[]::new);
+    }
+
+    private static final Set<String> FORWARDED_HEADERS = Set.of("authorization", "x-api-key", "x-request-id");
+
+    private void forwardHeaders(HttpHeaders headers, HttpRequestBase request) {
+        for (String headerName : FORWARDED_HEADERS) {
+            List<String> values = headers.getRequestHeader(headerName);
+            if (values != null && !values.isEmpty()) {
+                request.addHeader(headerName, values.get(0));
+            }
+        }
     }
 
     private boolean containerIsNOTAResource(String container) {
