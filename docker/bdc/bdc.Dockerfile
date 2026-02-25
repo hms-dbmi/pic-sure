@@ -23,7 +23,7 @@ USER jboss
 
 # Copy pre-built WAR files from workspace
 COPY pic-sure-api-war/target/pic-sure-api-war.war /tmp/pic-sure-api-2.war
-COPY pic-sure-resources/pic-sure-aggregate-data-sharing-resource/pic-sure-api-war/target/pic-sure-aggregate-data-sharing-resource.war /tmp/pic-sure-aggregate-resource.war
+COPY pic-sure-resources/pic-sure-aggregate-data-sharing-resource/target/pic-sure-aggregate-data-sharing-resource.war /tmp/pic-sure-aggregate-resource.war
 COPY pic-sure-resources/pic-sure-visualization-resources/target/pic-sure-visualization-resource.war /tmp/pic-sure-visualization-resource.war
 
 USER root
