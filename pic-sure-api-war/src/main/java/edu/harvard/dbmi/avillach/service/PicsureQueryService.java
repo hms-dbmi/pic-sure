@@ -8,6 +8,9 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -50,6 +53,9 @@ public class PicsureQueryService {
     @Inject
     SiteParsingService siteParsingService;
 
+    @Inject
+    LoggingClient loggingClient;
+
     /**
      * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
      *
@@ -69,6 +75,19 @@ public class PicsureQueryService {
         queryRepo.persist(queryEntity);
 
         logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
+
+        loggingClient.send(LoggingEvent.builder("QUERY")
+            .action("QUERY_SUBMITTED")
+            .request(RequestInfo.builder()
+                .method("POST")
+                .url("/query")
+                .build())
+            .metadata(Map.of(
+                "resource_id", resource.getUuid().toString(),
+                "query_id", queryEntity.getUuid().toString()
+            ))
+            .build());
+
         results.setPicsureResultId(queryEntity.getUuid());
         // In cases where there is no resource result id, the picsure result id will stand in
         if (queryEntity.getResourceResultId() == null) {
