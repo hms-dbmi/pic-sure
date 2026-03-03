@@ -76,17 +76,19 @@ public class PicsureQueryService {
 
         logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
 
-        loggingClient.send(LoggingEvent.builder("QUERY")
-            .action("QUERY_SUBMITTED")
-            .request(RequestInfo.builder()
-                .method("POST")
-                .url("/query")
-                .build())
-            .metadata(Map.of(
-                "resource_id", resource.getUuid().toString(),
-                "query_id", queryEntity.getUuid().toString()
-            ))
-            .build());
+        if (loggingClient != null) {
+            loggingClient.send(LoggingEvent.builder("QUERY")
+                .action("QUERY_SUBMITTED")
+                .request(RequestInfo.builder()
+                    .method("POST")
+                    .url("/query")
+                    .build())
+                .metadata(Map.of(
+                    "resource_id", resource.getUuid().toString(),
+                    "query_id", queryEntity.getUuid().toString()
+                ))
+                .build());
+        }
 
         results.setPicsureResultId(queryEntity.getUuid());
         // In cases where there is no resource result id, the picsure result id will stand in
