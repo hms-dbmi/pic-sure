@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.RequestScopedHeader;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
@@ -39,6 +42,9 @@ public class VisualizationResource implements IResourceRS {
 
     @Inject
     RequestScopedHeader requestScopedHeader;
+
+    @Inject
+    LoggingClient loggingClient;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -78,6 +84,16 @@ public class VisualizationResource implements IResourceRS {
         if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
             requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
             logger.info("resource=visualization /query/sync query=" + query.getQuery().toString() + " request-source=" + requestSource);
+        }
+
+        if (loggingClient != null) {
+            loggingClient.send(LoggingEvent.builder("QUERY")
+                .action("VISUALIZATION_QUERY_SYNC")
+                .request(RequestInfo.builder()
+                    .method("POST")
+                    .url("/visualization/query/sync")
+                    .build())
+                .build());
         }
 
         return visualizationService.handleQuerySync(query, requestSource);

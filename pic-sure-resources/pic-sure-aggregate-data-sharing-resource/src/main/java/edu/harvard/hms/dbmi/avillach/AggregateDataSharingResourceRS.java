@@ -9,6 +9,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.VisualizationUtil;
@@ -54,6 +57,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     @Inject
     RequestScopedHeader requestScopedHeader;
+
+    @Inject
+    LoggingClient loggingClient;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -251,6 +257,19 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     public Response querySync(QueryRequest queryRequest) {
         logger.debug("Calling Aggregate Data Sharing Resource querySync()");
         checkQuery(queryRequest);
+
+        if (loggingClient != null) {
+            loggingClient.send(LoggingEvent.builder("QUERY")
+                .action("AGGREGATE_QUERY_SYNC")
+                .request(RequestInfo.builder()
+                    .method("POST")
+                    .url("/aggregate-data-sharing/query/sync")
+                    .build())
+                .metadata(Map.of(
+                    "resource_id", String.valueOf(queryRequest.getResourceUUID())
+                ))
+                .build());
+        }
 
         HttpResponse response = null;
         try {
