@@ -176,7 +176,7 @@ public class ConceptRepository {
                             nodes parent_node
                             INNER JOIN concept_node child_nodes ON child_nodes.parent_id = parent_node.concept_node_id
                         WHERE
-                            depth < :depth
+                            depth <= :depth
                         UNION
                         SELECT
                             0 as depth, concept_node.concept_node_id
@@ -212,7 +212,12 @@ public class ConceptRepository {
                         categorical_values.VALUE AS values,
                         meta_description.VALUE AS description,
                         coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
-                        core_query.depth AS depth
+                        core_query.depth AS depth,
+                        EXISTS (
+                            SELECT 1
+                            FROM concept_node child_check
+                            WHERE child_check.parent_id = concept_node.concept_node_id
+                        ) AS hasChildren
                     FROM
                         concept_node
                         INNER JOIN core_query ON concept_node.concept_node_id = core_query.concept_node_id
@@ -222,6 +227,8 @@ public class ConceptRepository {
                         LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
                         LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                         LEFT JOIN allow_filtering ON concept_node.concept_node_id = allow_filtering.concept_node_id
+                    WHERE
+                        core_query.depth < :depth
                     ORDER BY LENGTH(concept_node.concept_path)
                 """
                 .formatted(rootConceptMatch, rootConceptMatch, rootConceptMatch);
@@ -233,7 +240,6 @@ public class ConceptRepository {
         }
 
         return Optional.ofNullable(template.query(sql, params, conceptResultSetExtractor));
-
     }
 
     public List<Concept> getConceptHierarchy(String dataset, String conceptPath) {

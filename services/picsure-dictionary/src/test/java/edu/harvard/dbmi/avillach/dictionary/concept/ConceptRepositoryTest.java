@@ -17,10 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -399,12 +396,58 @@ class ConceptRepositoryTest {
         assertEquals(0, conceptHierarchy.size());
     }
 
+    @Test
+    void shouldReturnEmptyListForConceptWithChildrenCutOffByDepth() {
+        String treeRoot =
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\";
+        Optional<Concept> tree = subject.getConceptTree(
+            "1", treeRoot, 1 // The concept "J45 Asthma" has children in the database, but depth=1 will cut them off
+        );
+        assertTrue(tree.isPresent());
+
+        Optional<Concept> level1 = Objects.requireNonNull(tree.get().children()).stream().findFirst();
+        assertTrue(level1.isPresent());
+
+        List<Concept> children = level1.get().children();
+        assertNotNull(children, "First level children should not be null");
+        assertFalse(children.isEmpty(), "Should have at least one child");
+
+        Concept asthma = children.getFirst();
+        assertEquals(treeRoot + "J45 Asthma\\", asthma.conceptPath());
+        assertNotNull(asthma.children(), "Children should be an empty list, not null, for false leaves");
+        assertTrue(asthma.children().isEmpty(), "Children should be empty list for concept cut off by depth");
+    }
+
+    @Test
+    void shouldReturnNullForConceptWithNoChildrenInDatabase() {
+        String treeRoot =
+            "\\ACT Diagnosis ICD-10\\J00-J99 Diseases of the respiratory system (J00-J99)\\J40-J47 Chronic lower respiratory diseases (J40-J47)\\";
+        Optional<Concept> tree = subject.getConceptTree(
+            "1", treeRoot + "J45 Asthma\\", 10 // Large depth to get all levels
+        );
+        assertTrue(tree.isPresent());
+
+        Optional<Concept> level1 = Objects.requireNonNull(tree.get().children()).stream().findFirst();
+        assertTrue(level1.isPresent());
+
+        Optional<Concept> severeAsthma =
+            Objects.requireNonNull(level1.get().children()).stream().filter(c -> c.conceptPath().contains("J45.5")).findFirst();
+        assertTrue(severeAsthma.isPresent());
+
+        List<Concept> level2 = severeAsthma.get().children();
+        assertNotNull(level2, "J45.5 should have children");
+        assertFalse(level2.isEmpty());
+
+        Optional<Concept> leafNode = level2.stream().filter(c -> c.conceptPath().contains("J45.52")).findFirst();
+        assertTrue(leafNode.isPresent());
+        assertNull(leafNode.get().children(), "Children should be null for true leaves with no children in database");
+    }
 
     private static void compareWithChildren(List<Concept> actualConcepts, List<Concept> expectedConcepts) {
         while (!expectedConcepts.isEmpty()) {
             assertEquals(expectedConcepts, actualConcepts);
-            actualConcepts = actualConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
-            expectedConcepts = expectedConcepts.stream().map(Concept::children).flatMap(List::stream).toList();
+            actualConcepts = actualConcepts.stream().map(Concept::children).filter(Objects::nonNull).flatMap(List::stream).toList();
+            expectedConcepts = expectedConcepts.stream().map(Concept::children).filter(Objects::nonNull).flatMap(List::stream).toList();
         }
     }
 
