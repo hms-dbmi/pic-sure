@@ -2,6 +2,7 @@ pipeline {
   agent any
 
   parameters {
+    string(name: 'git_hash', description: 'The Git hash to checkout', defaultValue: 'main')
     string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
     string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'pic-sure-logging')
     choice(name: 'DEPLOY_METHOD', description: 'Deployment method', choices: ['docker', 's3', 'none'])
