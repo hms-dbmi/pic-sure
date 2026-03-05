@@ -41,24 +41,6 @@ import java.util.regex.Pattern;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
-class PathRule {
-    final Pattern pattern;
-    final Set<String> allowedMethods; // null means all methods
-
-    PathRule(String regex, String... methods) {
-        this.pattern = Pattern.compile(regex);
-        this.allowedMethods = methods.length == 0 ? null : Set.of(methods);
-    }
-
-    boolean matches(String path, String method) {
-        if (!pattern.matcher(path).find()) {
-            return false;
-        }
-        return allowedMethods == null || allowedMethods.contains(method);
-    }
-}
-
-
 @Provider
 public class JWTFilter implements ContainerRequestFilter {
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
@@ -408,4 +390,22 @@ public class JWTFilter implements ContainerRequestFilter {
     void setUserIdClaim(String userIdClaim) {
         this.userIdClaim = userIdClaim;
     }
+
+    private static class PathRule {
+        final Pattern pattern;
+        final Set<String> allowedMethods; // null means all methods
+
+        PathRule(String regex, String... methods) {
+            this.pattern = Pattern.compile(regex);
+            this.allowedMethods = methods.length == 0 ? null : Set.of(methods);
+        }
+
+        boolean matches(String path, String method) {
+            if (!pattern.matcher(path).find()) {
+                return false;
+            }
+            return allowedMethods == null || allowedMethods.contains(method);
+        }
+    }
+
 }
