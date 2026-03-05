@@ -213,8 +213,13 @@ public class JWTFilter implements ContainerRequestFilter {
             String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
             AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles);
 
+            responseContent.fieldNames().forEachRemaining(fieldName -> {
+                logger.info("Field name: " + fieldName);
+            });
+
             if (responseContent.get("query") != null) {
                 logger.info("Query returned from PSAMA: " + responseContent.get("query").asText());
+                logger.info("Query class returned from PSAMA: ", responseContent.get("query").getClass());
                 requestContext.setEntityStream(new ByteArrayInputStream(responseContent.get("query").asText().getBytes()));
             }
             return user;
