@@ -24,6 +24,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import javax.annotation.security.RolesAllowed;
+
 @Path("/configuration")
 @Produces("application/json")
 @Consumes("application/json")
@@ -79,6 +81,7 @@ public class ConfigurationRS {
 
     @POST
     @Path("/admin/")
+    @RolesAllowed({"ADMIN", "SUPER_ADMIN"})
     @Operation(
         summary = "Creates a new configuration.", tags = {"configuration"}, operationId = "addConfiguration",
         responses = {
@@ -105,6 +108,7 @@ public class ConfigurationRS {
 
     @PATCH
     @Path("/admin/{configurationId}/")
+    @RolesAllowed({"ADMIN", "SUPER_ADMIN"})
     @Operation(
         summary = "Updates an existing configuration.", tags = {"configuration"}, operationId = "updateConfiguration",
         responses = {
@@ -134,6 +138,7 @@ public class ConfigurationRS {
 
     @DELETE
     @Path("/admin/{configurationId}/")
+    @RolesAllowed({"ADMIN", "SUPER_ADMIN"})
     @Operation(
         summary = "Deletes a configuration.", tags = {"configuration"}, operationId = "deleteConfiguration",
         responses = {@ApiResponse(responseCode = "200", description = "Configuration successfully deleted."),
