@@ -218,9 +218,9 @@ public class JWTFilter implements ContainerRequestFilter {
             });
 
             if (responseContent.get("query") != null) {
-                logger.info("Query returned from PSAMA: " + responseContent.get("query").asText());
-                logger.info("Query class returned from PSAMA: ", responseContent.get("query").getClass());
-                requestContext.setEntityStream(new ByteArrayInputStream(responseContent.get("query").asText().getBytes()));
+                Query queryObject = new ObjectMapper().readValue(requestContext.getEntityStream(), Query.class);
+                queryObject.setQuery(responseContent.get("query").asText());
+                requestContext.setEntityStream(new ByteArrayInputStream(new ObjectMapper().writeValueAsBytes(queryObject)));
             }
             return user;
         } catch (IOException ex) {
