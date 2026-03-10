@@ -101,7 +101,9 @@ class AppConfigTest {
         assertEquals("subject", config.jwtClaimMapping().get("sub"));
         assertEquals("user_email", config.jwtClaimMapping().get("email"));
         assertEquals("roles", config.jwtClaimMapping().get("roles"));
-        assertEquals("logged_in", config.jwtClaimMapping().get("logged_in"));
+        assertEquals("user_id", config.jwtClaimMapping().get("userid"));
+        assertEquals("preferred_username", config.jwtClaimMapping().get("preferred_username"));
+        assertEquals("user_permission_group", config.jwtClaimMapping().get("user_permission_group"));
     }
 
     @Test
