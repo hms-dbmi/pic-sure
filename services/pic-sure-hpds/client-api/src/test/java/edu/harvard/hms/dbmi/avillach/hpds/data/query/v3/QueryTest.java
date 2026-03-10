@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,9 +20,9 @@ public class QueryTest {
         ObjectMapper objectMapper = new ObjectMapper();
 
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "//abc//123///", List.of("turtle"), 10.0, 20.0, true);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "//abc//123///", Set.of("turtle"), 10.0, 20.0, true);
 
-        List<AuthorizationFilter> authorizationFilters = List.of(new AuthorizationFilter("\\_consents\\", List.of("phs123", "phs456")));
+        List<AuthorizationFilter> authorizationFilters = List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs123", "phs456")));
 
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(true, List.of(phenotypicFilter), Operator.AND);
         PhenotypicSubquery phenotypicSubquery2 = new PhenotypicSubquery(true, List.of(phenotypicFilter), Operator.AND);

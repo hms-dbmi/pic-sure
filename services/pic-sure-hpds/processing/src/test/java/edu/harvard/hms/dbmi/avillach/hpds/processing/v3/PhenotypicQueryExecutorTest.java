@@ -65,12 +65,12 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_validCategoricalFilter_returnPatients() throws ExecutionException {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, List.of("Finnish"), null, null, null),
-            null, ResultType.COUNT, null, null
+            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
+            ResultType.COUNT, null, null
         );
 
         Set<Integer> patientIds = Set.of(2, 3, 5, 8, 13);
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, List.of("Finnish"))).thenReturn(patientIds);
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"))).thenReturn(patientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
@@ -80,11 +80,11 @@ class PhenotypicQueryExecutorTest {
     public void getPatientSet_nonExistentCategoricalFilter_returnNoPatients() {
         String conceptPath = "\\open_access-1000Genomes\\data\\NOT_A_CONCEPT_PATH\\";
         Query query = new Query(
-            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, List.of("Finnish"), null, null, null),
-            null, ResultType.COUNT, null, null
+            List.of(), List.of(), new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish"), null, null, null), null,
+            ResultType.COUNT, null, null
         );
 
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, List.of("Finnish"))).thenReturn(Set.of());
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish"))).thenReturn(Set.of());
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);
@@ -113,10 +113,10 @@ class PhenotypicQueryExecutorTest {
         String numericConcept2 = "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\";
 
         PhenotypicFilter categoricalFilter1 =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, categoricalConcept1, List.of("Finnish"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, categoricalConcept1, Set.of("Finnish"), null, null, null);
         PhenotypicFilter numericFilter1 = new PhenotypicFilter(PhenotypicFilterType.FILTER, numericConcept1, null, 42.0, null, null);
         PhenotypicFilter categoricalFilter2 =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, categoricalConcept2, List.of("female"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, categoricalConcept2, Set.of("female"), null, null, null);
         PhenotypicFilter numericFilter2 = new PhenotypicFilter(PhenotypicFilterType.FILTER, numericConcept2, null, null, 175.5, null);
         PhenotypicClause phenotypicSubquery1 = new PhenotypicSubquery(null, List.of(categoricalFilter1, numericFilter1), Operator.AND);
         PhenotypicClause phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(categoricalFilter2, numericFilter2), Operator.AND);
@@ -131,8 +131,8 @@ class PhenotypicQueryExecutorTest {
         // (catFilter1Ids AND numFilter1Ids) OR (catFilter2Ids AND numFilter2Ids)
         Set<Integer> expectedPatients = Set.of(3, 5, 8, 13, 1000);
 
-        when(phenotypicObservationStore.getKeysForValues(categoricalConcept1, List.of("Finnish"))).thenReturn(catFilter1Ids);
-        when(phenotypicObservationStore.getKeysForValues(categoricalConcept2, List.of("female"))).thenReturn(catFilter2Ids);
+        when(phenotypicObservationStore.getKeysForValues(categoricalConcept1, Set.of("Finnish"))).thenReturn(catFilter1Ids);
+        when(phenotypicObservationStore.getKeysForValues(categoricalConcept2, Set.of("female"))).thenReturn(catFilter2Ids);
         when(phenotypicObservationStore.getKeysForRange(numericConcept1, 42.0, null)).thenReturn(numFilter1Ids);
         when(phenotypicObservationStore.getKeysForRange(numericConcept2, null, 175.5)).thenReturn(numFilter2Ids);
 
@@ -145,12 +145,12 @@ class PhenotypicQueryExecutorTest {
         String conceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         Query query = new Query(
             List.of(), List.of(),
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, List.of("Finnish", "Zapotec"), null, null, null), null,
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, conceptPath, Set.of("Finnish", "Zapotec"), null, null, null), null,
             ResultType.COUNT, null, null
         );
 
         Set<Integer> patientIds = Set.of(8, 13, 21);
-        when(phenotypicObservationStore.getKeysForValues(conceptPath, List.of("Finnish", "Zapotec"))).thenReturn(patientIds);
+        when(phenotypicObservationStore.getKeysForValues(conceptPath, Set.of("Finnish", "Zapotec"))).thenReturn(patientIds);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);

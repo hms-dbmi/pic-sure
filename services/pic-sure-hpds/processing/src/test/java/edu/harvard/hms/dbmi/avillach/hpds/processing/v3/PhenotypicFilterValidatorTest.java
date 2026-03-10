@@ -5,8 +5,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,14 +28,14 @@ class PhenotypicFilterValidatorTest {
     @Test
     public void validate_validCategoricalFilter_isValid() {
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", List.of("male"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
         phenotypicFilterValidator.validate(phenotypicFilter, metaStore);
     }
 
     @Test
     public void validate_nonExistingCategoricalFilter_isValid() {
         PhenotypicFilter phenotypicFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\study123\\demographics\\not_a_real_concept\\", List.of("male"), null, null, null
+            PhenotypicFilterType.FILTER, "\\study123\\demographics\\not_a_real_concept\\", Set.of("male"), null, null, null
         );
 
         phenotypicFilterValidator.validate(phenotypicFilter, metaStore);
@@ -44,7 +44,7 @@ class PhenotypicFilterValidatorTest {
     @Test
     public void validate_invalidCategoricalFilter_throwsException() {
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\age\\", List.of("male"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\age\\", Set.of("male"), null, null, null);
         assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(phenotypicFilter, metaStore));
     }
 
@@ -87,7 +87,7 @@ class PhenotypicFilterValidatorTest {
     @Test
     public void validate_invalidFilterValuesAndMinMax_throwsException() {
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", List.of("male"), null, 20.0, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, 20.0, null);
         assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(phenotypicFilter, metaStore));
     }
 
@@ -101,7 +101,7 @@ class PhenotypicFilterValidatorTest {
     @Test
     public void validate_anyRecordOfFilterWithValues_throwsException() {
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\study123\\", List.of("purple"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\study123\\", Set.of("purple"), null, null, null);
         assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(phenotypicFilter, metaStore));
         PhenotypicFilter phenotypicFilter2 =
             new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, "\\study123\\", null, 42.0, null, null);
@@ -118,10 +118,32 @@ class PhenotypicFilterValidatorTest {
     @Test
     public void validate_requiredFilterWithValues_throwsException() {
         PhenotypicFilter phenotypicFilter =
-            new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\study123\\", List.of("purple"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\study123\\", Set.of("purple"), null, null, null);
         assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(phenotypicFilter, metaStore));
         PhenotypicFilter phenotypicFilter2 = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\study123\\", null, 42.0, null, null);
         assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(phenotypicFilter2, metaStore));
     }
+
+    @Test
+    public void validate_validAuthorizationFilter_isValid() {
+        AuthorizationFilter authorizationFilter = new AuthorizationFilter("\\study123\\demographics\\sex\\", Set.of("male"));
+        phenotypicFilterValidator.validate(authorizationFilter, metaStore);
+    }
+
+    @Test
+    public void validate_emptyValuesAuthorizationFilter_throwsException() {
+        // Authorization filters cannot be empty
+        AuthorizationFilter authorizationFilter = new AuthorizationFilter("\\study123\\demographics\\sex\\", Set.of());
+        assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(authorizationFilter, metaStore));
+        AuthorizationFilter nullAuthorizationFilter = new AuthorizationFilter("\\study123\\demographics\\sex\\", null);
+        assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(nullAuthorizationFilter, metaStore));
+    }
+
+    @Test
+    public void validate_continuousAuthorizationFilter_throwsException() {
+        AuthorizationFilter authorizationFilter = new AuthorizationFilter("\\study123\\demographics\\age\\", Set.of("male"));
+        assertThrows(IllegalArgumentException.class, () -> phenotypicFilterValidator.validate(authorizationFilter, metaStore));
+    }
+
 
 }

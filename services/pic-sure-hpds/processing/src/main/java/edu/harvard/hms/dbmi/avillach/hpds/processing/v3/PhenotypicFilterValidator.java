@@ -23,9 +23,13 @@ public class PhenotypicFilterValidator {
     }
 
     public void validate(AuthorizationFilter authorizationFilter, Map<String, ColumnMeta> metaStore) {
+        if (authorizationFilter.values() == null || authorizationFilter.values().isEmpty()) {
+            throw new IllegalArgumentException("AuthorizationFilter values cannot be null or empty");
+        }
         if (!metaStore.containsKey(authorizationFilter.conceptPath())) {
             throw new IllegalArgumentException(authorizationFilter.conceptPath() + " is not a valid concept path");
-        } else if (!metaStore.get(authorizationFilter.conceptPath()).isCategorical()) {
+        }
+        if (!metaStore.get(authorizationFilter.conceptPath()).isCategorical()) {
             throw new IllegalArgumentException(
                 authorizationFilter.conceptPath() + " is not a categorical variable. Authorization filters must be categorical"
             );

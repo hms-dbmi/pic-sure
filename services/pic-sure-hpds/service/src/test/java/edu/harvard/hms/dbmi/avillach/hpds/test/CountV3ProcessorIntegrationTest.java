@@ -15,6 +15,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -61,7 +62,7 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_multipleConceptsWithFilters() {
         PhenotypicFilter sexFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", List.of("male"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
         PhenotypicFilter populationFilter =
             new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, null, null, null);
 
@@ -80,9 +81,8 @@ public class CountV3ProcessorIntegrationTest {
 
     @Test
     public void runCategoryCrossCounts_conceptsNoResults() {
-        PhenotypicFilter sexFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", List.of("vulcan"), null, null, null
-        );
+        PhenotypicFilter sexFilter =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("vulcan"), null, null, null);
         PhenotypicFilter populationFilter = new PhenotypicFilter(
             PhenotypicFilterType.REQUIRED, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, null, 500.0, null
         );
@@ -103,10 +103,10 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_twoFilters() {
         PhenotypicFilter sexFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", List.of("male", "female"), null, null, null
+            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male", "female"), null, null, null
         );
         PhenotypicFilter populationFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", List.of("Finnish"), null, null, null
+            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish"), null, null, null
         );
 
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.AND);
@@ -128,9 +128,9 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_twoFiltersOr() {
         PhenotypicFilter sexFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", List.of("male"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
         PhenotypicFilter populationFilter = new PhenotypicFilter(
-            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", List.of("Finnish"), null, null, null
+            PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\POPULATION NAME\\", Set.of("Finnish"), null, null, null
         );
 
         PhenotypicSubquery phenotypicSubquery = new PhenotypicSubquery(null, List.of(sexFilter, populationFilter), Operator.OR);
@@ -147,7 +147,7 @@ public class CountV3ProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_snpFilter() {
         PhenotypicFilter sexFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", List.of("male"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SEX\\", Set.of("male"), null, null, null);
         Query query = new Query(
             List.of(), List.of(), sexFilter, List.of(new GenomicFilter("chr21,5032061,A,G", List.of("0/1", "1/1"), null, null)),
             ResultType.COUNT, null, null

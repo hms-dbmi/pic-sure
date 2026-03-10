@@ -34,6 +34,14 @@ public record Query(
         return authorizationFilters == null ? List.of() : authorizationFilters;
     }
 
+    public Query setAuthorizationFilters(List<AuthorizationFilter> authorizationFilters) {
+        return new Query(
+            this.select, authorizationFilters == null ? List.of() : authorizationFilters, this.phenotypicClause, this.genomicFilters,
+            this.expectedResultType, this.picsureId, this.id
+        );
+    }
+
+
     @Override
     @NonNull
     public List<GenomicFilter> genomicFilters() {
