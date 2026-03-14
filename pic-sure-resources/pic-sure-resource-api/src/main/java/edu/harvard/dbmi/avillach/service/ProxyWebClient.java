@@ -121,7 +121,9 @@ public class ProxyWebClient {
     private Response getResponse(HttpRequestBase request) throws IOException {
         HttpResponse response = client.execute(request);
         int status = response.getStatusLine().getStatusCode();
-        LOG.info("Upstream response: status={}, uri={}", status, request.getURI());
+        if (status >= 400) {
+            LOG.warn("Upstream error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
+        }
         return Response.status(status).entity(response.getEntity().getContent()).build();
     }
 }
