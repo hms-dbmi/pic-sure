@@ -214,14 +214,10 @@ public class JWTFilter implements ContainerRequestFilter {
             String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
             AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles);
 
-            responseContent.fieldNames().forEachRemaining(fieldName -> {
-                logger.info("Field name: " + fieldName);
-            });
-
+            // If there is a query in the response, PSAMA has updated the authorization filters and we must update the query
             if (responseContent.get("query") != null) {
                 QueryRequest queryObject = new ObjectMapper().readValue(requestContext.getEntityStream(), QueryRequest.class);
                 queryObject.setQuery(responseContent.get("query").asText());
-                logger.info("QueryRequest: " + queryObject);
                 requestContext.setEntityStream(new ByteArrayInputStream(new ObjectMapper().writeValueAsBytes(queryObject)));
             }
             return user;
