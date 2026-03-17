@@ -221,8 +221,8 @@ public class JWTFilter implements ContainerRequestFilter {
                 requestContext.setEntityStream(new ByteArrayInputStream(new ObjectMapper().writeValueAsBytes(queryObject)));
             }
             return user;
-        } catch (Exception ex) {
-            logger.error("callTokenIntroEndpoint() Exception when hitting url: " + post + " with exception msg: " + ex.getMessage(), ex);
+        } catch (IOException ex) {
+            logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post + " with exception msg: " + ex.getMessage());
         } finally {
             try {
                 if (response != null) response.close();
