@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserMetadataMappingRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockitoAnnotations;
@@ -15,6 +17,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
@@ -23,6 +26,9 @@ public class ConnectionWebServiceTest {
 
     @MockBean
     private ConnectionRepository connectionRepo;
+
+    @MockBean
+    private UserMetadataMappingRepository userMetadataMappingRepo;
 
     @Autowired
     private ConnectionWebService service;
@@ -51,12 +57,20 @@ public class ConnectionWebServiceTest {
         assertFalse(result.isEmpty());
         assertEquals(1, result.size());
         verify(connectionRepo, times(1)).saveAll(anyList());
+        verify(userMetadataMappingRepo, times(1)).saveAll(argThat((List<UserMetadataMapping> mappings) -> {
+            if (mappings.size() != 1) return false;
+            UserMetadataMapping m = mappings.get(0);
+            return "$.email".equals(m.getGeneralMetadataJsonPath())
+                    && "$.email".equals(m.getAuth0MetadataJsonPath())
+                    && conn.equals(m.getConnection());
+        }));
     }
 
     @Test
     public void testAddConnection_FailureDueToNullFields() {
         Connection conn = new Connection(); // missing required fields
         assertThrows(IllegalArgumentException.class, () -> service.addConnection(Collections.singletonList(conn)));
+        verify(userMetadataMappingRepo, never()).saveAll(anyList());
     }
 
     @Test
@@ -65,6 +79,7 @@ public class ConnectionWebServiceTest {
         when(connectionRepo.findById("123")).thenReturn(Optional.of(conn));
 
         assertThrows(IllegalArgumentException.class, () -> service.addConnection(Collections.singletonList(conn)));
+        verify(userMetadataMappingRepo, never()).saveAll(anyList());
     }
 
     @Test

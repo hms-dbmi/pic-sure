@@ -1,23 +1,26 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserMetadataMapping;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserMetadataMappingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class ConnectionWebService {
 
     private final ConnectionRepository connectionRepo;
+    private final UserMetadataMappingRepository userMetadataMappingRepo;
 
     @Autowired
-    protected ConnectionWebService(ConnectionRepository connectionRepo) {
+    protected ConnectionWebService(ConnectionRepository connectionRepo, UserMetadataMappingRepository userMetadataMappingRepo) {
         this.connectionRepo = connectionRepo;
+        this.userMetadataMappingRepo = userMetadataMappingRepo;
     }
 
     @Transactional
@@ -32,7 +35,17 @@ public class ConnectionWebService {
             }
         }
 
-        return this.connectionRepo.saveAll(connections);
+        List<Connection> savedConnections = this.connectionRepo.saveAll(connections);
+
+        List<UserMetadataMapping> mappings = savedConnections.stream()
+                .map(c -> new UserMetadataMapping()
+                        .setConnection(c)
+                        .setGeneralMetadataJsonPath("$.email")
+                        .setAuth0MetadataJsonPath("$.email"))
+                .toList();
+        this.userMetadataMappingRepo.saveAll(mappings);
+
+        return savedConnections;
     }
 
     public Connection getConnectionById(String connectionId) {
