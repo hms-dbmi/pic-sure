@@ -52,7 +52,10 @@ public class ProxyWebClientTest {
         Mockito.when(response.getStatusLine()).thenReturn(statusLine);
         Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
         Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
         subject.client = client;
 
@@ -67,7 +70,10 @@ public class ProxyWebClientTest {
         Mockito.when(response.getStatusLine()).thenReturn(statusLine);
         Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
         Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
         subject.client = client;
 
@@ -154,7 +160,10 @@ public class ProxyWebClientTest {
         Mockito.when(response.getStatusLine()).thenReturn(statusLine);
         Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
         Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
         subject.client = client;
 
