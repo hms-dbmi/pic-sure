@@ -200,9 +200,10 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
                 metadata.put("api_version", "v3");
             }
 
-            // Merge domain-specific metadata from AuditContext (set by services)
+            // Merge domain-specific metadata from AuditContext (set by services).
+            // Filter-managed keys take precedence over AuditContext values.
             if (auditContext != null) {
-                metadata.putAll(auditContext.getMetadata());
+                auditContext.getMetadata().forEach(metadata::putIfAbsent);
             }
 
             // Build error map for 4xx/5xx
