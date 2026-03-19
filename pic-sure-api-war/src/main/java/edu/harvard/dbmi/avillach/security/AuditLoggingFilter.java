@@ -140,8 +140,7 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             String srcIp = null;
             String xForwardedFor = httpServletRequest.getHeader("X-Forwarded-For");
             if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-                int commaIndex = xForwardedFor.indexOf(',');
-                srcIp = commaIndex > 0 ? xForwardedFor.substring(0, commaIndex).trim() : xForwardedFor.trim();
+                srcIp = xForwardedFor.split(",")[0].trim();
             } else {
                 srcIp = httpServletRequest.getRemoteAddr();
             }
