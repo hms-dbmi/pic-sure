@@ -20,6 +20,7 @@ import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.Response;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -104,5 +105,61 @@ public class ProxyWebClientTest {
         Response actual = subject.postProxy("foo", "/my/cool/path", "{}", params, null);
 
         Assert.assertEquals(200, actual.getStatus());
+    }
+
+    @Test
+    public void shouldBufferSmallResponse() throws IOException {
+        Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
+        Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
+
+        Assert.assertEquals(200, actual.getStatus());
+        // Small responses should be buffered as a byte array
+        assertTrue(actual.getEntity() instanceof byte[]);
+    }
+
+    @Test
+    public void shouldStreamLargeResponse() throws IOException {
+        ByteArrayInputStream largeBody = new ByteArrayInputStream("{}".getBytes());
+        Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(entity.getContent()).thenReturn(largeBody);
+        Mockito.when(entity.getContentLength()).thenReturn(20 * 1024 * 1024L);
+        Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
+
+        Assert.assertEquals(200, actual.getStatus());
+        // Large responses should pass through the InputStream, not a byte array
+        assertTrue(actual.getEntity() instanceof InputStream);
+    }
+
+    @Test
+    public void shouldStreamWhenContentLengthUnknown() throws IOException {
+        ByteArrayInputStream body = new ByteArrayInputStream("{}".getBytes());
+        Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(entity.getContent()).thenReturn(body);
+        Mockito.when(entity.getContentLength()).thenReturn(-1L);
+        Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
+
+        Assert.assertEquals(200, actual.getStatus());
+        // Unknown content length (-1) should stream to be safe
+        assertTrue(actual.getEntity() instanceof InputStream);
     }
 }

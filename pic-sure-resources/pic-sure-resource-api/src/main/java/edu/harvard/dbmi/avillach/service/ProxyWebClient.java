@@ -109,8 +109,10 @@ public class ProxyWebClient {
         HttpResponse response = client.execute(request);
         int status = response.getStatusLine().getStatusCode();
 
-        if (status >= 400) {
-            LOG.warn("Upstream error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
+        if (status >= 500) {
+            LOG.warn("Upstream server error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
+        } else if (status >= 400) {
+            LOG.debug("Upstream client error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
         }
 
         long contentLength = response.getEntity().getContentLength();
@@ -122,7 +124,13 @@ public class ProxyWebClient {
         }
 
         // Normal case: buffer the response so the connection is released immediately
-        byte[] body = EntityUtils.toByteArray(response.getEntity());
-        return Response.status(status).entity(body).build();
+        try {
+            byte[] body = EntityUtils.toByteArray(response.getEntity());
+            return Response.status(status).entity(body).build();
+        } catch (IOException e) {
+            // Ensure the connection is released back to the pool on read failure
+            request.releaseConnection();
+            throw e;
+        }
     }
 }
