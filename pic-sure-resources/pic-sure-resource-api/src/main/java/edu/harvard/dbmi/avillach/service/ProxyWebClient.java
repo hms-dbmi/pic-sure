@@ -13,6 +13,7 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +39,8 @@ public class ProxyWebClient {
 
         connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(100); // Maximum total connections
-        connectionManager.setDefaultMaxPerRoute(20); // Maximum connections per route
+        connectionManager.setDefaultMaxPerRoute(50); // Maximum connections per route
+        connectionManager.setValidateAfterInactivity(5000); // Validate idle connections before reuse
 
         client = HttpClientUtil.getConfiguredHttpClient(connectionManager);
     }
@@ -102,6 +104,12 @@ public class ProxyWebClient {
 
     private Response getResponse(HttpRequestBase request) throws IOException {
         HttpResponse response = client.execute(request);
-        return Response.ok(response.getEntity().getContent()).build();
+        int status = response.getStatusLine().getStatusCode();
+        byte[] body = EntityUtils.toByteArray(response.getEntity());
+        
+        if (status >= 400) {
+            LOG.warn("Upstream error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
+        }
+        return Response.status(status).entity(body).build();
     }
 }
