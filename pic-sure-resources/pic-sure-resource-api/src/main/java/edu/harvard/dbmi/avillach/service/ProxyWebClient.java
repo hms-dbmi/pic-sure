@@ -102,14 +102,27 @@ public class ProxyWebClient {
         return resourceRepository.getByColumn("name", container).isEmpty();
     }
 
+    // Responses larger than 10MB are streamed instead of buffered to avoid OOM
+    private static final long MAX_BUFFERED_BYTES = 10 * 1024 * 1024;
+
     private Response getResponse(HttpRequestBase request) throws IOException {
         HttpResponse response = client.execute(request);
         int status = response.getStatusLine().getStatusCode();
-        byte[] body = EntityUtils.toByteArray(response.getEntity());
-        
+
         if (status >= 400) {
             LOG.warn("Upstream error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
         }
+
+        long contentLength = response.getEntity().getContentLength();
+        if (contentLength > MAX_BUFFERED_BYTES) {
+            // Large response: stream directly. The connection stays checked out until
+            // the client finishes reading, but this avoids buffering huge payloads in heap.
+            LOG.info("Large upstream response ({}MB), streaming instead of buffering", contentLength / (1024 * 1024));
+            return Response.status(status).entity(response.getEntity().getContent()).build();
+        }
+
+        // Normal case: buffer the response so the connection is released immediately
+        byte[] body = EntityUtils.toByteArray(response.getEntity());
         return Response.status(status).entity(body).build();
     }
 }
