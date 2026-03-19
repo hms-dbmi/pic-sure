@@ -21,6 +21,10 @@
         <enabled>true</enabled>
       </snapshots>
     </repository>
+    <repository>
+      <id>github-logging-client</id>
+      <url>https://maven.pkg.github.com/hms-dbmi/PIC-SURE-Logging-Client</url>
+    </repository>
   </repositories>
   <properties>
     <jackson.version>2.16.0</jackson.version>
@@ -338,7 +342,7 @@
       <dependency>
         <groupId>edu.harvard.dbmi.avillach</groupId>
         <artifactId>pic-sure-logging-client</artifactId>
-        <version>1.0.0</version>
+        <version>v1.0.0</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
