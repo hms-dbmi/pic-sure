@@ -114,7 +114,7 @@ public class ProxyWebClient {
         }
 
         long contentLength = response.getEntity().getContentLength();
-        if (contentLength > MAX_BUFFERED_BYTES) {
+        if (contentLength > MAX_BUFFERED_BYTES || contentLength == -1) {
             // Large response: stream directly. The connection stays checked out until
             // the client finishes reading, but this avoids buffering huge payloads in heap.
             LOG.info("Large upstream response ({}MB), streaming instead of buffering", contentLength / (1024 * 1024));
