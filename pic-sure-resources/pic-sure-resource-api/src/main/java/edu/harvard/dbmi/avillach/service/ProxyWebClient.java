@@ -24,8 +24,11 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ProxyWebClient {
@@ -100,7 +103,18 @@ public class ProxyWebClient {
             .toArray(NameValuePair[]::new);
     }
 
-    private static final Set<String> FORWARDED_HEADERS = Set.of("authorization", "x-api-key", "x-request-id");
+    private static final String DEFAULT_FORWARDED_HEADERS = "authorization,x-api-key,x-request-id";
+
+    private static final Set<String> FORWARDED_HEADERS = initForwardedHeaders();
+
+    private static Set<String> initForwardedHeaders() {
+        String configured = System.getenv("PROXY_FORWARDED_HEADERS");
+        String headerList = configured != null ? configured : DEFAULT_FORWARDED_HEADERS;
+        return Collections.unmodifiableSet(
+            Arrays.stream(headerList.split(",")).map(String::trim).filter(s -> !s.isEmpty()).map(String::toLowerCase)
+                .collect(Collectors.toSet())
+        );
+    }
 
     private void forwardHeaders(HttpHeaders headers, HttpRequestBase request) {
         if (headers == null) {
