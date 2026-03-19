@@ -5,8 +5,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
@@ -20,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -34,6 +38,7 @@ import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -63,6 +68,9 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 	@Mock
 	private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
+	@Mock
+	private AuditContext auditContext = mock(AuditContext.class);
+
 	@Before
 	public void setUp() {
 		resourceId = UUID.randomUUID();
@@ -80,6 +88,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
 		when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 		when(mockResource.getUuid()).thenReturn(resourceId);
+		when(mockResource.getName()).thenReturn("test-resource");
 
 		// Mock persisting the queryentity, so that it has an ID and we can test that
 		// the correct information is stored in it
@@ -493,5 +502,82 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 		assertEquals("Resource result id should match returned header",
 				resultId, queryEntity.getResourceResultId());
 
+	}
+
+	@Test
+	public void testQuerySetsAuditContext() {
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
+		dataQueryRequest.setResourceCredentials(new HashMap<>());
+		dataQueryRequest.setResourceUUID(resourceId);
+		dataQueryRequest.setQuery(queryString);
+
+		queryService.query(dataQueryRequest, null);
+
+		verify(auditContext).put("resource_id", resourceId.toString());
+		verify(auditContext).put("resource_name", "test-resource");
+		verify(auditContext).put(eq("query_id"), any(String.class));
+	}
+
+	@Test
+	public void testQuerySyncSetsAuditContext() {
+		GeneralQueryRequest dataQueryRequest = new GeneralQueryRequest();
+		dataQueryRequest.setResourceCredentials(new HashMap<>());
+		dataQueryRequest.setResourceUUID(resourceId);
+		dataQueryRequest.setQuery(queryString);
+
+		Response resp = mock(Response.class);
+		when(webClient.querySync(any(), any(), any())).thenReturn(resp);
+
+		queryService.querySync(dataQueryRequest, null);
+
+		verify(auditContext).put("resource_id", resourceId.toString());
+		verify(auditContext).put("resource_name", "test-resource");
+		verify(auditContext).put(eq("query_id"), any(String.class));
+	}
+
+	@Test
+	public void testQueryResultSetsAuditContext() {
+		GeneralQueryRequest resultRequest = new GeneralQueryRequest();
+		resultRequest.setResourceCredentials(new HashMap<>());
+
+		queryEntity = new Query();
+		queryEntity.setUuid(queryId);
+		queryEntity.setResourceResultId(queryId.toString());
+		queryEntity.setResource(mockResource);
+		queryEntity.setStatus(PicSureStatus.AVAILABLE);
+		queryEntity.setQuery(queryString);
+		queryEntity.setStartTime(new java.sql.Date(results.getStartTime()));
+		when(queryRepo.getById(queryId)).thenReturn(queryEntity);
+		Response resp = mock(Response.class);
+		when(webClient.queryResult(any(), any(), any())).thenReturn(resp);
+
+		queryService.queryResult(queryId, resultRequest, null);
+
+		verify(auditContext).put("resource_id", resourceId.toString());
+		verify(auditContext).put("resource_name", "test-resource");
+		verify(auditContext).put("query_id", queryId.toString());
+	}
+
+	@Test
+	public void testQuerySignedUrlSetsAuditContext() {
+		GeneralQueryRequest resultRequest = new GeneralQueryRequest();
+		resultRequest.setResourceCredentials(new HashMap<>());
+
+		queryEntity = new Query();
+		queryEntity.setUuid(queryId);
+		queryEntity.setResourceResultId(queryId.toString());
+		queryEntity.setResource(mockResource);
+		queryEntity.setStatus(PicSureStatus.AVAILABLE);
+		queryEntity.setQuery(queryString);
+		queryEntity.setStartTime(new java.sql.Date(results.getStartTime()));
+		when(queryRepo.getById(queryId)).thenReturn(queryEntity);
+		Response resp = mock(Response.class);
+		when(webClient.queryResultSignedUrl(any(), any(), any())).thenReturn(resp);
+
+		queryService.queryResultSignedUrl(queryId, resultRequest, null);
+
+		verify(auditContext).put("resource_id", resourceId.toString());
+		verify(auditContext).put("resource_name", "test-resource");
+		verify(auditContext).put("query_id", queryId.toString());
 	}
 }

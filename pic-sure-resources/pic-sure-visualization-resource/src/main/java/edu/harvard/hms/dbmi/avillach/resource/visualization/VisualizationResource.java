@@ -86,7 +86,7 @@ public class VisualizationResource implements IResourceRS {
             logger.info("resource=visualization /query/sync query=" + query.getQuery().toString() + " request-source=" + requestSource);
         }
 
-        if (loggingClient != null) {
+        if (loggingClient != null && loggingClient.isEnabled()) {
             loggingClient.send(LoggingEvent.builder("QUERY")
                 .action("VISUALIZATION_QUERY_SYNC")
                 .request(RequestInfo.builder()

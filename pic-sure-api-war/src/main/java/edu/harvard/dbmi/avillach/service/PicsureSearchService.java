@@ -16,74 +16,96 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import javax.ws.rs.core.HttpHeaders;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class PicsureSearchService {
 
-	private final Logger logger = LoggerFactory.getLogger(PicsureSearchService.class);
+    private final Logger logger = LoggerFactory.getLogger(PicsureSearchService.class);
 
-	private final static ObjectMapper mapper = new ObjectMapper();
+    private final static ObjectMapper mapper = new ObjectMapper();
 
-	@Inject
-	ResourceRepository resourceRepo;
+    @Inject
+    ResourceRepository resourceRepo;
 
-	@Inject
-	ResourceWebClient resourceWebClient;
+    @Inject
+    ResourceWebClient resourceWebClient;
 
-	/**
-	 * Executes a concept search against a target resource
-	 *
-	 * @param resourceId         - UUID of target resource
-	 * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object
-	 *                           and resource specific query (could be a string or a json object)
-	 * @param headers
-	 * @return {@link SearchResults}
-	 */
-	public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest, HttpHeaders headers) {
-		if (resourceId == null){
-			throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
-		}
-		Resource resource = resourceRepo.getById(resourceId);
-		if (resource == null) {
-			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
-		}
-		if (searchQueryRequest == null){
-			throw new ProtocolException(ProtocolException.MISSING_DATA);
-		}
+    @Inject
+    AuditContext auditContext;
 
-		logger.info("path=/search/{resourceId}, resourceId={}, requestSource={}, searchQueryRequest={}",
-				resourceId,
-				Utilities.getRequestSourceFromHeader(headers),
-				Utilities.convertQueryRequestToString(mapper, searchQueryRequest)
-		);
+    /**
+     * Executes a concept search against a target resource
+     *
+     * @param resourceId - UUID of target resource
+     * @param searchQueryRequest - {@link QueryRequest} containing resource specific credentials object and resource specific query (could
+     *        be a string or a json object)
+     * @param headers
+     * @return {@link SearchResults}
+     */
+    public SearchResults search(UUID resourceId, QueryRequest searchQueryRequest, HttpHeaders headers) {
+        if (resourceId == null) {
+            throw new ProtocolException(ProtocolException.MISSING_RESOURCE_ID);
+        }
+        Resource resource = resourceRepo.getById(resourceId);
+        if (resource == null) {
+            throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+        if (searchQueryRequest == null) {
+            throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
 
-		if (searchQueryRequest.getResourceCredentials() == null){
-			searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
-		}
-		return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
-	}
+        logger.info(
+            "path=/search/{resourceId}, resourceId={}, requestSource={}, searchQueryRequest={}", resourceId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, searchQueryRequest)
+        );
 
-	public PaginatedSearchResult<?> searchGenomicConceptValues(UUID resourceId, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size
-			, HttpHeaders headers) {
-		Resource resource = resourceRepo.getById(resourceId);
-		if (resource == null){
-			throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
-		}
-		if (resource.getResourceRSPath() == null){
-			throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+		if (auditContext != null) {
+			auditContext.put("resource_id", resourceId.toString());
+			auditContext.put("resource_name", resource.getName());
+			if (searchQueryRequest.getQuery() != null) {
+				auditContext.put("search_term", searchQueryRequest.getQuery().toString());
+			}
 		}
 
-		logger.info("path=/search/{resourceId}/concept/{conceptPath}, resourceId={}, requestSource={}, queryRequest={}, conceptPath={}, query={}",
-				resourceId,
-				Utilities.getRequestSourceFromHeader(headers),
-				Utilities.convertQueryRequestToString(mapper, queryRequest),
-				conceptPath,
-				query);
+        if (searchQueryRequest.getResourceCredentials() == null) {
+            searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
+        }
+        return resourceWebClient.search(resource.getResourceRSPath(), searchQueryRequest);
+    }
 
-		return resourceWebClient.searchConceptValues(resource.getResourceRSPath(), queryRequest, conceptPath, query, page, size);
-	}
+    public PaginatedSearchResult<?> searchGenomicConceptValues(
+        UUID resourceId, QueryRequest queryRequest, String conceptPath, String query, Integer page, Integer size, HttpHeaders headers
+    ) {
+        Resource resource = resourceRepo.getById(resourceId);
+        if (resource == null) {
+            throw new ProtocolException(ProtocolException.RESOURCE_NOT_FOUND + resourceId.toString());
+        }
+        if (resource.getResourceRSPath() == null) {
+            throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+        }
+
+        logger.info(
+            "path=/search/{resourceId}/concept/{conceptPath}, resourceId={}, requestSource={}, queryRequest={}, conceptPath={}, query={}",
+            resourceId, Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, queryRequest),
+            conceptPath, query
+        );
+
+		if (auditContext != null) {
+			auditContext.put("resource_id", resourceId.toString());
+			auditContext.put("resource_name", resource.getName());
+			if (conceptPath != null) {
+				auditContext.put("genomic_concept_path", conceptPath);
+			}
+			if (query != null) {
+				auditContext.put("query", query);
+			}
+		}
+
+        return resourceWebClient.searchConceptValues(resource.getResourceRSPath(), queryRequest, conceptPath, query, page, size);
+    }
 
 }

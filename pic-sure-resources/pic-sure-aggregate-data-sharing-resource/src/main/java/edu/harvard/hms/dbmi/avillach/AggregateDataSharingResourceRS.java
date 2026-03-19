@@ -258,7 +258,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         logger.debug("Calling Aggregate Data Sharing Resource querySync()");
         checkQuery(queryRequest);
 
-        if (loggingClient != null) {
+        if (loggingClient != null && loggingClient.isEnabled()) {
             loggingClient.send(LoggingEvent.builder("QUERY")
                 .action("AGGREGATE_QUERY_SYNC")
                 .request(RequestInfo.builder()

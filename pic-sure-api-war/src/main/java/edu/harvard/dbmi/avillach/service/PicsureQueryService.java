@@ -8,9 +8,6 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
 import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -54,7 +51,7 @@ public class PicsureQueryService {
     SiteParsingService siteParsingService;
 
     @Inject
-    LoggingClient loggingClient;
+    AuditContext auditContext;
 
     /**
      * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
@@ -76,18 +73,10 @@ public class PicsureQueryService {
 
         logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
 
-        if (loggingClient != null) {
-            loggingClient.send(LoggingEvent.builder("QUERY")
-                .action("QUERY_SUBMITTED")
-                .request(RequestInfo.builder()
-                    .method("POST")
-                    .url("/query")
-                    .build())
-                .metadata(Map.of(
-                    "resource_id", resource.getUuid().toString(),
-                    "query_id", queryEntity.getUuid().toString()
-                ))
-                .build());
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
         }
 
         results.setPicsureResultId(queryEntity.getUuid());
@@ -167,10 +156,15 @@ public class PicsureQueryService {
         }
 
         logger.info(
-                "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
-                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+            "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -207,10 +201,15 @@ public class PicsureQueryService {
         }
 
         logger.info(
-                "path=/query/{queryId}/signed-url, resourceId={}, requestSource={}, queryRequest={}", queryId,
-                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+            "path=/query/{queryId}/signed-url, resourceId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResultSignedUrl(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -267,6 +266,13 @@ public class PicsureQueryService {
 
         queryEntity.setQuery(queryJson);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+        }
+
         queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest, requestSource);
         String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
@@ -344,6 +350,14 @@ public class PicsureQueryService {
         QueryStatus response = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
         Query queryEntity = copyQuery(dataQueryRequest, resource, response);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+            auditContext.put("institution", siteCode);
+        }
+
         return response;
     }
 
