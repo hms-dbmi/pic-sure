@@ -88,7 +88,7 @@ public class VisualizationResource implements IResourceRS {
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             loggingClient.send(LoggingEvent.builder("QUERY")
-                .action("VISUALIZATION_QUERY_SYNC")
+                .action("visualization.query_sync")
                 .request(RequestInfo.builder()
                     .method("POST")
                     .url("/visualization/query/sync")

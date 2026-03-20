@@ -134,7 +134,7 @@ public class JWTFilter implements ContainerRequestFilter {
                     logger.error("User is not authorized.");
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("OPEN_ACCESS_DENIED").request(buildAuthRequestInfo())
+                            LoggingEvent.builder("AUTH").action("open_access.denied").request(buildAuthRequestInfo())
                                 .metadata(Map.of("session_id", extractSessionId())).build()
                         );
                     }
@@ -147,7 +147,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 requestContext.setProperty("username", "OPEN_ACCESS:" + requestContext.getUriInfo().getRequestUri().getHost());
                 if (loggingClient != null && loggingClient.isEnabled()) {
                     loggingClient.send(
-                        LoggingEvent.builder("AUTH").action("OPEN_ACCESS_GRANTED").request(buildAuthRequestInfo())
+                        LoggingEvent.builder("AUTH").action("open_access.granted").request(buildAuthRequestInfo())
                             .metadata(Map.of("session_id", extractSessionId())).build()
                     );
                 }
@@ -155,7 +155,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 if (authorizationHeader == null || authorizationHeader.isEmpty()) {
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("AUTH_FAILURE").request(buildAuthRequestInfo())
+                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
                                 .metadata(Map.of("reason", "missing_token")).build()
                         );
                     }
@@ -166,7 +166,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 if (token.isEmpty()) {
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("AUTH_FAILURE").request(buildAuthRequestInfo())
+                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
                                 .metadata(Map.of("reason", "empty_token")).build()
                         );
                     }
@@ -182,7 +182,7 @@ public class JWTFilter implements ContainerRequestFilter {
                         logger.error("Cannot extract a user from token: {}", token);
                         if (loggingClient != null && loggingClient.isEnabled()) {
                             loggingClient.send(
-                                LoggingEvent.builder("AUTH").action("AUTH_FAILURE").request(buildAuthRequestInfo())
+                                LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
                                     .metadata(Map.of("reason", "invalid_token")).error(Map.of("message", "Cannot extract user from token"))
                                     .build(),
                                 authorizationHeader, null
@@ -199,7 +199,7 @@ public class JWTFilter implements ContainerRequestFilter {
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("AUTH_SUCCESS").request(buildAuthRequestInfo()).build(),
+                            LoggingEvent.builder("AUTH").action("auth.success").request(buildAuthRequestInfo()).build(),
                             authorizationHeader, null
                         );
                     }
@@ -208,7 +208,7 @@ public class JWTFilter implements ContainerRequestFilter {
                     logger.error("User - {} - is not authorized. {}", userForLogging, e.getChallenges());
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("AUTH_FAILURE").request(buildAuthRequestInfo())
+                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
                                 .metadata(Map.of("reason", "not_authorized"))
                                 .error(Map.of("message", e.getMessage() != null ? e.getMessage() : "Not authorized")).build(),
                             authorizationHeader, null
@@ -220,7 +220,7 @@ public class JWTFilter implements ContainerRequestFilter {
                         .error("User - {} - is not authorized {} and an Inner application error occurred.", userForLogging, e.getMessage());
                     if (loggingClient != null && loggingClient.isEnabled()) {
                         loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("AUTH_FAILURE").request(buildAuthRequestInfo())
+                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
                                 .metadata(Map.of("reason", "internal_error"))
                                 .error(
                                     Map.of(
