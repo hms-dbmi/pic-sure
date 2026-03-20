@@ -260,7 +260,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             loggingClient.send(LoggingEvent.builder("QUERY")
-                .action("AGGREGATE_QUERY_SYNC")
+                .action("aggregate.query_sync")
                 .request(RequestInfo.builder()
                     .method("POST")
                     .url("/aggregate-data-sharing/query/sync")

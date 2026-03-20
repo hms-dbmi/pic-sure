@@ -109,31 +109,31 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
 
             if (QUERY_SYNC.matcher(path).matches() && "POST".equals(method)) {
                 eventType = "QUERY";
-                action = "QUERY_SYNC";
+                action = "query.sync";
             } else if (QUERY_SUBMIT.matcher(path).matches() && "POST".equals(method)) {
                 eventType = "QUERY";
-                action = "QUERY_SUBMITTED";
+                action = "query.submitted";
             } else if (QUERY_STATUS.matcher(path).matches()) {
                 eventType = "QUERY";
-                action = "QUERY_STATUS";
+                action = "query.status";
             } else if (QUERY_RESULT.matcher(path).matches()) {
                 eventType = "DATA_ACCESS";
-                action = "QUERY_RESULT";
+                action = "query.result";
             } else if (QUERY_SIGNED_URL.matcher(path).matches()) {
                 eventType = "DATA_ACCESS";
-                action = "QUERY_SIGNED_URL";
+                action = "query.signed_url";
             } else if (QUERY_METADATA.matcher(path).matches()) {
                 eventType = "QUERY";
-                action = "QUERY_METADATA";
+                action = "query.metadata";
             } else if (SEARCH.matcher(path).matches() && "POST".equals(method)) {
                 eventType = "SEARCH";
-                action = "SEARCH";
+                action = "search.execute";
             } else if (SEARCH_VALUES.matcher(path).find()) {
                 eventType = "SEARCH";
-                action = "SEARCH_VALUES";
+                action = "search.values";
             } else if (path.contains("/proxy/")) {
                 eventType = "PROXY";
-                action = "PROXY_REQUEST";
+                action = "proxy.request";
             }
 
             // Determine source IP
