@@ -1,18 +1,3 @@
-FROM hms-dbmi/pic-sure-hpds-build:LATEST AS hpds-base
-FROM maven:3.9.9-amazoncorretto-24 AS build
-
-# Copy the .m2 artifacts from HPDS base image
-COPY --from=hpds-base /root/.m2 /root/.m2
-
-# Copy the source code into the container
-COPY ./ /app
-
-# Change the working directory
-WORKDIR /app
-
-# Build the jar
-RUN mvn clean install -DskipTests
-
 FROM amazoncorretto:24-alpine
 
 ARG DATASOURCE_URL
@@ -21,10 +6,10 @@ ARG STACK_SPECIFIC_APPLICATION_ID
 
 ENV DATASOURCE_URL=${DATASOURCE_URL}
 ENV DATASOURCE_USERNAME=${DATASOURCE_USERNAME}
-ENV STACK_SPECIFIC_APPLICATION_ID=${application_id_for_base_query}
+ENV STACK_SPECIFIC_APPLICATION_ID=${STACK_SPECIFIC_APPLICATION_ID}
 
-# Copy jar and access token from maven build
-COPY --from=build /app/pic-sure-auth-services/target/pic-sure-auth-services-*.jar /pic-sure-auth-service.jar
+# Copy jar from pre-built workspace
+COPY pic-sure-auth-services/target/pic-sure-auth-services-*.jar /pic-sure-auth-service.jar
 
 # Copy additional bdc configuration files. Root of the project
 COPY config/psama/bdc/psama-db-config.properties /config/psama-db-config.properties

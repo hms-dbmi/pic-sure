@@ -20,6 +20,18 @@ pipeline {
     }
 
     stages {
+        stage('Maven Build') {
+            steps {
+                sh '''docker run --rm \
+                  -v "/var/jenkins_home/workspace/${JOB_NAME}/:/app:z" \
+                  -v maven_m2_cache:/root/.m2 \
+                  -w /app \
+                  --platform=linux/amd64 \
+                  maven:3.9.9-amazoncorretto-24 \
+                  sh -lc "mvn clean install -DskipTests"'''
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -28,7 +40,7 @@ pipeline {
                                     " --build-arg DATASOURCE_USERNAME=${env.DATASOURCE_USERNAME} " +
                                     " --build-arg STACK_SPECIFIC_APPLICATION_ID=${env.STACK_SPECIFIC_APPLICATION_ID} "
 
-                    sh "docker build ${DOCKER_BUILD_ARGS} ${buildArgs} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
+                    sh "docker build --load ${DOCKER_BUILD_ARGS} ${buildArgs} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
                     sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
                 }
             }

@@ -83,7 +83,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
         String code = authRequest.get("code");
         if (StringUtils.isNotBlank(code)) {
             JsonNode userToken = super.handleCodeTokenExchange(host, code);
-            JsonNode introspectResponse = super.introspectToken(userToken);
+JsonNode introspectResponse = super.introspectToken(userToken);
             User user = initializeUser(introspectResponse);
 
             if (user == null) {
@@ -92,6 +92,7 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
 
             HashMap<String, String> responseMap = createUserClaims(user);
             logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+            responseMap.put("oktaIdToken", userToken.get("id_token").asText());
 
             return responseMap;
         }

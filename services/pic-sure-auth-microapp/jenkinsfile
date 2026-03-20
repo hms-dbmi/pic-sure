@@ -1,48 +1,83 @@
 pipeline {
-    agent any
+  agent any
 
-    parameters {
-        string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
-        string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'psama')
-        booleanParam(name: 'DEPLOY', description: 'Deploy the image to the registry', defaultValue: true)
-    }
+  parameters {
+    string(name: 'DOCKER_REGISTRY', description: 'Docker registry URL (e.g., ECR URL)', defaultValue: 'hms-dbmi')
+    string(name: 'REPOSITORY_NAME', description: 'Docker repository name', defaultValue: 'psama')
+    booleanParam(name: 'DEPLOY', description: 'Deploy the image to the registry', defaultValue: true)
+  }
 
-    environment {
-        DOCKER_BUILD_ARGS = "-f ./pic-sure-auth-services/Dockerfile --build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg no_proxy=\"$no_proxy\" --build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy --build-arg NO_PROXY=\"$no_proxy\""
-        GIT_BRANCH_SHORT = sh(script: 'echo ${GIT_BRANCH} | cut -d "/" -f 2', returnStdout: true).trim()
-        GIT_COMMIT_SHORT = sh(script: 'echo ${GIT_COMMIT} | cut -c1-7', returnStdout: true).trim()
-        IMAGE_TAG = "${GIT_BRANCH_SHORT}_${GIT_COMMIT_SHORT}"
-        LATEST_TAG = "LATEST"
-        EMAIL_TEMPLATE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/emailTemplates:/opt/jboss/wildfly/standalone/configuration/emailTemplates "
-        TRUSTSTORE_VOLUME="-v $DOCKER_CONFIG_DIR/wildfly/application.truststore:/opt/jboss/wildfly/standalone/configuration/application.truststore"
-        PSAMA_OPTS="-Xms1g -Xmx2g -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
-        TRUSTSTORE_JAVA_OPTS="-Djavax.net.ssl.trustStore=/opt/jboss/wildfly/standalone/configuration/application.truststore -Djavax.net.ssl.trustStorePassword=password"
-    }
+  environment {
+    LATEST_TAG = "LATEST"
+    EMAIL_TEMPLATE_VOLUME = "-v $DOCKER_CONFIG_DIR/wildfly/emailTemplates:/opt/jboss/wildfly/standalone/configuration/emailTemplates"
+    TRUSTSTORE_VOLUME     = "-v $DOCKER_CONFIG_DIR/wildfly/application.truststore:/opt/jboss/wildfly/standalone/configuration/application.truststore"
+    PSAMA_OPTS            = "-Xms1g -Xmx2g -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
+    TRUSTSTORE_JAVA_OPTS  = "-Djavax.net.ssl.trustStore=/opt/jboss/wildfly/standalone/configuration/application.truststore -Djavax.net.ssl.trustStorePassword=password"
 
-    stages {
-        stage('build') {
-            steps {
-                sh "docker build ${DOCKER_BUILD_ARGS} -t ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG} ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${LATEST_TAG}"
-            }
+    // If you need proxy args during docker build
+    DOCKER_BUILD_ARGS = "-f ./pic-sure-auth-services/Dockerfile " +
+      "--build-arg http_proxy=$http_proxy --build-arg https_proxy=$http_proxy --build-arg no_proxy=\"$no_proxy\" " +
+      "--build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$http_proxy --build-arg NO_PROXY=\"$no_proxy\""
+  }
+
+  stages {
+    stage('init') {
+      steps {
+        script {
+          env.GIT_BRANCH_SHORT = sh(script: 'echo "${GIT_BRANCH}" | awk -F/ \'{print $NF}\'', returnStdout: true).trim()
+          env.GIT_COMMIT_SHORT = sh(script: 'echo "${GIT_COMMIT}" | cut -c1-7', returnStdout: true).trim()
+          env.IMAGE_TAG        = "${env.GIT_BRANCH_SHORT}_${env.GIT_COMMIT_SHORT}"
+          env.IMAGE_NAME       = "${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}"
         }
-        stage('deploy') {
-            steps {
-                script {
-                    env.PROXY_OPTS = env.PROXY_OPTS == null ?: ''
-                    if (params.DEPLOY) {
-                        sh "docker stop psama || true"
-                        sh "docker rm psama || true"
-                        sh """docker run --name=psama --restart always \
-                            --network=picsure \
-                            --env-file /usr/local/docker-config/psama/psama.env \
-                            $EMAIL_TEMPLATE_VOLUME \
-                            $TRUSTSTORE_VOLUME \
-                            -e JAVA_OPTS="$PSAMA_OPTS $TRUSTSTORE_JAVA_OPTS" \
-                            -d ${params.DOCKER_REGISTRY}/${params.REPOSITORY_NAME}:${IMAGE_TAG}"""
-                   }
-                }
-            }
-        }
+      }
     }
+
+    stage('build jar (docker run)') {
+      steps {
+        sh '''
+          set -euo pipefail
+
+          # Build in a Maven container, output goes into the mounted workspace (target/ created here)
+          docker run --rm \
+            -v "$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME/:/app" \
+            -v maven_m2_cache:/root/.m2 \
+            -w /app \
+            maven:3.9.9-amazoncorretto-24 \
+            sh -lc "mvn clean install -B -T 1C -DskipTests"
+
+          ls -lah pic-sure-auth-services/target || true
+        '''
+      }
+    }
+
+    stage('build image') {
+      steps {
+        sh '''
+          set -euo pipefail
+          docker build ${DOCKER_BUILD_ARGS} -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
+        '''
+      }
+    }
+
+    stage('deploy') {
+      when { expression { return params.DEPLOY } }
+      steps {
+        sh '''
+          set +e
+          docker stop psama
+          docker rm psama
+          set -e
+
+          docker run --name=psama --restart always \
+            --network=picsure \
+            --env-file /usr/local/docker-config/psama/psama.env \
+            ${EMAIL_TEMPLATE_VOLUME} \
+            ${TRUSTSTORE_VOLUME} \
+            -e JAVA_OPTS="${PSAMA_OPTS} ${TRUSTSTORE_JAVA_OPTS}" \
+            -d "${IMAGE_NAME}:${IMAGE_TAG}"
+        '''
+      }
+    }
+  }
 }
