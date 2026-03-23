@@ -254,8 +254,10 @@ public class JWTFilter implements ContainerRequestFilter {
             }
 
             if (initialQuery != null) {
+                logger.info("Initial Query found:" + initialQuery);
                 IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
             } else {
+                logger.info("Initial Query is null");
                 // This stream is only consumable once, so we need to save & reset it.
                 InputStream entityStream = requestContext.getEntityStream();
                 IOUtils.copy(entityStream, buffer);
@@ -278,6 +280,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 } else if (queryObject instanceof Map) {
                     ((Map) queryObject).remove("resourceCredentials");
                 }
+                logger.info("Adding query to requestMap: " + queryObject);
                 requestMap.put("query", queryObject);
 
                 if (requestPath.startsWith("/query/")) {
@@ -310,6 +313,7 @@ public class JWTFilter implements ContainerRequestFilter {
             }
             return requestMap;
         } catch (JsonParseException ex) {
+            logger.info("Json parse exception, writing buffer to query");
             requestMap.put("query", buffer.toString());
             return requestMap;
         } catch (IOException e1) {
