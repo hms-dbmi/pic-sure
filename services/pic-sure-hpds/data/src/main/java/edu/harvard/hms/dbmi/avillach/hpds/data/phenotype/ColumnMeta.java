@@ -21,6 +21,9 @@ public class ColumnMeta implements Serializable {
     private long allObservationsLength;
     private int observationCount;
     private int patientCount;
+    private boolean hasTimestamp;
+    private Long timestampMin;
+    private Long timestampMax;
 
     public String getName() {
         return name;
@@ -121,6 +124,33 @@ public class ColumnMeta implements Serializable {
 
     public ColumnMeta setMax(double max) {
         this.max = max;
+        return this;
+    }
+
+    public boolean hasTimestamp() {
+        return hasTimestamp;
+    }
+
+    public ColumnMeta setHasTimestamp(boolean hasTimestamp) {
+        this.hasTimestamp = hasTimestamp;
+        return this;
+    }
+
+    public Long getTimestampMin() {
+        return timestampMin;
+    }
+
+    public ColumnMeta setTimestampMin(Long timestampMin) {
+        this.timestampMin = timestampMin;
+        return this;
+    }
+
+    public Long getTimestampMax() {
+        return timestampMax;
+    }
+
+    public ColumnMeta setTimestampMax(Long timestampMax) {
+        this.timestampMax = timestampMax;
         return this;
     }
 
