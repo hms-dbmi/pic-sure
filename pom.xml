@@ -342,7 +342,7 @@
       <dependency>
         <groupId>edu.harvard.dbmi.avillach</groupId>
         <artifactId>pic-sure-logging-client</artifactId>
-        <version>v1.0.0</version>
+        <version>1.0.0</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
