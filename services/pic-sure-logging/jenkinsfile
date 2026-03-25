@@ -34,7 +34,7 @@ pipeline {
           if [ -n "${DOCKER_CONFIG_DIR:-}" ]; then
             MOUNT_PATH="$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME"
           else
-            MOUNT_PATH="$WORKSPACE"
+            MOUNT_PATH="/var/jenkins_home/workspace/${JOB_NAME}"
           fi
 
           docker run --rm \
@@ -62,7 +62,7 @@ pipeline {
             PROXY_ARGS="$PROXY_ARGS --build-arg no_proxy=$no_proxy --build-arg NO_PROXY=$no_proxy"
           fi
 
-          docker build $PROXY_ARGS -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker build --load $PROXY_ARGS -t "${IMAGE_NAME}:${IMAGE_TAG}" .
           docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
         '''
       }
