@@ -250,7 +250,7 @@ public class JWTFilter implements ContainerRequestFilter {
             ) {
                 // Path: /query/{queryId}/result
                 String[] pathParts = requestPath.split("/");
-                UUID uuid = UUID.fromString(pathParts[2]);
+                UUID uuid = UUID.fromString(pathParts[requestPath.startsWith("/query/") ? 2 : 3]);
                 logger.info("Query ID: " + uuid);
                 initialQuery = queryRepo.getById(uuid);
             }
