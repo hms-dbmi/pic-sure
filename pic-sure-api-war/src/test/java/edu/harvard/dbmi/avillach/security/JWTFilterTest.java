@@ -76,6 +76,7 @@ public class JWTFilterTest {
     private Query persistedQuery() {
         Resource resource = basicResource();
         Query query = new Query();
+        query.setUuid(UUID.randomUUID());
         query.setQuery("{\"resourceUUID\":\"" + RESOURCE_UUID + "\"}");
         query.setResource(resource);
         when(filter.queryRepo.getById(QUERY_UUID)).thenReturn(query);

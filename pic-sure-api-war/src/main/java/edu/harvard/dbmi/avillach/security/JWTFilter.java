@@ -135,6 +135,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 } catch (Exception e) {
                     logger
                         .error("User - {} - is not authorized {} and an Inner application error occurred.", userForLogging, e.getMessage());
+                    logger.error("Error:", e);
                     requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
                 }
             }

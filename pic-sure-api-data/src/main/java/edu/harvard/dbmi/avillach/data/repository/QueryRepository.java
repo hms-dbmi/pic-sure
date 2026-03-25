@@ -24,9 +24,4 @@ public class QueryRepository extends BaseRepository<Query, UUID> {
             return null;
         }
     }
-
-    public void persist(Query query) {
-        logger.info("Persisting query with UUID: {} and resource id: {}", query.getUuid(), query.getResourceResultId());
-        super.persist(query);
-    }
 }
