@@ -243,7 +243,6 @@ public class JWTFilter implements ContainerRequestFilter {
             requestMap.put("Target Service", requestPath);
 
             Query initialQuery = null;
-            logger.info("RequestPath = " + requestPath);
             // Read the query from the backing store if we are getting the results (full query may not be specified in request)
             if (
                 (requestPath.startsWith("/query/") || requestPath.startsWith("/v3/query/")) && (requestPath.endsWith("result")
@@ -252,15 +251,15 @@ public class JWTFilter implements ContainerRequestFilter {
                 // Path: /query/{queryId}/result
                 String[] pathParts = requestPath.split("/");
                 UUID uuid = UUID.fromString(pathParts[requestPath.startsWith("/query/") ? 2 : 3]);
-                logger.info("Query ID: " + uuid);
+                logger.debug("Query ID: " + uuid);
                 initialQuery = queryRepo.getById(uuid);
             }
 
             if (initialQuery != null) {
-                logger.info("Initial Query found:" + initialQuery);
+                logger.debug("Initial Query found:" + initialQuery);
                 IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
             } else {
-                logger.info("Initial Query is null");
+                logger.debug("Initial Query is null");
                 // This stream is only consumable once, so we need to save & reset it.
                 InputStream entityStream = requestContext.getEntityStream();
                 IOUtils.copy(entityStream, buffer);
@@ -283,7 +282,6 @@ public class JWTFilter implements ContainerRequestFilter {
                 } else if (queryObject instanceof Map) {
                     ((Map) queryObject).remove("resourceCredentials");
                 }
-                logger.info("Adding query to requestMap: " + queryObject);
                 requestMap.put("query", queryObject);
 
                 if (requestPath.startsWith("/query/")) {
@@ -316,7 +314,8 @@ public class JWTFilter implements ContainerRequestFilter {
             }
             return requestMap;
         } catch (JsonParseException ex) {
-            logger.info("Json parse exception, writing buffer to query");
+            // todo: this seems bad, why aren't we failing here?
+            logger.error("Json parse exception, writing buffer to query");
             requestMap.put("query", buffer.toString());
             return requestMap;
         } catch (IOException e1) {
