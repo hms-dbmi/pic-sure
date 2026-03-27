@@ -24,7 +24,7 @@ public class LoggingClientProducer {
         String url = jndiLookup("java:global/logging_service_url");
         String key = jndiLookup("java:global/logging_api_key");
 
-        if (url == null || url.trim().isEmpty() || key == null || key.trim().isEmpty()) {
+        if (!isConfigured(url) || !isConfigured(key)) {
             LOG.info("logging-client: JNDI bindings not set; audit logging disabled");
             loggingClient = LoggingClient.noOp();
         } else {
@@ -44,6 +44,10 @@ public class LoggingClientProducer {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    private static boolean isConfigured(String value) {
+        return value != null && !value.trim().isEmpty() && !"disabled".equalsIgnoreCase(value.trim());
     }
 
     private static String jndiLookup(String name) {

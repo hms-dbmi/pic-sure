@@ -84,15 +84,17 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             // Skip paths that should not be logged
             if (
                 fullPath.endsWith("/system/status") || fullPath.endsWith("/openapi.json") || fullPath.contains("/info/")
-                    || fullPath.contains("/bin/continuous")
+                    || fullPath.contains("/bin/continuous") || fullPath.contains("/proxy/pic-sure-logging/")
             ) {
                 return;
             }
 
-            // Strip application context path (e.g., /PICSURE)
+            // Strip servlet context path and application path prefix (e.g., /pic-sure-api-2/PICSURE)
             String path = fullPath;
-            if (path.startsWith("/PICSURE")) {
-                path = path.substring("/PICSURE".length());
+            // Strip known context prefixes so URL patterns match correctly
+            int picsureIdx = path.indexOf("/PICSURE");
+            if (picsureIdx >= 0) {
+                path = path.substring(picsureIdx + "/PICSURE".length());
             }
 
             // Calculate duration

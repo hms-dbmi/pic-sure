@@ -18,10 +18,12 @@ import org.slf4j.LoggerFactory;
 
 import javax.ejb.Stateless;
 import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import java.util.Map;
 
@@ -45,6 +47,9 @@ public class VisualizationResource implements IResourceRS {
 
     @Inject
     LoggingClient loggingClient;
+
+    @Context
+    HttpServletRequest httpServletRequest;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -87,12 +92,16 @@ public class VisualizationResource implements IResourceRS {
         }
 
         if (loggingClient != null && loggingClient.isEnabled()) {
+            RequestInfo.Builder reqInfo = RequestInfo.builder().method("POST").url("/visualization/query/sync");
+            if (httpServletRequest != null) {
+                String xff = httpServletRequest.getHeader("X-Forwarded-For");
+                reqInfo.srcIp(xff != null && !xff.isEmpty() ? xff.split(",")[0].trim() : httpServletRequest.getRemoteAddr())
+                    .destIp(httpServletRequest.getLocalAddr()).destPort(httpServletRequest.getLocalPort())
+                    .httpUserAgent(httpServletRequest.getHeader("User-Agent"));
+            }
             loggingClient.send(LoggingEvent.builder("QUERY")
                 .action("visualization.query_sync")
-                .request(RequestInfo.builder()
-                    .method("POST")
-                    .url("/visualization/query/sync")
-                    .build())
+                .request(reqInfo.build())
                 .build());
         }
 

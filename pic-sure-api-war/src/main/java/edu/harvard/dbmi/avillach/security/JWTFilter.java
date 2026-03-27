@@ -6,12 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
-import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
@@ -73,7 +71,7 @@ public class JWTFilter implements ContainerRequestFilter {
     QueryRepository queryRepo;
 
     @Inject
-    LoggingClient loggingClient;
+    AuditContext auditContext;
 
     @Context
     HttpServletRequest httpServletRequest;
@@ -97,12 +95,6 @@ public class JWTFilter implements ContainerRequestFilter {
         String ua = httpServletRequest.getHeader("User-Agent");
         String raw = (ip != null ? ip : "") + "|" + (ua != null ? ua : "");
         return Integer.toHexString(raw.hashCode());
-    }
-
-    private RequestInfo buildAuthRequestInfo() {
-        return RequestInfo.builder().srcIp(extractClientIp())
-            .httpUserAgent(httpServletRequest != null ? httpServletRequest.getHeader("User-Agent") : null)
-            .url(uriInfo != null ? uriInfo.getRequestUri().getPath() : null).build();
     }
 
     @Override
@@ -132,12 +124,8 @@ public class JWTFilter implements ContainerRequestFilter {
                 boolean isAuthorized = callOpenAccessValidationEndpoint(requestContext);
                 if (!isAuthorized) {
                     logger.error("User is not authorized.");
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("open_access.denied").request(buildAuthRequestInfo())
-                                .metadata(Map.of("session_id", extractSessionId())).build()
-                        );
-                    }
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_action", "open_access.denied");
                     requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized."));
                     return;
                 }
@@ -145,31 +133,19 @@ public class JWTFilter implements ContainerRequestFilter {
                 // There is no user associated with open access request. In order to provide traceability,
                 // we set the username to OPEN_ACCESS:<request IP>
                 requestContext.setProperty("username", "OPEN_ACCESS:" + requestContext.getUriInfo().getRequestUri().getHost());
-                if (loggingClient != null && loggingClient.isEnabled()) {
-                    loggingClient.send(
-                        LoggingEvent.builder("AUTH").action("open_access.granted").request(buildAuthRequestInfo())
-                            .metadata(Map.of("session_id", extractSessionId())).build()
-                    );
-                }
+                auditContext.put("auth_result", "success");
+                auditContext.put("auth_action", "open_access.granted");
             } else {
                 if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
-                                .metadata(Map.of("reason", "missing_token")).build()
-                        );
-                    }
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "missing_token");
                     throw new NotAuthorizedException("No authorization header found.");
                 }
 
                 String token = authorizationHeader.substring(6).trim();
                 if (token.isEmpty()) {
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
-                                .metadata(Map.of("reason", "empty_token")).build()
-                        );
-                    }
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "empty_token");
                     throw new NotAuthorizedException("No token found in authorization header.");
                 }
 
@@ -180,14 +156,9 @@ public class JWTFilter implements ContainerRequestFilter {
                     authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
                     if (authenticatedUser == null) {
                         logger.error("Cannot extract a user from token: {}", token);
-                        if (loggingClient != null && loggingClient.isEnabled()) {
-                            loggingClient.send(
-                                LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
-                                    .metadata(Map.of("reason", "invalid_token")).error(Map.of("message", "Cannot extract user from token"))
-                                    .build(),
-                                authorizationHeader, null
-                            );
-                        }
+                        auditContext.put("auth_result", "failure");
+                        auditContext.put("auth_failure_reason", "invalid_token");
+                        auditContext.put("auth_failure_message", "Cannot extract user from token");
                         throw new NotAuthorizedException("Cannot find or create a user");
                     }
 
@@ -197,40 +168,20 @@ public class JWTFilter implements ContainerRequestFilter {
                     requestContext.setProperty("username", userForLogging);
                     requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("auth.success").request(buildAuthRequestInfo()).build(),
-                            authorizationHeader, null
-                        );
-                    }
+                    auditContext.put("auth_result", "success");
                 } catch (NotAuthorizedException e) {
                     // the detail of this exception should be logged right before the exception thrown out
                     logger.error("User - {} - is not authorized. {}", userForLogging, e.getChallenges());
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
-                                .metadata(Map.of("reason", "not_authorized"))
-                                .error(Map.of("message", e.getMessage() != null ? e.getMessage() : "Not authorized")).build(),
-                            authorizationHeader, null
-                        );
-                    }
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "not_authorized");
+                    auditContext.put("auth_failure_message", e.getMessage() != null ? e.getMessage() : "Not authorized");
                     requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
                 } catch (Exception e) {
                     logger
                         .error("User - {} - is not authorized {} and an Inner application error occurred.", userForLogging, e.getMessage());
-                    if (loggingClient != null && loggingClient.isEnabled()) {
-                        loggingClient.send(
-                            LoggingEvent.builder("AUTH").action("auth.failure").request(buildAuthRequestInfo())
-                                .metadata(Map.of("reason", "internal_error"))
-                                .error(
-                                    Map.of(
-                                        "exception_class", e.getClass().getSimpleName(), "message",
-                                        e.getMessage() != null ? e.getMessage() : "Internal error"
-                                    )
-                                ).build(),
-                            authorizationHeader, null
-                        );
-                    }
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "internal_error");
+                    auditContext.put("auth_failure_message", e.getMessage() != null ? e.getMessage() : "Internal error");
                     requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
                 }
             }

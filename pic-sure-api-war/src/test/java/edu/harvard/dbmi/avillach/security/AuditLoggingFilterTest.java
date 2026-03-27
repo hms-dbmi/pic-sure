@@ -87,7 +87,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_SUBMITTED", event.getAction());
+        assertEquals("query.submitted", event.getAction());
     }
 
     @Test
@@ -101,7 +101,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_SYNC", event.getAction());
+        assertEquals("query.sync", event.getAction());
     }
 
     @Test
@@ -115,7 +115,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_STATUS", event.getAction());
+        assertEquals("query.status", event.getAction());
     }
 
     @Test
@@ -129,7 +129,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("DATA_ACCESS", event.getEventType());
-        assertEquals("QUERY_RESULT", event.getAction());
+        assertEquals("query.result", event.getAction());
     }
 
     @Test
@@ -143,7 +143,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("DATA_ACCESS", event.getEventType());
-        assertEquals("QUERY_SIGNED_URL", event.getAction());
+        assertEquals("query.signed_url", event.getAction());
     }
 
     @Test
@@ -157,7 +157,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_METADATA", event.getAction());
+        assertEquals("query.metadata", event.getAction());
     }
 
     @Test
@@ -171,7 +171,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("SEARCH", event.getEventType());
-        assertEquals("SEARCH", event.getAction());
+        assertEquals("search.execute", event.getAction());
     }
 
     @Test
@@ -185,7 +185,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("SEARCH", event.getEventType());
-        assertEquals("SEARCH_VALUES", event.getAction());
+        assertEquals("search.values", event.getAction());
     }
 
     @Test
@@ -199,7 +199,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("PROXY", event.getEventType());
-        assertEquals("PROXY_REQUEST", event.getAction());
+        assertEquals("proxy.request", event.getAction());
     }
 
     @Test
@@ -213,7 +213,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_SUBMITTED", event.getAction());
+        assertEquals("query.submitted", event.getAction());
         assertEquals("v3", event.getMetadata().get("api_version"));
     }
 
@@ -228,7 +228,7 @@ public class AuditLoggingFilterTest {
         verify(loggingClient).send(captor.capture());
         LoggingEvent event = captor.getValue();
         assertEquals("QUERY", event.getEventType());
-        assertEquals("QUERY_SUBMITTED", event.getAction());
+        assertEquals("query.submitted", event.getAction());
     }
 
     @Test
@@ -249,7 +249,10 @@ public class AuditLoggingFilterTest {
 
     @Test
     public void testSkippedPathsDoNotSendEvents() throws IOException {
-        String[] skippedPaths = {"/system/status", "/openapi.json", "/info/resources", "/info/abc-123", "/bin/continuous"};
+        String[] skippedPaths = {
+            "/system/status", "/openapi.json", "/info/resources", "/info/abc-123", "/bin/continuous",
+            "/proxy/pic-sure-logging/audit"
+        };
 
         for (String path : skippedPaths) {
             reset(loggingClient);

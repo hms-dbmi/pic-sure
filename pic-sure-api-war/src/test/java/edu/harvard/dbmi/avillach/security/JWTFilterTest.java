@@ -29,6 +29,7 @@ import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponseError;
 
@@ -59,6 +60,7 @@ public class JWTFilterTest {
         filter.resourceWebClient = new ResourceWebClient();
         filter.queryRepo = mock(QueryRepository.class);
         filter.resourceRepo = mock(ResourceRepository.class);
+        filter.auditContext = new AuditContext();
         filter.uriInfo = mock(UriInfo.class);
         when(filter.uriInfo.getPath()).thenReturn("/test");
     }
