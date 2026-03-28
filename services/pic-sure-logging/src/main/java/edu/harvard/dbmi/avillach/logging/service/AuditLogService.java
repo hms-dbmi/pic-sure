@@ -42,6 +42,18 @@ public class AuditLogService {
             putIfNotNull(fields, "action", event.action());
             putIfNotNull(fields, "client_type", event.clientType());
 
+            // 2b. Session ID: prefer top-level field, fall back to metadata for old clients
+            String sessionId = event.sessionId();
+            if ((sessionId == null || sessionId.isBlank()) && event.metadata() != null) {
+                Object metaSessionId = event.metadata().get("session_id");
+                if (metaSessionId != null) {
+                    sessionId = metaSessionId.toString();
+                }
+            }
+            if (sessionId != null && !sessionId.isBlank()) {
+                fields.put("session_id", truncate(sessionId));
+            }
+
             // 3. User fields from JWT
             Map<String, Object> userClaims = jwtDecodeService.extractClaims(authorizationHeader);
             fields.putAll(userClaims);
@@ -57,7 +69,12 @@ public class AuditLogService {
 
             // 6. Metadata and error (nested, only if non-empty)
             if (event.metadata() != null && !event.metadata().isEmpty()) {
-                fields.put("metadata", event.metadata());
+                // Strip session_id from metadata since it is now a top-level field
+                LinkedHashMap<String, Object> filteredMetadata = new LinkedHashMap<>(event.metadata());
+                filteredMetadata.remove("session_id");
+                if (!filteredMetadata.isEmpty()) {
+                    fields.put("metadata", filteredMetadata);
+                }
             }
             if (event.error() != null && !event.error().isEmpty()) {
                 fields.put("error", event.error());

@@ -52,7 +52,7 @@ class AuditLogServiceTest {
             "https://example.com"
         );
         AuditEvent event = new AuditEvent(
-            "QUERY", "execute", "web",
+            "QUERY", "execute", "web", null,
             request,
             Map.of("query_id", "q1"),
             Map.of("code", "500", "message", "Internal error")
@@ -72,7 +72,7 @@ class AuditLogServiceTest {
 
     @Test
     void nullRequestHandled() {
-        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, null, null);
 
         service.logEvent(event, null, null);
 
@@ -84,7 +84,7 @@ class AuditLogServiceTest {
 
     @Test
     void emptyMetadataAndErrorOmitted() {
-        AuditEvent event = new AuditEvent("LOGIN", null, null, null, Map.of(), Map.of());
+        AuditEvent event = new AuditEvent("LOGIN", null, null, null, null, Map.of(), Map.of());
 
         service.logEvent(event, null, null);
 
@@ -96,7 +96,7 @@ class AuditLogServiceTest {
 
     @Test
     void noJwtSetsLoggedInFalse() {
-        AuditEvent event = new AuditEvent("PAGE_VIEW", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("PAGE_VIEW", null, null, null, null, null, null);
 
         service.logEvent(event, null, null);
 
@@ -108,7 +108,7 @@ class AuditLogServiceTest {
     @Test
     void requestIdFromBody() {
         RequestInfo request = new RequestInfo("body-id", null, null, null, null, null, null, null, null, null, null, null, null);
-        AuditEvent event = new AuditEvent("TEST", null, null, request, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, request, null, null);
 
         service.logEvent(event, null, "header-id");
 
@@ -119,7 +119,7 @@ class AuditLogServiceTest {
 
     @Test
     void requestIdFromHeaderFallback() {
-        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null, null);
 
         service.logEvent(event, null, "header-id");
 
@@ -131,7 +131,7 @@ class AuditLogServiceTest {
     @Test
     void requestIdFromHeaderFallbackWhenBodyRequestIdBlank() {
         RequestInfo request = new RequestInfo("  ", null, null, null, null, null, null, null, null, null, null, null, null);
-        AuditEvent event = new AuditEvent("TEST", null, null, request, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, request, null, null);
 
         service.logEvent(event, null, "header-id");
 
@@ -142,7 +142,7 @@ class AuditLogServiceTest {
 
     @Test
     void timestampFormatIsISO8601() {
-        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null, null);
 
         service.logEvent(event, null, null);
 
@@ -154,7 +154,7 @@ class AuditLogServiceTest {
 
     @Test
     void platformFieldsPresent() {
-        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null, null);
 
         service.logEvent(event, null, null);
 
@@ -178,7 +178,7 @@ class AuditLogServiceTest {
     void longUrlTruncatedTo2000() {
         String longUrl = "x".repeat(3000);
         RequestInfo request = new RequestInfo(null, "GET", longUrl, null, null, null, null, null, null, null, null, null, null);
-        AuditEvent event = new AuditEvent("TEST", null, null, request, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, request, null, null);
 
         service.logEvent(event, null, null);
 
@@ -195,7 +195,7 @@ class AuditLogServiceTest {
     void exact2000CharStringNotTruncated() {
         String exactUrl = "y".repeat(2000);
         RequestInfo request = new RequestInfo(null, "GET", exactUrl, null, null, null, null, null, null, null, null, null, null);
-        AuditEvent event = new AuditEvent("TEST", null, null, request, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, request, null, null);
 
         service.logEvent(event, null, null);
 
@@ -207,7 +207,7 @@ class AuditLogServiceTest {
     @Test
     void longRequestIdFromHeaderTruncated() {
         String longRequestId = "r".repeat(3000);
-        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null);
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, null, null);
 
         service.logEvent(event, null, longRequestId);
 
@@ -216,5 +216,68 @@ class AuditLogServiceTest {
         String expected = "r".repeat(2000);
         assertTrue(message.contains("request_id=" + expected));
         assertFalse(message.contains("r".repeat(2001)));
+    }
+
+    // --- Session ID tests ---
+
+    @Test
+    void sessionIdFromTopLevelField() {
+        AuditEvent event = new AuditEvent("TEST", null, null, "sess-abc", null, null, null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1, listAppender.list.size());
+        String message = listAppender.list.get(0).getFormattedMessage();
+        assertTrue(message.contains("session_id=sess-abc"));
+    }
+
+    @Test
+    void sessionIdFallbackFromMetadata() {
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, Map.of("session_id", "meta-xyz"), null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1, listAppender.list.size());
+        String message = listAppender.list.get(0).getFormattedMessage();
+        assertTrue(message.contains("session_id=meta-xyz"));
+    }
+
+    @Test
+    void sessionIdTopLevelTakesPrecedenceOverMetadata() {
+        AuditEvent event = new AuditEvent("TEST", null, null, "top-level", null, Map.of("session_id", "from-meta"), null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1, listAppender.list.size());
+        String message = listAppender.list.get(0).getFormattedMessage();
+        assertTrue(message.contains("session_id=top-level"));
+        assertFalse(message.contains("session_id=from-meta"));
+    }
+
+    @Test
+    void sessionIdStrippedFromMetadataInOutput() {
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, Map.of("session_id", "sid", "other_key", "val"), null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1, listAppender.list.size());
+        String message = listAppender.list.get(0).getFormattedMessage();
+        // session_id should appear at top level
+        assertTrue(message.contains("session_id=sid"));
+        // other_key should still be in metadata
+        assertTrue(message.contains("other_key=val"));
+    }
+
+    @Test
+    void metadataWithOnlySessionIdProducesNoMetadataField() {
+        AuditEvent event = new AuditEvent("TEST", null, null, null, null, Map.of("session_id", "only-sid"), null);
+
+        service.logEvent(event, null, null);
+
+        assertEquals(1, listAppender.list.size());
+        String message = listAppender.list.get(0).getFormattedMessage();
+        assertTrue(message.contains("session_id=only-sid"));
+        // metadata map should be omitted since it's empty after removing session_id
+        assertFalse(message.contains("metadata="));
     }
 }
