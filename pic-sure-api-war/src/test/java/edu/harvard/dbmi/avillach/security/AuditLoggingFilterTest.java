@@ -20,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import edu.harvard.dbmi.avillach.service.AuditContext;
 
 public class AuditLoggingFilterTest {
@@ -325,7 +326,7 @@ public class AuditLoggingFilterTest {
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
-        assertEquals("my-session-123", captor.getValue().getMetadata().get("session_id"));
+        assertEquals("my-session-123", captor.getValue().getSessionId());
     }
 
     @Test
@@ -342,9 +343,8 @@ public class AuditLoggingFilterTest {
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient).send(captor.capture());
 
-        String expectedRaw = "192.168.1.1|TestBrowser/1.0";
-        String expectedHash = Integer.toHexString(expectedRaw.hashCode());
-        assertEquals(expectedHash, captor.getValue().getMetadata().get("session_id"));
+        String expectedHash = SessionIdResolver.resolve(null, "192.168.1.1", "TestBrowser/1.0");
+        assertEquals(expectedHash, captor.getValue().getSessionId());
     }
 
     // ---- Error detection ----
@@ -545,7 +545,7 @@ public class AuditLoggingFilterTest {
         assertEquals("abc-123", event.getMetadata().get("resource_id"));
         assertEquals("test-resource", event.getMetadata().get("resource_name"));
         assertEquals("def-456", event.getMetadata().get("query_id"));
-        // Also has filter-level metadata
-        assertNotNull(event.getMetadata().get("session_id"));
+        // Also has filter-level session_id
+        assertNotNull(event.getSessionId());
     }
 }

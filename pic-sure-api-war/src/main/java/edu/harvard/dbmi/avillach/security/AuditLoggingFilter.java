@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.security;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -20,9 +21,10 @@ import org.slf4j.LoggerFactory;
 
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 
 @Provider
 public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResponseFilter {
@@ -48,15 +50,46 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
         DEST_PORT = port;
     }
 
-    // Patterns for URL matching (work with optional /v3/ or similar version prefix)
-    private static final Pattern QUERY_SUBMIT = Pattern.compile("^(/v\\d+)?/query/?$");
-    private static final Pattern QUERY_SYNC = Pattern.compile("^(/v\\d+)?/query/sync/?$");
-    private static final Pattern QUERY_STATUS = Pattern.compile("^(/v\\d+)?/query/[^/]+/status/?$");
-    private static final Pattern QUERY_RESULT = Pattern.compile("^(/v\\d+)?/query/[^/]+/result/?$");
-    private static final Pattern QUERY_SIGNED_URL = Pattern.compile("^(/v\\d+)?/query/[^/]+/signed-url/?$");
-    private static final Pattern QUERY_METADATA = Pattern.compile("^(/v\\d+)?/query/[^/]+/metadata/?$");
-    private static final Pattern SEARCH = Pattern.compile("^(/v\\d+)?/search/[^/]+/?$");
-    private static final Pattern SEARCH_VALUES = Pattern.compile("^(/v\\d+)?/search/[^/]+/values/");
+    // Route table: first match wins. Order matters for overlapping patterns (e.g. /query/sync before /query).
+    // @formatter:off
+    private static final List<RouteRule> ROUTES = List.of(
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/sync/?$"),              "POST", "QUERY",       "query.sync"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/?$"),                   "POST", "QUERY",       "query.submitted"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/[^/]+/status/?$"),      null,   "QUERY",       "query.status"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/[^/]+/result/?$"),      null,   "DATA_ACCESS", "query.result"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/[^/]+/signed-url/?$"),  null,   "DATA_ACCESS", "query.signed_url"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/query/[^/]+/metadata/?$"),    null,   "QUERY",       "query.metadata"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/search/[^/]+/?$"),            "POST", "SEARCH",      "search.execute"),
+        new RouteRule(Pattern.compile("^(/v\\d+)?/search/[^/]+/values/"),       null,   "SEARCH",      "search.values", true),
+        new RouteRule(Pattern.compile("/proxy/"),                               null,   "PROXY",       "proxy.request", true)
+    );
+    // @formatter:on
+
+    static final class RouteRule {
+
+        final Pattern pattern;
+        final String method;
+        final String eventType;
+        final String action;
+        final boolean useFind;
+
+        RouteRule(Pattern pattern, String method, String eventType, String action) {
+            this(pattern, method, eventType, action, false);
+        }
+
+        RouteRule(Pattern pattern, String method, String eventType, String action, boolean useFind) {
+            this.pattern = pattern;
+            this.method = method;
+            this.eventType = eventType;
+            this.action = action;
+            this.useFind = useFind;
+        }
+
+        boolean matches(String path, String httpMethod) {
+            boolean patternMatch = useFind ? pattern.matcher(path).find() : pattern.matcher(path).matches();
+            return patternMatch && (method == null || method.equals(httpMethod));
+        }
+    }
 
     @Inject
     LoggingClient loggingClient;
@@ -104,38 +137,17 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
                 duration = System.currentTimeMillis() - startTime;
             }
 
-            // Categorize event
+            // Categorize event via route table (first match wins)
             String method = requestContext.getMethod();
             String eventType = "OTHER";
             String action = method;
 
-            if (QUERY_SYNC.matcher(path).matches() && "POST".equals(method)) {
-                eventType = "QUERY";
-                action = "query.sync";
-            } else if (QUERY_SUBMIT.matcher(path).matches() && "POST".equals(method)) {
-                eventType = "QUERY";
-                action = "query.submitted";
-            } else if (QUERY_STATUS.matcher(path).matches()) {
-                eventType = "QUERY";
-                action = "query.status";
-            } else if (QUERY_RESULT.matcher(path).matches()) {
-                eventType = "DATA_ACCESS";
-                action = "query.result";
-            } else if (QUERY_SIGNED_URL.matcher(path).matches()) {
-                eventType = "DATA_ACCESS";
-                action = "query.signed_url";
-            } else if (QUERY_METADATA.matcher(path).matches()) {
-                eventType = "QUERY";
-                action = "query.metadata";
-            } else if (SEARCH.matcher(path).matches() && "POST".equals(method)) {
-                eventType = "SEARCH";
-                action = "search.execute";
-            } else if (SEARCH_VALUES.matcher(path).find()) {
-                eventType = "SEARCH";
-                action = "search.values";
-            } else if (path.contains("/proxy/")) {
-                eventType = "PROXY";
-                action = "proxy.request";
+            for (RouteRule rule : ROUTES) {
+                if (rule.matches(path, method)) {
+                    eventType = rule.eventType;
+                    action = rule.action;
+                    break;
+                }
             }
 
             // Determine source IP
@@ -189,13 +201,8 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             }
 
             // Session ID
-            String sessionId = httpServletRequest.getHeader("X-Session-Id");
-            if (sessionId == null || sessionId.isEmpty()) {
-                String raw = (srcIp != null ? srcIp : "") + "|"
-                    + (httpServletRequest.getHeader("User-Agent") != null ? httpServletRequest.getHeader("User-Agent") : "");
-                sessionId = Integer.toHexString(raw.hashCode());
-            }
-            metadata.put("session_id", sessionId);
+            String sessionId = SessionIdResolver.resolve(
+                httpServletRequest.getHeader("X-Session-Id"), srcIp, httpServletRequest.getHeader("User-Agent"));
 
             // API version
             if (fullPath.contains("/v3/")) {
@@ -217,7 +224,8 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             }
 
             // Build the event
-            LoggingEvent.Builder eventBuilder = LoggingEvent.builder(eventType).action(action).request(requestInfo).metadata(metadata);
+            LoggingEvent.Builder eventBuilder =
+                LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
 
             if (errorMap != null) {
                 eventBuilder.error(errorMap);
