@@ -2,9 +2,11 @@ package edu.harvard.dbmi.avillach.service;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
+import org.apache.http.message.BasicHeader;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -16,9 +18,12 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -140,8 +145,11 @@ public class ProxyWebClientTest {
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
         Assert.assertEquals(200, actual.getStatus());
-        // Large responses should pass through the InputStream, not a byte array
-        assertTrue(actual.getEntity() instanceof InputStream);
+        // Large responses should use StreamingOutput for true chunked streaming
+        assertTrue(actual.getEntity() instanceof StreamingOutput);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ((StreamingOutput) actual.getEntity()).write(out);
+        assertEquals("{}", out.toString());
     }
 
     @Test
@@ -159,7 +167,46 @@ public class ProxyWebClientTest {
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
         Assert.assertEquals(200, actual.getStatus());
-        // Unknown content length (-1) should stream to be safe
-        assertTrue(actual.getEntity() instanceof InputStream);
+        // Unknown content length (-1) should use StreamingOutput to be safe
+        assertTrue(actual.getEntity() instanceof StreamingOutput);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ((StreamingOutput) actual.getEntity()).write(out);
+        assertEquals("{}", out.toString());
+    }
+
+    @Test
+    public void shouldForwardContentType() throws IOException {
+        Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
+        Mockito.when(entity.getContentType()).thenReturn(new BasicHeader("Content-Type", "application/json"));
+        Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
+
+        Assert.assertEquals(200, actual.getStatus());
+        assertEquals("application/json", actual.getMediaType().toString());
+    }
+
+    @Test
+    public void shouldDefaultContentTypeWhenMissing() throws IOException {
+        Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(entity.getContentLength()).thenReturn(2L);
+        // entity.getContentType() returns null by default (no mock)
+        Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
+
+        Assert.assertEquals(200, actual.getStatus());
+        assertEquals(MediaType.APPLICATION_OCTET_STREAM, actual.getMediaType().toString());
     }
 }

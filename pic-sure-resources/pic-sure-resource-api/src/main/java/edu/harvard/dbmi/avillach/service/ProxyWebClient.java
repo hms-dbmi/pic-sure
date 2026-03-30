@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.service;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.Utilities;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.HttpClient;
@@ -21,8 +22,11 @@ import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedMap;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 
@@ -115,18 +119,35 @@ public class ProxyWebClient {
             LOG.debug("Upstream client error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
         }
 
+        Header contentTypeHeader = response.getEntity().getContentType();
+        String contentType = contentTypeHeader != null ? contentTypeHeader.getValue() : MediaType.APPLICATION_OCTET_STREAM;
+
         long contentLength = response.getEntity().getContentLength();
         if (contentLength > MAX_BUFFERED_BYTES || contentLength == -1) {
-            // Large response: stream directly. The connection stays checked out until
-            // the client finishes reading, but this avoids buffering huge payloads in heap.
-            LOG.info("Large upstream response ({}MB), streaming instead of buffering", contentLength / (1024 * 1024));
-            return Response.status(status).entity(response.getEntity().getContent()).build();
+            // Large or unknown-size response: stream via StreamingOutput so RESTEasy
+            // flushes chunks instead of buffering the entire body in heap.
+            // The connection stays checked out until the client finishes reading.
+            String sizeDesc = contentLength == -1 ? "unknown" : (contentLength / (1024 * 1024)) + "MB";
+            LOG.info("Large upstream response ({}), streaming instead of buffering", sizeDesc);
+            StreamingOutput stream = outputStream -> {
+                try (InputStream in = response.getEntity().getContent()) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                        outputStream.flush();
+                    }
+                } finally {
+                    request.releaseConnection();
+                }
+            };
+            return Response.status(status).entity(stream).type(contentType).build();
         }
 
         // Normal case: buffer the response so the connection is released immediately
         try {
             byte[] body = EntityUtils.toByteArray(response.getEntity());
-            return Response.status(status).entity(body).build();
+            return Response.status(status).entity(body).type(contentType).build();
         } catch (IOException e) {
             // Ensure the connection is released back to the pool on read failure
             request.releaseConnection();
