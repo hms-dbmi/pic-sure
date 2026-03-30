@@ -7,6 +7,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeSeriesConver
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -35,17 +36,17 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
 
     private final PhenotypicObservationStore phenotypicObservationStore;
 
-    private final int ID_BATCH_SIZE;
+    private final int idBatchSize;
 
     @Autowired
     public TimeseriesV3Processor(
-        QueryExecutor queryExecutor, TimeSeriesConversionService conversionService, PhenotypicObservationStore phenotypicObservationStore
+        QueryExecutor queryExecutor, TimeSeriesConversionService conversionService, PhenotypicObservationStore phenotypicObservationStore,
+        @Value("${ID_BATCH_SIZE:0}") int idBatchSize
     ) {
         this.queryExecutor = queryExecutor;
         this.conversionService = conversionService;
         this.phenotypicObservationStore = phenotypicObservationStore;
-        // todo: handle these via spring annotations
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
+        this.idBatchSize = idBatchSize;
     }
 
     /**
@@ -60,7 +61,7 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
 
-        if (ID_BATCH_SIZE > 0) {
+        if (idBatchSize > 0) {
             try {
                 exportTimeData(query, result, idList);
             } catch (IOException e) {
@@ -111,7 +112,7 @@ public class TimeseriesV3Processor implements HpdsV3Processor {
                     dataEntries.add(entryData);
                 }
                 // batch exports so we don't take double memory (valuesForKeys + dataEntries could be a lot of data points)
-                if (dataEntries.size() >= (ID_BATCH_SIZE > 0 ? 10 : ID_BATCH_SIZE)) {
+                if (dataEntries.size() >= (idBatchSize > 0 ? 10 : idBatchSize)) {
                     result.appendResults(dataEntries);
                     dataEntries = new ArrayList<>();
                 }
