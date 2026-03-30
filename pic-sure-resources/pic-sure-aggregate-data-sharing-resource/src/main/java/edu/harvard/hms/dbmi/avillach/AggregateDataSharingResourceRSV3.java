@@ -279,7 +279,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
             if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
                 changeQueryToOpenCrossCount(queryRequest);
             }
-            
+
             response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
             HttpEntity entity = response.getEntity();
@@ -309,7 +309,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
     private HttpResponse getHttpResponse(QueryRequest queryRequest, UUID resourceUUID, String pathName, String targetPicsureUrl)
         throws JsonProcessingException {
         String queryString = objectMapper.writeValueAsString(queryRequest);
-        String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, "/v3" + pathName);
+        String composedURL = HttpClientUtil.composeURL(targetPicsureUrl, pathName);
 
         logger.debug("Aggregate Data Sharing Resource, sending query: " + queryString + ", to: " + composedURL);
         HttpResponse response = httpClientUtil.retrievePostResponse(composedURL, headers, queryString);
