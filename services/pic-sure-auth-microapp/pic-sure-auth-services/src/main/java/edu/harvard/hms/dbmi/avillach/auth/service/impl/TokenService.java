@@ -40,17 +40,20 @@ public class TokenService {
     private static final long defaultTokenExpirationTime = 1000L * 60 * 60;
     private final JWTUtil jwtUtil;
     private final SessionService sessionService;
+    private final UserService userService;
 
     @Autowired
     public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
                         @Value("${application.token.expiration.time}") long tokenExpirationTime,
                         JWTUtil jwtUtil,
-                        SessionService sessionService) {
+                        SessionService sessionService,
+                        UserService userService) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
         this.jwtUtil = jwtUtil;
         this.sessionService = sessionService;
+        this.userService = userService;
     }
 
     public Map<String, Object> inspectToken(Map<String, Object> inputMap) {
@@ -245,11 +248,14 @@ public class TokenService {
             return new InvalidRefreshToken("Your session has expired. Please log in again.");
         }
 
+        Map<String, Object> claimsMap = new HashMap<>(claims);
+        claimsMap.put("roles", userService.addRoleClaims(loadUser));
+
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
         String refreshedToken = this.jwtUtil.createJwtToken(
                 claims.getId(),
                 claims.getIssuer(),
-                claims,
+                claimsMap,
                 subject,
                 this.tokenExpirationTime);
 

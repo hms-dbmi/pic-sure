@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -36,6 +39,7 @@ public class RoleController {
     }
 
     @Operation(description = "GET information of one Role with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @AuditEvent(type = "OTHER", action = "role.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> getRoleById(
@@ -49,6 +53,7 @@ public class RoleController {
     }
 
     @Operation(description = "GET a list of existing Roles, requires ADMIN or SUPER_ADMIN role")
+    @AuditEvent(type = "OTHER", action = "role.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping
     public ResponseEntity<List<Role>> getRoleAll() {
@@ -57,21 +62,25 @@ public class RoleController {
     }
 
     @Operation(description = "POST a list of Roles, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "role.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addRole(
             @Parameter(required = true, description = "A list of Roles in JSON format")
-            @RequestBody List<Role> roles) {
+            @RequestBody List<Role> roles, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
         List<Role> savedRoles = this.roleService.addRoles(roles);
         return PICSUREResponse.success("All roles are added.", savedRoles);
     }
 
     @Operation(description = "Update a list of Roles, will only update the fields listed, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "role.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateRole(
             @Parameter(required = true, description = "A list of Roles with fields to be updated in JSON format")
-            @RequestBody List<Role> roles) {
+            @RequestBody List<Role> roles, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "role_count", String.valueOf(roles.size()));
         List<Role> updatedRoles = this.roleService.updateRoles(roles);
         if (updatedRoles.isEmpty()) {
             return PICSUREResponse.protocolError("No Role(s) has been updated.");
@@ -81,11 +90,13 @@ public class RoleController {
     }
 
     @Operation(description = "DELETE an Role by Id only if the Role is not associated by others, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "role.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(produces = "application/json", path = "/{roleId}")
     public ResponseEntity<?> removeById(
             @Parameter(required = true, description = "A valid Role Id")
-            @PathVariable("roleId") final String roleId) {
+            @PathVariable("roleId") final String roleId, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "role_id", roleId);
         Optional<List<Role>> roles = this.roleService.removeRoleById(roleId);
         if (roles.isEmpty()) {
             return PICSUREResponse.protocolError("Role not found - uuid: " + roleId);

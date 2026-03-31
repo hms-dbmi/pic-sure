@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.config.CustomKeyGenerator;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
@@ -72,6 +73,9 @@ public class CacheTest {
 
     @MockBean
     private SessionService sessionService;
+
+    @MockBean
+    private LoggingClient loggingClient;
 
     @Autowired
     private AccessRuleService accessRuleService;

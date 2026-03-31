@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
@@ -35,14 +37,16 @@ public class RoleService {
     private final Set<Role> publicAccessRoles = new HashSet<>();
 
     private final ApplicationContext applicationContext;
+    private final LoggingClient loggingClient;
 
     @Autowired
-    public RoleService(UserRepository userRepository, RoleRepository roleRepository, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility, ApplicationContext applicationContext) {
+    public RoleService(UserRepository userRepository, RoleRepository roleRepository, PrivilegeService privilegeService, FenceMappingUtility fenceMappingUtility, ApplicationContext applicationContext, LoggingClient loggingClient) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.privilegeService = privilegeService;
         this.fenceMappingUtility = fenceMappingUtility;
         this.applicationContext = applicationContext;
+        this.loggingClient = loggingClient;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -59,6 +63,17 @@ public class RoleService {
             roleService.cleanupRolesNotInMapping(roles);
 
             this.persistAll(roles);
+
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                try {
+                    loggingClient.send(LoggingEvent.builder("AUTHZ").action("role.fence_sync")
+                        .metadata(Map.of(
+                            "roles_synced_count", String.valueOf(roles.size())
+                        )).build());
+                } catch (Exception e) {
+                    logger.warn("Failed to send FENCE role sync logging event", e);
+                }
+            }
         } else {
             logger.error("createPermissionsForFenceMapping() -> createAndUpsertRole could not find any studies in FENCE mapping");
         }
@@ -103,6 +118,18 @@ public class RoleService {
                     }
                 }
                 logger.info("Deleted {} roles", managedRoles.size());
+            }
+
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                try {
+                    loggingClient.send(LoggingEvent.builder("AUTHZ").action("role.cleanup")
+                        .metadata(Map.of(
+                            "roles_deleted", managedRoles.stream().map(Role::getName).collect(Collectors.joining(", ")),
+                            "trigger", "fence_mapping_sync"
+                        )).build());
+                } catch (Exception e) {
+                    logger.warn("Failed to send role cleanup logging event", e);
+                }
             }
         } catch (Exception e) {
             logger.error("Error cleaning up roles not in mapping", e);

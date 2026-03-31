@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.PrivilegeService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +36,7 @@ public class PrivilegeController {
     }
 
     @Operation(description = "GET information of one Privilege with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @AuditEvent(type = "OTHER", action = "privilege.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<?> getPrivilegeById(
@@ -48,6 +52,7 @@ public class PrivilegeController {
     }
 
     @Operation(description = "GET a list of existing privileges, requires ADMIN or SUPER_ADMIN role")
+    @AuditEvent(type = "OTHER", action = "privilege.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
     public ResponseEntity<List<Privilege>> getPrivilegeAll() {
@@ -56,31 +61,37 @@ public class PrivilegeController {
     }
 
     @Operation(description = "POST a list of privileges, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> addPrivilege(
             @Parameter(required = true, description = "A list of privileges in JSON format")
-            @RequestBody List<Privilege> privileges){
+            @RequestBody List<Privilege> privileges, HttpServletRequest request){
+        AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
         privileges = this.privilegeService.addPrivileges(privileges);
         return PICSUREResponse.success(privileges);
     }
 
     @Operation(description = "Update a list of privileges, will only update the fields listed, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "privilege.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(consumes = "application/json", produces = "application/json")
     public ResponseEntity<List<Privilege>> updatePrivilege(
             @Parameter(required = true, description = "A list of privilege with fields to be updated in JSON format")
-            @RequestBody List<Privilege> privileges){
+            @RequestBody List<Privilege> privileges, HttpServletRequest request){
+            AuditAttributes.putMetadata(request, "privilege_count", String.valueOf(privileges.size()));
             privileges = this.privilegeService.updatePrivileges(privileges);
             return ResponseEntity.ok(privileges);
     }
 
     @Operation(description = "DELETE an privilege by Id only if the privilege is not associated by others, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "privilege.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{privilegeId}", produces = "application/json")
     public ResponseEntity<List<Privilege>> removeById(
             @Parameter(required = true, description = "A valid privilege Id")
-            @PathVariable("privilegeId") final String privilegeId) {
+            @PathVariable("privilegeId") final String privilegeId, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "privilege_id", privilegeId);
         List<Privilege> privileges = this.privilegeService.deletePrivilegeByPrivilegeId(privilegeId);
         return ResponseEntity.ok(privileges);
     }

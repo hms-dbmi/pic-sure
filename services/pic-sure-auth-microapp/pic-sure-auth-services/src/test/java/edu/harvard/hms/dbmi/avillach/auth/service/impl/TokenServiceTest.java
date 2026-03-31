@@ -43,6 +43,9 @@ public class TokenServiceTest {
     @MockBean
     private SessionService sessionService;
 
+    @MockBean
+    private UserService userService;
+
     private JWTUtil jwtUtil;
 
     @MockBean
@@ -61,7 +64,7 @@ public class TokenServiceTest {
         when(securityContext.getAuthentication()).thenReturn(authentication);
         when(sessionService.isSessionExpired(any(String.class))).thenReturn(false);
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
-        tokenService = new TokenService(authorizationService, userRepository, 1000L * 60 * 60, jwtUtil, sessionService);
+        tokenService = new TokenService(authorizationService, userRepository, 1000L * 60 * 60, jwtUtil, sessionService, userService);
     }
 
     @Test

@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.ConnectionWebService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -35,6 +38,7 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "GET information of one Connection with the UUID, requires ADMIN or SUPER_ADMIN role")
+    @AuditEvent(type = "OTHER", action = "connection.read")
     @GetMapping(path = "/{connectionId}", produces = "application/json")
     @RolesAllowed({SUPER_ADMIN, ADMIN})
     public ResponseEntity<?> getConnectionById(
@@ -49,6 +53,7 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "GET a list of existing Connection, requires SUPER_ADMIN or ADMIN role")
+    @AuditEvent(type = "OTHER", action = "connection.list")
     @GetMapping
     @RolesAllowed({SUPER_ADMIN, ADMIN})
     public ResponseEntity<List<Connection>> getAllConnections() {
@@ -57,11 +62,13 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "POST a list of Connections, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PostMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<?> addConnection(
             @Parameter(required = true, description = "A list of Connections in JSON format")
-            @RequestBody List<Connection> connections) {
+            @RequestBody List<Connection> connections, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
         try {
             connections = connectionWebService.addConnection(connections);
         } catch (IllegalArgumentException e) {
@@ -72,21 +79,25 @@ public class ConnectionWebController {
     }
 
     @Operation(description = "Update a list of Connections, will only update the fields listed, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "connection.modify")
     @RolesAllowed({SUPER_ADMIN})
     @PutMapping(produces = "application/json", consumes = "application/json")
     public ResponseEntity<List<Connection>> updateConnection(
             @Parameter(required = true, description = "A list of Connection with fields to be updated in JSON format")
-            @RequestBody List<Connection> connections) {
+            @RequestBody List<Connection> connections, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "connection_count", String.valueOf(connections.size()));
         List<Connection> responseEntity = connectionWebService.updateConnections(connections);
         return ResponseEntity.ok(responseEntity);
     }
 
     @Operation(description = "DELETE an Connection by Id only if the Connection is not associated by others, requires SUPER_ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "connection.delete")
     @RolesAllowed({SUPER_ADMIN})
     @DeleteMapping(path = "/{connectionId}", produces = "application/json")
     public ResponseEntity<List<Connection>> removeById(
             @Parameter(required = true, description = "A valid connection Id")
-            @PathVariable("connectionId") final String connectionId) {
+            @PathVariable("connectionId") final String connectionId, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "connection_id", connectionId);
         List<Connection> connections = connectionWebService.removeConnectionById(connectionId);
         return ResponseEntity.ok(connections);
     }

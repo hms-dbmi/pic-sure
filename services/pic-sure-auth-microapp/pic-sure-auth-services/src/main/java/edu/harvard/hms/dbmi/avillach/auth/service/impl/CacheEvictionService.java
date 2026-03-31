@@ -27,6 +27,8 @@ public class CacheEvictionService {
         this.userService.evictFromCache(userSubject);
         this.accessRuleService.evictFromMergedAccessRuleCache(userSubject);
         this.accessRuleService.evictFromPreProcessedAccessRules(userSubject);
+        // No audit logging here — evictCache is called from multiple paths (logout,
+        // passport invalidation, login flows) and each caller logs its own domain-specific event.
     }
 
     public void evictCache(User user) {

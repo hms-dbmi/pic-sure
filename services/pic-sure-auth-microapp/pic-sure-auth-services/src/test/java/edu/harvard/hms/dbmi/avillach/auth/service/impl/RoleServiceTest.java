@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 
@@ -52,6 +53,9 @@ public class RoleServiceTest {
 
     @MockBean
     private FenceMappingUtility fenceMappingUtility;
+
+    @MockBean
+    private LoggingClient loggingClient;
 
     @Autowired
     private RoleService roleService;

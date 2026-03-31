@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.auth.config;
 
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,7 +22,7 @@ public class CustomLogoutHandler implements LogoutHandler {
     private final CacheEvictionService cacheEvictionService;
     private final JWTUtil jwtUtil;
 
-    public CustomLogoutHandler(UserService userService, CacheEvictionService cacheEvictionService, edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil jwtUtil) {
+    public CustomLogoutHandler(UserService userService, CacheEvictionService cacheEvictionService, JWTUtil jwtUtil) {
         this.userService = userService;
         this.cacheEvictionService = cacheEvictionService;
         this.jwtUtil = jwtUtil;
@@ -46,7 +47,9 @@ public class CustomLogoutHandler implements LogoutHandler {
             logger.info("logout() Logging out User: {}", subject);
             this.cacheEvictionService.evictCache(subject);
             this.userService.removeUserPassport(subject);
+
+            // Populate AuditAttributes for the AuditLoggingFilter to include in its event
+            AuditAttributes.putMetadata(request, "user_subject", subject);
         }
     }
 }
-

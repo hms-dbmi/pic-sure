@@ -5,6 +5,7 @@ import java.util.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
@@ -125,13 +126,19 @@ public class Auth0AuthenticationService implements AuthenticationService {
         }
 
         cacheEvictionService.evictCache(user);
-        HashMap<String, Object> claims = new HashMap<>();
-        claims.put("sub", userId);
-        claims.put("name", user.getName());
-        claims.put("email", user.getEmail());
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(claims);
+        UserClaims userClaims = new UserClaims();
+        userClaims.setUuid(user.getUuid().toString());
+        userClaims.setSub(userId);
+        userClaims.setEmail(user.getEmail());
+        userClaims.setName(user.getName());
+        userClaims.setIdp(connection.getId());
+        userClaims.setRoles(userService.addRoleClaims(user));
+        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
 
-        logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+        if (responseMap != null) {
+            logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+        }
+
         return responseMap;
     }
 

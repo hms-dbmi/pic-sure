@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.cache.Cache;
@@ -23,11 +24,13 @@ public class CacheController {
         this.cacheManager = cacheManager;
     }
 
+    @AuditEvent(type = "OTHER", action = "cache.list")
     @GetMapping
     public Collection<String> getCacheNames() {
         return cacheManager.getCacheNames();
     }
 
+    @AuditEvent(type = "OTHER", action = "cache.read")
     @GetMapping("/{cacheName}")
     public Object getCache(@PathVariable("cacheName") String cacheName) {
         Cache cache = cacheManager.getCache(cacheName);

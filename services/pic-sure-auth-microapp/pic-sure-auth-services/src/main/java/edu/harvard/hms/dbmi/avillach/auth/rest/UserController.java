@@ -3,10 +3,13 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,16 +42,19 @@ public class UserController {
     }
 
     @Operation(description = "GET information of one user with the UUID, requires ADMIN or SUPER_ADMIN roles")
+    @AuditEvent(type = "OTHER", action = "user.read")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<User> getUserById(
             @Parameter(required = true, description = "The UUID of the user to fetch information about")
-            @PathVariable("userId") String userId) {
+            @PathVariable("userId") String userId, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "target_user_id", userId);
         User userById = this.userService.getUserById(userId);
         return PICSUREResponse.success(userById);
     }
 
     @Operation(description = "GET a list of existing users, requires ADMIN or SUPER_ADMIN roles")
+    @AuditEvent(type = "OTHER", action = "user.list")
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(produces = "application/json")
     public ResponseEntity<List<User>> getUserAll() {
@@ -57,11 +63,13 @@ public class UserController {
     }
 
     @Operation(description = "POST a list of users, requires ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addUser(
             @Parameter(required = true, description = "A list of user in JSON format")
-            @RequestBody List<User> users) {
+            @RequestBody List<User> users, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> addedUsers = this.userService.addUsers(users);
         if (addedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
@@ -76,10 +84,12 @@ public class UserController {
     }
 
     @Operation(description = "Update a list of users, will only update the fields listed, requires ADMIN role")
+    @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PutMapping(produces = "application/json")
     public ResponseEntity<?> updateUser(
-            @RequestBody List<User> users) {
+            @RequestBody List<User> users, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> updatedUsers = this.userService.updateUser(users);
         if (updatedUsers == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");
@@ -100,6 +110,7 @@ public class UserController {
      *
      */
     @Operation(description = "Retrieve information of current user")
+    @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(produces = "application/json", path = "/me")
     public ResponseEntity<?> getCurrentUser(
             @RequestHeader("Authorization") String authorizationHeader,
@@ -116,6 +127,7 @@ public class UserController {
     }
 
     @Operation(description = "Retrieve the queryTemplate of certain application by given application Id for the currentUser ")
+    @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/queryTemplate/{applicationId}", produces = "application/json")
     public ResponseEntity<?> getQueryTemplate(
             @Parameter(description = "Application Id for the returning queryTemplate")
@@ -131,6 +143,7 @@ public class UserController {
     }
 
     @Operation(description = "Retrieve the queryTemplate of default application")
+    @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(value = {"/me/queryTemplate", "/me/queryTemplate/"}, produces = "application/json")
     public ResponseEntity<?> getQueryTemplate() {
         Map<String, String> defaultQueryTemplate = userService.getDefaultQueryTemplate();
@@ -152,9 +165,11 @@ public class UserController {
      * @return the refreshed long term token
      */
     @Operation(description = "refresh the long term tokne of current user")
+    @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
     public ResponseEntity<?> refreshUserToken(
-            @RequestHeader HttpHeaders httpHeaders) {
+            @RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
+        AuditAttributes.putMetadata(request, "token_type", "long_term");
         Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
         if (stringStringMap != null) {
             return PICSUREResponse.success(stringStringMap);

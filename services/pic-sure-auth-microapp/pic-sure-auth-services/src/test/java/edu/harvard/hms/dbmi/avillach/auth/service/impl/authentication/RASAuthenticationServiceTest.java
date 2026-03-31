@@ -3,10 +3,12 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
 import edu.harvard.hms.dbmi.avillach.auth.repository.RoleRepository;
@@ -25,8 +27,9 @@ import org.springframework.test.context.ContextConfiguration;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.mockito.ArgumentCaptor;
+
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest
@@ -47,6 +50,8 @@ public class RASAuthenticationServiceTest {
     private UserRepository userRepository;
     @MockBean
     private ApplicationContext applicationContext;
+    @MockBean
+    private LoggingClient loggingClient;
 
     private RASPassPortService rasPassPortService;
     private RASAuthenticationService rasAuthenticationService;
@@ -60,8 +65,8 @@ public class RASAuthenticationServiceTest {
     @BeforeEach
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        RoleService roleService = new RoleService(mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class), mock(ApplicationContext.class));
-        this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService));
+        RoleService roleService = new RoleService(mock(UserRepository.class), mock(RoleRepository.class), mock(PrivilegeService.class), mock(FenceMappingUtility.class), mock(ApplicationContext.class), null);
+        this.rasPassPortService = spy(new RASPassPortService(restClientUtil, userService, "", cacheEvictionService, null));
         doReturn(false).when(rasPassPortService).isExpired(any());
 
         rasAuthenticationService = new RASAuthenticationService(
@@ -98,7 +103,10 @@ public class RASAuthenticationServiceTest {
         String redirectUri = "https://" + testDomain + "/login/loading";
         String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
         String introspectionResponse =
-                "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\",\"passport_jwt_v11\":\""+ exampleRasPassport +"\"}";
+                "{\"active\":true,\"sub\":\"example_email@test.com\",\"client_id\":\"test_client_id\"," +
+                "\"userid\":\"test_userid\",\"preferred_username\":\"testuser\"," +
+                "\"email\":\"okta_email@test.com\",\"firstName\":\"Test\",\"lastName\":\"User\"," +
+                "\"passport_jwt_v11\":\""+ exampleRasPassport +"\"}";
 
         // token exchange
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(queryString))).thenReturn(ResponseEntity.ok(data));
@@ -111,8 +119,19 @@ public class RASAuthenticationServiceTest {
         user.setSubject("okta-ras|adfadfaf");
         when(userService.createRasUser(any(), any())).thenReturn(Optional.of(user));
         when(userService.updateUserRoles(any(), any())).thenReturn(user);
+
+        ArgumentCaptor<UserClaims> claimsCaptor = ArgumentCaptor.forClass(UserClaims.class);
+        when(userService.getUserProfileResponse(claimsCaptor.capture())).thenReturn(new HashMap<>());
+
         HashMap<String, String> authenticate = rasAuthenticationService.authenticate(authRequest, testDomain);
         assertNotNull(authenticate);
+
+        UserClaims capturedClaims = claimsCaptor.getValue();
+        assertEquals("test_userid", capturedClaims.getUserid());
+        assertEquals("testuser", capturedClaims.getPreferred_username());
+        assertEquals("test@email.com", capturedClaims.getEmail());
+        assertEquals("RAS", capturedClaims.getIdp());
+        assertEquals("https://ncbi.nlm.nih.gov/gap", capturedClaims.getUser_permission_group());
     }
 
     @Test

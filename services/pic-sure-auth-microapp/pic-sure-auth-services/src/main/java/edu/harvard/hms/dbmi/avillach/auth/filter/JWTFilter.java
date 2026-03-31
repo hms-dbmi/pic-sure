@@ -8,6 +8,7 @@ import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import io.jsonwebtoken.Claims;
@@ -89,7 +90,15 @@ public class JWTFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } else {
             String token = authorizationHeader.substring(6).trim();
-            Jws<Claims> jws = this.jwtUtil.parseToken(token);
+            Jws<Claims> jws;
+            try {
+                jws = this.jwtUtil.parseToken(token);
+            } catch (Exception e) {
+                logger.error("Failed to parse JWT token.", e);
+                sendAuthFailure(request, "invalid_token", e.getMessage());
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
+                return;
+            }
             String userId = jws.getPayload().get(this.userClaimId, String.class);
 
             if (userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
@@ -100,6 +109,7 @@ public class JWTFilter extends OncePerRequestFilter {
                     setSecurityContextForUser(request, response, realClaimsSubject);
                 } else {
                     logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
+                    sendAuthFailure(request, "long_term_token_rejected", "Long term token on non-/me endpoint");
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
                 }
             } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
@@ -109,6 +119,7 @@ public class JWTFilter extends OncePerRequestFilter {
                 // log an error indicating the user's token may be being used by a malicious actor.
                 if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
                     logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
+                    sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
                     response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User is deactivated");
                 }
 
@@ -120,6 +131,7 @@ public class JWTFilter extends OncePerRequestFilter {
                     (CustomApplicationDetails) this.customUserDetailService.loadUserByUsername("application:" + applicationId);
                 if (customApplicationDetails.getApplication() == null) {
                     logger.error("Cannot find an application by userId: {}", applicationId);
+                    sendAuthFailure(request, "application_not_found", "No application for ID: " + applicationId);
                     response.sendError(
                         HttpServletResponse.SC_UNAUTHORIZED, "Your token doesn't contain valid identical information, please contact admin."
                     );
@@ -133,6 +145,7 @@ public class JWTFilter extends OncePerRequestFilter {
                         "filter() incoming application token - {} - is not the same as record, might because the token has been refreshed. Subject: {}",
                         token, userId
                     );
+                    sendAuthFailure(request, "token_mismatch", "Application token does not match record");
                     response.sendError(
                         HttpServletResponse.SC_UNAUTHORIZED,
                         "Your token has been inactivated, please contact admin to grab you the latest one."
@@ -179,6 +192,7 @@ public class JWTFilter extends OncePerRequestFilter {
 
         if (authenticatedUser == null) {
             logger.error("Cannot validate user claims, based on information stored in the JWT token.");
+            sendAuthFailure(request, "invalid_token", "Cannot validate user claims");
             throw new IllegalArgumentException("Cannot validate user claims, based on information stored in the JWT token.");
         }
 
@@ -186,6 +200,7 @@ public class JWTFilter extends OncePerRequestFilter {
 
         if (!authenticatedUser.getUser().isActive()) {
             logger.warn("User with ID: {} is deactivated.", authenticatedUser.getUser().getUuid());
+            sendAuthFailure(request, "user_deactivated", "User is deactivated");
             throw new NotAuthorizedException("User is deactivated");
         }
 
@@ -196,6 +211,7 @@ public class JWTFilter extends OncePerRequestFilter {
             !request.getRequestURI().endsWith("/tos/accept") && !tosService.hasUserAcceptedLatest(authenticatedUser.getUser().getSubject())
         ) {
             logger.info("User with ID: {} has not accepted the latest terms of service.", authenticatedUser.getUser().getUuid());
+            sendAuthFailure(request, "tos_not_accepted", "User must accept terms of service");
             // If user has not accepted terms of service and is attempted to get information other than the terms of service, don't
             // authenticate
             try {
@@ -212,6 +228,7 @@ public class JWTFilter extends OncePerRequestFilter {
             userRoles == null || userRoles.isEmpty() || userRoles.stream().allMatch(role -> CollectionUtils.isEmpty(role.getPrivileges()))
         ) {
             logger.error("User doesn't have any roles or privileges.");
+            sendAuthFailure(request, "no_roles_or_privileges", "User has no roles or privileges");
             try {
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
                 // Return early to prevent setting up security context
@@ -229,6 +246,18 @@ public class JWTFilter extends OncePerRequestFilter {
             new UsernamePasswordAuthenticationToken(authenticatedUser, null, authenticatedUser.getAuthorities());
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // Populate AuditAttributes for the AuditLoggingFilter to include in its event.
+        // user_id and user_email are read from SecurityContext by the filter directly.
+        AuditAttributes.putMetadata(request, "auth_result", "success");
+    }
+
+    private void sendAuthFailure(HttpServletRequest request, String reason, String message) {
+        AuditAttributes.putMetadata(request, "auth_result", "failure");
+        AuditAttributes.putMetadata(request, "auth_failure_reason", reason);
+        if (message != null) {
+            AuditAttributes.putMetadata(request, "auth_failure_message", message);
+        }
     }
 
 }

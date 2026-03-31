@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.hms.dbmi.avillach.auth.enums.PassportValidationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Ga4ghPassportV1;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
@@ -33,6 +34,8 @@ public class RASPassPortServiceTest {
     private CacheEvictionService cacheEvictionService;
     @MockBean
     private UserService userService;
+    @MockBean
+    private LoggingClient loggingClient;
 
     private RASPassPortService rasPassPortService;
 
@@ -40,7 +43,7 @@ public class RASPassPortServiceTest {
 
     @BeforeEach
     public void setUp() throws Exception {
-        this.rasPassPortService = new RASPassPortService(restClientUtil, null, "https://test.com/", cacheEvictionService);
+        this.rasPassPortService = new RASPassPortService(restClientUtil, null, "https://test.com/", cacheEvictionService, null);
 
         // Parse the passport and get the visa so we can mock the validateVisa method
         Optional<Passport> passport = JWTUtil.parsePassportJWTV11(exampleRasPassport);

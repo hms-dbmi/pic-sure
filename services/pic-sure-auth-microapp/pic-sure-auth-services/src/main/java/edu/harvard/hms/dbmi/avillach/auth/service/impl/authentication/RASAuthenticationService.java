@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Ga4ghPassportV1;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.Passport;
 import edu.harvard.hms.dbmi.avillach.auth.model.ras.RasDbgapPermission;
@@ -111,13 +112,16 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         if (rasPassport.isEmpty()) return null;
         user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
         setUserPassport(authRequest, introspectResponse, user);
-        HashMap<String, String> responseMap = createUserClaims(user, idToken);
+        UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
+        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
 
-        responseMap.put("oktaIdToken", idToken);
-        logger.info("LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
-                user.getSubject(), user.getUuid().toString(),
-                user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                responseMap.get("expirationDate"), authRequest.get("code"));
+        if (responseMap != null) {
+            responseMap.put("oktaIdToken", idToken);
+            logger.info("LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
+                    user.getSubject(), user.getUuid().toString(),
+                    user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
+                    responseMap.get("expirationDate"), authRequest.get("code"));
+        }
 
         return responseMap;
     }
@@ -174,16 +178,40 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     /**
      * Create user claims to return to the client
      *
-     * @param user The user
+     * @param user               The user
+     * @param introspectResponse The OKTA introspect response
+     * @param rasPassport        The RAS passport
      * @return The user claims as a HashMap
      */
-    private HashMap<String, String> createUserClaims(User user, String idToken) {
-        HashMap<String, Object> claims = new HashMap<>();
-        claims.put("name", user.getName());
-        claims.put("email", user.getEmail());
-        claims.put("sub", user.getSubject());
-        // We need the id_token to be returned, so we can use it at logout
-        return userService.getUserProfileResponse(claims);
+    private UserClaims buildUserClaims(User user, JsonNode introspectResponse, Passport rasPassport) {
+        UserClaims userClaims = new UserClaims();
+        userClaims.setUuid(user.getUuid().toString());
+        userClaims.setSub(user.getSubject());
+        userClaims.setEmail(user.getEmail());
+        userClaims.setIdp(this.rasConnection.getLabel());
+        userClaims.setName(user.getName());
+        userClaims.setUserid(introspectResponse.get("userid").asText());
+        userClaims.setPreferred_username(introspectResponse.get("preferred_username").asText());
+        userClaims.setUser_permission_group(extractPermissionGroupFromPassport(rasPassport));
+        userClaims.setRoles(userService.addRoleClaims(user));
+
+        return userClaims;
+    }
+
+    private String extractPermissionGroupFromPassport(Passport rasPassport) {
+        try {
+            List<String> ga4ghPassports = rasPassport.getGa4ghPassportV1();
+            if (ga4ghPassports == null || ga4ghPassports.isEmpty()) {
+                return null;
+            }
+            Optional<Ga4ghPassportV1> parsedPassport = JWTUtil.parseGa4ghPassportV1(ga4ghPassports.get(0));
+            if (parsedPassport.isPresent() && parsedPassport.get().getGa4ghVisaV1() != null) {
+                return parsedPassport.get().getGa4ghVisaV1().getSource();
+            }
+        } catch (Exception e) {
+            logger.error("Failed to extract permission group from passport: {}", e.getMessage());
+        }
+        return null;
     }
 
     /**

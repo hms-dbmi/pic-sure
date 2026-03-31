@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
@@ -91,8 +92,10 @@ JsonNode introspectResponse = super.introspectToken(userToken);
             }
 
             HashMap<String, String> responseMap = createUserClaims(user);
-            logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
-            responseMap.put("oktaIdToken", userToken.get("id_token").asText());
+            if (responseMap != null) {
+                logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+                responseMap.put("oktaIdToken", userToken.get("id_token").asText());
+            }
 
             return responseMap;
         }
@@ -139,11 +142,14 @@ JsonNode introspectResponse = super.introspectToken(userToken);
      * @return The user claims as a HashMap
      */
     private HashMap<String, String> createUserClaims(User user) {
-        HashMap<String, Object> claims = new HashMap<>();
-        claims.put("name", user.getName());
-        claims.put("email", user.getEmail());
-        claims.put("sub", user.getSubject());
-        return userService.getUserProfileResponse(claims);
+        UserClaims userClaims = new UserClaims();
+        userClaims.setUuid(user.getUuid().toString());
+        userClaims.setSub(user.getSubject());
+        userClaims.setEmail(user.getEmail());
+        userClaims.setName(user.getName());
+        userClaims.setIdp(this.connectionId);
+        userClaims.setRoles(userService.addRoleClaims(user));
+        return userService.getUserProfileResponse(userClaims);
     }
 
     /**

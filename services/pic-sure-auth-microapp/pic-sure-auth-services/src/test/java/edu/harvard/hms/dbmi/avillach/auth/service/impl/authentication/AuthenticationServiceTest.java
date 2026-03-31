@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
@@ -178,7 +179,7 @@ public class AuthenticationServiceTest {
         when(connectionRepository.findById(anyString())).thenReturn(Optional.of(connection));
         when(matchingService.matchTokenToUser(any())).thenReturn(user);
         when(userRepository.findBySubjectAndConnection(anyString(), any(Connection.class))).thenReturn(user);
-        when(userService.getUserProfileResponse(any())).thenReturn(new HashMap<>());
+        when(userService.getUserProfileResponse(any(UserClaims.class))).thenReturn(new HashMap<>());
     }
 
     private void setupNoUserMatchScenario() throws IOException {
