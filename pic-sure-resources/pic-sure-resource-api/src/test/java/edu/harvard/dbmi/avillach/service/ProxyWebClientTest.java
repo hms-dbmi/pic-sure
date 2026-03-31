@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -15,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.Response;
 import java.io.ByteArrayInputStream;
@@ -36,6 +38,9 @@ public class ProxyWebClientTest {
     private HttpEntity entity;
 
     @Mock
+    private StatusLine statusLine;
+
+    @Mock
     private ResourceRepository resourceRepository;
 
     @InjectMocks
@@ -44,6 +49,8 @@ public class ProxyWebClientTest {
     @Test
     public void shouldPostToProxy() throws IOException {
         Mockito.when(client.execute(Mockito.any(HttpPost.class))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
         Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
@@ -57,6 +64,8 @@ public class ProxyWebClientTest {
     @Test
     public void shouldGetToProxy() throws IOException {
         Mockito.when(client.execute(Mockito.any(HttpGet.class))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
         Mockito.when(resourceRepository.getByColumn("name", "bar")).thenReturn(List.of(new Resource()));
@@ -79,8 +88,72 @@ public class ProxyWebClientTest {
     }
 
     @Test
+    public void shouldForwardApiKeyHeader() throws IOException {
+        Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
+        Mockito.when(client.execute(Mockito.argThat(request -> {
+            if (request instanceof HttpPost) {
+                HttpPost post = (HttpPost) request;
+                return post.getFirstHeader("X-API-Key") != null
+                    && "my-secret-key".equals(post.getFirstHeader("X-API-Key").getValue());
+            }
+            return false;
+        }))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        subject.client = client;
+
+        HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+        Mockito.when(headers.getRequestHeader("x-api-key")).thenReturn(List.of("my-secret-key"));
+
+        Response actual = subject.postProxy("foo", "/audit", "{}", new MultivaluedHashMap<>(), headers);
+        assertEquals(200, actual.getStatus());
+    }
+
+    @Test
+    public void shouldForwardAuthorizationHeader() throws IOException {
+        Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
+        Mockito.when(client.execute(Mockito.argThat(request -> {
+            if (request instanceof HttpPost) {
+                HttpPost post = (HttpPost) request;
+                return post.getFirstHeader("authorization") != null
+                    && "Bearer token123".equals(post.getFirstHeader("authorization").getValue());
+            }
+            return false;
+        }))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        subject.client = client;
+
+        HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+        Mockito.when(headers.getRequestHeader("authorization")).thenReturn(List.of("Bearer token123"));
+
+        Response actual = subject.postProxy("foo", "/audit", "{}", new MultivaluedHashMap<>(), headers);
+        assertEquals(200, actual.getStatus());
+    }
+
+    @Test
+    public void shouldNotFailWithNullHeaders() throws IOException {
+        Mockito.when(client.execute(Mockito.any(HttpPost.class))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
+        subject.client = client;
+
+        Response actual = subject.postProxy("foo", "/audit", "{}", new MultivaluedHashMap<>(), null);
+        assertEquals(200, actual.getStatus());
+    }
+
+    @Test
     public void shouldPostWithParams() throws IOException {
         Mockito.when(client.execute(Mockito.any(HttpPost.class))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
         Mockito.when(response.getEntity()).thenReturn(entity);
         Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
         Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));

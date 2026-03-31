@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.QueryFormat;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.ResourceInfo;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.service.RequestScopedHeader;
 import edu.harvard.hms.dbmi.avillach.resource.visualization.model.domain.Query;
@@ -15,10 +18,12 @@ import org.slf4j.LoggerFactory;
 
 import javax.ejb.Stateless;
 import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import java.util.Map;
 
@@ -39,6 +44,12 @@ public class VisualizationResource implements IResourceRS {
 
     @Inject
     RequestScopedHeader requestScopedHeader;
+
+    @Inject
+    LoggingClient loggingClient;
+
+    @Context
+    HttpServletRequest httpServletRequest;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -78,6 +89,20 @@ public class VisualizationResource implements IResourceRS {
         if (requestScopedHeader != null && requestScopedHeader.getHeaders() != null) {
             requestSource = requestScopedHeader.getHeaders().get("request-source").get(0);
             logger.info("resource=visualization /query/sync query=" + query.getQuery().toString() + " request-source=" + requestSource);
+        }
+
+        if (loggingClient != null && loggingClient.isEnabled()) {
+            RequestInfo.Builder reqInfo = RequestInfo.builder().method("POST").url("/visualization/query/sync");
+            if (httpServletRequest != null) {
+                String xff = httpServletRequest.getHeader("X-Forwarded-For");
+                reqInfo.srcIp(xff != null && !xff.isEmpty() ? xff.split(",")[0].trim() : httpServletRequest.getRemoteAddr())
+                    .destIp(httpServletRequest.getLocalAddr()).destPort(httpServletRequest.getLocalPort())
+                    .httpUserAgent(httpServletRequest.getHeader("User-Agent"));
+            }
+            loggingClient.send(LoggingEvent.builder("QUERY")
+                .action("visualization.query_sync")
+                .request(reqInfo.build())
+                .build());
         }
 
         return visualizationService.handleQuerySync(query, requestSource);

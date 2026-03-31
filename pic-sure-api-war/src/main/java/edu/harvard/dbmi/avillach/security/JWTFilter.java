@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.response.PICSUREResponse;
@@ -34,6 +35,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
+import javax.servlet.http.HttpServletRequest;
 
 import java.io.*;
 import java.util.*;
@@ -68,6 +70,33 @@ public class JWTFilter implements ContainerRequestFilter {
     @Inject
     QueryRepository queryRepo;
 
+    @Inject
+    AuditContext auditContext;
+
+    @Context
+    HttpServletRequest httpServletRequest;
+
+    private String extractClientIp() {
+        if (httpServletRequest == null) return null;
+        String xff = httpServletRequest.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isEmpty()) {
+            return xff.split(",")[0].trim();
+        }
+        return httpServletRequest.getRemoteAddr();
+    }
+
+    private String extractSessionId() {
+        if (httpServletRequest == null) return null;
+        String sessionHeader = httpServletRequest.getHeader("X-Session-Id");
+        if (sessionHeader != null && !sessionHeader.isEmpty()) {
+            return sessionHeader;
+        }
+        String ip = extractClientIp();
+        String ua = httpServletRequest.getHeader("User-Agent");
+        String raw = (ip != null ? ip : "") + "|" + (ua != null ? ua : "");
+        return Integer.toHexString(raw.hashCode());
+    }
+
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         logger.debug("Entered jwtfilter.filter()...");
@@ -95,19 +124,28 @@ public class JWTFilter implements ContainerRequestFilter {
                 boolean isAuthorized = callOpenAccessValidationEndpoint(requestContext);
                 if (!isAuthorized) {
                     logger.error("User is not authorized.");
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_action", "open_access.denied");
                     requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized."));
+                    return;
                 }
 
                 // There is no user associated with open access request. In order to provide traceability,
                 // we set the username to OPEN_ACCESS:<request IP>
                 requestContext.setProperty("username", "OPEN_ACCESS:" + requestContext.getUriInfo().getRequestUri().getHost());
+                auditContext.put("auth_result", "success");
+                auditContext.put("auth_action", "open_access.granted");
             } else {
                 if (authorizationHeader == null || authorizationHeader.isEmpty()) {
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "missing_token");
                     throw new NotAuthorizedException("No authorization header found.");
                 }
 
                 String token = authorizationHeader.substring(6).trim();
                 if (token.isEmpty()) {
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "empty_token");
                     throw new NotAuthorizedException("No token found in authorization header.");
                 }
 
@@ -118,6 +156,9 @@ public class JWTFilter implements ContainerRequestFilter {
                     authenticatedUser = callTokenIntroEndpoint(requestContext, token, userIdClaim);
                     if (authenticatedUser == null) {
                         logger.error("Cannot extract a user from token: {}", token);
+                        auditContext.put("auth_result", "failure");
+                        auditContext.put("auth_failure_reason", "invalid_token");
+                        auditContext.put("auth_failure_message", "Cannot extract user from token");
                         throw new NotAuthorizedException("Cannot find or create a user");
                     }
 
@@ -127,13 +168,20 @@ public class JWTFilter implements ContainerRequestFilter {
                     requestContext.setProperty("username", userForLogging);
                     requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
+                    auditContext.put("auth_result", "success");
                 } catch (NotAuthorizedException e) {
                     // the detail of this exception should be logged right before the exception thrown out
                     logger.error("User - {} - is not authorized. {}", userForLogging, e.getChallenges());
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "not_authorized");
+                    auditContext.put("auth_failure_message", e.getMessage() != null ? e.getMessage() : "Not authorized");
                     requestContext.abortWith(PICSUREResponse.unauthorizedError("User is not authorized. " + e.getChallenges()));
                 } catch (Exception e) {
                     logger
                         .error("User - {} - is not authorized {} and an Inner application error occurred.", userForLogging, e.getMessage());
+                    auditContext.put("auth_result", "failure");
+                    auditContext.put("auth_failure_reason", "internal_error");
+                    auditContext.put("auth_failure_message", e.getMessage() != null ? e.getMessage() : "Internal error");
                     requestContext.abortWith(PICSUREResponse.applicationError("Inner application error, please contact system admin"));
                 }
             }

@@ -24,6 +24,11 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ProxyWebClient {
@@ -61,6 +66,7 @@ public class ProxyWebClient {
             HttpPost request = new HttpPost(uri);
             request.setEntity(new StringEntity(body));
             request.addHeader("Content-Type", "application/json");
+            forwardHeaders(headers, request);
             return getResponse(request);
         } catch (URISyntaxException e) {
             LOG.warn("Failed to construct URI. Container: {} Path: {}", containerId, path);
@@ -82,6 +88,7 @@ public class ProxyWebClient {
             URI uri =
                 new URIBuilder().setScheme("http").setHost(containerId).setPath(path).setParameters(processParams(queryParams)).build();
             HttpGet request = new HttpGet(uri);
+            forwardHeaders(headers, request);
             return getResponse(request);
         } catch (URISyntaxException e) {
             LOG.warn("Failed to construct URI. Container: {} Path: {}", containerId, path);
@@ -96,12 +103,41 @@ public class ProxyWebClient {
             .toArray(NameValuePair[]::new);
     }
 
+    private static final String DEFAULT_FORWARDED_HEADERS = "authorization,x-api-key,x-request-id";
+
+    private static final Set<String> FORWARDED_HEADERS = initForwardedHeaders();
+
+    private static Set<String> initForwardedHeaders() {
+        String configured = System.getenv("PROXY_FORWARDED_HEADERS");
+        String headerList = configured != null ? configured : DEFAULT_FORWARDED_HEADERS;
+        return Collections.unmodifiableSet(
+            Arrays.stream(headerList.split(",")).map(String::trim).filter(s -> !s.isEmpty()).map(String::toLowerCase)
+                .collect(Collectors.toSet())
+        );
+    }
+
+    private void forwardHeaders(HttpHeaders headers, HttpRequestBase request) {
+        if (headers == null) {
+            return;
+        }
+        for (String headerName : FORWARDED_HEADERS) {
+            List<String> values = headers.getRequestHeader(headerName);
+            if (values != null && !values.isEmpty()) {
+                request.addHeader(headerName, values.get(0));
+            }
+        }
+    }
+
     private boolean containerIsNOTAResource(String container) {
         return resourceRepository.getByColumn("name", container).isEmpty();
     }
 
     private Response getResponse(HttpRequestBase request) throws IOException {
         HttpResponse response = client.execute(request);
-        return Response.ok(response.getEntity().getContent()).build();
+        int status = response.getStatusLine().getStatusCode();
+        if (status >= 400) {
+            LOG.warn("Upstream error: status={}, host={}, path={}", status, request.getURI().getHost(), request.getURI().getPath());
+        }
+        return Response.status(status).entity(response.getEntity().getContent()).build();
     }
 }

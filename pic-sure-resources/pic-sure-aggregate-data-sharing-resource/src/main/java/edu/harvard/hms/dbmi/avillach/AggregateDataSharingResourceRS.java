@@ -9,6 +9,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.*;
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.service.IResourceRS;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import edu.harvard.dbmi.avillach.util.VisualizationUtil;
@@ -26,7 +29,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.*;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
@@ -54,6 +59,12 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     @Inject
     RequestScopedHeader requestScopedHeader;
+
+    @Inject
+    LoggingClient loggingClient;
+
+    @Context
+    HttpServletRequest httpServletRequest;
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -251,6 +262,23 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     public Response querySync(QueryRequest queryRequest) {
         logger.debug("Calling Aggregate Data Sharing Resource querySync()");
         checkQuery(queryRequest);
+
+        if (loggingClient != null && loggingClient.isEnabled()) {
+            RequestInfo.Builder reqInfo = RequestInfo.builder().method("POST").url("/aggregate-data-sharing/query/sync");
+            if (httpServletRequest != null) {
+                String xff = httpServletRequest.getHeader("X-Forwarded-For");
+                reqInfo.srcIp(xff != null && !xff.isEmpty() ? xff.split(",")[0].trim() : httpServletRequest.getRemoteAddr())
+                    .destIp(httpServletRequest.getLocalAddr()).destPort(httpServletRequest.getLocalPort())
+                    .httpUserAgent(httpServletRequest.getHeader("User-Agent"));
+            }
+            loggingClient.send(LoggingEvent.builder("QUERY")
+                .action("aggregate.query_sync")
+                .request(reqInfo.build())
+                .metadata(Map.of(
+                    "resource_id", String.valueOf(queryRequest.getResourceUUID())
+                ))
+                .build());
+        }
 
         HttpResponse response = null;
         try {

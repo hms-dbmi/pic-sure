@@ -25,6 +25,7 @@ import javax.ws.rs.core.Response;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.util.*;
+import java.util.Map;
 
 /**
  * Service handling business logic for queries to resources
@@ -53,6 +54,9 @@ public class PicsureQueryV3Service {
     @Inject
     SiteParsingService siteParsingService;
 
+    @Inject
+    AuditContext auditContext;
+
     /**
      * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
      *
@@ -70,6 +74,13 @@ public class PicsureQueryV3Service {
 
         Query queryEntity = copyQuery(dataQueryRequest, resource, results);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+            auditContext.put("api_version", "v3");
+        }
 
         logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
         results.setPicsureResultId(queryEntity.getUuid());
@@ -153,6 +164,12 @@ public class PicsureQueryV3Service {
             Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+            auditContext.put("api_version", "v3");
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResult(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
@@ -193,6 +210,12 @@ public class PicsureQueryV3Service {
             Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+            auditContext.put("api_version", "v3");
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient
@@ -250,6 +273,14 @@ public class PicsureQueryV3Service {
 
         queryEntity.setQuery(queryJson);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+            auditContext.put("api_version", "v3");
+        }
+
         queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath() + "/v3/", queryRequest, requestSource);
         String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
@@ -329,6 +360,15 @@ public class PicsureQueryV3Service {
         QueryStatus response = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
         Query queryEntity = copyQuery(dataQueryRequest, resource, response);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+            auditContext.put("institution", siteCode);
+            auditContext.put("api_version", "v3");
+        }
+
         return response;
     }
 

@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach;
 
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
+import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
@@ -14,6 +15,7 @@ import java.util.UUID;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import org.junit.runner.RunWith;
+
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -29,6 +31,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -47,6 +50,9 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
 
     @Mock
     private ResourceWebClient webClient = mock(ResourceWebClient.class);
+
+    @Mock
+    private AuditContext auditContext = mock(AuditContext.class);
 
     @Before
     public void setUp() {
@@ -110,5 +116,21 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         searchQueryRequest.setResourceCredentials(null);
         results = searchService.search(resourceId, searchQueryRequest, null);
         assertNotNull("SearchResults should not be null", results);
+    }
+
+    @Test
+    public void testSearchSetsAuditContext() {
+        when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
+        when(mockResource.getName()).thenReturn("test-resource");
+
+        GeneralQueryRequest searchQueryRequest = new GeneralQueryRequest();
+        searchQueryRequest.setResourceCredentials(new HashMap<>());
+        searchQueryRequest.setQuery("blood");
+
+        searchService.search(resourceId, searchQueryRequest, null);
+
+        verify(auditContext).put("resource_id", resourceId.toString());
+        verify(auditContext).put("resource_name", "test-resource");
+        verify(auditContext).put("search_term", "blood");
     }
 }
