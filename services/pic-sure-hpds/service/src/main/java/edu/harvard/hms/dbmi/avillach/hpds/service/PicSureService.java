@@ -8,6 +8,8 @@ import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
+import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
@@ -35,6 +37,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -57,7 +60,6 @@ public class PicSureService {
         this.fileSystemService = fileSystemService;
         this.queryDecorator = queryDecorator;
         this.signUrlService = signUrlService;
-        Crypto.loadDefaultKey();
         this.testDataService = testDataService;
         Crypto.loadDefaultKey();
     }
@@ -84,9 +86,13 @@ public class PicSureService {
 
     private final TestDataService testDataService;
 
+    @Autowired
+    private HttpServletRequest httpRequest;
+
     private static final String QUERY_METADATA_FIELD = "queryMetadata";
     private static final int RESPONSE_CACHE_SIZE = 50;
 
+    @AuditEvent(type = "OTHER", action = "info")
     @PostMapping("/info")
     public ResourceInfo info(@RequestBody QueryRequest request) {
         ResourceInfo info = new ResourceInfo();
@@ -162,8 +168,12 @@ public class PicSureService {
         return info;
     }
 
+    @AuditEvent(type = "SEARCH", action = "search")
     @PostMapping("/search")
     public SearchResults search(@RequestBody QueryRequest searchJson) {
+        if (searchJson.getQuery() != null) {
+            AuditAttributes.putMetadata(httpRequest, "search_term", searchJson.getQuery().toString());
+        }
         Set<Entry<String, ColumnMeta>> allColumns = abstractProcessor.getDictionary().entrySet();
 
         // Phenotype Values
@@ -176,37 +186,42 @@ public class PicSureService {
 
         // Info Values
         Map<String, Map> infoResults = new TreeMap<String, Map>();
-        abstractProcessor.getInfoStoreMeta().stream().forEach(infoColumnMeta -> {
-            // FileBackedByteIndexedInfoStore store = abstractProcessor.getInfoStore(infoColumn);
-            String query = searchJson.getQuery().toString();
-            String lowerCase = query.toLowerCase(Locale.ENGLISH);
-            boolean storeIsNumeric = infoColumnMeta.continuous();
-            if (
-                infoColumnMeta.description().toLowerCase(Locale.ENGLISH).contains(lowerCase)
-                    || infoColumnMeta.key().toLowerCase(Locale.ENGLISH).contains(lowerCase)
-            ) {
-                infoResults.put(
-                    infoColumnMeta.key(),
-                    ImmutableMap.of(
-                        "description", infoColumnMeta.description(), "values",
-                        storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""),
-                        "continuous", storeIsNumeric
-                    )
-                );
-            }
-        });
+        if (searchJson.getQuery() != null) {
+            abstractProcessor.getInfoStoreMeta().stream().forEach(infoColumnMeta -> {
+                String query = searchJson.getQuery().toString();
+                String lowerCase = query.toLowerCase(Locale.ENGLISH);
+                boolean storeIsNumeric = infoColumnMeta.continuous();
+                if (
+                    infoColumnMeta.description().toLowerCase(Locale.ENGLISH).contains(lowerCase)
+                        || infoColumnMeta.key().toLowerCase(Locale.ENGLISH).contains(lowerCase)
+                ) {
+                    infoResults.put(
+                        infoColumnMeta.key(),
+                        ImmutableMap.of(
+                            "description", infoColumnMeta.description(), "values",
+                            storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""),
+                            "continuous", storeIsNumeric
+                        )
+                    );
+                }
+            });
+        }
 
         return new SearchResults()
             .setResults(ImmutableMap.of("phenotypes", phenotypeResults, /* "genes", resultMap, */ "info", infoResults))
-            .setSearchQuery(searchJson.getQuery().toString());
+            .setSearchQuery(searchJson.getQuery() != null ? searchJson.getQuery().toString() : "");
     }
 
+    @AuditEvent(type = "QUERY", action = "query.submitted")
     @PostMapping("/query")
     public ResponseEntity<QueryStatus> query(@RequestBody QueryRequest queryJson) {
         if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
             try {
                 Query query = convertIncomingQuery(queryJson);
-                return ResponseEntity.ok(convertToQueryStatus(queryService.runQuery(query)));
+                QueryStatus result = convertToQueryStatus(queryService.runQuery(query));
+                AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(query.getExpectedResultType()));
+                AuditAttributes.putMetadata(httpRequest, "query_id", result.getResourceResultId());
+                return ResponseEntity.ok(result);
             } catch (IOException e) {
                 log.error("IOException caught in query processing:", e);
                 return ResponseEntity.status(500).build();
@@ -241,9 +256,11 @@ public class PicSureService {
         return status;
     }
 
+    @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @PostMapping(value = "/query/{resourceQueryId}/result")
-    public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
-        throws IOException {
+    public ResponseEntity queryResult(
+        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) throws IOException {
+        AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId.toString());
         if (result == null) {
             return ResponseEntity.status(404).build();
@@ -264,8 +281,12 @@ public class PicSureService {
         }
     }
 
+    @AuditEvent(type = "DATA_ACCESS", action = "data.write")
     @PostMapping("/write/{dataType}")
-    public ResponseEntity<String> writeQueryResult(@RequestBody() Query query, @PathVariable("dataType") String datatype) {
+    public ResponseEntity<String> writeQueryResult(
+        @RequestBody() Query query, @PathVariable("dataType") String datatype    ) {
+        AuditAttributes.putMetadata(httpRequest, "data_type", datatype);
+        AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(query.getExpectedResultType()));
         if ("test_upload".equals(datatype)) {
             return testDataService.uploadTestFile(query.getPicSureId()) ? ResponseEntity.ok().build() : ResponseEntity.status(500).build();
         }
@@ -317,9 +338,11 @@ public class PicSureService {
         return success ? ResponseEntity.ok().build() : ResponseEntity.internalServerError().build();
     }
 
+    @AuditEvent(type = "DATA_ACCESS", action = "query.signed.url")
     @PostMapping(value = "/query/{resourceQueryId}/signed-url")
-    public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
-        throws IOException {
+    public ResponseEntity querySignedURL(
+        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) throws IOException {
+        AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId.toString());
         if (result == null) {
             return ResponseEntity.status(404).build();
@@ -335,11 +358,15 @@ public class PicSureService {
         }
     }
 
+    @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{resourceQueryId}/status")
-    public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
+    public QueryStatus queryStatus(
+        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request    ) {
+        AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
     }
 
+    @AuditEvent(type = "OTHER", action = "query.format")
     @PostMapping("/query/format")
     public ResponseEntity queryFormat(@RequestBody QueryRequest resultRequest) {
         try {
@@ -351,6 +378,7 @@ public class PicSureService {
         }
     }
 
+    @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping(value = "/query/sync", produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity querySync(@RequestBody QueryRequest resultRequest) {
         if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
@@ -365,11 +393,12 @@ public class PicSureService {
         }
     }
 
+    @AuditEvent(type = "SEARCH", action = "search.values")
     @GetMapping("/search/values/")
     public PaginatedSearchResult<String> searchGenomicConceptValues(
         @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query, @RequestParam("page") int page,
-        @RequestParam("size") int size
-    ) {
+        @RequestParam("size") int size    ) {
+        AuditAttributes.putMetadata(httpRequest, "genomic_concept_path", genomicConceptPath);
         if (page < 1) {
             throw new IllegalArgumentException("Page must be greater than 0");
         }
@@ -383,6 +412,7 @@ public class PicSureService {
     private ResponseEntity _querySync(QueryRequest resultRequest) throws IOException {
         Query incomingQuery;
         incomingQuery = convertIncomingQuery(resultRequest);
+        AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(incomingQuery.getExpectedResultType()));
         log.info("Query Converted");
         switch (incomingQuery.getExpectedResultType()) {
 

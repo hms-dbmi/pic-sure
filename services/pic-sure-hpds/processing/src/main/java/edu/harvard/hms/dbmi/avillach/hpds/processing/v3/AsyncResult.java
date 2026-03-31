@@ -15,8 +15,12 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 
 /**
  * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.AsyncResult} and updated to use new Query entity
@@ -178,6 +182,14 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
     }
 
     @JsonIgnore
+    private LoggingClient loggingClient;
+
+    public AsyncResult setLoggingClient(LoggingClient loggingClient) {
+        this.loggingClient = loggingClient;
+        return this;
+    }
+
+    @JsonIgnore
     private final HpdsV3Processor processor;
 
     public HpdsV3Processor getProcessor() {
@@ -209,22 +221,55 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
     }
 
 
+    private void sendEvent(String eventType, String action, Map<String, String> metadata) {
+        if (loggingClient != null && loggingClient.isEnabled()) {
+            try {
+                loggingClient.send(LoggingEvent.builder(eventType)
+                    .action(action)
+                    .metadata(Map.copyOf(metadata))
+                    .build());
+            } catch (Exception e) {
+                log.warn("Failed to send audit log event", e);
+            }
+        }
+    }
+
     @Override
     public void run() {
         status = Status.RUNNING;
         long startTime = System.currentTimeMillis();
+
+        sendEvent("QUERY", "query.execution.started", Map.of(
+            "query_id", id,
+            "result_type", String.valueOf(query.expectedResultType())
+        ));
+
         try {
             processor.runQuery(query, this);
             this.numColumns = this.headerRow.length;
             this.numRows = stream.getNumRows();
-            log.info(
-                "Ran Query in " + (System.currentTimeMillis() - startTime) + "ms for " + stream.getNumRows() + " rows and "
-                    + this.headerRow.length + " columns"
-            );
+            long durationMs = System.currentTimeMillis() - startTime;
+            log.info("Ran Query in " + durationMs + "ms for " + numRows + " rows and " + numColumns + " columns");
             this.status = Status.SUCCESS;
+
+            sendEvent("QUERY", "query.completed", Map.of(
+                "query_id", id,
+                "result_type", String.valueOf(query.expectedResultType()),
+                "status", "success",
+                "duration_ms", String.valueOf(durationMs),
+                "row_count", String.valueOf(numRows)
+            ));
         } catch (Exception e) {
-            log.error("Query failed in " + (System.currentTimeMillis() - startTime) + "ms", e);
+            long durationMs = System.currentTimeMillis() - startTime;
+            log.error("Query failed in " + durationMs + "ms", e);
             this.status = Status.ERROR;
+
+            sendEvent("QUERY", "query.completed", Map.of(
+                "query_id", id,
+                "result_type", String.valueOf(query.expectedResultType()),
+                "status", "error",
+                "duration_ms", String.valueOf(durationMs)
+            ));
         } finally {
             this.completedTime = System.currentTimeMillis();
         }

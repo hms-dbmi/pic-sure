@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.upload;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,7 @@ public class SignUrlService {
     private final String bucketName;
     private final int signedUrlExpiryMinutes;
     private final Region region;
+    private final LoggingClient loggingClient;
 
     private static Logger log = LoggerFactory.getLogger(SignUrlService.class);
 
@@ -32,11 +35,13 @@ public class SignUrlService {
     public SignUrlService(
             @Value("${data-export.s3.bucket-name:}") String bucketName,
             @Value("${data-export.s3.region:us-east-1}") String region,
-            @Value("${data-export.s3.signedUrl-expiry-minutes:60}") int signedUrlExpiryMinutes
+            @Value("${data-export.s3.signedUrl-expiry-minutes:60}") int signedUrlExpiryMinutes,
+            LoggingClient loggingClient
     ) {
         this.bucketName = bucketName;
         this.signedUrlExpiryMinutes = signedUrlExpiryMinutes;
         this.region = Region.of(region);
+        this.loggingClient = loggingClient;
     }
 
     public void uploadFile(File file, String objectKey) {
@@ -44,6 +49,19 @@ public class SignUrlService {
                 .region(this.region)
                 .build();
         putS3Object(s3, bucketName, objectKey, file);
+        if (loggingClient != null && loggingClient.isEnabled()) {
+            try {
+                loggingClient.send(LoggingEvent.builder("DATA_ACCESS")
+                    .action("data.s3.uploaded")
+                    .metadata(Map.of(
+                        "bucket", bucketName,
+                        "object_key", objectKey
+                    ))
+                    .build());
+            } catch (Exception e) {
+                log.warn("Failed to send audit log event", e);
+            }
+        }
         s3.close();
     }
 

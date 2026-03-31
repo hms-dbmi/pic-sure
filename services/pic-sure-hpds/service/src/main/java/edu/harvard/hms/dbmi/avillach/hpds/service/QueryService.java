@@ -8,6 +8,8 @@ import java.util.concurrent.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeseriesProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -55,6 +57,7 @@ public class QueryService {
 
     private final DictionaryService dictionaryService;
     private final QueryDecorator queryDecorator;
+    private final LoggingClient loggingClient;
 
     HashMap<String, AsyncResult> results = new HashMap<>();
 
@@ -65,7 +68,8 @@ public class QueryService {
         CountProcessor countProcessor, MultiValueQueryProcessor multiValueQueryProcessor,
         @Autowired(required = false) DictionaryService dictionaryService, QueryDecorator queryDecorator,
         @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
-        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor
+        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor,
+        @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.abstractProcessor = abstractProcessor;
         this.queryProcessor = queryProcessor;
@@ -79,6 +83,7 @@ public class QueryService {
         SMALL_TASK_THREADS = smallTaskThreads;
         LARGE_TASK_THREADS = largeTaskThreads;
         this.patientProcessor = patientProcessor;
+        this.loggingClient = loggingClient;
 
 
         /*
@@ -110,6 +115,22 @@ public class QueryService {
             }
 
             result.enqueue();
+
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                try {
+                    loggingClient.send(LoggingEvent.builder("QUERY")
+                        .action("query.enqueued")
+                        .metadata(Map.of(
+                            "query_id", result.getId(),
+                            "result_type", String.valueOf(query.getExpectedResultType()),
+                            "field_count", String.valueOf(query.getFields().size()),
+                            "queue", query.getFields().size() > SMALL_JOB_LIMIT ? "large" : "small"
+                        ))
+                        .build());
+                } catch (Exception e) {
+                    log.warn("Failed to send audit log event", e);
+                }
+            }
         }
         return getStatusFor(result.getId());
     }
@@ -157,7 +178,7 @@ public class QueryService {
 
         queryDecorator.setId(query);
         AsyncResult result = new AsyncResult(query, p, writer).setStatus(AsyncResult.Status.PENDING)
-            .setQueuedTime(System.currentTimeMillis()).setId(queryId);
+            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
         results.put(result.getId(), result);
         return result;
     }

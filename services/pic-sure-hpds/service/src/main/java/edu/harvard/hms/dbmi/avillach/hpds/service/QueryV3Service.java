@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
+import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -44,6 +46,7 @@ public class QueryV3Service {
     private final DictionaryService dictionaryService;
 
     private final QueryValidator queryValidator;
+    private final LoggingClient loggingClient;
 
     HashMap<String, AsyncResult> results = new HashMap<>();
 
@@ -54,7 +57,8 @@ public class QueryV3Service {
         MultiValueQueryV3Processor multiValueQueryProcessor, @Autowired(required = false) DictionaryService dictionaryService,
         QueryValidator queryValidator, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
         @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
-        PatientV3Processor patientProcessor
+        PatientV3Processor patientProcessor,
+        @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.queryProcessor = queryProcessor;
         this.timeseriesProcessor = timeseriesProcessor;
@@ -65,6 +69,7 @@ public class QueryV3Service {
 
         SMALL_JOB_LIMIT = smallJobLimit;
         this.patientProcessor = patientProcessor;
+        this.loggingClient = loggingClient;
 
 
         /*
@@ -89,6 +94,22 @@ public class QueryV3Service {
             }
 
             result.enqueue();
+
+            if (loggingClient != null && loggingClient.isEnabled()) {
+                try {
+                    loggingClient.send(LoggingEvent.builder("QUERY")
+                        .action("query.enqueued")
+                        .metadata(Map.of(
+                            "query_id", result.getId(),
+                            "result_type", String.valueOf(query.expectedResultType()),
+                            "field_count", String.valueOf(query.select().size()),
+                            "queue", query.select().size() > SMALL_JOB_LIMIT ? "large" : "small"
+                        ))
+                        .build());
+                } catch (Exception e) {
+                    log.warn("Failed to send audit log event", e);
+                }
+            }
         } catch (IllegalArgumentException e) {
             result.setStatus(AsyncResult.Status.ERROR);
             return result;
@@ -117,7 +138,7 @@ public class QueryV3Service {
 
         query = query.generateId();
         AsyncResult result = new AsyncResult(query, p, writer).setStatus(AsyncResult.Status.PENDING)
-            .setQueuedTime(System.currentTimeMillis()).setId(queryId);
+            .setQueuedTime(System.currentTimeMillis()).setId(queryId).setLoggingClient(loggingClient);
         results.put(result.getId(), result);
         return result;
     }

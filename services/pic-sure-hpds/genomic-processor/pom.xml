@@ -36,6 +36,10 @@
             <artifactId>service</artifactId>
         </dependency>
         <dependency>
+            <groupId>edu.harvard.dbmi.avillach</groupId>
+            <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>etl</artifactId>
         </dependency>
