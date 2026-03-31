@@ -13,6 +13,13 @@
 	<version>0.0.1-SNAPSHOT</version>
 	<name>dictionary</name>
 	<description>Data Dictionary API</description>
+	<repositories>
+		<repository>
+			<id>github</id>
+			<name>GitHub HMS-DBMI Apache Maven Packages</name>
+			<url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+		</repository>
+	</repositories>
 	<properties>
 		<java.version>21</java.version>
 		<spotless.version>2.41.1</spotless.version>
@@ -81,6 +88,11 @@
 			<groupId>org.apache.httpcomponents</groupId>
 			<artifactId>httpclient</artifactId>
 			<version>4.5.14</version>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.dbmi.avillach</groupId>
+			<artifactId>pic-sure-logging-client</artifactId>
+			<version>1.0.0</version>
 		</dependency>
 	</dependencies>
 

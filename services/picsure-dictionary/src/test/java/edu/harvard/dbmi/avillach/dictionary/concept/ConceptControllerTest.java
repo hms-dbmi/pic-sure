@@ -6,17 +6,20 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Map;
@@ -31,6 +34,12 @@ class ConceptControllerTest {
 
     @Autowired
     ConceptController subject;
+
+    @BeforeEach
+    void setUp() {
+        MockHttpServletRequest mockRequest = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(mockRequest));
+    }
 
     @Test
     void shouldListConcepts() {
@@ -140,8 +149,8 @@ class ConceptControllerTest {
         );
         Concept fooBaz = new ContinuousConcept("/foo//baz", "baz", "Baz", "my_dataset", "foo!", true, 0D, 100D, "", Map.of("key", "value"));
         List<Concept> concepts = List.of(fooBar, fooBaz);
-        PageRequest page = PageRequest.of(0, 10);
-        Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), page)).thenReturn(concepts);
+        Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(10).withPage(0)))
+            .thenReturn(concepts);
 
         ResponseEntity<Page<Concept>> actual = subject.dumpConcepts(0, 10);
 

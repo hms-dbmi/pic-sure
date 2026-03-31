@@ -29,6 +29,8 @@ jobs:
         cache: maven
     - name: Build with Maven
       run: mvn -B package --file pom.xml
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
   build-aggregate:
     runs-on: ubuntu-latest
     steps:
@@ -41,3 +43,5 @@ jobs:
           cache: maven
       - name: Build with Maven
         run: cd aggregate && mvn -B package --file pom.xml
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
