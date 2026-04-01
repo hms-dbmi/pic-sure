@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.logging;
 import edu.harvard.dbmi.avillach.logging.config.AppConfig;
 import edu.harvard.dbmi.avillach.logging.handler.AuditHandler;
 import edu.harvard.dbmi.avillach.logging.handler.HealthHandler;
+import edu.harvard.dbmi.avillach.logging.handler.InfoHandler;
 import edu.harvard.dbmi.avillach.logging.middleware.ApiKeyAuthMiddleware;
 import edu.harvard.dbmi.avillach.logging.service.AuditLogService;
 import edu.harvard.dbmi.avillach.logging.service.JwtDecodeService;
@@ -39,6 +40,7 @@ public class App {
         AuditLogService auditLogService = new AuditLogService(config, jwtDecodeService);
         AuditHandler auditHandler = new AuditHandler(auditLogService);
         HealthHandler healthHandler = new HealthHandler(readiness);
+        InfoHandler infoHandler = new InfoHandler();
         ApiKeyAuthMiddleware authMiddleware = new ApiKeyAuthMiddleware(config.auditApiKey());
 
         Javalin app = Javalin.create(javalinConfig -> {
@@ -58,6 +60,7 @@ public class App {
         app.before("/audit", authMiddleware::authenticate);
 
         app.post("/audit", auditHandler::handle);
+        app.post("/info", infoHandler::handle);
         app.get("/health", healthHandler::handle);
 
         app.exception(Exception.class, (e, ctx) -> {

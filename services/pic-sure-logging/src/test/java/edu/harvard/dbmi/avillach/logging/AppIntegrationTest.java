@@ -194,6 +194,23 @@ class AppIntegrationTest {
     }
 
     @Test
+    void infoReturns200WithoutAuth() {
+        Javalin app = App.createApp(createTestConfig(), new AtomicBoolean(true));
+        JavalinTest.test(app, (server, client) -> {
+            RequestBody body = RequestBody.create("{}", JSON);
+            Response response = client.request("/info", builder ->
+                builder.post(body)
+                    .header("Content-Type", "application/json")
+            );
+
+            assertEquals(200, response.code());
+            String responseBody = response.body().string();
+            assertTrue(responseBody.contains("Logging Service"));
+            assertTrue(responseBody.contains("queryFormats"));
+        });
+    }
+
+    @Test
     void healthReturns200WhenReady() {
         AtomicBoolean readiness = new AtomicBoolean(true);
         Javalin app = App.createApp(createTestConfig(), readiness);
