@@ -335,6 +335,11 @@
         <version>3.4.1</version>
         <scope>compile</scope>
       </dependency>
+      <dependency>
+        <groupId>edu.harvard.dbmi.avillach</groupId>
+        <artifactId>pic-sure-logging-client</artifactId>
+        <version>1.0.0</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
   <distributionManagement>

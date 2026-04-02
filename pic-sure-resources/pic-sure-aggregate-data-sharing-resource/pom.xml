@@ -89,5 +89,9 @@
 			<artifactId>jersey-common</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>edu.harvard.dbmi.avillach</groupId>
+			<artifactId>pic-sure-logging-client</artifactId>
+		</dependency>
 	</dependencies>
 </project>

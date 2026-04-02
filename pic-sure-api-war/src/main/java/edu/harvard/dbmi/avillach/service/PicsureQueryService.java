@@ -50,6 +50,9 @@ public class PicsureQueryService {
     @Inject
     SiteParsingService siteParsingService;
 
+    @Inject
+    AuditContext auditContext;
+
     /**
      * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
      *
@@ -69,6 +72,13 @@ public class PicsureQueryService {
         queryRepo.persist(queryEntity);
 
         logger.debug("PicsureQueryService() persisted queryEntity with id: " + queryEntity.getUuid());
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+        }
+
         results.setPicsureResultId(queryEntity.getUuid());
         // In cases where there is no resource result id, the picsure result id will stand in
         if (queryEntity.getResourceResultId() == null) {
@@ -146,10 +156,15 @@ public class PicsureQueryService {
         }
 
         logger.info(
-                "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
-                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+            "path=/query/{queryId}/result, resourceId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -186,10 +201,15 @@ public class PicsureQueryService {
         }
 
         logger.info(
-                "path=/query/{queryId}/signed-url, resourceId={}, requestSource={}, queryRequest={}", queryId,
-                Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
+            "path=/query/{queryId}/signed-url, resourceId={}, requestSource={}, queryRequest={}", queryId,
+            Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, credentialsQueryRequest)
         );
 
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryId.toString());
+        }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResultSignedUrl(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
@@ -246,6 +266,13 @@ public class PicsureQueryService {
 
         queryEntity.setQuery(queryJson);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+        }
+
         queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath(), queryRequest, requestSource);
         String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
@@ -323,6 +350,14 @@ public class PicsureQueryService {
         QueryStatus response = resourceWebClient.query(resource.getResourceRSPath(), dataQueryRequest);
         Query queryEntity = copyQuery(dataQueryRequest, resource, response);
         queryRepo.persist(queryEntity);
+
+        if (auditContext != null) {
+            auditContext.put("resource_id", resource.getUuid().toString());
+            auditContext.put("resource_name", resource.getName());
+            auditContext.put("query_id", queryEntity.getUuid().toString());
+            auditContext.put("institution", siteCode);
+        }
+
         return response;
     }
 
