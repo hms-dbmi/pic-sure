@@ -314,10 +314,7 @@ public class JWTFilter implements ContainerRequestFilter {
             }
             return requestMap;
         } catch (JsonParseException ex) {
-            // todo: this seems bad, why aren't we failing here?
-            logger.error("Json parse exception, writing buffer to query");
-            requestMap.put("query", buffer.toString());
-            return requestMap;
+            throw new ApplicationException("Invalid JSON");
         } catch (IOException e1) {
             logger.error("IOException caught trying to build requestMap for auditing.", e1);
             throw new NotAuthorizedException(
