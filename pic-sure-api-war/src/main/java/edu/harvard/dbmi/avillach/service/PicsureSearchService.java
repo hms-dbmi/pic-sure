@@ -63,13 +63,13 @@ public class PicsureSearchService {
             Utilities.getRequestSourceFromHeader(headers), Utilities.convertQueryRequestToString(mapper, searchQueryRequest)
         );
 
-		if (auditContext != null) {
-			auditContext.put("resource_id", resourceId.toString());
-			auditContext.put("resource_name", resource.getName());
-			if (searchQueryRequest.getQuery() != null) {
-				auditContext.put("search_term", searchQueryRequest.getQuery().toString());
-			}
-		}
+        if (auditContext != null) {
+            auditContext.put("resource_id", resourceId.toString());
+            auditContext.put("resource_name", resource.getName());
+            if (searchQueryRequest.getQuery() != null) {
+                auditContext.put("search_term", searchQueryRequest.getQuery().toString());
+            }
+        }
 
         if (searchQueryRequest.getResourceCredentials() == null) {
             searchQueryRequest.setResourceCredentials(new HashMap<String, String>());
@@ -94,16 +94,16 @@ public class PicsureSearchService {
             conceptPath, query
         );
 
-		if (auditContext != null) {
-			auditContext.put("resource_id", resourceId.toString());
-			auditContext.put("resource_name", resource.getName());
-			if (conceptPath != null) {
-				auditContext.put("genomic_concept_path", conceptPath);
-			}
-			if (query != null) {
-				auditContext.put("query", query);
-			}
-		}
+        if (auditContext != null) {
+            auditContext.put("resource_id", resourceId.toString());
+            auditContext.put("resource_name", resource.getName());
+            if (conceptPath != null) {
+                auditContext.put("genomic_concept_path", conceptPath);
+            }
+            if (query != null) {
+                auditContext.put("query", query);
+            }
+        }
 
         return resourceWebClient.searchConceptValues(resource.getResourceRSPath(), queryRequest, conceptPath, query, page, size);
     }

@@ -93,8 +93,7 @@ public class ProxyWebClientTest {
         Mockito.when(client.execute(Mockito.argThat(request -> {
             if (request instanceof HttpPost) {
                 HttpPost post = (HttpPost) request;
-                return post.getFirstHeader("X-API-Key") != null
-                    && "my-secret-key".equals(post.getFirstHeader("X-API-Key").getValue());
+                return post.getFirstHeader("X-API-Key") != null && "my-secret-key".equals(post.getFirstHeader("X-API-Key").getValue());
             }
             return false;
         }))).thenReturn(response);

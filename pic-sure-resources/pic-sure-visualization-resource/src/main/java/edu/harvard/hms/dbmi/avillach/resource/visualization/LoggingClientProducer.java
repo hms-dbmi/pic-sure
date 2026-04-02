@@ -29,9 +29,7 @@ public class LoggingClientProducer {
             loggingClient = LoggingClient.noOp();
         } else {
             LOG.info("logging-client: configured for {} (clientType=visualization)", url);
-            loggingClient = new LoggingClient(
-                LoggingClientConfig.builder(url, key).clientType("visualization").build()
-            );
+            loggingClient = new LoggingClient(LoggingClientConfig.builder(url, key).clientType("visualization").build());
         }
         return loggingClient;
     }

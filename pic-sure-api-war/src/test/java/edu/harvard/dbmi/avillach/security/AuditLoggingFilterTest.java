@@ -250,10 +250,8 @@ public class AuditLoggingFilterTest {
 
     @Test
     public void testSkippedPathsDoNotSendEvents() throws IOException {
-        String[] skippedPaths = {
-            "/system/status", "/openapi.json", "/info/resources", "/info/abc-123", "/bin/continuous",
-            "/proxy/pic-sure-logging/audit"
-        };
+        String[] skippedPaths =
+            {"/system/status", "/openapi.json", "/info/resources", "/info/abc-123", "/bin/continuous", "/proxy/pic-sure-logging/audit"};
 
         for (String path : skippedPaths) {
             reset(loggingClient);

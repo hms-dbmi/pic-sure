@@ -9,6 +9,7 @@ import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.repository.ResourceRepository;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
@@ -260,6 +261,13 @@ public class JWTFilter implements ContainerRequestFilter {
             String email = responseContent.get("email") != null ? responseContent.get("email").asText() : null;
             String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
             AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles);
+
+            // If there is a query in the response, PSAMA has updated the authorization filters and we must update the query
+            if (responseContent.get("query") != null) {
+                QueryRequest queryObject = new ObjectMapper().readValue(requestContext.getEntityStream(), QueryRequest.class);
+                queryObject.setQuery(responseContent.get("query").asText());
+                requestContext.setEntityStream(new ByteArrayInputStream(new ObjectMapper().writeValueAsBytes(queryObject)));
+            }
             return user;
         } catch (IOException ex) {
             logger.error("callTokenIntroEndpoint() IOException when hitting url: " + post + " with exception msg: " + ex.getMessage());
@@ -284,18 +292,21 @@ public class JWTFilter implements ContainerRequestFilter {
             Query initialQuery = null;
             // Read the query from the backing store if we are getting the results (full query may not be specified in request)
             if (
-                requestPath.startsWith("/query/") && (requestPath.endsWith("result") || requestPath.endsWith("result/")
-                    || requestPath.endsWith("signed-url") || requestPath.endsWith("signed-url/"))
+                (requestPath.startsWith("/query/") || requestPath.startsWith("/v3/query/")) && (requestPath.endsWith("result")
+                    || requestPath.endsWith("result/") || requestPath.endsWith("signed-url") || requestPath.endsWith("signed-url/"))
             ) {
                 // Path: /query/{queryId}/result
                 String[] pathParts = requestPath.split("/");
-                UUID uuid = UUID.fromString(pathParts[2]);
+                UUID uuid = UUID.fromString(pathParts[requestPath.startsWith("/query/") ? 2 : 3]);
+                logger.debug("Query ID: " + uuid);
                 initialQuery = queryRepo.getById(uuid);
             }
 
             if (initialQuery != null) {
+                logger.debug("Initial Query found:" + initialQuery);
                 IOUtils.copy(new ByteArrayInputStream(initialQuery.getQuery().getBytes()), buffer);
             } else {
+                logger.debug("Initial Query is null");
                 // This stream is only consumable once, so we need to save & reset it.
                 InputStream entityStream = requestContext.getEntityStream();
                 IOUtils.copy(entityStream, buffer);
@@ -350,8 +361,7 @@ public class JWTFilter implements ContainerRequestFilter {
             }
             return requestMap;
         } catch (JsonParseException ex) {
-            requestMap.put("query", buffer.toString());
-            return requestMap;
+            throw new ApplicationException("Invalid JSON");
         } catch (IOException e1) {
             logger.error("IOException caught trying to build requestMap for auditing.", e1);
             throw new NotAuthorizedException(

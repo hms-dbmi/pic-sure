@@ -201,8 +201,8 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             }
 
             // Session ID
-            String sessionId = SessionIdResolver.resolve(
-                httpServletRequest.getHeader("X-Session-Id"), srcIp, httpServletRequest.getHeader("User-Agent"));
+            String sessionId =
+                SessionIdResolver.resolve(httpServletRequest.getHeader("X-Session-Id"), srcIp, httpServletRequest.getHeader("User-Agent"));
 
             // API version
             if (fullPath.contains("/v3/")) {

@@ -73,46 +73,58 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         try {
             SearchResults results = searchService.search(resourceId, searchQueryRequest, null);
             fail("Missing request data should throw an error");
-        } catch (ApplicationException e){
+        } catch (ApplicationException e) {
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals(
+                "Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH,
+                e.getContent().toString()
+            );
         }
 
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 
-        //Missing requestdata should throw an error
+        // Missing requestdata should throw an error
         try {
             SearchResults results = searchService.search(resourceId, null, null);
             fail("Missing request data should throw an error");
-        } catch (ProtocolException e){
+        } catch (ProtocolException e) {
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA, e.getContent().toString());
+            assertEquals(
+                "Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA,
+                e.getContent().toString()
+            );
         }
 
-        //Missing resourceId should error
+        // Missing resourceId should error
         try {
             SearchResults results = searchService.search(null, searchQueryRequest, null);
             fail("Missing resourceId should throw an error");
-        } catch (ProtocolException e){
+        } catch (ProtocolException e) {
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString());
+            assertEquals(
+                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID,
+                e.getContent().toString()
+            );
 
         }
 
-        //Nonexistent resourceId should error
+        // Nonexistent resourceId should error
         try {
             SearchResults results = searchService.search(UUID.randomUUID(), searchQueryRequest, null);
             fail("Nonexistent resourceId should throw an error");
-        } catch (ProtocolException e){
+        } catch (ProtocolException e) {
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND));
+            assertTrue(
+                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'",
+                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND)
+            );
         }
 
-        //This should work
+        // This should work
         SearchResults results = searchService.search(resourceId, searchQueryRequest, null);
         assertNotNull("SearchResults should not be null", results);
 
-        //There should also be no problem if the resourceCredentials are null
+        // There should also be no problem if the resourceCredentials are null
         searchQueryRequest.setResourceCredentials(null);
         results = searchService.search(resourceId, searchQueryRequest, null);
         assertNotNull("SearchResults should not be null", results);

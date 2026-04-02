@@ -29,9 +29,7 @@ public class LoggingClientProducer {
             loggingClient = LoggingClient.noOp();
         } else {
             LOG.info("logging-client: configured for {} (clientType=api)", url);
-            loggingClient = new LoggingClient(
-                LoggingClientConfig.builder(url, key).clientType("api").build()
-            );
+            loggingClient = new LoggingClient(LoggingClientConfig.builder(url, key).clientType("api").build());
         }
         return loggingClient;
     }

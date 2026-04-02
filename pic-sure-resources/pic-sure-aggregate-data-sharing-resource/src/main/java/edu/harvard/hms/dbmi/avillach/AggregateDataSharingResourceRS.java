@@ -271,13 +271,10 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
                     .destIp(httpServletRequest.getLocalAddr()).destPort(httpServletRequest.getLocalPort())
                     .httpUserAgent(httpServletRequest.getHeader("User-Agent"));
             }
-            loggingClient.send(LoggingEvent.builder("QUERY")
-                .action("aggregate.query_sync")
-                .request(reqInfo.build())
-                .metadata(Map.of(
-                    "resource_id", String.valueOf(queryRequest.getResourceUUID())
-                ))
-                .build());
+            loggingClient.send(
+                LoggingEvent.builder("QUERY").action("aggregate.query_sync").request(reqInfo.build())
+                    .metadata(Map.of("resource_id", String.valueOf(queryRequest.getResourceUUID()))).build()
+            );
         }
 
         HttpResponse response = null;

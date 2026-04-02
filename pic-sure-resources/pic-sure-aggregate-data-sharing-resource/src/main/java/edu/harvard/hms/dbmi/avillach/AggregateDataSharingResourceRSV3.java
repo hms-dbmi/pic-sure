@@ -279,7 +279,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
             if ("CROSS_COUNT".equalsIgnoreCase(expectedResultType)) {
                 changeQueryToOpenCrossCount(queryRequest);
             }
-            
+
             response = getHttpResponse(queryRequest, resourceUUID, "/query/sync", properties.getTargetPicsureUrl());
 
             HttpEntity entity = response.getEntity();

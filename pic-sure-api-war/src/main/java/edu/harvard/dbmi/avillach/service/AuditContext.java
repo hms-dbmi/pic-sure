@@ -6,9 +6,8 @@ import java.util.Map;
 import javax.enterprise.context.RequestScoped;
 
 /**
- * Request-scoped holder for audit metadata. Services populate this with domain-specific
- * context (resource_id, query_id, etc.) and the AuditLoggingFilter merges it into the
- * logging event alongside request-level metadata (IP, duration, status).
+ * Request-scoped holder for audit metadata. Services populate this with domain-specific context (resource_id, query_id, etc.) and the
+ * AuditLoggingFilter merges it into the logging event alongside request-level metadata (IP, duration, status).
  */
 @RequestScoped
 public class AuditContext {

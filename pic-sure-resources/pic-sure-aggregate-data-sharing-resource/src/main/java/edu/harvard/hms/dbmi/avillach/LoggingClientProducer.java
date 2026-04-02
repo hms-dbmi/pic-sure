@@ -29,9 +29,7 @@ public class LoggingClientProducer {
             loggingClient = LoggingClient.noOp();
         } else {
             LOG.info("logging-client: configured for {} (clientType=aggregate-data-sharing)", url);
-            loggingClient = new LoggingClient(
-                LoggingClientConfig.builder(url, key).clientType("aggregate-data-sharing").build()
-            );
+            loggingClient = new LoggingClient(LoggingClientConfig.builder(url, key).clientType("aggregate-data-sharing").build());
         }
         return loggingClient;
     }

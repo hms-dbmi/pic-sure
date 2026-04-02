@@ -72,11 +72,16 @@ public class VisualizationResource implements IResourceRS {
         QueryFormat queryFormat = new QueryFormat();
         queryFormat.setName("Pic-Sure Query Format");
         info.getQueryFormats().add(queryFormat);
-        queryFormat.setSpecification(Map.of(
-                "numericFilters", "A map where each entry maps a field name to an object with min and/or max properties. Patients without a value between the min and max will not be included in the result set. Used to make Histograms.",
-                "requiredFields", "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie and Bar Charts.",
-                "categoryFilters", "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie and Bar Charts."
-        ));
+        queryFormat.setSpecification(
+            Map.of(
+                "numericFilters",
+                "A map where each entry maps a field name to an object with min and/or max properties. Patients without a value between the min and max will not be included in the result set. Used to make Histograms.",
+                "requiredFields",
+                "A list of field names for which a patient must have a value in order to be included in the result set. Used to make Pie and Bar Charts.",
+                "categoryFilters",
+                "A map where each entry maps a field name to a list of values to be included in the result set. Used to make Pie and Bar Charts."
+            )
+        );
 
         return info;
     }
@@ -99,10 +104,7 @@ public class VisualizationResource implements IResourceRS {
                     .destIp(httpServletRequest.getLocalAddr()).destPort(httpServletRequest.getLocalPort())
                     .httpUserAgent(httpServletRequest.getHeader("User-Agent"));
             }
-            loggingClient.send(LoggingEvent.builder("QUERY")
-                .action("visualization.query_sync")
-                .request(reqInfo.build())
-                .build());
+            loggingClient.send(LoggingEvent.builder("QUERY").action("visualization.query_sync").request(reqInfo.build()).build());
         }
 
         return visualizationService.handleQuerySync(query, requestSource);
@@ -114,7 +116,8 @@ public class VisualizationResource implements IResourceRS {
     public Response queryFormat(QueryRequest resultRequest) {
         try {
             String queryAsString = mapper.readValue(mapper.writeValueAsString(resultRequest.getQuery()), Query.class).toString();
-            return Response.ok("The user requested visualizations to be created with the following as the query: \n" + queryAsString).build();
+            return Response.ok("The user requested visualizations to be created with the following as the query: \n" + queryAsString)
+                .build();
         } catch (JsonProcessingException e) {
             return Response.serverError().entity("An error occurred formatting the query for display: " + e.getLocalizedMessage()).build();
         }
