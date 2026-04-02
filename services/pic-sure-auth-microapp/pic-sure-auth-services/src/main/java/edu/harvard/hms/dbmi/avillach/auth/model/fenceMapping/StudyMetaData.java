@@ -2,6 +2,9 @@ package edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.apache.commons.lang3.builder.ToStringBuilder;
+
+import java.util.Objects;
 
 public class StudyMetaData {
 
@@ -79,183 +82,247 @@ public class StudyMetaData {
         return studyIdentifier;
     }
 
-    public void setStudyIdentifier(String studyIdentifier) {
+    public StudyMetaData setStudyIdentifier(String studyIdentifier) {
         this.studyIdentifier = studyIdentifier;
+        return this;
     }
 
     public String getStudyType() {
         return studyType;
     }
 
-    public void setStudyType(String studyType) {
+    public StudyMetaData setStudyType(String studyType) {
         this.studyType = studyType;
+        return this;
     }
 
     public String getAbbreviatedName() {
         return abbreviatedName;
     }
 
-    public void setAbbreviatedName(String abbreviatedName) {
+    public StudyMetaData setAbbreviatedName(String abbreviatedName) {
         this.abbreviatedName = abbreviatedName;
+        return this;
     }
 
     public String getFullStudyName() {
         return fullStudyName;
     }
 
-    public void setFullStudyName(String fullStudyName) {
+    public StudyMetaData setFullStudyName(String fullStudyName) {
         this.fullStudyName = fullStudyName;
+        return this;
     }
 
     public String getConsentGroupCode() {
         return consentGroupCode;
     }
 
-    public void setConsentGroupCode(String consentGroupCode) {
+    public StudyMetaData setConsentGroupCode(String consentGroupCode) {
         this.consentGroupCode = consentGroupCode;
+        return this;
     }
 
     public String getConsentGroupNameAbv() {
         return consentGroupNameAbv;
     }
 
-    public void setConsentGroupNameAbv(String consentGroupNameAbv) {
+    public StudyMetaData setConsentGroupNameAbv(String consentGroupNameAbv) {
         this.consentGroupNameAbv = consentGroupNameAbv;
+        return this;
     }
 
     public String getConsentGroupName() {
         return consentGroupName;
     }
 
-    public void setConsentGroupName(String consentGroupName) {
+    public StudyMetaData setConsentGroupName(String consentGroupName) {
         this.consentGroupName = consentGroupName;
+        return this;
     }
 
     public String getRequestAccess() {
         return requestAccess;
     }
 
-    public void setRequestAccess(String requestAccess) {
+    public StudyMetaData setRequestAccess(String requestAccess) {
         this.requestAccess = requestAccess;
+        return this;
     }
 
     public String getDataType() {
         return dataType;
     }
 
-    public void setDataType(String dataType) {
+    public StudyMetaData setDataType(String dataType) {
         this.dataType = dataType;
+        return this;
     }
 
     public int getClinicalVariableCount() {
         return clinicalVariableCount;
     }
 
-    public void setClinicalVariableCount(int clinicalVariableCount) {
+    public StudyMetaData setClinicalVariableCount(int clinicalVariableCount) {
         this.clinicalVariableCount = clinicalVariableCount;
+        return this;
     }
 
     public int getGeneticSampleSize() {
         return geneticSampleSize;
     }
 
-    public void setGeneticSampleSize(int geneticSampleSize) {
+    public StudyMetaData setGeneticSampleSize(int geneticSampleSize) {
         this.geneticSampleSize = geneticSampleSize;
+        return this;
     }
 
     public int getClinicalSampleSize() {
         return clinicalSampleSize;
     }
 
-    public void setClinicalSampleSize(int clinicalSampleSize) {
+    public StudyMetaData setClinicalSampleSize(int clinicalSampleSize) {
         this.clinicalSampleSize = clinicalSampleSize;
+        return this;
     }
 
     public int getRawClinicalVariableCount() {
         return rawClinicalVariableCount;
     }
 
-    public void setRawClinicalVariableCount(int rawClinicalVariableCount) {
+    public StudyMetaData setRawClinicalVariableCount(int rawClinicalVariableCount) {
         this.rawClinicalVariableCount = rawClinicalVariableCount;
+        return this;
     }
 
     public int getRawGeneticSampleSize() {
         return rawGeneticSampleSize;
     }
 
-    public void setRawGeneticSampleSize(int rawGeneticSampleSize) {
+    public StudyMetaData setRawGeneticSampleSize(int rawGeneticSampleSize) {
         this.rawGeneticSampleSize = rawGeneticSampleSize;
+        return this;
     }
 
     public int getRawClinicalSampleSize() {
         return rawClinicalSampleSize;
     }
 
-    public void setRawClinicalSampleSize(int rawClinicalSampleSize) {
+    public StudyMetaData setRawClinicalSampleSize(int rawClinicalSampleSize) {
         this.rawClinicalSampleSize = rawClinicalSampleSize;
+        return this;
     }
 
     public String getStudyVersion() {
         return studyVersion;
     }
 
-    public void setStudyVersion(String studyVersion) {
+    public StudyMetaData setStudyVersion(String studyVersion) {
         this.studyVersion = studyVersion;
+        return this;
     }
 
     public String getStudyPhase() {
         return studyPhase;
     }
 
-    public void setStudyPhase(String studyPhase) {
+    public StudyMetaData setStudyPhase(String studyPhase) {
         this.studyPhase = studyPhase;
+        return this;
     }
 
     public String getTopLevelPath() {
         return topLevelPath;
     }
 
-    public void setTopLevelPath(String topLevelPath) {
+    public StudyMetaData setTopLevelPath(String topLevelPath) {
         this.topLevelPath = topLevelPath;
+        return this;
     }
 
     public Boolean getIsHarmonized() {
         return isHarmonized;
     }
 
-    public void setIsHarmonized(Boolean isHarmonized) {
-        this.isHarmonized = isHarmonized;
+    public StudyMetaData setHarmonized(Boolean harmonized) {
+        isHarmonized = harmonized;
+        return this;
     }
 
     public String getStudyFocus() {
         return studyFocus;
     }
 
-    public void setStudyFocus(String studyFocus) {
+    public StudyMetaData setStudyFocus(String studyFocus) {
         this.studyFocus = studyFocus;
+        return this;
     }
 
     public String getStudyDesign() {
         return studyDesign;
     }
 
-    public void setStudyDesign(String studyDesign) {
+    public StudyMetaData setStudyDesign(String studyDesign) {
         this.studyDesign = studyDesign;
+        return this;
     }
 
     public String getAuthZ() {
         return authZ;
     }
 
-    public void setAuthZ(String authZ) {
+    public StudyMetaData setAuthZ(String authZ) {
         this.authZ = authZ;
+        return this;
     }
 
     public String getAdditionalInformation() {
         return additionalInformation;
     }
 
-    public void setAdditionalInformation(String additionalInformation) {
+    public StudyMetaData setAdditionalInformation(String additionalInformation) {
         this.additionalInformation = additionalInformation;
+        return this;
+    }
+
+    @Override
+    public String toString() {
+        return new ToStringBuilder(this).append("studyIdentifier", studyIdentifier).append("studyType", studyType)
+            .append("abbreviatedName", abbreviatedName).append("fullStudyName", fullStudyName).append("consentGroupCode", consentGroupCode)
+            .append("consentGroupNameAbv", consentGroupNameAbv).append("consentGroupName", consentGroupName)
+            .append("requestAccess", requestAccess).append("dataType", dataType).append("clinicalVariableCount", clinicalVariableCount)
+            .append("geneticSampleSize", geneticSampleSize).append("clinicalSampleSize", clinicalSampleSize)
+            .append("rawClinicalVariableCount", rawClinicalVariableCount).append("rawGeneticSampleSize", rawGeneticSampleSize)
+            .append("rawClinicalSampleSize", rawClinicalSampleSize).append("studyVersion", studyVersion).append("studyPhase", studyPhase)
+            .append("topLevelPath", topLevelPath).append("isHarmonized", isHarmonized).append("studyFocus", studyFocus)
+            .append("studyDesign", studyDesign).append("authZ", authZ).append("additionalInformation", additionalInformation).toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        StudyMetaData that = (StudyMetaData) o;
+        return clinicalVariableCount == that.clinicalVariableCount && geneticSampleSize == that.geneticSampleSize
+            && clinicalSampleSize == that.clinicalSampleSize && rawClinicalVariableCount == that.rawClinicalVariableCount
+            && rawGeneticSampleSize == that.rawGeneticSampleSize && rawClinicalSampleSize == that.rawClinicalSampleSize
+            && Objects.equals(studyIdentifier, that.studyIdentifier) && Objects.equals(studyType, that.studyType)
+            && Objects.equals(abbreviatedName, that.abbreviatedName) && Objects.equals(fullStudyName, that.fullStudyName)
+            && Objects.equals(consentGroupCode, that.consentGroupCode) && Objects.equals(consentGroupNameAbv, that.consentGroupNameAbv)
+            && Objects.equals(consentGroupName, that.consentGroupName) && Objects.equals(requestAccess, that.requestAccess)
+            && Objects.equals(dataType, that.dataType) && Objects.equals(studyVersion, that.studyVersion)
+            && Objects.equals(studyPhase, that.studyPhase) && Objects.equals(topLevelPath, that.topLevelPath)
+            && Objects.equals(isHarmonized, that.isHarmonized) && Objects.equals(studyFocus, that.studyFocus)
+            && Objects.equals(studyDesign, that.studyDesign) && Objects.equals(authZ, that.authZ)
+            && Objects.equals(additionalInformation, that.additionalInformation);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+            studyIdentifier, studyType, abbreviatedName, fullStudyName, consentGroupCode, consentGroupNameAbv, consentGroupName,
+            requestAccess, dataType, clinicalVariableCount, geneticSampleSize, clinicalSampleSize, rawClinicalVariableCount,
+            rawGeneticSampleSize, rawClinicalSampleSize, studyVersion, studyPhase, topLevelPath, isHarmonized, studyFocus, studyDesign,
+            authZ, additionalInformation
+        );
     }
 }

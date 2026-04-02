@@ -6,10 +6,8 @@ import edu.harvard.hms.dbmi.avillach.auth.config.CustomKeyGenerator;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
-import edu.harvard.hms.dbmi.avillach.auth.repository.UserRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.*;
+import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,11 +35,7 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @ExtendWith(MockitoExtension.class)
-@ContextConfiguration(classes = {
-        UserService.class,
-        AccessRuleService.class,
-        CustomKeyGenerator.class,
-        CacheEvictionService.class
+@ContextConfiguration(classes = {UserService.class, AccessRuleService.class, CustomKeyGenerator.class, CacheEvictionService.class
 
 })
 @Import(CacheTest.TestCacheConfig.class)
@@ -73,6 +67,12 @@ public class CacheTest {
 
     @MockBean
     private SessionService sessionService;
+
+    @MockBean
+    private UserConsentsRepository userConsentsRepository;
+
+    @MockBean
+    private FenceMappingUtility fenceMappingUtility;
 
     @MockBean
     private LoggingClient loggingClient;

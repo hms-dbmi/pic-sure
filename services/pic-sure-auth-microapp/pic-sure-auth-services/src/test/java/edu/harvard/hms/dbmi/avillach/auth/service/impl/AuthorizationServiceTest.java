@@ -4,7 +4,9 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
+import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentBasedAccessRuleEvaluator;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,13 +43,21 @@ public class AuthorizationServiceTest {
     @MockBean
     private RoleService roleService;
 
+    @MockBean
+    private BdcConsentBasedAccessRuleEvaluator bdcConsentBasedAccessRuleEvaluator;
+
+    @MockBean
+    private UserConsentsRepository userConsentsRepository;
+
     @BeforeEach
     public void setUp() {
         MockitoAnnotations.openMocks(this);
         SecurityContextHolder.setContext(securityContext);
 
-        accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false","false", "false");
-        authorizationService = new AuthorizationService(accessRuleService, sessionService, roleService,"fence,okta,open");
+        accessRuleService = new AccessRuleService(accessRuleRepository, "false", "false", "false", "false", "false", "false");
+        authorizationService = new AuthorizationService(
+            accessRuleService, sessionService, roleService, bdcConsentBasedAccessRuleEvaluator, "fence,okta,open", userConsentsRepository
+        );
     }
 
     @Test
@@ -71,8 +81,9 @@ public class AuthorizationServiceTest {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "value");
+        requestBody.put("Target Service", "/query");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false);
+        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
 
         assertTrue(result);
     }
@@ -86,7 +97,7 @@ public class AuthorizationServiceTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("test", "differentValue");
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false);
+        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
 
         assertFalse(result);
     }
@@ -180,7 +191,7 @@ public class AuthorizationServiceTest {
         configureUserSecurityContext(user);
         application.setPrivileges(user.getPrivilegesByApplication(application));
 
-        boolean result = authorizationService.isAuthorized(application, null, user, false);
+        boolean result = authorizationService.isAuthorized(application, null, user, false).result();
 
         assertTrue(result);
     }
@@ -191,7 +202,7 @@ public class AuthorizationServiceTest {
         User user = createTestUser();
 
         user.getRoles().iterator().next().setPrivileges(Collections.emptySet());
-        boolean result = authorizationService.isAuthorized(application, new HashMap<>(), user, false);
+        boolean result = authorizationService.isAuthorized(application, new HashMap<>(), user, false).result();
 
         assertFalse(result);
     }
@@ -367,7 +378,8 @@ public class AuthorizationServiceTest {
 
     private void configureUserSecurityContext(User user) {
         CustomUserDetails customUserDetails = new CustomUserDetails(user);
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
+        UsernamePasswordAuthenticationToken authentication =
+            new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
         when(securityContext.getAuthentication()).thenReturn(authentication);
     }
 

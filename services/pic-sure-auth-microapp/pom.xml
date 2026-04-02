@@ -33,7 +33,7 @@
                     <configuration>
                         <java>
                             <eclipse>
-                                <version>4.26</version>
+                                <version>4.29</version>
                                 <file>code-formatting/eclipse-formatter.xml</file>
                             </eclipse>
                             <toggleOffOn />

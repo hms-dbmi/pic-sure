@@ -33,6 +33,7 @@ public class RoleService {
     private final PrivilegeService privilegeService;
     private final FenceMappingUtility fenceMappingUtility;
     public static final String MANAGED_OPEN_ACCESS_ROLE_NAME = "MANUAL_ROLE_OPEN_ACCESS";
+    public static final String MANAGED_AUTH_ACCESS_ROLE_NAME = "MANUAL_ROLE_AUTH_ACCESS";
     public static final String MANAGED_ROLE_NAMED_DATASET = "MANUAL_ROLE_NAMED_DATASET";
     private final Set<Role> publicAccessRoles = new HashSet<>();
 

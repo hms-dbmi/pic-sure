@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -22,16 +24,18 @@ import java.util.Map;
 /**
  * <p>Token introspection endpoint called by an application to validate a user's token and permissions by request.</p>
  *
- * <p>Here, a registered application asks if the user behind a token is allowed to perform certain activities by
- * showing this endpoint the token and where the user wants to go.</p>
- * <p>To accomplish this, this endpoint validates the incoming token, then checks if the user behind the token
- * is authorized to access the URLs they queried and send data along with them. The AuthorizationService class handles authorization
- * {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the privilege level.</p>
+ * <p>Here, a registered application asks if the user behind a token is allowed to perform certain activities by showing this endpoint the
+ * token and where the user wants to go.</p> <p>To accomplish this, this endpoint validates the incoming token, then checks if the user
+ * behind the token is authorized to access the URLs they queried and send data along with them. The AuthorizationService class handles
+ * authorization {@link AuthorizationService} at the access rule level, but this endpoint handles token validation and pre-check at the
+ * privilege level.</p>
  */
 @Tag(name = "Token Management")
 @Controller
 @RequestMapping("/token")
 public class TokenController {
+
+    private final static Logger logger = LoggerFactory.getLogger(TokenController.class);
 
     private final TokenService tokenService;
 

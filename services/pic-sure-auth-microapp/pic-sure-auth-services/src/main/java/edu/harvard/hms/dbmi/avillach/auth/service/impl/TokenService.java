@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
@@ -73,10 +75,10 @@ public class TokenService {
     }
 
     private TokenInspection validateToken(Map<String, Object> inputMap) throws IllegalAccessException {
-        logger.debug("_inspectToken, the incoming token map is: {}", inputMap.entrySet()
-                .stream()
-                .map(entry -> entry.getKey() + " - " + entry.getValue())
-                .collect(Collectors.joining(", ")));
+        logger.debug(
+            "_inspectToken, the incoming token map is: {}",
+            inputMap.entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue()).collect(Collectors.joining(", "))
+        );
 
         TokenInspection tokenInspection = new TokenInspection();
         String token = (String) inputMap.get("token");
@@ -104,16 +106,19 @@ public class TokenService {
 
         Application application;
         try {
-            CustomApplicationDetails customApplicationDetails = (CustomApplicationDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            CustomApplicationDetails customApplicationDetails =
+                (CustomApplicationDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
             application = customApplicationDetails.getApplication();
         } catch (ClassCastException ex) {
             SecurityContext securityContext = SecurityContextHolder.getContext();
             String principalName = securityContext.getAuthentication().getName();
-            logger.error("{} - {} - is trying to use token introspection endpoint, but it is not an application", principalName, principalName);
+            logger.error(
+                "{} - {} - is trying to use token introspection endpoint, but it is not an application", principalName, principalName
+            );
             throw new IllegalAccessException("The application token does not associate with an application but " + principalName);
         }
 
-        // Verify application exists after JWT authentication 
+        // Verify application exists after JWT authentication
         if (application == null) {
             logger.error("_inspectToken() There is no application in securityContext, which shall not be.");
             throw new NullPointerException("Inner application error, please ask admin to check the log.");
@@ -127,7 +132,7 @@ public class TokenService {
         // Check for long-term token type
         // Long-term tokens:
         // - One per user stored in database
-        // - Must match database token exactly 
+        // - Must match database token exactly
         // - Previous token invalidated on refresh
         // Regular tokens remain valid after refresh
         boolean isLongTermToken = false;
@@ -145,7 +150,7 @@ public class TokenService {
             return tokenInspection;
         }
 
-        // Verify token is active and authorized 
+        // Verify token is active and authorized
         boolean isAuthorizationPassed = false;
         String errorMsg = null;
 
@@ -153,21 +158,33 @@ public class TokenService {
         boolean isLongTermTokenCompromised = false;
         if (isLongTermToken && !token.equals(user.getToken())) {
             isLongTermTokenCompromised = true;
-            logger.error("_inspectToken User {}|{}is sending a long term token that is not matching the record in database user table.", user.getUuid(), user.getSubject());
+            logger.error(
+                "_inspectToken User {}|{}is sending a long term token that is not matching the record in database user table.",
+                user.getUuid(), user.getSubject()
+            );
             errorMsg = "Cannot find matched long term token, your token might have been refreshed.";
         }
 
         // Authorize token based on application privileges
         if (application.getPrivileges() == null || application.getPrivileges().isEmpty()) {
             isAuthorizationPassed = true;
-            logger.info("ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED", user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName());
-        } else if (!isLongTermTokenCompromised
-                   && user.getRoles() != null
-                   && authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken)) {
-            isAuthorizationPassed = true;
-        } else {
-            if (!isLongTermTokenCompromised)
-                errorMsg = "User doesn't have enough privileges.";
+            logger.info(
+                "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED",
+                user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName()
+            );
+        } else if (!isLongTermTokenCompromised && user.getRoles() != null) {
+            EvaluateAccessRuleResult evaluateAccessRuleResult =
+                authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
+            isAuthorizationPassed = evaluateAccessRuleResult.result();
+            evaluateAccessRuleResult.query().ifPresent(query -> {
+                try {
+                    tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } else if (!isLongTermTokenCompromised) {
+            errorMsg = "User doesn't have enough privileges.";
         }
 
         if (isLongTermToken && isAuthorizationPassed) {
@@ -204,10 +221,11 @@ public class TokenService {
         tokenInspection.addAllFields(jws.getPayload());
         tokenInspection.addField("privileges", user.getPrivilegeNameSetByApplication(application));
 
-        logger.debug("_inspectToken() Successfully inspect and return response map: {}", tokenInspection.getResponseMap().entrySet()
-                .stream()
-                .map(entry -> entry.getKey() + " - " + entry.getValue())
-                .collect(Collectors.joining(", ")));
+        logger.debug(
+            "_inspectToken() Successfully inspect and return response map: {}",
+            tokenInspection.getResponseMap().entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue())
+                .collect(Collectors.joining(", "))
+        );
 
         return tokenInspection;
 
@@ -219,7 +237,8 @@ public class TokenService {
         String subject;
         Jws<Claims> jws;
         try {
-            String token = JWTUtil.getTokenFromAuthorizationHeader(authorizationHeader).orElseThrow(() -> new NotAuthorizedException("Token not found"));
+            String token = JWTUtil.getTokenFromAuthorizationHeader(authorizationHeader)
+                .orElseThrow(() -> new NotAuthorizedException("Token not found"));
             jws = this.jwtUtil.parseToken(token);
         } catch (NotAuthorizedException ex) {
             return new InvalidRefreshToken("Cannot parse original token.");

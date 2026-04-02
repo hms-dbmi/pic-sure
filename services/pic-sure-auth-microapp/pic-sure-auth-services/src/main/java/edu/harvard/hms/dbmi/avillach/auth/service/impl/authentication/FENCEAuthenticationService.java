@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserConsents;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.*;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.BdcConsentsBuilder;
 import edu.harvard.hms.dbmi.avillach.auth.utils.FenceMappingUtility;
 import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
 import jakarta.annotation.PostConstruct;
@@ -135,6 +137,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         // Update the user's roles (or create them if none exists)
         Iterator<String> project_access_names = fence_user_profile.get("authz").fieldNames();
         Set<String> roleNames = new HashSet<>();
+        Set<String> userConsentStrings = new HashSet<>();
         project_access_names.forEachRemaining(roleName -> {
             // We need to add/remove the users roles based on what is in the project_access_names list
             StudyMetaData projectMetadata = this.fenceMappingUtility.getFenceMappingByAuthZ().get(roleName);
@@ -145,10 +148,18 @@ public class FENCEAuthenticationService implements AuthenticationService {
 
             String projectId = projectMetadata.getStudyIdentifier();
             String consentCode = projectMetadata.getConsentGroupCode();
+            String userConsent = projectId;
+            if (consentCode != null && !consentCode.isEmpty()) {
+                userConsent += "." + consentCode;
+            }
+            userConsentStrings.add(userConsent);
             String newRoleName = StringUtils.isNotBlank(consentCode) ? "MANAGED_" + projectId + "_" + consentCode : "MANAGED_" + projectId;
 
             roleNames.add(newRoleName);
         });
+
+        userService.updateUserConsents(currentUser, userConsentStrings);
+
 
         currentUser = userService.updateUserRoles(currentUser, roleNames);
         UserClaims userClaims = new UserClaims();

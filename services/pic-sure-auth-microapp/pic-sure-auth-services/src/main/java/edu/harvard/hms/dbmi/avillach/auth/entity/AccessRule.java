@@ -60,6 +60,7 @@ public class AccessRule extends BaseEntity {
         public static final int IS_NOT_EMPTY = 14;
         public static final int ALL_CONTAINS_OR_EMPTY = 15;
         public static final int ALL_CONTAINS_OR_EMPTY_IGNORE_CASE = 16;
+        public static final int USER_CONSENT_ACCESS = 17;
 
         public static Map<String, Integer> getTypeNameMap(){
             Map<String, Integer> map = new LinkedHashMap<>();
