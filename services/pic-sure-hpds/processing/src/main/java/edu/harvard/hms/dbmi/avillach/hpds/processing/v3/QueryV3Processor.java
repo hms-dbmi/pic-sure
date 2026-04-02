@@ -12,6 +12,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.ByteBuffer;
@@ -31,17 +32,19 @@ public class QueryV3Processor implements HpdsV3Processor {
     private static final byte[] EMPTY_STRING_BYTES = "".getBytes();
     private static final Logger log = LoggerFactory.getLogger(QueryV3Processor.class);
 
-    private final int ID_BATCH_SIZE;
+    private final int idBatchSize;
 
     private final QueryExecutor queryExecutor;
 
     private final PhenotypicObservationStore phenotypicObservationStore;
 
     @Autowired
-    public QueryV3Processor(QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore) {
+    public QueryV3Processor(
+        QueryExecutor queryExecutor, PhenotypicObservationStore phenotypicObservationStore, @Value("${ID_BATCH_SIZE:0}") int idBatchSize
+    ) {
         this.queryExecutor = queryExecutor;
         this.phenotypicObservationStore = phenotypicObservationStore;
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
+        this.idBatchSize = idBatchSize;
     }
 
     @Override
@@ -55,8 +58,8 @@ public class QueryV3Processor implements HpdsV3Processor {
     public void runQuery(Query query, AsyncResult result) {
         Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
         log.info("Processing " + idList.size() + " rows for result " + result.getId());
-        Lists.partition(new ArrayList<>(idList), ID_BATCH_SIZE).parallelStream()
-            .map(list -> buildResult(result, query, new TreeSet<>(list))).sequential().forEach(result::appendResultStore);
+        Lists.partition(new ArrayList<>(idList), idBatchSize).parallelStream().map(list -> buildResult(result, query, new TreeSet<>(list)))
+            .sequential().forEach(result::appendResultStore);
     }
 
 

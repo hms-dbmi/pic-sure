@@ -41,7 +41,7 @@ public class AbstractProcessorTest {
     @BeforeEach
     public void setup() {
         abstractProcessor = new AbstractProcessor(
-            new PhenotypeMetaStore(new TreeMap<>(), new TreeSet<>(), 500), mockLoadingCache, infoStores, null, genomicProcessor, ""
+            new PhenotypeMetaStore(new TreeMap<>(), new TreeSet<>(), 500), mockLoadingCache, infoStores, null, genomicProcessor, "", 100
         );
     }
 

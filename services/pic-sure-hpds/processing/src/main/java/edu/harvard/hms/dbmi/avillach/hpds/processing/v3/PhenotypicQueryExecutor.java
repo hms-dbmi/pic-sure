@@ -1,8 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
@@ -14,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
@@ -22,8 +18,6 @@ import java.util.stream.Collectors;
 public class PhenotypicQueryExecutor {
 
     private static Logger log = LoggerFactory.getLogger(PhenotypicQueryExecutor.class);
-
-    private final int CACHE_SIZE;
 
     private final PhenotypeMetaStore phenotypeMetaStore;
 
@@ -33,8 +27,6 @@ public class PhenotypicQueryExecutor {
     public PhenotypicQueryExecutor(PhenotypeMetaStore phenotypeMetaStore, PhenotypicObservationStore phenotypicObservationStore) {
         this.phenotypeMetaStore = phenotypeMetaStore;
         this.phenotypicObservationStore = phenotypicObservationStore;
-
-        CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
     }
 
     public Set<Integer> getPatientSet(Query query) {

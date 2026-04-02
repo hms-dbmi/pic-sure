@@ -32,8 +32,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class QueryService {
 
-    private static final int RESULTS_CACHE_SIZE = 50;
-
     private final int SMALL_JOB_LIMIT;
     private final int LARGE_TASK_THREADS;
     private final int SMALL_TASK_THREADS;
@@ -133,13 +131,6 @@ public class QueryService {
             }
         }
         return getStatusFor(result.getId());
-    }
-
-    ExecutorService countExecutor = Executors.newSingleThreadExecutor();
-
-    public int runCount(Query query)
-        throws InterruptedException, ExecutionException, ClassNotFoundException, FileNotFoundException, IOException {
-        return countProcessor.runCounts(query);
     }
 
     private AsyncResult initializeResult(Query query) throws IOException {
@@ -252,10 +243,6 @@ public class QueryService {
 
     public AsyncResult getResultFor(String queryId) {
         return results.get(queryId);
-    }
-
-    private int getIntProp(String key) {
-        return Integer.parseInt(System.getProperty(key));
     }
 
     private ExecutorService createExecutor(BlockingQueue<Runnable> taskQueue, int numThreads) {

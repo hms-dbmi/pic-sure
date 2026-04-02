@@ -24,12 +24,10 @@ public class VariantListProcessor implements HpdsProcessor {
 
     private static Logger log = LoggerFactory.getLogger(VariantListProcessor.class);
 
-    private final Boolean VCF_EXCERPT_ENABLED;
-    private final Boolean AGGREGATE_VCF_EXCERPT_ENABLED;
-    private final Boolean VARIANT_LIST_ENABLED;
-    private final String ID_CUBE_NAME;
-    private final int ID_BATCH_SIZE;
-    private final int CACHE_SIZE;
+    private final boolean vcfExcerptEnabled;
+    private final boolean aggregateVcfExcerptEnabled;
+    private final boolean variantListEnabled;
+    private final String idCubeName;
 
     private final AbstractProcessor abstractProcessor;
     private final ColumnSorter columnSorter;
@@ -38,40 +36,20 @@ public class VariantListProcessor implements HpdsProcessor {
     @Autowired
     public VariantListProcessor(
         AbstractProcessor abstractProcessor, GenomicProcessor genomicProcessor, ColumnSorter columnSorter,
-        @Value("${VCF_EXCERPT_ENABLED:false}") boolean vcfExcerptEnabled
+        @Value("${VCF_EXCERPT_ENABLED:false}") boolean vcfExcerptEnabled,
+        @Value("${AGGREGATE_VCF_EXCERPT_ENABLED:false}") boolean aggregateVcfExcerptEnabled,
+        @Value("${ID_CUBE_NAME:NONE}") String idCubeName
     ) {
         this.abstractProcessor = abstractProcessor;
         this.genomicProcessor = genomicProcessor;
         this.columnSorter = columnSorter;
 
-        VCF_EXCERPT_ENABLED = vcfExcerptEnabled;
+        this.vcfExcerptEnabled = vcfExcerptEnabled;
         // always enable aggregate queries if full queries are permitted.
-        AGGREGATE_VCF_EXCERPT_ENABLED =
-            VCF_EXCERPT_ENABLED || "TRUE".equalsIgnoreCase(System.getProperty("AGGREGATE_VCF_EXCERPT_ENABLED", "FALSE"));
-        VARIANT_LIST_ENABLED = VCF_EXCERPT_ENABLED || AGGREGATE_VCF_EXCERPT_ENABLED;
-        CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
-        ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
+        this.aggregateVcfExcerptEnabled = this.vcfExcerptEnabled || aggregateVcfExcerptEnabled;
+        variantListEnabled = this.vcfExcerptEnabled || this.aggregateVcfExcerptEnabled;
+        this.idCubeName = idCubeName;
 
-    }
-
-    public VariantListProcessor(boolean isOnlyForTests, AbstractProcessor abstractProcessor) {
-        this.abstractProcessor = abstractProcessor;
-        this.genomicProcessor = null;
-        this.columnSorter = new ColumnSorter("");
-
-        VCF_EXCERPT_ENABLED = "TRUE".equalsIgnoreCase(System.getProperty("VCF_EXCERPT_ENABLED", "FALSE"));
-        // always enable aggregate queries if full queries are permitted.
-        AGGREGATE_VCF_EXCERPT_ENABLED =
-            VCF_EXCERPT_ENABLED || "TRUE".equalsIgnoreCase(System.getProperty("AGGREGATE_VCF_EXCERPT_ENABLED", "FALSE"));
-        VARIANT_LIST_ENABLED = VCF_EXCERPT_ENABLED || AGGREGATE_VCF_EXCERPT_ENABLED;
-        CACHE_SIZE = Integer.parseInt(System.getProperty("CACHE_SIZE", "100"));
-        ID_BATCH_SIZE = Integer.parseInt(System.getProperty("ID_BATCH_SIZE", "0"));
-        ID_CUBE_NAME = System.getProperty("ID_CUBE_NAME", "NONE");
-
-        if (!isOnlyForTests) {
-            throw new IllegalArgumentException("This constructor should never be used outside tests");
-        }
     }
 
     @Override
@@ -89,7 +67,7 @@ public class VariantListProcessor implements HpdsProcessor {
      */
     public String runVariantListQuery(Query query) {
 
-        if (!VARIANT_LIST_ENABLED) {
+        if (!variantListEnabled) {
             log.warn("VARIANT_LIST query attempted, but not enabled.");
             return "VARIANT_LIST query type not allowed";
         }
@@ -115,10 +93,10 @@ public class VariantListProcessor implements HpdsProcessor {
      */
     public String runVcfExcerptQuery(Query query, boolean includePatientData) throws IOException {
 
-        if (includePatientData && !VCF_EXCERPT_ENABLED) {
+        if (includePatientData && !vcfExcerptEnabled) {
             log.warn("VCF_EXCERPT query attempted, but not enabled.");
             return "VCF_EXCERPT query type not allowed";
-        } else if (!includePatientData && !AGGREGATE_VCF_EXCERPT_ENABLED) {
+        } else if (!includePatientData && !aggregateVcfExcerptEnabled) {
             log.warn("AGGREGATE_VCF_EXCERPT query attempted, but not enabled.");
             return "AGGREGATE_VCF_EXCERPT query type not allowed";
         }
@@ -148,8 +126,8 @@ public class VariantListProcessor implements HpdsProcessor {
         }
 
         PhenoCube<String> idCube = null;
-        if (!ID_CUBE_NAME.contentEquals("NONE")) {
-            idCube = (PhenoCube<String>) abstractProcessor.getCube(ID_CUBE_NAME);
+        if (!idCubeName.contentEquals("NONE")) {
+            idCube = (PhenoCube<String>) abstractProcessor.getCube(idCubeName);
         }
 
         //
