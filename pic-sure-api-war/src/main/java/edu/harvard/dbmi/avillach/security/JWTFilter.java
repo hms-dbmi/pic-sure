@@ -362,7 +362,9 @@ public class JWTFilter implements ContainerRequestFilter {
             }
             return requestMap;
         } catch (JsonParseException ex) {
-            throw new ApplicationException("Invalid JSON");
+            logger.warn("Error parsing json", ex);
+            requestMap.put("query", buffer.toString());
+            return requestMap;
         } catch (IOException e1) {
             logger.error("IOException caught trying to build requestMap for auditing.", e1);
             throw new NotAuthorizedException(
