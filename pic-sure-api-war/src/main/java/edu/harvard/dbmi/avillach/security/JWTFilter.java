@@ -320,6 +320,8 @@ public class JWTFilter implements ContainerRequestFilter {
                  * introspection. These credentials are between the backing resource and the user, PIC-SURE should do its best to keep them
                  * confidential.
                  */
+                // todo: only do this when appropriate. this is expected to fail A LOT, so we can't log errors when it fails for reasons we
+                // would like to know about
                 Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
                 if (queryObject instanceof Collection) {
                     for (Object query : (Collection) queryObject) {
