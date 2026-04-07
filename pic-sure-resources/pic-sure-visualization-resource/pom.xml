@@ -94,6 +94,10 @@
             <artifactId>cxf-rt-transports-http</artifactId>
             <scope>compile</scope>
         </dependency>
+		<dependency>
+			<groupId>edu.harvard.dbmi.avillach</groupId>
+			<artifactId>pic-sure-logging-client</artifactId>
+		</dependency>
     </dependencies>
 	<build>
 		<finalName>${project.artifactId}</finalName>
