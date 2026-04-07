@@ -180,7 +180,6 @@ public class JWTFilter implements ContainerRequestFilter {
                 } catch (Exception e) {
                     logger
                         .error("User - {} - is not authorized {} and an Inner application error occurred.", userForLogging, e.getMessage());
-                    logger.info("Error: ", e);
                     auditContext.put("auth_result", "failure");
                     auditContext.put("auth_failure_reason", "internal_error");
                     auditContext.put("auth_failure_message", e.getMessage() != null ? e.getMessage() : "Internal error");
