@@ -37,7 +37,7 @@ class QueryValidatorTest {
             new ColumnMeta().setCategorical(false).setMin(0).setMax(130)
         );
 
-        queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator);
+        queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, false);
         when(phenotypicQueryExecutor.getMetaStore()).thenReturn(metaStore);
     }
 
@@ -89,6 +89,29 @@ class QueryValidatorTest {
         PhenotypicClause phenotypicSubquery2 = new PhenotypicSubquery(null, List.of(phenotypicSubquery1, phenotypicSubquery1), Operator.OR);
         Query query = new Query(List.of(), List.of(), phenotypicSubquery2, List.of(), ResultType.COUNT, null, null);
         doThrow(IllegalArgumentException.class).when(phenotypicFilterValidator).validate(phenotypicFilter, metaStore);
+        assertThrows(IllegalArgumentException.class, () -> queryValidator.validate(query));
+    }
+
+    @Test
+    public void validate_requireAuthorizationFilter_isValid() {
+        PhenotypicFilter phenotypicFilter =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
+        Query query = new Query(
+            List.of(), List.of(new AuthorizationFilter("\\_consent\\", Set.of("studyABC"))), phenotypicFilter, List.of(), ResultType.COUNT,
+            null, null
+        );
+
+        queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, true);
+        queryValidator.validate(query);
+    }
+
+    @Test
+    public void validate_requireAuthorizationFilter_throwsException() {
+        PhenotypicFilter phenotypicFilter =
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\study123\\demographics\\sex\\", Set.of("male"), null, null, null);
+        Query query = new Query(List.of(), List.of(), phenotypicFilter, List.of(), ResultType.COUNT, null, null);
+
+        queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, true);
         assertThrows(IllegalArgumentException.class, () -> queryValidator.validate(query));
     }
 }
