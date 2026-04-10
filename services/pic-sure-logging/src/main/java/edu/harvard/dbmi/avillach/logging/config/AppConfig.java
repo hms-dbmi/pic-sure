@@ -40,9 +40,9 @@ public record AppConfig(
     }
 
     public static AppConfig fromEnvironment(Function<String, String> env) {
-        String auditApiKey = env.apply("AUDIT_API_KEY");
+        String auditApiKey = env.apply("LOGGING_API_KEY");
         if (auditApiKey == null || auditApiKey.isBlank()) {
-            throw new IllegalStateException("AUDIT_API_KEY environment variable is required");
+            throw new IllegalStateException("LOGGING_API_KEY environment variable is required");
         }
 
         String app = getOrDefault(env, "APP", "unknown");

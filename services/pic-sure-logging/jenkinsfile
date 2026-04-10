@@ -78,12 +78,10 @@ pipeline {
               docker rm pic-sure-logging
               set -e
 
-              CONFIG_DIR="${DOCKER_CONFIG_DIR:-/usr/local/docker-config}/logging"
-
               docker run --name=pic-sure-logging --restart always \
                 --network=picsure \
-                --env-file "$CONFIG_DIR/logging.env" \
-                -v "$CONFIG_DIR/logs":/app/logs \
+                --env-file /usr/local/docker-config/logging/logging.env \
+                -v /usr/local/docker-config/logging/logs:/app/logs \
                 -d "${IMAGE_NAME}:${IMAGE_TAG}"
             '''
           } else if (params.DEPLOY_METHOD == 's3') {

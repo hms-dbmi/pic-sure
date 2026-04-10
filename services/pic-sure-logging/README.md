@@ -40,7 +40,7 @@ Requires Java 21 and Maven 3.9+.
 mvn clean package
 
 # Run directly
-AUDIT_API_KEY=my-secret-key java -jar target/pic-sure-logging-1.0-SNAPSHOT.jar
+LOGGING_API_KEY=my-secret-key java -jar target/pic-sure-logging-1.0-SNAPSHOT.jar
 ```
 
 ## API
@@ -53,7 +53,7 @@ Accepts an audit event, enriches it with JWT claims and platform config, and wri
 
 | Header | Required | Description |
 |---|---|---|
-| `X-API-Key` | Yes | Must match the configured `AUDIT_API_KEY` |
+| `X-API-Key` | Yes | Must match the configured `LOGGING_API_KEY` |
 | `Content-Type` | Yes | Must be `application/json` |
 | `Authorization` | No | `Bearer <jwt>` -- claims are extracted and included in the log |
 | `X-Request-Id` | No | Fallback request ID if not provided in the body |
@@ -161,7 +161,7 @@ All configuration is via environment variables.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AUDIT_API_KEY` | **Yes** | -- | API key for `X-API-Key` authentication |
+| `LOGGING_API_KEY` | **Yes** | -- | API key for `X-API-Key` authentication |
 | `APP` | No | `unknown` | Application name included in log output |
 | `PLATFORM` | No | `unknown` | Platform identifier included in log output |
 | `ENVIRONMENT` | No | `unknown` | Deployment environment (e.g., `production`, `staging`) |
@@ -171,7 +171,7 @@ All configuration is via environment variables.
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (`audit.log`, `app.log`) |
 | `JWT_CLAIM_MAPPING` | No | See below | JSON object mapping JWT claims to output field names |
 
-**Startup validation:** The service fails fast with a clear error message if `AUDIT_API_KEY` is missing, `PORT` is not a valid integer in range 1-65535, or `JWT_CLAIM_MAPPING` is not valid JSON.
+**Startup validation:** The service fails fast with a clear error message if `LOGGING_API_KEY` is missing, `PORT` is not a valid integer in range 1-65535, or `JWT_CLAIM_MAPPING` is not valid JSON.
 
 ## JWT Claim Extraction
 
@@ -286,7 +286,7 @@ The multi-stage Dockerfile:
 ```bash
 docker run -d \
   -p 8080:8080 \
-  -e AUDIT_API_KEY=your-secret-key \
+  -e LOGGING_API_KEY=your-secret-key \
   -e APP=pic-sure \
   -e PLATFORM=avillach-lab \
   -e ENVIRONMENT=production \
@@ -308,7 +308,7 @@ docker run -d \
   --log-opt splunk-url=https://your-splunk:8088 \
   --log-opt splunk-format=json \
   --log-opt splunk-sourcetype=audit:picsure \
-  -e AUDIT_API_KEY=your-key \
+  -e LOGGING_API_KEY=your-key \
   pic-sure-logging
 ```
 
@@ -360,7 +360,7 @@ Produces `target/pic-sure-logging-1.0-SNAPSHOT.jar` (~9 MB) containing all depen
 
 | Layer | Error | Behavior |
 |---|---|---|
-| Startup | Missing `AUDIT_API_KEY` | Exit with clear error message |
+| Startup | Missing `LOGGING_API_KEY` | Exit with clear error message |
 | Startup | Invalid `PORT` | Exit with clear error message |
 | Startup | Invalid `JWT_CLAIM_MAPPING` | Exit with clear error message |
 | HTTP | Missing/wrong API key | `401 Unauthorized` |

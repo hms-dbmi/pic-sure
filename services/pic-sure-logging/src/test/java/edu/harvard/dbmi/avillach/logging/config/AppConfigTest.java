@@ -17,7 +17,7 @@ class AppConfigTest {
     @Test
     void allVarsSet() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
         env.put("APP", "myapp");
         env.put("PLATFORM", "myplatform");
         env.put("ENVIRONMENT", "staging");
@@ -43,22 +43,22 @@ class AppConfigTest {
         Map<String, String> env = new HashMap<>();
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> AppConfig.fromEnvironment(envWith(env)));
-        assertTrue(ex.getMessage().contains("AUDIT_API_KEY"));
+        assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
     @Test
     void blankApiKeyFails() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "   ");
+        env.put("LOGGING_API_KEY", "   ");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> AppConfig.fromEnvironment(envWith(env)));
-        assertTrue(ex.getMessage().contains("AUDIT_API_KEY"));
+        assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
     @Test
     void invalidPortFails() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "not-a-number");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> AppConfig.fromEnvironment(envWith(env)));
@@ -68,7 +68,7 @@ class AppConfigTest {
     @Test
     void portOutOfRangeFails() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "99999");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
             () -> AppConfig.fromEnvironment(envWith(env)));
@@ -78,7 +78,7 @@ class AppConfigTest {
     @Test
     void defaultsUsedWhenVarsNotSet() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
 
         AppConfig config = AppConfig.fromEnvironment(envWith(env));
 
@@ -94,7 +94,7 @@ class AppConfigTest {
     @Test
     void defaultJwtClaimMappingUsed() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
 
         AppConfig config = AppConfig.fromEnvironment(envWith(env));
 
@@ -109,7 +109,7 @@ class AppConfigTest {
     @Test
     void customJwtClaimMappingParsed() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
         env.put("JWT_CLAIM_MAPPING", "{\"custom_claim\":\"output_field\"}");
 
         AppConfig config = AppConfig.fromEnvironment(envWith(env));
@@ -120,7 +120,7 @@ class AppConfigTest {
     @Test
     void invalidJwtClaimMappingFails() {
         Map<String, String> env = new HashMap<>();
-        env.put("AUDIT_API_KEY", "test-key");
+        env.put("LOGGING_API_KEY", "test-key");
         env.put("JWT_CLAIM_MAPPING", "not-json");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
