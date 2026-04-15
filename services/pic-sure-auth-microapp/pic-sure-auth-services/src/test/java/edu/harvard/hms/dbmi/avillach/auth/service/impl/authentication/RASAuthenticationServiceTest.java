@@ -147,7 +147,7 @@ public class RASAuthenticationServiceTest {
         Set<RasDbgapPermission> dbgapPermissions = new HashSet<>();
         Set<String> dbgapRoleNames = new HashSet<>();
 
-        when(rasPassPortService.ga4gpPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
+        when(rasPassPortService.ga4ghPassportToRasDbgapPermissions(any())).thenReturn(dbgapPermissions);
         when(roleService.getRoleNamesForDbgapPermissions(any())).thenReturn(dbgapRoleNames);
         when(userService.updateUserRoles(any(), any())).thenReturn(user);
         when(userService.updateUserConsents(any(), any())).thenReturn(user);
