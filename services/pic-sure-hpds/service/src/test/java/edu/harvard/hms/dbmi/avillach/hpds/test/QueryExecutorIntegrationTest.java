@@ -8,6 +8,8 @@ import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironm
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(classes = edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication.class)
 @ActiveProfiles("integration-test")
 public class QueryExecutorIntegrationTest {
+
+    private static final Logger log = LoggerFactory.getLogger(QueryExecutorIntegrationTest.class);
 
     @Autowired
     private QueryExecutor queryExecutor;
@@ -512,6 +516,29 @@ public class QueryExecutorIntegrationTest {
 
         SequencedSet<String> allConceptPaths = queryExecutor.getAllConceptPaths(query);
         assertEquals(0, allConceptPaths.size());
+    }
+
+    @Test
+    public void getPatientSubsetForQuery_validLargeGenomicQuery() {
+        Query query = new Query(
+            List.of(), List.of(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", null, 35.0, 45.0, null),
+            List.of(
+                new GenomicFilter("Gene_with_variant", List.of("LOC102723996", "LOC101928576", "ABC1", "ABC2", "ABC3"), null, null),
+                new GenomicFilter(
+                    "Variant_consequence_calculated",
+                    List.of(
+                        "splice_acceptor_variant", "splice_donor_variant", "stop_gained", "frameshift_variant", "stop_lost", "start_lost",
+                        "inframe_insertion", "inframe_deletion", "missense_variant", "protein_altering_variant", "splice_region_variant",
+                        "splice_donor_5th_base_variant", "splice_donor_region_variant", "splice_polypyrimidine_tract_variant",
+                        "incomplete_terminal_codon_variant", "start_retained_variant", "stop_retained_variant", "synonymous_variant"
+                    ), null, null
+                )
+            ), ResultType.COUNT, null, null
+        );
+
+        Set<Integer> idList = queryExecutor.getPatientSubsetForQuery(query);
+        assertEquals(14, idList.size());
     }
 
 }
