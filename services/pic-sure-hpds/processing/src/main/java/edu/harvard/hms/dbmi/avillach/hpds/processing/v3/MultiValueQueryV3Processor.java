@@ -60,7 +60,11 @@ public class MultiValueQueryV3Processor implements HpdsV3Processor {
                     if (PATIENT_ID_FIELD_NAME.equals(field)) {
                         return List.of(patientId.toString());
                     } else {
-                        return pathToPatientToValueMap.get(field).get(patientId);
+                        Map<Integer, List<String>> integerListMap = pathToPatientToValueMap.get(field);
+                        if (integerListMap != null) {
+                            return integerListMap.get(patientId);
+                        }
+                        return new ArrayList<String>();
                     }
                 }).collect(Collectors.toList())).collect(Collectors.toList());
             result.appendMultiValueResults(fieldValuesPerPatient);
