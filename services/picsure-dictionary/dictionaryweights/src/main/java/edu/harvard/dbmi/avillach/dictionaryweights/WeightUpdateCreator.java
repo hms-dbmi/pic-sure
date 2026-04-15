@@ -9,12 +9,27 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * Generates the SQL UPDATE statement that populates the searchable_fields tsvector
+ * column on concept_node. The tsvector is built from weighted fields (display name,
+ * concept path, dataset info, parent/grandparent names) and a filtered subset of
+ * concept_node_meta values.
+ *
+ * <p>Meta values are filtered to a whitelist of searchable keys (description, values,
+ * derived_values, comment, domain, question) to avoid indexing non-searchable content
+ * like DRS URIs or numeric identifiers. The 'values' key is capped at 60K characters
+ * to handle imaging datasets with very large categorical value sets.</p>
+ */
 @Service
 public class WeightUpdateCreator {
 
-
     private static final Logger LOG = LoggerFactory.getLogger(WeightUpdateCreator.class);
 
+    /**
+     * Builds the UPDATE statement from the given weight configuration. Each weight entry
+     * specifies a field name and a repeat count — higher weights mean the field's text
+     * appears more times in the concat, increasing its tsvector rank contribution.
+     */
     public String createUpdate(List<Weight> weights) {
         LOG.info("Turning {} weights into a big concat query", weights.size());
         String searchableFields = weights.stream()
@@ -35,12 +50,20 @@ public class WeightUpdateCreator {
                     LEFT JOIN
                     (
                         SELECT
-                            concept_node.concept_node_id AS id, left(string_agg(value, ' '), 20000) AS values
-                        FROM
-                            concept_node
-                            join concept_node_meta on concept_node.concept_node_id = concept_node_meta.concept_node_id
+                            concept_node_id AS id,
+                            string_agg(DISTINCT safe_value, ' ') AS values
+                        FROM (
+                            SELECT concept_node_id, value AS safe_value
+                            FROM concept_node_meta
+                            WHERE value <> ''
+                              AND key IN ('description','derived_values','comment','domain','Question','question')
+                            UNION ALL
+                            SELECT concept_node_id, left(value, 60000) AS safe_value
+                            FROM concept_node_meta
+                            WHERE value <> '' AND key = 'values'
+                        ) AS filtered_meta
                         GROUP BY
-                            concept_node.concept_node_id
+                            concept_node_id
                     ) AS concept_node_meta_str ON concept_node_meta_str.id = concept_node.concept_node_id
                     LEFT JOIN dataset AS study ON concept_node.dataset_id = study.dataset_id
                     LEFT JOIN concept_node AS parent ON concept_node.parent_id = parent.concept_node_id

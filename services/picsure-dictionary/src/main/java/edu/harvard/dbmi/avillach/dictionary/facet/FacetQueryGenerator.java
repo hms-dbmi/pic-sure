@@ -13,6 +13,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Builds dynamic SQL for facet count queries. Supports three modes: no facets selected, single category selected, and multi-category
+ * selected. Each mode has search and no-search variants. Facet counts reflect how many displayable concepts match each facet, scoped by the
+ * current search term and consent restrictions.
+ */
 @Component
 public class FacetQueryGenerator {
 
@@ -98,11 +103,10 @@ public class FacetQueryGenerator {
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                        JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                     WHERE
                         (fc.name, facet.name) IN (:facets_in_cat_%s)
                         AND %s
-                        AND categorical_values.value <> ''
                 )
                 """
                 .formatted(categoryKeys.get(category), categoryKeys.get(category), QueryUtility.SEARCH_WHERE);
@@ -189,12 +193,9 @@ public class FacetQueryGenerator {
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                        LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                        JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                     WHERE
                         (fc.name, facet.name) IN (:facets_in_cat_%s)
-                        AND categorical_values.value <> ''
                 )
                 """
                 .formatted(categoryKeys.get(category), categoryKeys.get(category));
@@ -281,16 +282,13 @@ public class FacetQueryGenerator {
                     facet
                     JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                     JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
-                    LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                    JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                     LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                    LEFT JOIN concept_node_meta AS continuous_min ON concept_node.concept_node_id = continuous_min.concept_node_id AND continuous_min.KEY = 'min'
-                    LEFT JOIN concept_node_meta AS continuous_max ON concept_node.concept_node_id = continuous_max.concept_node_id AND continuous_max.KEY = 'max'
-                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                    JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                 WHERE
                     %s
                     fc.name = :facet_category_name
                     AND %s
-                    AND categorical_values.value <> ''
                 GROUP BY
                     facet.facet_id
                 ORDER BY
@@ -306,12 +304,11 @@ public class FacetQueryGenerator {
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                        JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                     WHERE
                         fc.name = :facet_category_name
                         AND facet.name IN (:facets)
                         AND %s
-                        AND categorical_values.value <> ''
                 )
                 SELECT
                     facet.facet_id, count(*) as facet_count
@@ -348,13 +345,12 @@ public class FacetQueryGenerator {
                     facet
                     JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                     JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
-                    LEFT JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
+                    JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                     LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                    LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                    JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                 WHERE
                     %s
                     fc.name = :facet_category_name
-                    AND categorical_values.value <> ''
                 GROUP BY
                     facet.facet_id
                 ORDER BY
@@ -370,11 +366,10 @@ public class FacetQueryGenerator {
                         JOIN facet__concept_node fcn ON fcn.facet_id = facet.facet_id
                         JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
-                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                        JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
                     WHERE
                         fc.name = :facet_category_name
                         AND facet.name IN (:facets)
-                        AND categorical_values.value <> ''
                 )
                 SELECT
                     facet.facet_id, count(*) as facet_count
@@ -411,11 +406,10 @@ public class FacetQueryGenerator {
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
                 %s
-                AND categorical_values.value <> ''
             GROUP BY
                 facet.facet_id
             ORDER BY
@@ -426,8 +420,7 @@ public class FacetQueryGenerator {
     }
 
     private String createNoFacetSQLNoSearch(MapSqlParameterSource params, String consents) {
-        // return all the facets that match displayable concepts
-        // this is the easy one!
+        String whereClause = StringUtils.hasLength(consents) ? consents.strip().replaceAll("\\s+AND\\s*$", "") : "TRUE";
         return """
             SELECT
                 facet.facet_id, count(*) as facet_count
@@ -437,15 +430,14 @@ public class FacetQueryGenerator {
                 JOIN facet_category fc on fc.facet_category_id = facet.facet_category_id
                 JOIN concept_node ON concept_node.concept_node_id = fcn.concept_node_id
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
-                categorical_values.value <> ''
             GROUP BY
                 facet.facet_id
             ORDER BY
                 facet_count DESC
             """
-            .formatted(consents);
+            .formatted(whereClause);
     }
 }

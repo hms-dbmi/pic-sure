@@ -51,7 +51,7 @@ class FilterPreProcessorTest {
             SimpleType.constructUnsafe(Filter.class), null
         );
 
-        Assertions.assertEquals(new Filter(List.of(), "I/love/underscores", List.of()), processedFilter);
+        Assertions.assertEquals(new Filter(List.of(), "I love underscores", List.of()), processedFilter);
     }
 
     @Test

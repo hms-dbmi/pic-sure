@@ -86,6 +86,39 @@ class ConceptFilterQueryGeneratorTest {
     }
 
     @Test
+    void shouldHandleMultiWordSearch() {
+        Filter filter = new Filter(List.of(), "respiratory diseases", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertFalse(actual.isEmpty(), "Multi-word search should return results");
+    }
+
+    @Test
+    void shouldHandleSingleWordSearch() {
+        Filter filter = new Filter(List.of(), "asthma", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertFalse(actual.isEmpty(), "Single-word search should return results");
+    }
+
+    @Test
+    void shouldHandleSearchWithExtraSpaces() {
+        Filter filter = new Filter(List.of(), "  respiratory   diseases  ", List.of());
+        QueryParamPair pair = subject.generateFilterQuery(filter, Pageable.unpaged());
+        String query = "WITH " + pair.query() + "\n SELECT concept_node_id FROM concepts_filtered_sorted;";
+
+        List<Integer> actual = template.queryForList(query, pair.params(), Integer.class);
+
+        Assertions.assertFalse(actual.isEmpty(), "Search with extra spaces should return results");
+    }
+
+    @Test
     void shouldGenerateForFacetAndSearchNoMatch() {
         Filter f =
             new Filter(List.of(new Facet("phs000007", "FHS", "", "", null, null, "study_ids_dataset_ids", null)), "smoke", List.of());

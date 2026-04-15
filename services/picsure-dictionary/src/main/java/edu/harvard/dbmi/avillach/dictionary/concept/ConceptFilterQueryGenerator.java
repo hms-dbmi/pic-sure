@@ -14,26 +14,36 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+/**
+ * Builds dynamic SQL for concept search queries. Handles facet filtering, consent-based dataset scoping, full-text search ranking, and
+ * pagination. The generated queries use INTERSECT to AND facet categories together and a ranking CTE to order results.
+ */
 @Component
 public class ConceptFilterQueryGenerator {
     private final List<String> disallowedMetaFields;
 
+    /**
+     * CTE fragment that computes a rank adjustment multiplier per concept. Concepts flagged with disallowed meta keys (e.g.
+     * stigmatized=true) get a multiplier of 0, pushing them to the bottom of search results without excluding them entirely.
+     */
     private static final String RANK_ADJUSTMENTS = """
         , allow_filtering AS (
             SELECT
-                concept_node.concept_node_id AS concept_node_id,
-                (string_agg(concept_node_meta.value, ' ') NOT LIKE '%' || 'true' || '%')::int AS rank_adjustment
+                concept_node_meta.concept_node_id AS concept_node_id,
+                (concept_node_meta.value <> 'true')::int AS rank_adjustment
             FROM
-                concept_node
-                JOIN concept_node_meta ON
-                    concept_node.concept_node_id = concept_node_meta.concept_node_id
-                    AND concept_node_meta.KEY IN (:disallowed_meta_keys)
-            GROUP BY
-                concept_node.concept_node_id
+                concept_node_meta
+            WHERE
+                concept_node_meta.KEY IN (:disallowed_meta_keys)
         )
         """;
 
+    /**
+     * WHERE clause fragment that restricts results to datasets the user has consent for. Resolves both direct consent codes (phs000123.c1)
+     * and harmonized dataset mappings. Expects a :consents named parameter containing the user's consent list.
+     */
     private static final String CONSENT_QUERY = """
         dataset.dataset_id IN (
             SELECT
@@ -88,18 +98,25 @@ public class ConceptFilterQueryGenerator {
         return new QueryParamPair(superQuery, params);
     }
 
+    /**
+     * Creates the base concept search clause. Filters to displayable concepts (those with a non-empty 'values' meta key), applies full-text
+     * search if present, and scopes by consent if authenticated.
+     */
     private String createValuelessNodeFilter(String search, List<String> consents) {
         String rankQuery = "0";
-        String rankWhere = "";
+        String searchCondition = "";
         if (StringUtils.hasLength(search)) {
-            // we rank search results via two factors:
-            // 1. (more important) does the raw search term appear in the concept's values?
-            // 2. (less important) does psql think the tokenized search term matches something in the searchable_fields
             rankQuery = QueryUtility.SEARCH_QUERY;
-            rankWhere = QueryUtility.SEARCH_WHERE + " AND ";
+            searchCondition = QueryUtility.SEARCH_WHERE;
         }
-        String consentWhere = CollectionUtils.isEmpty(consents) ? "" : CONSENT_QUERY;
-        // concept nodes that have no values and no min/max should not get returned by search
+        // CONSENT_QUERY ends with "AND" so it can be chained with other conditions. Strip the trailing AND here
+        // because this string is assembled separately and joined via Stream.of() below — it must stand alone.
+        String consentCondition = CollectionUtils.isEmpty(consents) ? "" : CONSENT_QUERY.strip().replaceAll("\\s+AND\\s*$", "");
+        String whereClause = Stream.of(searchCondition, consentCondition).filter(StringUtils::hasLength)
+            .collect(Collectors.joining("\n                AND "));
+        if (!StringUtils.hasLength(whereClause)) {
+            whereClause = "TRUE";
+        }
         return """
             SELECT
                 concept_node.concept_node_id,
@@ -107,15 +124,17 @@ public class ConceptFilterQueryGenerator {
             FROM
                 concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
-                %s
-                categorical_values.value <> ''
             """
-            .formatted(rankQuery, rankWhere, consentWhere);
+            .formatted(rankQuery, whereClause);
     }
 
+    /**
+     * Creates one INTERSECT clause per facet category. Within a category, selected facets are ORed; across categories, clauses are ANDed
+     * via INTERSECT. Each clause returns concept_node_ids with their search rank.
+     */
     private List<String> createFacetFilter(Filter filter, MapSqlParameterSource params) {
         String consentWhere = CollectionUtils.isEmpty(filter.consents()) ? "" : CONSENT_QUERY;
         return filter.facets().stream().collect(Collectors.groupingBy(Facet::category)).entrySet().stream().map(facetsForCategory -> {
@@ -140,7 +159,6 @@ public class ConceptFilterQueryGenerator {
                         LEFT JOIN facet__concept_node ON facet__concept_node.facet_id = facet.facet_id
                         JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
                         JOIN concept_node ON concept_node.concept_node_id = facet__concept_node.concept_node_id
-                        LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
                         LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                     WHERE
                         %s
@@ -149,8 +167,7 @@ public class ConceptFilterQueryGenerator {
                     GROUP BY
                         facet__concept_node.concept_node_id
                 )
-                """
-                .formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
+                """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
         }).toList();
     }
 
@@ -169,10 +186,10 @@ public class ConceptFilterQueryGenerator {
 
     private String createDynamicValuelessNodeFilter(String search) {
         String rankQuery = "0 as rank";
-        String rankWhere = "";
+        String whereClause = "TRUE";
         if (StringUtils.hasLength(search)) {
             rankQuery = "ts_rank(searchable_fields, to_tsquery(:dynamic_tsquery)) AS rank";
-            rankWhere = "concept_node.searchable_fields @@ to_tsquery(:dynamic_tsquery) AND";
+            whereClause = "concept_node.searchable_fields @@ to_tsquery(:dynamic_tsquery)";
         }
         return """
             SELECT
@@ -181,15 +198,17 @@ public class ConceptFilterQueryGenerator {
             FROM
                 concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                LEFT JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values'
+                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
-                %s
-                categorical_values.value <> ''
             """
-            .formatted(rankQuery, rankWhere, "");
+            .formatted(rankQuery, whereClause);
     }
 
+    /**
+     * Wraps all filter clauses into a single ranked CTE (concepts_filtered_sorted). Clauses are INTERSECTed, then joined with the rank
+     * adjustment CTE to produce a final ordering where unfilterable concepts are demoted. Adds LIMIT/OFFSET if paged.
+     */
     private static String getSuperQuery(Pageable pageable, List<String> clauses, MapSqlParameterSource params) {
         String query = "(\n" + String.join("\n\tINTERSECT\n", clauses) + "\n)";
         String superQuery = """
