@@ -106,6 +106,10 @@ public class JWTFilter implements ContainerRequestFilter {
             return;
         }
 
+        if (uriInfo.getPath().startsWith("proxy/pic-sure-logging/")) {
+            return;
+        }
+
         if (
             requestContext.getUriInfo().getPath().contentEquals("/system/status")
                 && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)

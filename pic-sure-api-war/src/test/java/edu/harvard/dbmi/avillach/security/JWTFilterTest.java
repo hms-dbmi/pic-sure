@@ -120,6 +120,15 @@ public class JWTFilterTest {
     }
 
     @Test
+    public void testLoggingProxyPathSkipsAuthentication() throws IOException {
+        ContainerRequestContext ctx = createRequestContext();
+        when(filter.uriInfo.getPath()).thenReturn("proxy/pic-sure-logging/audit");
+        filter.filter(ctx);
+        verify(ctx, never()).getHeaderString(HttpHeaders.AUTHORIZATION);
+        verify(ctx, never()).abortWith(any(Response.class));
+    }
+
+    @Test
     public void testFilterCallsTokenIntrospectionAppropriatelyForQuerySync() throws IOException {
 
         tokenIntrospectionStub();
