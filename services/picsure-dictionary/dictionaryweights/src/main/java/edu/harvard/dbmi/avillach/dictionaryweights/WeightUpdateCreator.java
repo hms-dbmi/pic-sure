@@ -16,9 +16,15 @@ import java.util.stream.Stream;
  * concept_node_meta values.
  *
  * <p>Meta values are filtered to a whitelist of searchable keys (description, values,
- * derived_values, comment, domain, question) to avoid indexing non-searchable content
- * like DRS URIs or numeric identifiers. The 'values' key is capped at 60K characters
- * to handle imaging datasets with very large categorical value sets.</p>
+ * derived_values, variable_type, comment, domain, question, unit) to avoid indexing
+ * non-searchable content like DRS URIs or numeric identifiers. The 'values' key is
+ * capped at 60k characters to handle imaging datasets with very large categorical
+ * value sets.</p>
+ *
+ * <p>The tsvector is built with the 'english' language configuration to match the
+ * query layer's use of {@code to_tsquery('english', ...)}. Without this, the server
+ * default ({@code pg_catalog.simple}) applies no stemming, causing mismatches for
+ * words like "Coding" (stored as 'coding' but queried as 'code:*').</p>
  */
 @Service
 public class WeightUpdateCreator {
@@ -37,7 +43,7 @@ public class WeightUpdateCreator {
             .collect(Collectors.joining(", ' ',\n            "));
         return """
             UPDATE concept_node
-            SET SEARCHABLE_FIELDS = to_tsvector(replace(data_table.search_str, '_', '/'))
+            SET SEARCHABLE_FIELDS = to_tsvector('english', replace(data_table.search_str, '_', '/'))
             FROM
             (
                 SELECT
@@ -56,7 +62,7 @@ public class WeightUpdateCreator {
                             SELECT concept_node_id, value AS safe_value
                             FROM concept_node_meta
                             WHERE value <> ''
-                              AND key IN ('description','derived_values','comment','domain','Question','question')
+                              AND key IN ('description','derived_values','variable_type','comment','domain','Question','question','unit')
                             UNION ALL
                             SELECT concept_node_id, left(value, 60000) AS safe_value
                             FROM concept_node_meta
