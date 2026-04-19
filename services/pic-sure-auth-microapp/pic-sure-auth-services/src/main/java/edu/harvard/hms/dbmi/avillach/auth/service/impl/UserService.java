@@ -822,14 +822,16 @@ public class UserService {
     }
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
+        Map<String, Set<String>> consents = new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
             logger.info("Creating user consents");
             userConsents = new UserConsents()
-                .setConsents(new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents())
+                .setConsents(consents)
                 .setUserId(user.getUuid());
             logger.info("{} User consents created", userConsents.getConsents().size());
         }
+        userConsents.setConsents(consents);
         logger.info("Saving {} user consents", userConsents.getConsents().size());
         userConsentsRepository.save(userConsents);
 

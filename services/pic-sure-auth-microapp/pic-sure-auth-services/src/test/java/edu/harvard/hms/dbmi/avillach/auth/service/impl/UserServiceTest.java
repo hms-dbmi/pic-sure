@@ -1,13 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
-import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
+import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.fenceMapping.StudyMetaData;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ApplicationRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.ConnectionRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
@@ -20,6 +17,7 @@ import io.jsonwebtoken.Jws;
 import jakarta.mail.MessagingException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -576,6 +574,33 @@ public class UserServiceTest {
         User result = userService.save(user);
         assertNotNull(result);
         assertEquals(user, result);
+    }
+
+    @Test
+    public void updateUserConsents_newUser() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        when(userConsentsRepository.findByUserId(any(UUID.class))).thenReturn(null);
+        User user = createTestUser();
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
+    }
+
+
+    @Test
+    public void updateUserConsents_existingUser() {
+        when(fenceMappingUtility.getFENCEMapping()).thenReturn(Map.of("phs1234.c1", new StudyMetaData().setHarmonized(false).setDataType("P")));
+        when(userConsentsRepository.findByUserId(any(UUID.class))).thenReturn(new UserConsents().setConsents(Map.of("_consents", Set.of("phs345.c2"))));
+        User user = createTestUser();
+
+        userService.updateUserConsents(user, Set.of("phs1234.c1"));
+
+        ArgumentCaptor<UserConsents> userConsentsCaptor = ArgumentCaptor.forClass(UserConsents.class);
+        verify(userConsentsRepository).save(userConsentsCaptor.capture());
+        assertEquals(Map.of("\\_consents\\", Set.of("phs1234.c1")), userConsentsCaptor.getValue().getConsents());
     }
 
     private UserClaims buildTestUserClaims(User user) {
