@@ -73,6 +73,7 @@ public class PicsureQueryV3Service {
         QueryStatus results = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
 
         Query queryEntity = copyQuery(dataQueryRequest, resource, results);
+        queryEntity.setVersion("3");
         queryRepo.persist(queryEntity);
 
         if (auditContext != null) {

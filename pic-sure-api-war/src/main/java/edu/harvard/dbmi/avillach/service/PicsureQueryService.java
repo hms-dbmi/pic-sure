@@ -53,6 +53,9 @@ public class PicsureQueryService {
     @Inject
     AuditContext auditContext;
 
+    @Inject
+    PicsureQueryV3Service picsureQueryV3Service;
+
     /**
      * Executes a query on a PIC-SURE resource and creates a Query entity in the database for the query.
      *
@@ -109,6 +112,9 @@ public class PicsureQueryService {
         }
         if (credentialsQueryRequest == null) {
             throw new ProtocolException(ProtocolException.MISSING_DATA);
+        }
+        if ("3".equals(query.getVersion())) {
+            return picsureQueryV3Service.queryStatus(queryId, credentialsQueryRequest, headers);
         }
         Resource resource = query.getResource();
         verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);

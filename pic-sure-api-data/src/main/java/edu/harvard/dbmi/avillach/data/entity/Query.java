@@ -11,110 +11,122 @@ import edu.harvard.dbmi.avillach.util.PicSureStatus;
 
 @Entity(name = "query")
 public class Query extends BaseEntity {
-	
-	//TODO may not need these two things
-	private Date startTime;
-	
-	private Date readyTime;
 
-	//Resource is responsible for mapping internal status to picsurestatus
-	private PicSureStatus status;
+    // TODO may not need these two things
+    private Date startTime;
 
-	private String resourceResultId;
+    private Date readyTime;
 
-	//Original query request
-	@Lob
-    @Column(columnDefinition="BLOB")
-	private byte[] query;
+    // Resource is responsible for mapping internal status to picsurestatus
+    private PicSureStatus status;
 
-	@ManyToOne
-	@JoinColumn(name = "resourceId")
-	private Resource resource;
+    private String resourceResultId;
 
-	@Column(length = 8192)
-	private byte[] metadata;
-	
-	public Resource getResource() {
-		return resource;
-	}
+    // Original query request
+    @Lob
+    @Column(columnDefinition = "BLOB")
+    private byte[] query;
+
+    @ManyToOne
+    @JoinColumn(name = "resourceId")
+    private Resource resource;
+
+    @Column(length = 8192)
+    private byte[] metadata;
+
+    private String version;
+
+    public Resource getResource() {
+        return resource;
+    }
 
     public void setResource(Resource resource) {
         this.resource = resource;
     }
 
     public String getResourceResultId() {
-		return resourceResultId;
-	}
+        return resourceResultId;
+    }
 
-	public void setResourceResultId(String resourceResultId) {
-		this.resourceResultId = resourceResultId;
-	}
+    public void setResourceResultId(String resourceResultId) {
+        this.resourceResultId = resourceResultId;
+    }
 
-	public void setStartTime(Date startTime) {
-		this.startTime = startTime;
-	}
+    public void setStartTime(Date startTime) {
+        this.startTime = startTime;
+    }
 
-	public Date getStartTime() {
-		return startTime;
-	}
+    public Date getStartTime() {
+        return startTime;
+    }
 
-	public Date getReadyTime() {
-		return readyTime;
-	}
+    public Date getReadyTime() {
+        return readyTime;
+    }
 
-	public PicSureStatus getStatus() {
-		return status;
-	}
+    public PicSureStatus getStatus() {
+        return status;
+    }
 
-	public void setReadyTime(Date readyTime) {
-		this.readyTime = readyTime;
-	}
+    public void setReadyTime(Date readyTime) {
+        this.readyTime = readyTime;
+    }
 
-	public void setStatus(PicSureStatus status) {
-		this.status = status;
-	}
+    public void setStatus(PicSureStatus status) {
+        this.status = status;
+    }
 
-	public String getQuery() {
-		
-		if (this.query == null || this.query.length == 0) {
+    public String getVersion() {
+        return version;
+    }
+
+    public Query setVersion(String version) {
+        this.version = version;
+        return this;
+    }
+
+    public String getQuery() {
+
+        if (this.query == null || this.query.length == 0) {
             return "";
         }
-		
-		String outStr = "";
-		try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(this.query));
-	        BufferedReader bf = new BufferedReader(new InputStreamReader(gis, "UTF-8"));){
-	        
-	        String line;
-	        while ((line=bf.readLine())!=null) {
-	          outStr += line;
-	        }
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
-        return outStr;
-	}
 
-	public void setQuery(String queryStr) {
-		if (queryStr == null || queryStr.length() == 0) {
-			this.query = new byte[0];
+        String outStr = "";
+        try (
+            GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(this.query)); BufferedReader bf =
+                new BufferedReader(new InputStreamReader(gis, "UTF-8"));
+        ) {
+
+            String line;
+            while ((line = bf.readLine()) != null) {
+                outStr += line;
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return outStr;
+    }
+
+    public void setQuery(String queryStr) {
+        if (queryStr == null || queryStr.length() == 0) {
+            this.query = new byte[0];
             return;
         }
-       
-		try (ByteArrayOutputStream obj=new ByteArrayOutputStream();
-			GZIPOutputStream gzip = new GZIPOutputStream(obj);){
-			gzip.write(queryStr.getBytes("UTF-8"));
-	        gzip.close();
-	        this.query = obj.toByteArray();
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
 
-	public byte[] getMetadata() {
-		return metadata;
-	}
+        try (ByteArrayOutputStream obj = new ByteArrayOutputStream(); GZIPOutputStream gzip = new GZIPOutputStream(obj);) {
+            gzip.write(queryStr.getBytes("UTF-8"));
+            gzip.close();
+            this.query = obj.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
-	public void setMetadata(byte[] metadata) {
-		this.metadata = metadata;
-	}
+    public byte[] getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(byte[] metadata) {
+        this.metadata = metadata;
+    }
 }
