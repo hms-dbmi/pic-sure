@@ -147,6 +147,9 @@ public class PicsureQueryService {
         if (query == null) {
             throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
+        if ("3".equals(query.getVersion())) {
+            return picsureQueryV3Service.queryResult(queryId, credentialsQueryRequest, headers);
+        }
         Resource resource = query.getResource();
         if (resource == null) {
             throw new ApplicationException(ApplicationException.MISSING_RESOURCE);
