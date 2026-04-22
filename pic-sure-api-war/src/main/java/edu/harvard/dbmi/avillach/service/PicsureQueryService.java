@@ -113,7 +113,7 @@ public class PicsureQueryService {
         if (credentialsQueryRequest == null) {
             throw new ProtocolException(ProtocolException.MISSING_DATA);
         }
-        if ("3".equals(query.getVersion())) {
+        if (isV3Query(query)) {
             return picsureQueryV3Service.queryStatus(queryId, credentialsQueryRequest, headers);
         }
         Resource resource = query.getResource();
@@ -147,7 +147,7 @@ public class PicsureQueryService {
         if (query == null) {
             throw new ProtocolException(ProtocolException.QUERY_NOT_FOUND + queryId.toString());
         }
-        if ("3".equals(query.getVersion())) {
+        if (isV3Query(query)) {
             return picsureQueryV3Service.queryResult(queryId, credentialsQueryRequest, headers);
         }
         Resource resource = query.getResource();
@@ -177,6 +177,13 @@ public class PicsureQueryService {
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
         return resourceWebClient.queryResult(resource.getResourceRSPath(), query.getResourceResultId(), credentialsQueryRequest);
+    }
+
+    private boolean isV3Query(Query query) {
+        if (query.getVersion() == null) {
+            return false;
+        }
+        return query.getVersion().split("\\.")[0].equals("3");
     }
 
     /**
