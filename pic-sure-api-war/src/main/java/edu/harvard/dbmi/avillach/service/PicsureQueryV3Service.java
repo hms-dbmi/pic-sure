@@ -39,6 +39,8 @@ public class PicsureQueryV3Service {
 
     private final static ObjectMapper mapper = new ObjectMapper();
 
+    public static final String CURRENT_VERSION = "3";
+
     @Inject
     JWTFilter jwtFilter;
 
@@ -73,6 +75,7 @@ public class PicsureQueryV3Service {
         QueryStatus results = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
 
         Query queryEntity = copyQuery(dataQueryRequest, resource, results);
+        queryEntity.setVersion(CURRENT_VERSION);
         queryRepo.persist(queryEntity);
 
         if (auditContext != null) {
@@ -272,6 +275,7 @@ public class PicsureQueryV3Service {
         }
 
         queryEntity.setQuery(queryJson);
+        queryEntity.setVersion(CURRENT_VERSION);
         queryRepo.persist(queryEntity);
 
         if (auditContext != null) {
@@ -359,6 +363,7 @@ public class PicsureQueryV3Service {
 
         QueryStatus response = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
         Query queryEntity = copyQuery(dataQueryRequest, resource, response);
+        queryEntity.setVersion(CURRENT_VERSION);
         queryRepo.persist(queryEntity);
 
         if (auditContext != null) {
