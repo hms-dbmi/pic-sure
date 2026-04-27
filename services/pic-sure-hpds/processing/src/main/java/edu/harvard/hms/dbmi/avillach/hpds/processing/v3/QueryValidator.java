@@ -24,7 +24,7 @@ public class QueryValidator {
     @Autowired
     public QueryValidator(
         PhenotypicQueryExecutor phenotypicQueryExecutor, PhenotypicFilterValidator phenotypicFilterValidator,
-        @Value("${hpds.requireAuthorizationFilter:false}") boolean requireAuthorizationFilter
+        @Value("${hpds.requireAuthorizationFilter:true}") boolean requireAuthorizationFilter
     ) {
         this.phenotypicQueryExecutor = phenotypicQueryExecutor;
         this.phenotypicFilterValidator = phenotypicFilterValidator;
