@@ -64,9 +64,10 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 String contentType = response.getContentType();
                 Long bytes = parseContentLength(response.getHeader("Content-Length"));
 
-                RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp).destPort(destPort)
-                    .httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration).httpContentType(contentType)
-                    .bytes(bytes).build();
+                String queryString = request.getQueryString();
+                RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).queryString(queryString).srcIp(srcIp)
+                    .destIp(destIp).destPort(destPort).httpUserAgent(request.getHeader("User-Agent")).status(responseStatus)
+                    .duration(duration).httpContentType(contentType).bytes(bytes).build();
 
                 Map<String, Object> metadata = new HashMap<>();
                 String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, request.getHeader("User-Agent"));
