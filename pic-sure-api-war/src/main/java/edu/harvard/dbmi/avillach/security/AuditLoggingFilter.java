@@ -112,6 +112,10 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
                 return;
             }
 
+            if ("OPTIONS".equals(requestContext.getMethod())) {
+                return;
+            }
+
             String fullPath = requestContext.getUriInfo().getRequestUri().getPath();
 
             // Skip paths that should not be logged
@@ -170,9 +174,10 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             Long bytes = lengthRaw >= 0 ? (long) lengthRaw : null;
 
             // Build RequestInfo
-            RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp).destPort(destPort)
-                .httpUserAgent(httpServletRequest.getHeader("User-Agent")).status(responseStatus).duration(duration)
-                .httpContentType(contentType).bytes(bytes).build();
+            String queryString = requestContext.getUriInfo().getRequestUri().getQuery();
+            RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).queryString(queryString).srcIp(srcIp)
+                .destIp(destIp).destPort(destPort).httpUserAgent(httpServletRequest.getHeader("User-Agent")).status(responseStatus)
+                .duration(duration).httpContentType(contentType).bytes(bytes).build();
 
             // Build metadata map (skip null values)
             Map<String, Object> metadata = new HashMap<>();
