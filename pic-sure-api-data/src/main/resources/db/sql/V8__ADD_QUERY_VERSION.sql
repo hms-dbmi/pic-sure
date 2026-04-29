@@ -1,0 +1,1 @@
+ALTER TABLE query ADD COLUMN version varchar(255) COLLATE utf8_bin DEFAULT NULL;
