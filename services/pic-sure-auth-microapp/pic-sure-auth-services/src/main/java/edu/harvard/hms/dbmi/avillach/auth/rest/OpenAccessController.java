@@ -38,6 +38,22 @@ public class OpenAccessController {
 
         boolean isValid = authorizationService.openAccessRequestIsValid(inputMap);
         AuditAttributes.putMetadata(request, "validation_result", String.valueOf(isValid));
+
+        Object requestObj = inputMap.get("request");
+        if (requestObj instanceof Map<?, ?> requestDetails) {
+            Object targetService = requestDetails.get("Target Service");
+            if (targetService != null) {
+                AuditAttributes.putMetadata(request, "target_service", targetService.toString());
+            }
+            Object query = requestDetails.get("query");
+            if (query instanceof Map<?, ?> queryMap) {
+                Object resourceUUID = queryMap.get("resourceUUID");
+                if (resourceUUID != null) {
+                    AuditAttributes.putMetadata(request, "resource_id", resourceUUID.toString());
+                }
+            }
+        }
+
         return ResponseEntity.ok(isValid);
     }
 

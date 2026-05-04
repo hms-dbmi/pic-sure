@@ -63,6 +63,21 @@ public class TokenController {
             AuditAttributes.putMetadata(request, "authz_token_refreshed", String.valueOf(resultMap.get("tokenRefreshed")));
         }
 
+        Object requestObj = inputMap.get("request");
+        if (requestObj instanceof Map<?, ?> requestDetails) {
+            Object targetService = requestDetails.get("Target Service");
+            if (targetService != null) {
+                AuditAttributes.putMetadata(request, "target_service", targetService.toString());
+            }
+            Object query = requestDetails.get("query");
+            if (query instanceof Map<?, ?> queryMap) {
+                Object resourceUUID = queryMap.get("resourceUUID");
+                if (resourceUUID != null) {
+                    AuditAttributes.putMetadata(request, "resource_id", resourceUUID.toString());
+                }
+            }
+        }
+
         return PICSUREResponse.success(resultMap);
     }
 
