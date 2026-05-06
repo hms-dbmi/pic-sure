@@ -72,7 +72,12 @@ public class PicsureQueryV3Service {
 
         dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
-        QueryStatus results = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
+        QueryStatus results = resourceWebClient.query(path, dataQueryRequest);
 
         Query queryEntity = copyQuery(dataQueryRequest, resource, results);
         queryEntity.setVersion(CURRENT_VERSION);
@@ -121,8 +126,13 @@ public class PicsureQueryV3Service {
         verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
 
         // Update status on query object
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
         QueryStatus status =
-            resourceWebClient.queryStatus(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
+            resourceWebClient.queryStatus(path, query.getResourceResultId(), credentialsQueryRequest);
         status.setPicsureResultId(queryId);
         query.setStatus(status.getStatus());
         queryRepo.persist(query);
@@ -175,7 +185,13 @@ public class PicsureQueryV3Service {
         }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-        return resourceWebClient.queryResult(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
+
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
+        return resourceWebClient.queryResult(path, query.getResourceResultId(), credentialsQueryRequest);
     }
 
     /**
@@ -221,8 +237,14 @@ public class PicsureQueryV3Service {
         }
 
         credentialsQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
         return resourceWebClient
-            .queryResultSignedUrl(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
+            .queryResultSignedUrl(path, query.getResourceResultId(), credentialsQueryRequest);
     }
 
     /**
@@ -286,7 +308,13 @@ public class PicsureQueryV3Service {
         }
 
         queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
-        Response syncResponse = resourceWebClient.querySync(resource.getResourceRSPath() + "/v3/", queryRequest, requestSource);
+
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
+        Response syncResponse = resourceWebClient.querySync(path, queryRequest, requestSource);
         String queryMetadata = queryEntity.getUuid().toString(); // if no response ID, use the queryID (maintain behavior)
 
         if (syncResponse.getHeaders() != null) {
@@ -361,7 +389,12 @@ public class PicsureQueryV3Service {
         Resource resource = verifyQueryRequest(dataQueryRequest, headers);
         dataQueryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
 
-        QueryStatus response = resourceWebClient.query(resource.getResourceRSPath() + "/v3/", dataQueryRequest);
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
+        QueryStatus response = resourceWebClient.query(path, dataQueryRequest);
         Query queryEntity = copyQuery(dataQueryRequest, resource, response);
         queryEntity.setVersion(CURRENT_VERSION);
         queryRepo.persist(queryEntity);
@@ -430,7 +463,12 @@ public class PicsureQueryV3Service {
         verifyQueryStatusRequest(resource, credentialsQueryRequest, queryId, headers);
 
         // Update status on query object
-        return resourceWebClient.queryStatus(resource.getResourceRSPath() + "/v3/", queryId.toString(), credentialsQueryRequest);
+        String path = resource.getResourceRSPath();
+        if (!path.contains("v3")) {
+            path = path + "/v3/";
+        }
+
+        return resourceWebClient.queryStatus(path, queryId.toString(), credentialsQueryRequest);
     }
 
     private void verifyQueryStatusRequest(Resource resource, QueryRequest credentialsQueryRequest, UUID queryId, HttpHeaders headers)
