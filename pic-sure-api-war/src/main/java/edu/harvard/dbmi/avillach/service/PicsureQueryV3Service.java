@@ -74,7 +74,10 @@ public class PicsureQueryV3Service {
 
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         QueryStatus results = resourceWebClient.query(path, dataQueryRequest);
@@ -128,7 +131,10 @@ public class PicsureQueryV3Service {
         // Update status on query object
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         QueryStatus status =
@@ -188,7 +194,10 @@ public class PicsureQueryV3Service {
 
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         return resourceWebClient.queryResult(path, query.getResourceResultId(), credentialsQueryRequest);
@@ -240,7 +249,10 @@ public class PicsureQueryV3Service {
 
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         return resourceWebClient
@@ -311,7 +323,10 @@ public class PicsureQueryV3Service {
 
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         Response syncResponse = resourceWebClient.querySync(path, queryRequest, requestSource);
@@ -391,7 +406,10 @@ public class PicsureQueryV3Service {
 
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         QueryStatus response = resourceWebClient.query(path, dataQueryRequest);
@@ -465,7 +483,10 @@ public class PicsureQueryV3Service {
         // Update status on query object
         String path = resource.getResourceRSPath();
         if (!path.contains("v3")) {
+            logger.info("resourceRSPath '{}' does not contain 'v3'; appending '/v3/'", path);
             path = path + "/v3/";
+        } else {
+            logger.info("resourceRSPath '{}' already contains 'v3'; leaving path unchanged", path);
         }
 
         return resourceWebClient.queryStatus(path, queryId.toString(), credentialsQueryRequest);
