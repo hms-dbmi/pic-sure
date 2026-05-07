@@ -36,6 +36,9 @@ public class QueryValidator {
 
         if (requireAuthorizationFilter) {
             if (query.authorizationFilters().isEmpty()) {
+                log.warn(
+                    "Authorization filter is required for this query. To disable this requirement, set hpds.requireAuthorizationFilter=false"
+                );
                 throw new IllegalArgumentException("Authorization filter is required for this query");
             }
         }
