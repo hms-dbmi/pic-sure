@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
+import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
@@ -204,6 +205,47 @@ public class ResourceWebClient {
             resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+            if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
+                logger.error("ResourceRS did not return a 200");
+                httpClientUtil.throwResponseError(resourcesResponse, rsURL);
+            }
+            return httpClientUtil.readObjectFromResponse(resourcesResponse, QueryStatus.class);
+        } catch (JsonProcessingException e) {
+            logger.error("Unable to encode resource credentials");
+            throw new ProtocolException("Unable to encode resource credentials", e);
+        } finally {
+            closeHttpResponse(resourcesResponse);
+        }
+    }
+
+
+    public QueryStatus reSubmitQuery(String rsURL, String queryId, QueryRequest queryRequest) {
+        logger.debug("Calling ResourceWebClient reSubmitQuery()");
+        HttpResponse resourcesResponse = null;
+        try {
+            if (queryRequest == null) {
+                throw new ProtocolException(ProtocolException.MISSING_DATA);
+            }
+            if (queryRequest.getResourceCredentials() == null) {
+                throw new NotAuthorizedException("Missing credentials");
+            }
+            if (rsURL == null) {
+                throw new ApplicationException(ApplicationException.MISSING_RESOURCE_PATH);
+            }
+            if (queryId == null) {
+                throw new ProtocolException("Missing query id");
+            }
+            String pathName = "/v3/query/";
+            String body = json.writeValueAsString(queryRequest);
+            logger.debug(httpClientUtil.composeURL(rsURL, pathName));
+            logger.debug(body);
+            resourcesResponse = httpClientUtil.retrievePostResponse(
+                httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
+            );
+            if (resourcesResponse.getStatusLine().getStatusCode() == 404) {
+                logger.info("Query {} not found");
+                return new QueryStatus().setStatus(PicSureStatus.NOT_FOUND);
+            }
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 httpClientUtil.throwResponseError(resourcesResponse, rsURL);

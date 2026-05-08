@@ -12,6 +12,7 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.security.JWTFilter;
+import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.Utilities;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
@@ -123,12 +124,21 @@ public class PicsureQueryV3Service {
         // Update status on query object
         QueryStatus status =
             resourceWebClient.queryStatus(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
+        if (PicSureStatus.NOT_FOUND.equals(status.getStatus())) {
+            // re-submit query
+            status = reSubmitQuery(query, credentialsQueryRequest, resource);
+        }
         status.setPicsureResultId(queryId);
         query.setStatus(status.getStatus());
         queryRepo.persist(query);
         status.setStartTime(query.getStartTime().getTime());
         status.setResourceID(resource.getUuid());
         return status;
+    }
+
+    private QueryStatus reSubmitQuery(Query query, GeneralQueryRequest credentialsQueryRequest, Resource resource) {
+        credentialsQueryRequest.setQuery(query);
+        return resourceWebClient.reSubmitQuery("http://localhost/picsure", query.getResourceResultId(), credentialsQueryRequest);
     }
 
     /**
