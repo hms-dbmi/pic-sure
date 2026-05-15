@@ -205,6 +205,10 @@ public class ResourceWebClient {
             resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+            if (resourcesResponse.getStatusLine().getStatusCode() == 404) {
+                logger.info("Query {} not found", queryId);
+                return new QueryStatus().setStatus(PicSureStatus.NOT_FOUND);
+            }
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {
                 logger.error("ResourceRS did not return a 200");
                 httpClientUtil.throwResponseError(resourcesResponse, rsURL);
@@ -242,8 +246,9 @@ public class ResourceWebClient {
             resourcesResponse = httpClientUtil.retrievePostResponse(
                 httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
             );
+            logger.info("Request to {} returned {}", rsURL, resourcesResponse.getStatusLine().getStatusCode());
             if (resourcesResponse.getStatusLine().getStatusCode() == 404) {
-                logger.info("Query {} not found");
+                logger.info("Query {} not found", queryId);
                 return new QueryStatus().setStatus(PicSureStatus.NOT_FOUND);
             }
             if (resourcesResponse.getStatusLine().getStatusCode() != 200) {

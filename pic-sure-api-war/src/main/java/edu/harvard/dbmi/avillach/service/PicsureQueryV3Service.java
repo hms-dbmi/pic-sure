@@ -125,6 +125,7 @@ public class PicsureQueryV3Service {
         QueryStatus status =
             resourceWebClient.queryStatus(resource.getResourceRSPath() + "/v3/", query.getResourceResultId(), credentialsQueryRequest);
         if (PicSureStatus.NOT_FOUND.equals(status.getStatus())) {
+            logger.info("Query not found in HPDS, resubmitting");
             // re-submit query
             status = reSubmitQuery(query, credentialsQueryRequest, resource);
         }
