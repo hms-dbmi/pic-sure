@@ -201,8 +201,8 @@ public class ResourceWebClient {
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(queryRequest);
             String fullUrl = httpClientUtil.composeURL(rsURL, pathName);
-            logger.debug(fullUrl);
-            logger.debug(body);
+            logger.info(fullUrl);
+            logger.info(body);
             resourcesResponse = httpClientUtil.retrievePostResponse(fullUrl, createHeaders(queryRequest.getResourceCredentials()), body);
             logger.info("POST to {} returned {}", fullUrl, resourcesResponse.getStatusLine().getStatusCode());
             if (resourcesResponse.getStatusLine().getStatusCode() == 404) {
