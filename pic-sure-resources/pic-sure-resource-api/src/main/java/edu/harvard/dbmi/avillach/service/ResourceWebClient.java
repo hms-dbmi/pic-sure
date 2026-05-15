@@ -200,12 +200,11 @@ public class ResourceWebClient {
             }
             String pathName = "/query/" + queryId + "/status";
             String body = json.writeValueAsString(queryRequest);
-            logger.debug(httpClientUtil.composeURL(rsURL, pathName));
+            String fullUrl = httpClientUtil.composeURL(rsURL, pathName);
+            logger.debug(fullUrl);
             logger.debug(body);
-            resourcesResponse = httpClientUtil.retrievePostResponse(
-                httpClientUtil.composeURL(rsURL, pathName), createHeaders(queryRequest.getResourceCredentials()), body
-            );
-            logger.info("Request to {} returned {}", rsURL, resourcesResponse.getStatusLine().getStatusCode());
+            resourcesResponse = httpClientUtil.retrievePostResponse(fullUrl, createHeaders(queryRequest.getResourceCredentials()), body);
+            logger.info("POST to {} returned {}", fullUrl, resourcesResponse.getStatusLine().getStatusCode());
             if (resourcesResponse.getStatusLine().getStatusCode() == 404) {
                 logger.info("Query {} not found", queryId);
                 return new QueryStatus().setStatus(PicSureStatus.NOT_FOUND);
