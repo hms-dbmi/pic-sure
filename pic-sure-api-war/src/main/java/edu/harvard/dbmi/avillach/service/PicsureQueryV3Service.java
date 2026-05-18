@@ -139,7 +139,8 @@ public class PicsureQueryV3Service {
 
     private QueryStatus reSubmitQuery(Query query, GeneralQueryRequest credentialsQueryRequest, Resource resource) {
         credentialsQueryRequest.setQuery(query);
-        return resourceWebClient.reSubmitQuery("http://localhost:8080/picsure", query.getResourceResultId(), credentialsQueryRequest);
+        return resourceWebClient
+            .reSubmitQuery("http://localhost:8080/pic-sure-api-2/PICSURE", query.getResourceResultId(), credentialsQueryRequest);
     }
 
     /**
