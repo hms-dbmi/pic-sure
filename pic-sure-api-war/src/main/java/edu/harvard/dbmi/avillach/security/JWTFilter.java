@@ -329,11 +329,11 @@ public class JWTFilter implements ContainerRequestFilter {
                 if (queryObject instanceof Collection) {
                     for (Object query : (Collection) queryObject) {
                         if (query instanceof Map) {
-                            ((Map) query).remove("resourceCredentials");
+                            // ((Map) query).remove("resourceCredentials");
                         }
                     }
                 } else if (queryObject instanceof Map) {
-                    ((Map) queryObject).remove("resourceCredentials");
+                    // ((Map) queryObject).remove("resourceCredentials");
                 }
                 requestMap.put("query", queryObject);
 
