@@ -493,6 +493,7 @@ public class ResourceWebClient {
 
     private Header[] createHeaders(Map<String, String> resourceCredentials) {
         Header authorizationHeader = new BasicHeader(HttpHeaders.AUTHORIZATION, BEARER_STRING + resourceCredentials.get(BEARER_TOKEN_KEY));
+        logger.info("Auth header: " + authorizationHeader.getValue());
         Header contentTypeHeader = new BasicHeader(HttpHeaders.CONTENT_TYPE, "application/json");
         Header[] headers = {authorizationHeader, contentTypeHeader};
         return headers;
