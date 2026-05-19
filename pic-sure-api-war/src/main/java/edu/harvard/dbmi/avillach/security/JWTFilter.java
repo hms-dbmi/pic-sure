@@ -31,10 +31,7 @@ import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.*;
 import javax.ws.rs.ext.Provider;
 import javax.servlet.http.HttpServletRequest;
 
@@ -326,14 +323,15 @@ public class JWTFilter implements ContainerRequestFilter {
                 // todo: only do this when appropriate. this is expected to fail A LOT, so we can't log errors when it fails for reasons we
                 // would like to know about
                 Object queryObject = new ObjectMapper().readValue(new ByteArrayInputStream(buffer.toByteArray()), Object.class);
+                Object resourceCredentials = null;
                 if (queryObject instanceof Collection) {
                     for (Object query : (Collection) queryObject) {
                         if (query instanceof Map) {
-                            // ((Map) query).remove("resourceCredentials");
+                            resourceCredentials = ((Map) query).get("resourceCredentials");
                         }
                     }
                 } else if (queryObject instanceof Map) {
-                    // ((Map) queryObject).remove("resourceCredentials");
+                    resourceCredentials = ((Map) queryObject).get("resourceCredentials");
                 }
                 requestMap.put("query", queryObject);
 
@@ -350,7 +348,8 @@ public class JWTFilter implements ContainerRequestFilter {
                         // logger.info("resource obj: " + resource + " path: " + resource.getResourceRSPath());
                         if (resource != null && resource.getResourceRSPath() != null) {
                             GeneralQueryRequest queryRequest = new GeneralQueryRequest();
-                            queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resource.getToken());
+                            logger.info("ResourceCredentials: {}", resourceCredentials.toString());
+                            queryRequest.getResourceCredentials().put(ResourceWebClient.BEARER_TOKEN_KEY, resourceCredentials.toString());
                             queryRequest.setResourceUUID(resourceUUID);
                             queryRequest.setQuery(((Map) queryObject).get("query"));
 
