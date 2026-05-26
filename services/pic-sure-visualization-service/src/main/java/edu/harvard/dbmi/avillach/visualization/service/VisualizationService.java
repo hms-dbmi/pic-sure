@@ -3,8 +3,8 @@ package edu.harvard.dbmi.avillach.visualization.service;
 import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
 import edu.harvard.dbmi.avillach.visualization.model.*;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
-import edu.harvard.dbmi.avillach.visualization.processing.ChartProcessor;
-import edu.harvard.dbmi.avillach.visualization.processing.ChartProcessorRegistry;
+import edu.harvard.dbmi.avillach.visualization.processing.CategoricalDistributionProcessor;
+import edu.harvard.dbmi.avillach.visualization.processing.ContinuousDistributionProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,43 +23,43 @@ public class VisualizationService {
     private final QueryDecomposer queryDecomposer;
     private final HpdsClient hpdsClient;
     private final ObfuscationParser obfuscationParser;
-    private final ChartProcessorRegistry chartProcessorRegistry;
+    private final CategoricalDistributionProcessor categoricalDistributionProcessor;
+    private final ContinuousDistributionProcessor continuousDistributionProcessor;
     private final BinningService binningService;
 
     public VisualizationService(
         QueryDecomposer queryDecomposer, HpdsClient hpdsClient, ObfuscationParser obfuscationParser,
-        ChartProcessorRegistry chartProcessorRegistry, BinningService binningService
+        CategoricalDistributionProcessor categoricalDistributionProcessor, ContinuousDistributionProcessor continuousDistributionProcessor,
+        BinningService binningService
     ) {
         this.queryDecomposer = queryDecomposer;
         this.hpdsClient = hpdsClient;
         this.obfuscationParser = obfuscationParser;
-        this.chartProcessorRegistry = chartProcessorRegistry;
+        this.categoricalDistributionProcessor = categoricalDistributionProcessor;
+        this.continuousDistributionProcessor = continuousDistributionProcessor;
         this.binningService = binningService;
     }
 
     public VisualizationResponse generateDistributions(Query query, HpdsAccessContext accessContext, String bearerToken) {
         List<QueryDecomposer.SubQueryDescriptor> subQueries = queryDecomposer.decompose(query);
-        List<ChartData> allCharts = new ArrayList<>();
+        List<CategoricalDistributionData> categoricalData = new ArrayList<>();
+        List<ContinuousDistributionData> continuousData = new ArrayList<>();
 
         for (QueryDecomposer.SubQueryDescriptor descriptor : subQueries) {
-            ChartType chartType = "bar".equals(descriptor.chartType()) ? ChartType.BAR : ChartType.HISTOGRAM;
-            ChartProcessor processor = chartProcessorRegistry.get(chartType);
-
             try {
                 if (accessContext.accessType() == AccessType.AUTHORIZED) {
                     Map<String, Map<String, Integer>> crossCounts = hpdsClient
                         .getAuthCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken);
-                    if (crossCounts != null && !crossCounts.isEmpty()) {
-                        Map<String, Map<String, Integer>> processed = processor.preProcess(crossCounts);
-                        allCharts.addAll(processor.process(processed, false));
-                    }
+                    addAuthorizedDistributions(descriptor, crossCounts, categoricalData, continuousData);
                 } else {
                     Map<String, Map<String, String>> rawCrossCounts = hpdsClient
                         .getOpenCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken);
-                    if (rawCrossCounts != null && !rawCrossCounts.isEmpty()) {
+                    if (hasSeriesData(rawCrossCounts)) {
                         boolean isObfuscated = obfuscationParser.isObfuscated(rawCrossCounts);
                         Map<String, Map<String, Integer>> cleanedCounts = obfuscationParser.clean(rawCrossCounts);
-                        allCharts.addAll(processor.process(cleanedCounts, isObfuscated));
+                        if (hasSeriesData(cleanedCounts)) {
+                            addOpenDistributions(descriptor, cleanedCounts, isObfuscated, categoricalData, continuousData);
+                        }
                     }
                 }
             } catch (HttpStatusCodeException e) {
@@ -78,7 +78,37 @@ public class VisualizationService {
             }
         }
 
-        return new VisualizationResponse(allCharts);
+        return new VisualizationResponse(categoricalData, continuousData);
+    }
+
+    private void addAuthorizedDistributions(
+        QueryDecomposer.SubQueryDescriptor descriptor, Map<String, Map<String, Integer>> crossCounts,
+        List<CategoricalDistributionData> categoricalData, List<ContinuousDistributionData> continuousData
+    ) {
+        if (!hasSeriesData(crossCounts)) {
+            return;
+        }
+
+        if ("bar".equals(descriptor.chartType())) {
+            categoricalData.addAll(categoricalDistributionProcessor.process(crossCounts, false, true));
+        } else {
+            continuousData.addAll(continuousDistributionProcessor.process(crossCounts, false, true));
+        }
+    }
+
+    private void addOpenDistributions(
+        QueryDecomposer.SubQueryDescriptor descriptor, Map<String, Map<String, Integer>> crossCounts, boolean isObfuscated,
+        List<CategoricalDistributionData> categoricalData, List<ContinuousDistributionData> continuousData
+    ) {
+        if ("bar".equals(descriptor.chartType())) {
+            categoricalData.addAll(categoricalDistributionProcessor.process(crossCounts, isObfuscated, false));
+        } else {
+            continuousData.addAll(continuousDistributionProcessor.process(crossCounts, isObfuscated, false));
+        }
+    }
+
+    private static boolean hasSeriesData(Map<String, ? extends Map<?, ?>> crossCounts) {
+        return crossCounts != null && crossCounts.values().stream().anyMatch(values -> values != null && !values.isEmpty());
     }
 
     public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousData) {

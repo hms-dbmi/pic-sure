@@ -68,14 +68,15 @@ class QueryDecomposerTest {
     }
 
     @Test
-    void decompose_withRequiredFilter_treatAsCategorical() {
-        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\race\\", null, null, null, null);
+    void decompose_withRequiredFilter_treatsTypeAsUnknown() {
+        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\AGE\\", null, null, null, null);
         Query query = new Query(List.of(), List.of(), required, List.of(), null, null, null);
 
         List<QueryDecomposer.SubQueryDescriptor> result = decomposer.decompose(query);
 
-        assertEquals(1, result.size());
+        assertEquals(2, result.size());
         assertEquals(ResultType.CATEGORICAL_CROSS_COUNT, result.get(0).resultType());
+        assertEquals(ResultType.CONTINUOUS_CROSS_COUNT, result.get(1).resultType());
     }
 
     @Test

@@ -34,6 +34,7 @@ public class QueryDecomposer {
                     || PhenotypicFilterType.ANY_RECORD_OF.equals(filter.phenotypicFilterType())
             ) {
                 categoricalPaths.add(filter.conceptPath());
+                numericPaths.add(filter.conceptPath());
             }
         }
 

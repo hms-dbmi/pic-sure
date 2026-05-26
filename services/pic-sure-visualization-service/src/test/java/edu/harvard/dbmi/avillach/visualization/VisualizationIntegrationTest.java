@@ -47,7 +47,8 @@ class VisualizationIntegrationTest {
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
         assertNotNull(response);
-        assertTrue(response.charts().isEmpty());
+        assertTrue(response.categoricalData().isEmpty());
+        assertTrue(response.continuousData().isEmpty());
     }
 
     @Test
@@ -59,7 +60,8 @@ class VisualizationIntegrationTest {
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
         assertNotNull(response);
-        assertTrue(response.charts().isEmpty());
+        assertTrue(response.categoricalData().isEmpty());
+        assertTrue(response.continuousData().isEmpty());
     }
 
     @Test

@@ -49,7 +49,8 @@ public class DirectHpdsStrategy implements HpdsCallStrategy {
         String url = hpdsBaseUrl + "/v3/query/sync";
         logger.debug("Direct HPDS call to {} with resultType={}", url, resultType);
 
-        ResponseEntity<Map<String, T>> response = restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(subQuery, headers), typeRef);
+        ResponseEntity<Map<String, T>> response =
+            restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(Map.of("query", subQuery), headers), typeRef);
         return response.getBody() != null ? response.getBody() : new LinkedHashMap<>();
     }
 }

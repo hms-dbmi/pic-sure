@@ -3,10 +3,9 @@ package edu.harvard.dbmi.avillach.visualization.service;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
-import edu.harvard.dbmi.avillach.visualization.processing.BarChartProcessor;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
-import edu.harvard.dbmi.avillach.visualization.processing.ChartProcessorRegistry;
-import edu.harvard.dbmi.avillach.visualization.processing.HistogramProcessor;
+import edu.harvard.dbmi.avillach.visualization.processing.CategoricalDistributionProcessor;
+import edu.harvard.dbmi.avillach.visualization.processing.ContinuousDistributionProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,10 +36,10 @@ class VisualizationServiceTest {
         QueryDecomposer decomposer = new QueryDecomposer();
         ObfuscationParser obfuscationParser = new ObfuscationParser(10, 3);
         BinningService binningService = new BinningService();
-        BarChartProcessor barProcessor = new BarChartProcessor(7);
-        HistogramProcessor histogramProcessor = new HistogramProcessor(binningService);
-        ChartProcessorRegistry registry = new ChartProcessorRegistry(List.of(barProcessor, histogramProcessor));
-        service = new VisualizationService(decomposer, hpdsClient, obfuscationParser, registry, binningService);
+        CategoricalDistributionProcessor categoricalProcessor = new CategoricalDistributionProcessor(7);
+        ContinuousDistributionProcessor continuousProcessor = new ContinuousDistributionProcessor(binningService);
+        service =
+            new VisualizationService(decomposer, hpdsClient, obfuscationParser, categoricalProcessor, continuousProcessor, binningService);
     }
 
     @Test
@@ -57,9 +56,9 @@ class VisualizationServiceTest {
         VisualizationResponse response =
             service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
-        assertFalse(response.charts().isEmpty());
-        assertEquals("bar", response.charts().get(0).chartType());
-        assertFalse(response.charts().get(0).isObfuscated());
+        assertFalse(response.categoricalData().isEmpty());
+        assertEquals("Variable distribution of demographics: race", response.categoricalData().get(0).title());
+        assertFalse(response.categoricalData().get(0).obfuscated());
     }
 
     @Test
@@ -75,8 +74,8 @@ class VisualizationServiceTest {
 
         VisualizationResponse response = service.generateDistributions(query, new HpdsAccessContext(OPEN_UUID, AccessType.OPEN), null);
 
-        assertFalse(response.charts().isEmpty());
-        assertTrue(response.charts().get(0).isObfuscated());
+        assertFalse(response.categoricalData().isEmpty());
+        assertTrue(response.categoricalData().get(0).obfuscated());
     }
 
     @Test
@@ -86,7 +85,8 @@ class VisualizationServiceTest {
         VisualizationResponse response =
             service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
-        assertTrue(response.charts().isEmpty());
+        assertTrue(response.categoricalData().isEmpty());
+        assertTrue(response.continuousData().isEmpty());
     }
 
     @Test
@@ -108,11 +108,8 @@ class VisualizationServiceTest {
         VisualizationResponse response =
             service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
-        assertFalse(response.charts().isEmpty());
-        assertEquals("histogram", response.charts().get(0).chartType());
-        @SuppressWarnings("unchecked")
-        List<Integer> yValues = (List<Integer>) response.charts().get(0).traces().get(0).get("y");
-        int totalOutput = yValues.stream().mapToInt(Integer::intValue).sum();
+        assertFalse(response.continuousData().isEmpty());
+        int totalOutput = response.continuousData().get(0).continuousMap().values().stream().mapToInt(Integer::intValue).sum();
         assertEquals(600, totalOutput);
     }
 
@@ -128,7 +125,29 @@ class VisualizationServiceTest {
         VisualizationResponse response =
             service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
-        assertFalse(response.charts().isEmpty());
-        assertEquals("bar", response.charts().get(0).chartType());
+        assertFalse(response.categoricalData().isEmpty());
+        assertEquals("Variable distribution of demographics: race", response.categoricalData().get(0).title());
+    }
+
+    @Test
+    void generateDistributions_requiredNumericFilter_skipsEmptyCategoricalAndReturnsHistogram() {
+        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, "\\demographics\\AGE\\", null, null, null, null);
+        Query query = new Query(List.of(), List.of(), required, List.of(), null, null, null);
+
+        Map<String, Map<String, Integer>> emptyCategoricalCounts = new LinkedHashMap<>();
+        emptyCategoricalCounts.put("\\demographics\\AGE\\", new LinkedHashMap<>());
+        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(AUTHORIZED_UUID), any()))
+            .thenReturn(emptyCategoricalCounts);
+
+        Map<String, Map<String, Integer>> continuousCounts = new LinkedHashMap<>();
+        continuousCounts.put("\\demographics\\AGE\\", new LinkedHashMap<>(Map.of("18.0", 2, "19.0", 3)));
+        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CONTINUOUS_CROSS_COUNT), eq(AUTHORIZED_UUID), any()))
+            .thenReturn(continuousCounts);
+
+        VisualizationResponse response =
+            service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
+
+        assertEquals(1, response.continuousData().size());
+        assertTrue(response.categoricalData().isEmpty());
     }
 }

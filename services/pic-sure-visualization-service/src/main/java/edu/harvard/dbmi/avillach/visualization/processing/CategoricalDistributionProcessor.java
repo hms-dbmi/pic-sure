@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
-import edu.harvard.dbmi.avillach.visualization.model.ChartData;
-import edu.harvard.dbmi.avillach.visualization.model.ChartType;
+import edu.harvard.dbmi.avillach.visualization.model.CategoricalDistributionData;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,62 +10,40 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Component
-public class BarChartProcessor implements ChartProcessor {
+public class CategoricalDistributionProcessor {
 
-    private static final Set<String> SKIP_KEYS =
-        Set.of("\\_consents\\", "\\_harmonized_consent\\", "\\_topmed_consents\\", "\\_parent_consents\\");
     private static final int MAX_LABEL_LENGTH = 45;
 
     private final int maxCategories;
 
-    public BarChartProcessor(@Value("${chart.categorical.max-categories}") int maxCategories) {
+    public CategoricalDistributionProcessor(
+        @Value("${distribution.categorical.max-categories:${chart.categorical.max-categories:7}}") int maxCategories
+    ) {
         this.maxCategories = maxCategories;
     }
 
-    @Override
-    public ChartType chartType() {
-        return ChartType.BAR;
-    }
-
-    @Override
-    public Map<String, Map<String, Integer>> preProcess(Map<String, Map<String, Integer>> crossCounts) {
-        Map<String, Map<String, Integer>> aggregated = new LinkedHashMap<>();
-        for (Map.Entry<String, Map<String, Integer>> entry : crossCounts.entrySet()) {
-            aggregated.put(entry.getKey(), aggregateTopN(entry.getValue()));
-        }
-        return aggregated;
-    }
-
-    @Override
-    public List<ChartData> process(Map<String, Map<String, Integer>> crossCounts, boolean isObfuscated) {
-        List<ChartData> charts = new ArrayList<>();
+    public List<CategoricalDistributionData> process(
+        Map<String, Map<String, Integer>> crossCounts, boolean obfuscated, boolean aggregateCategories
+    ) {
+        List<CategoricalDistributionData> distributions = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, Integer>> entry : crossCounts.entrySet()) {
-            if (SKIP_KEYS.contains(entry.getKey())) continue;
+            if (DistributionMetadata.SKIP_KEYS.contains(entry.getKey()) || entry.getValue().isEmpty()) {
+                continue;
+            }
 
-            Map<String, Integer> axisMap = new LinkedHashMap<>(entry.getValue());
-
-            String title = getChartTitle(entry.getKey());
-            String xAxisLabel = createXAxisLabel(title);
-
-            List<String> xValues = new ArrayList<>(axisMap.keySet());
-            List<Integer> yValues = new ArrayList<>(axisMap.values());
-
-            Map<String, Object> trace = new LinkedHashMap<>();
-            trace.put("x", xValues);
-            trace.put("y", yValues);
-            trace.put("type", "bar");
-            trace.put("name", xAxisLabel);
-
-            Map<String, Object> layout = new LinkedHashMap<>();
-            layout.put("xaxis", Map.of("title", xAxisLabel));
-            layout.put("yaxis", Map.of("title", "Number of Participants"));
-            layout.put("bargap", 0.15);
-
-            charts.add(new ChartData("bar", title, isObfuscated, List.of(trace), layout));
+            Map<String, Integer> categoricalMap =
+                aggregateCategories ? aggregateTopN(entry.getValue()) : new LinkedHashMap<>(entry.getValue());
+            String title = DistributionMetadata.titleFor(entry.getKey());
+            distributions.add(
+                new CategoricalDistributionData(
+                    title, false, categoricalMap, obfuscated, DistributionMetadata.xAxisLabelFor(title), "Number of Participants", null,
+                    null
+                )
+            );
         }
 
-        return charts;
+        return distributions;
     }
 
     Map<String, Integer> aggregateTopN(Map<String, Integer> axisMap) {
@@ -113,5 +90,4 @@ public class BarChartProcessor implements ChartProcessor {
         }
         return keyPrefix + "...";
     }
-
 }

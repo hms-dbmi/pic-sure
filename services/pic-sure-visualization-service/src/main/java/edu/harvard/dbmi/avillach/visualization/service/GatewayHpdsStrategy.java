@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.visualization.service;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,8 +12,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.*;
 
 @Component
 @ConditionalOnProperty(name = "hpds.call-mode", havingValue = "gateway")

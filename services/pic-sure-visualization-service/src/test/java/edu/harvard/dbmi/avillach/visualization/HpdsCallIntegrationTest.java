@@ -58,6 +58,7 @@ class HpdsCallIntegrationTest {
 
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(header("Authorization", "Bearer test-token"))
+            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         // Build a v3 query with a categorical filter
@@ -76,16 +77,13 @@ class HpdsCallIntegrationTest {
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
         assertNotNull(response);
-        assertFalse(response.charts().isEmpty());
-        assertEquals("bar", response.charts().get(0).chartType());
-        assertEquals("Variable distribution of demographics: race", response.charts().get(0).title());
-        assertFalse(response.charts().get(0).isObfuscated());
+        assertFalse(response.categoricalData().isEmpty());
+        assertEquals("Variable distribution of demographics: race", response.categoricalData().get(0).title());
+        assertFalse(response.categoricalData().get(0).obfuscated());
 
-        // Verify the Plotly trace structure
-        Map<String, Object> trace = response.charts().get(0).traces().get(0);
-        assertNotNull(trace.get("x"));
-        assertNotNull(trace.get("y"));
-        assertEquals("bar", trace.get("type"));
+        // Verify the frontend distribution DTO structure
+        assertNotNull(response.categoricalData().get(0).categoricalMap());
+        assertFalse(response.categoricalData().get(0).categoricalMap().isEmpty());
     }
 
     @Test
@@ -101,6 +99,7 @@ class HpdsCallIntegrationTest {
         hpdsResponse.put("\\measurements\\bmi\\", bmiValues);
 
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
@@ -116,18 +115,13 @@ class HpdsCallIntegrationTest {
         mockServer.verify();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
-        assertFalse(response.charts().isEmpty());
-        assertEquals("histogram", response.charts().get(0).chartType());
+        assertFalse(response.continuousData().isEmpty());
 
         // Verify binning happened — x labels should be ranges, not raw values
-        @SuppressWarnings("unchecked")
-        List<String> xValues = (List<String>) response.charts().get(0).traces().get(0).get("x");
-        assertFalse(xValues.contains("18.0"), "Raw value should have been binned into a range");
+        assertFalse(response.continuousData().get(0).continuousMap().containsKey("18.0"), "Raw value should have been binned into a range");
 
         // Total counts preserved
-        @SuppressWarnings("unchecked")
-        List<Integer> yValues = (List<Integer>) response.charts().get(0).traces().get(0).get("y");
-        int total = yValues.stream().mapToInt(Integer::intValue).sum();
+        int total = response.continuousData().get(0).continuousMap().values().stream().mapToInt(Integer::intValue).sum();
         assertEquals(600, total);
     }
 
@@ -153,15 +147,13 @@ class HpdsCallIntegrationTest {
         mockServer.verify();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
-        assertFalse(response.charts().isEmpty());
-        assertTrue(response.charts().get(0).isObfuscated());
+        assertFalse(response.categoricalData().isEmpty());
+        assertTrue(response.categoricalData().get(0).obfuscated());
 
         // Verify obfuscation markers were cleaned
-        @SuppressWarnings("unchecked")
-        List<Integer> yValues = (List<Integer>) response.charts().get(0).traces().get(0).get("y");
         // "< 10" should have become 9, "45000±3" should have become 45000
-        assertTrue(yValues.contains(9));
-        assertTrue(yValues.contains(45000));
+        assertTrue(response.categoricalData().get(0).categoricalMap().containsValue(9));
+        assertTrue(response.categoricalData().get(0).categoricalMap().containsValue(45000));
     }
 
     @Test
