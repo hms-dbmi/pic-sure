@@ -10,6 +10,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
+import javax.annotation.security.RolesAllowed;
 
 import edu.harvard.dbmi.avillach.data.entity.Configuration;
 import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
@@ -79,6 +80,7 @@ public class ConfigurationRS {
 
     @POST
     @Path("/admin/")
+    @RolesAllowed("SuperUser")
     @Operation(
         summary = "Creates a new configuration.", tags = {"configuration"}, operationId = "addConfiguration",
         responses = {
@@ -105,6 +107,7 @@ public class ConfigurationRS {
 
     @PATCH
     @Path("/admin/{configurationId}/")
+    @RolesAllowed("SuperUser")
     @Operation(
         summary = "Updates an existing configuration.", tags = {"configuration"}, operationId = "updateConfiguration",
         responses = {
@@ -134,6 +137,7 @@ public class ConfigurationRS {
 
     @DELETE
     @Path("/admin/{configurationId}/")
+    @RolesAllowed("SuperUser")
     @Operation(
         summary = "Deletes a configuration.", tags = {"configuration"}, operationId = "deleteConfiguration",
         responses = {@ApiResponse(responseCode = "200", description = "Configuration successfully deleted."),
