@@ -1,6 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
-import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingInterceptor;
+import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionRequest;
 import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
@@ -31,7 +31,13 @@ public class DistributionController {
         HttpServletRequest servletRequest
     ) {
         HpdsAccessContext accessContext = hpdsAccessResolver.resolve(request.hpdsResourceUUID());
-        servletRequest.setAttribute(AuditLoggingInterceptor.ACCESS_TYPE_ATTR, accessContext.accessType().getValue());
-        return ResponseEntity.ok(visualizationService.generateDistributions(request.query(), accessContext, authorization));
+        AuditLoggingContext.addDistributionRequestMetadata(
+            servletRequest, accessContext.resourceUUID(), accessContext.accessType().getValue(), request.query(),
+            visualizationService.subQueryCount(request.query())
+        );
+        VisualizationResponse response = visualizationService
+            .generateDistributions(request.query(), accessContext, authorization, AuditLoggingContext.requestId(servletRequest));
+        AuditLoggingContext.addDistributionResponseMetadata(servletRequest, response);
+        return ResponseEntity.ok(response);
     }
 }

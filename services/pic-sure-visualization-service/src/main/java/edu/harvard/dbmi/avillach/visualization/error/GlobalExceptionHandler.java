@@ -20,29 +20,38 @@ public class GlobalExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(BadVisualizationRequestException.class)
+    public ResponseEntity<Map<String, String>> handleBadVisualizationRequest(BadVisualizationRequestException e) {
+        logger.warn("Visualization request error: {}", e.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(HpdsUpstreamException.class)
+    public ResponseEntity<Map<String, String>> handleHpdsUpstreamException(HpdsUpstreamException e) {
+        logger.error("Upstream HPDS error: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(VisualizationConfigurationException.class)
+    public ResponseEntity<Map<String, String>> handleVisualizationConfigurationException(VisualizationConfigurationException e) {
+        logger.error("Service misconfiguration: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+    }
+
     @ExceptionHandler(VisualizationException.class)
     public ResponseEntity<Map<String, String>> handleVisualizationException(VisualizationException e) {
         Throwable cause = e.getCause();
 
-        // Upstream HPDS returned an HTTP error (4xx/5xx)
         if (cause instanceof HttpStatusCodeException) {
             logger.error("Upstream HPDS HTTP error: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
         }
 
-        // Network-level failure (timeout, connection refused, DNS)
         if (cause instanceof ResourceAccessException) {
             logger.error("Upstream HPDS unreachable: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
         }
 
-        // Configuration error (missing UUID, etc.) — server's fault, not client's
-        if (e.getMessage() != null && e.getMessage().contains("not configured")) {
-            logger.error("Service misconfiguration: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
-        }
-
-        // Client-side errors (bad query parse, missing fields)
         logger.warn("Visualization error: {}", e.getMessage());
         return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }

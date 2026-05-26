@@ -28,9 +28,9 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleVisualizationException_clientError_returns400() {
-        VisualizationException e = new VisualizationException("Could not parse query: bad format");
+        BadVisualizationRequestException e = new BadVisualizationRequestException("Could not parse query: bad format");
 
-        ResponseEntity<Map<String, String>> response = handler.handleVisualizationException(e);
+        ResponseEntity<Map<String, String>> response = handler.handleBadVisualizationRequest(e);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals("Could not parse query: bad format", response.getBody().get("error"));
@@ -40,9 +40,9 @@ class GlobalExceptionHandlerTest {
     void handleVisualizationException_hpdsHttpError_returns502() {
         HttpServerErrorException cause =
             HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", null, null, null);
-        VisualizationException e = new VisualizationException("HPDS query failed with status 500: Internal Server Error", cause);
+        HpdsUpstreamException e = new HpdsUpstreamException("HPDS query failed with status 500: Internal Server Error", cause);
 
-        ResponseEntity<Map<String, String>> response = handler.handleVisualizationException(e);
+        ResponseEntity<Map<String, String>> response = handler.handleHpdsUpstreamException(e);
 
         assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
         assertTrue(response.getBody().get("error").contains("HPDS query failed"));
@@ -51,9 +51,9 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleVisualizationException_hpds4xxError_returns502() {
         HttpClientErrorException cause = HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null);
-        VisualizationException e = new VisualizationException("HPDS query failed with status 404: Not Found", cause);
+        HpdsUpstreamException e = new HpdsUpstreamException("HPDS query failed with status 404: Not Found", cause);
 
-        ResponseEntity<Map<String, String>> response = handler.handleVisualizationException(e);
+        ResponseEntity<Map<String, String>> response = handler.handleHpdsUpstreamException(e);
 
         assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
     }
@@ -61,9 +61,9 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleVisualizationException_networkError_returns502() {
         ResourceAccessException cause = new ResourceAccessException("Connection refused", new IOException("Connection refused"));
-        VisualizationException e = new VisualizationException("HPDS query failed: Connection refused", cause);
+        HpdsUpstreamException e = new HpdsUpstreamException("HPDS query failed: Connection refused", cause);
 
-        ResponseEntity<Map<String, String>> response = handler.handleVisualizationException(e);
+        ResponseEntity<Map<String, String>> response = handler.handleHpdsUpstreamException(e);
 
         assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
         assertTrue(response.getBody().get("error").contains("Connection refused"));
@@ -71,10 +71,10 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleVisualizationException_configError_returns500() {
-        VisualizationException e =
-            new VisualizationException("Authorized HPDS resource UUID (hpds.resource.authorized.uuid) is not configured");
+        VisualizationConfigurationException e =
+            new VisualizationConfigurationException("Authorized HPDS resource UUID (hpds.resource.authorized.uuid) is not configured");
 
-        ResponseEntity<Map<String, String>> response = handler.handleVisualizationException(e);
+        ResponseEntity<Map<String, String>> response = handler.handleVisualizationConfigurationException(e);
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
         assertTrue(response.getBody().get("error").contains("not configured"));

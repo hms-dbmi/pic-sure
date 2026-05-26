@@ -1,10 +1,9 @@
 package edu.harvard.dbmi.avillach.visualization.controller;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
+import edu.harvard.dbmi.avillach.visualization.logging.AuditLoggingContext;
 import edu.harvard.dbmi.avillach.visualization.model.ContinuousBinningRequest;
 import edu.harvard.dbmi.avillach.visualization.service.VisualizationService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,20 +16,18 @@ import java.util.Map;
 public class BinningController {
 
     private final VisualizationService visualizationService;
-    private final ObjectMapper objectMapper;
 
-    public BinningController(VisualizationService visualizationService, ObjectMapper objectMapper) {
+    public BinningController(VisualizationService visualizationService) {
         this.visualizationService = visualizationService;
-        this.objectMapper = objectMapper;
     }
 
     @PostMapping("/bin/continuous")
-    public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(@Valid @RequestBody ContinuousBinningRequest request) {
-        try {
-            Map<String, Map<String, Integer>> continuousData = objectMapper.convertValue(request.query(), new TypeReference<>() {});
-            return ResponseEntity.ok(visualizationService.binContinuousData(continuousData));
-        } catch (IllegalArgumentException e) {
-            throw new VisualizationException("Could not parse continuous data: " + e.getMessage());
-        }
+    public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
+        @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
+    ) {
+        AuditLoggingContext.addBinningRequestMetadata(servletRequest, request.query());
+        Map<String, Map<String, Integer>> response = visualizationService.binContinuousData(request.query());
+        AuditLoggingContext.addBinningResponseMetadata(servletRequest, response);
+        return ResponseEntity.ok(response);
     }
 }

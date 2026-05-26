@@ -127,7 +127,7 @@ class VisualizationIntegrationTest {
             mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": \"not a map\"}"))
                 .andExpect(status().isBadRequest()).andReturn();
 
-        assertTrue(result.getResponse().getContentAsString().contains("Could not parse continuous data"));
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
     }
 
     @Test
