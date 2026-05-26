@@ -42,7 +42,7 @@ public class VisualizationController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/v3/info")
+    @PostMapping("/info")
     public ResponseEntity<Map<String, Object>> info() {
         return ResponseEntity.ok(
             Map.of(
