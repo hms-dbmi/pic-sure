@@ -80,7 +80,7 @@ public class ConfigurationRS {
 
     @POST
     @Path("/admin/")
-    @RolesAllowed("SuperUser")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Creates a new configuration.", tags = {"configuration"}, operationId = "addConfiguration",
         responses = {
@@ -97,6 +97,9 @@ public class ConfigurationRS {
             )}
     )
     public Response addConfiguration(@Context SecurityContext context, @Parameter @Valid ConfigurationRequest request) {
+        if (request == null) {
+            return PICSUREResponse.error("Request body is required");
+        }
         if (request.getName() == null || request.getKind() == null || request.getValue() == null) {
             return PICSUREResponse.error("Name, Kind, and Value properties must not be null");
         }
@@ -107,7 +110,7 @@ public class ConfigurationRS {
 
     @PATCH
     @Path("/admin/{configurationId}/")
-    @RolesAllowed("SuperUser")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Updates an existing configuration.", tags = {"configuration"}, operationId = "updateConfiguration",
         responses = {
@@ -126,6 +129,9 @@ public class ConfigurationRS {
     public Response updateConfiguration(
         @Context SecurityContext context, @PathParam("configurationId") UUID configurationId, @Parameter @Valid ConfigurationRequest request
     ) {
+        if (request == null) {
+            return PICSUREResponse.error("Request body is required");
+        }
         if (request.getUuid() != null && !configurationId.equals(request.getUuid())) {
             return PICSUREResponse.error("UUID cannot be changed");
         }
@@ -137,7 +143,7 @@ public class ConfigurationRS {
 
     @DELETE
     @Path("/admin/{configurationId}/")
-    @RolesAllowed("SuperUser")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Deletes a configuration.", tags = {"configuration"}, operationId = "deleteConfiguration",
         responses = {@ApiResponse(responseCode = "200", description = "Configuration successfully deleted."),

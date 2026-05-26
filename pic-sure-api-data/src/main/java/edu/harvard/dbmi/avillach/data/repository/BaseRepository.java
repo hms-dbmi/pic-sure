@@ -128,7 +128,7 @@ public abstract class BaseRepository<T extends BaseEntity, K> {
         for (Map.Entry<String, Object> entry : columnNameValueMap.entrySet()) {
             predicates.add(eq(cb, root, entry.getKey(), entry.getValue()));
         }
-        return getUniqueResultByColumns(query, root, (Predicate[]) predicates.toArray());
+        return getUniqueResultByColumns(query, root, predicates.toArray(new Predicate[0]));
     }
 
     /**

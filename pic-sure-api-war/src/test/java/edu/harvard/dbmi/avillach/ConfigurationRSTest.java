@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach;
 import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
 import org.junit.Test;
 
+import javax.annotation.security.PermitAll;
 import javax.annotation.security.RolesAllowed;
 import javax.ws.rs.core.SecurityContext;
 import java.lang.reflect.Method;
@@ -13,6 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class ConfigurationRSTest {
+    private final String SUPER_ADMIN = "SUPER_ADMIN";
 
     private void assertRolesAllowed(Method method, String role) {
         RolesAllowed annotation = method.getAnnotation(RolesAllowed.class);
@@ -20,25 +22,31 @@ public class ConfigurationRSTest {
         assertTrue(role + " role missing on " + method.getName(), Arrays.asList(annotation.value()).contains(role));
     }
 
+    // These unit tests only guard against accidental removal during refactor & they are not an E2E test of the functionality
     @Test
-    public void adminEndpoints_requireSuperUserRole() throws NoSuchMethodException {
+    public void adminEndpoints_requireSuperAdminRole() throws NoSuchMethodException {
         assertRolesAllowed(
-            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class),
-            "SuperUser"
+            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class), SUPER_ADMIN
         );
         assertRolesAllowed(
             ConfigurationRS.class.getMethod("updateConfiguration", SecurityContext.class, UUID.class, ConfigurationRequest.class),
-            "SuperUser"
+            SUPER_ADMIN
         );
-        assertRolesAllowed(
-            ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class),
-            "SuperUser"
+        assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), SUPER_ADMIN);
+    }
+
+    private void assertNotRestrictedToSuperAdmin(Method method) {
+        PermitAll permitAll = method.getAnnotation(PermitAll.class);
+        RolesAllowed rolesAllowed = method.getAnnotation(RolesAllowed.class);
+        assertTrue(
+            method.getName() + " must not restrict access to " + SUPER_ADMIN,
+            permitAll != null || rolesAllowed == null || !Arrays.asList(rolesAllowed.value()).contains(SUPER_ADMIN)
         );
     }
 
     @Test
-    public void readEndpoints_doNotRequireSuperUserRole() throws NoSuchMethodException {
-        assertNotNull(ConfigurationRS.class.getMethod("getConfigurations", SecurityContext.class, String.class));
-        assertNotNull(ConfigurationRS.class.getMethod("getConfigurationById", SecurityContext.class, String.class));
+    public void readEndpoints_doNotRequireSuperAdminRole() throws NoSuchMethodException {
+        assertNotRestrictedToSuperAdmin(ConfigurationRS.class.getMethod("getConfigurations", SecurityContext.class, String.class));
+        assertNotRestrictedToSuperAdmin(ConfigurationRS.class.getMethod("getConfigurationById", SecurityContext.class, String.class));
     }
 }

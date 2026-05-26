@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class ConfigurationService {
-    private final Logger logger = LoggerFactory.getLogger(ConfigurationRepository.class);
+    private final Logger logger = LoggerFactory.getLogger(ConfigurationService.class);
 
     @Inject
     ConfigurationRepository configurationRepository;
@@ -94,7 +94,8 @@ public class ConfigurationService {
             logger.debug("Updated configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);
         } catch (Exception exception) {
-            logger.error("Error updating configuration " + request.getName() + " with value " + request.getValue(), exception);
+            String requestName = request != null ? request.getName() : "<null>";
+            logger.error("Error updating configuration {}", requestName, exception);
             return Optional.empty();
         }
     }

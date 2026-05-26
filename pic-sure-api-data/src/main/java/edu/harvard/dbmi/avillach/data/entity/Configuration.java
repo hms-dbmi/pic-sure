@@ -22,12 +22,12 @@ public class Configuration extends BaseEntity {
     @Column(length = 255)
     private String kind;
 
-    @Schema(description = "The configuration description")
+    @Schema(description = "The configuration value")
     @Lob
     @Column(columnDefinition = "TEXT")
     private String value;
 
-    @Schema(description = "The configuration value")
+    @Schema(description = "The configuration description")
     @Column(length = 255)
     private String description;
 
@@ -81,10 +81,10 @@ public class Configuration extends BaseEntity {
 
     @Override
     public String toString() {
-        return Json.createObjectBuilder().add("uuid", uuid.toString()).add("name", name != null ? name : "")
+        return Json.createObjectBuilder().add("uuid", uuid != null ? uuid.toString() : "").add("name", name != null ? name : "")
             .add("kind", kind != null ? kind : "").add("value", value != null ? value : "")
-            .add("description", description != null ? description : "").add("markForDelete", markForDelete != null ? value : "").build()
-            .toString();
+            .add("description", description != null ? description : "").add("markForDelete", markForDelete != null ? markForDelete : false)
+            .build().toString();
     }
 
     public Configuration patch(ConfigurationRequest request) {

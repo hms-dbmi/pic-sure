@@ -9,7 +9,7 @@ import java.util.UUID;
 @Schema(
     description = "Request to add or update a configuration.",
     example = "{\n" + "    \"uuid\": \"076d4f2a-cfe8-486e-a7f9-b938086f3e1e\",\n" + "    \"name\": \"FEATURE_FLAG_X\",\n"
-        + "    \"kind\": \"ui\",\n" + "    \"value\": \"true\",\n" + "    \"markForDelete\": falseq,\n"
+        + "    \"kind\": \"ui\",\n" + "    \"value\": \"true\",\n" + "    \"markForDelete\": false,\n"
         + "    \"description\": \"This configuration controls feature X\"\n" + "}"
 )
 public class ConfigurationRequest {
