@@ -1,14 +1,13 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
-import edu.harvard.dbmi.avillach.visualization.model.ContinuousDistributionData;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
+import edu.harvard.dbmi.avillach.visualization.model.ContinuousDistributionData;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class ContinuousDistributionProcessorTest {
 
@@ -29,15 +28,31 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
         data.put("\\measurements\\bmi\\", binnedValues);
 
-        List<ContinuousDistributionData> result = processor.process(data, false, false);
+        List<ContinuousDistributionData> result = processor.process(
+            data,
+            false,
+            false
+        );
 
         assertEquals(1, result.size());
         ContinuousDistributionData distribution = result.get(0);
-        assertEquals("Variable distribution of measurements: bmi", distribution.title());
+        assertEquals("\\measurements\\bmi\\", distribution.conceptPath());
+        assertEquals("measurements: bmi", distribution.title());
         assertTrue(distribution.continuous());
         assertFalse(distribution.obfuscated());
-        assertEquals(List.of("18.0 - 24.0", "24.0 - 30.0", "30.0 +"), List.copyOf(distribution.continuousMap().keySet()));
-        assertEquals(1450, distribution.continuousMap().values().stream().mapToInt(Integer::intValue).sum());
+        assertEquals(
+            List.of("18.0 - 24.0", "24.0 - 30.0", "30.0 +"),
+            List.copyOf(distribution.continuousMap().keySet())
+        );
+        assertEquals(
+            1450,
+            distribution
+                .continuousMap()
+                .values()
+                .stream()
+                .mapToInt(Integer::intValue)
+                .sum()
+        );
     }
 
     @Test
@@ -52,11 +67,18 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
         data.put("\\measurements\\bmi\\", rawValues);
 
-        List<ContinuousDistributionData> result = processor.process(data, false, true);
+        List<ContinuousDistributionData> result = processor.process(
+            data,
+            false,
+            true
+        );
 
         Map<String, Integer> binnedBmi = result.get(0).continuousMap();
         assertFalse(binnedBmi.containsKey("18.0"));
-        assertEquals(600, binnedBmi.values().stream().mapToInt(Integer::intValue).sum());
+        assertEquals(
+            600,
+            binnedBmi.values().stream().mapToInt(Integer::intValue).sum()
+        );
     }
 
     @Test
@@ -69,11 +91,18 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
         data.put("\\measurements\\bmi\\", preBinned);
 
-        List<ContinuousDistributionData> result = processor.process(data, true, false);
+        List<ContinuousDistributionData> result = processor.process(
+            data,
+            true,
+            false
+        );
 
         assertEquals(1, result.size());
         assertTrue(result.get(0).obfuscated());
-        assertEquals(List.of("18.0 - 22.0", "22.0 - 26.0", "26.0 +"), List.copyOf(result.get(0).continuousMap().keySet()));
+        assertEquals(
+            List.of("18.0 - 22.0", "22.0 - 26.0", "26.0 +"),
+            List.copyOf(result.get(0).continuousMap().keySet())
+        );
     }
 
     @Test
@@ -81,9 +110,16 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
         data.put("\\_consents\\", Map.of("1.0", 100));
         data.put("\\empty\\", Map.of());
-        data.put("\\measurements\\bmi\\", new LinkedHashMap<>(Map.of("25.0", 100)));
+        data.put(
+            "\\measurements\\bmi\\",
+            new LinkedHashMap<>(Map.of("25.0", 100))
+        );
 
-        List<ContinuousDistributionData> result = processor.process(data, false, false);
+        List<ContinuousDistributionData> result = processor.process(
+            data,
+            false,
+            false
+        );
 
         assertEquals(1, result.size());
     }

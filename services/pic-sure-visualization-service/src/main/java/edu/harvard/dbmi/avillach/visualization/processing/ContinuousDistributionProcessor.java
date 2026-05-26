@@ -29,8 +29,8 @@ public class ContinuousDistributionProcessor {
             String title = DistributionMetadata.titleFor(entry.getKey());
             distributions.add(
                 new ContinuousDistributionData(
-                    title, true, new LinkedHashMap<>(entry.getValue()), obfuscated, DistributionMetadata.xAxisLabelFor(title),
-                    "Number of Participants", null, null
+                    entry.getKey(), title, true, new LinkedHashMap<>(entry.getValue()), obfuscated,
+                    DistributionMetadata.xAxisLabelFor(title), "Number of Participants", null, null
                 )
             );
         }

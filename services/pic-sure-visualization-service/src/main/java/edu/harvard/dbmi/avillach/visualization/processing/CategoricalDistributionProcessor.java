@@ -37,8 +37,8 @@ public class CategoricalDistributionProcessor {
             String title = DistributionMetadata.titleFor(entry.getKey());
             distributions.add(
                 new CategoricalDistributionData(
-                    title, false, categoricalMap, obfuscated, DistributionMetadata.xAxisLabelFor(title), "Number of Participants", null,
-                    null
+                    entry.getKey(), title, false, categoricalMap, obfuscated, DistributionMetadata.xAxisLabelFor(title),
+                    "Number of Participants", null, null
                 )
             );
         }

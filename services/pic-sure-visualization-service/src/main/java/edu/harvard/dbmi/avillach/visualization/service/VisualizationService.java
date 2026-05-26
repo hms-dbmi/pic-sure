@@ -49,6 +49,10 @@ public class VisualizationService {
         List<QueryDecomposer.SubQueryDescriptor> subQueries = queryDecomposer.decompose(query);
         List<CategoricalDistributionData> categoricalData = new ArrayList<>();
         List<ContinuousDistributionData> continuousData = new ArrayList<>();
+        logger.info(
+            "Generating visualization distributions requestId={} accessType={} resourceUUID={} subQueryCount={}",
+            requestId, accessContext.accessType().getValue(), accessContext.resourceUUID(), subQueries.size()
+        );
 
         for (QueryDecomposer.SubQueryDescriptor descriptor : subQueries) {
             try {
@@ -98,7 +102,12 @@ public class VisualizationService {
             }
         }
 
-        return new VisualizationResponse(categoricalData, continuousData);
+        VisualizationResponse response = new VisualizationResponse(categoricalData, continuousData);
+        logger.info(
+            "Generated visualization distributions requestId={} accessType={} categoricalChartCount={} continuousChartCount={}",
+            requestId, accessContext.accessType().getValue(), categoricalData.size(), continuousData.size()
+        );
+        return response;
     }
 
     public int subQueryCount(Query query) {
@@ -114,15 +123,40 @@ public class VisualizationService {
         }
 
         if (descriptor.distributionKind() == DistributionType.CATEGORICAL) {
-            categoricalData
-                .addAll(categoricalDistributionProcessor.process(crossCounts, isObfuscated, options.aggregateCategoricalValues()));
+            List<CategoricalDistributionData> charts = categoricalDistributionProcessor
+                .process(crossCounts, isObfuscated, options.aggregateCategoricalValues());
+            categoricalData.addAll(charts);
+            logCreatedCharts(descriptor, charts.size(), crossCounts, isObfuscated);
         } else {
-            continuousData.addAll(continuousDistributionProcessor.process(crossCounts, isObfuscated, options.binContinuousValues()));
+            List<ContinuousDistributionData> charts = continuousDistributionProcessor
+                .process(crossCounts, isObfuscated, options.binContinuousValues());
+            continuousData.addAll(charts);
+            logCreatedCharts(descriptor, charts.size(), crossCounts, isObfuscated);
         }
+    }
+
+    private static void logCreatedCharts(
+        QueryDecomposer.SubQueryDescriptor descriptor, int chartCount, Map<String, Map<String, Integer>> crossCounts, boolean isObfuscated
+    ) {
+        logger.info(
+            "Created visualization charts distributionKind={} resultType={} chartCount={} sourceSeriesCount={} sourcePointCount={} sourceSeriesKeys={} obfuscated={}",
+            descriptor.distributionKind().name().toLowerCase(), descriptor.resultType(), chartCount, crossCounts.size(),
+            sourcePointCount(crossCounts), new ArrayList<>(crossCounts.keySet()), isObfuscated
+        );
     }
 
     private static boolean hasSeriesData(Map<String, ? extends Map<?, ?>> crossCounts) {
         return (crossCounts != null && crossCounts.values().stream().anyMatch(values -> values != null && !values.isEmpty()));
+    }
+
+    private static int sourcePointCount(Map<String, ? extends Map<?, ?>> crossCounts) {
+        int count = 0;
+        for (Map<?, ?> values : crossCounts.values()) {
+            if (values != null) {
+                count += values.size();
+            }
+        }
+        return count;
     }
 
     public Map<String, Map<String, Integer>> binContinuousData(Map<String, Map<String, Integer>> continuousData) {

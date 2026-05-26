@@ -80,7 +80,7 @@ public class HpdsClient {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        headers.setAccept(Collections.singletonList(MediaType.ALL));
         if (bearerToken != null && !bearerToken.isBlank()) {
             headers.set("Authorization", bearerToken);
         }
@@ -90,22 +90,62 @@ public class HpdsClient {
 
         String url = hpdsBaseUrl + querySyncPath(accessType);
         Object body = requestBody(subQuery, resourceUUID);
-        logger.debug("HPDS query to {} with resultType={}, resourceUUID={}", url, resultType, resourceUUID);
+        logger.info(
+            "Calling HPDS requestId={} accessType={} distributionKind={} resultType={} resourceUUID={} selectedConceptCount={} selectedConceptPaths={} url={}",
+            requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, resourceUUID,
+            selectedConceptCount(subQuery), selectedConceptPaths(subQuery), url
+        );
 
         try {
             ResponseEntity<Map<String, T>> response = restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), typeRef);
+            logger.info(
+                "HPDS call completed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} responseSeriesCount={} responsePointCount={} responseSeriesKeys={}",
+                requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType,
+                response.getStatusCode().value(), System.currentTimeMillis() - startTime, seriesCount(response.getBody()),
+                responsePointCount(response.getBody()), responseSeriesKeys(response.getBody())
+            );
             sendHpdsEvent(
                 subQuery, resultType, resourceUUID, requestId, bearerToken, accessType, distributionKind, url,
                 response.getStatusCode().value(), System.currentTimeMillis() - startTime, response.getBody(), null
             );
             return response.getBody() != null ? response.getBody() : new LinkedHashMap<>();
         } catch (RuntimeException e) {
+            Integer status = e instanceof HttpStatusCodeException httpError ? httpError.getStatusCode().value() : null;
+            logger.warn(
+                "HPDS call failed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} error={}",
+                requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, status,
+                System.currentTimeMillis() - startTime, e.getMessage()
+            );
             sendHpdsEvent(
                 subQuery, resultType, resourceUUID, requestId, bearerToken, accessType, distributionKind, url, null,
                 System.currentTimeMillis() - startTime, null, e
             );
             throw e;
         }
+    }
+
+    private static String accessTypeValue(AccessType accessType) {
+        return accessType != null ? accessType.getValue() : "unknown";
+    }
+
+    private static String distributionKindValue(DistributionType distributionKind) {
+        return distributionKind != null ? distributionKind.name().toLowerCase() : "unknown";
+    }
+
+    private static int selectedConceptCount(Query query) {
+        return query.select() != null ? query.select().size() : 0;
+    }
+
+    private static List<String> selectedConceptPaths(Query query) {
+        return query.select() != null ? query.select() : List.of();
+    }
+
+    private static int seriesCount(Map<String, ?> responseBody) {
+        return responseBody != null ? responseBody.size() : 0;
+    }
+
+    private static List<String> responseSeriesKeys(Map<String, ?> responseBody) {
+        return responseBody != null ? new ArrayList<>(responseBody.keySet()) : List.of();
     }
 
     private Object requestBody(Query subQuery, UUID resourceUUID) {
@@ -174,6 +214,9 @@ public class HpdsClient {
     }
 
     private static int responsePointCount(Map<String, ?> responseBody) {
+        if (responseBody == null) {
+            return 0;
+        }
         int count = 0;
         for (Object value : responseBody.values()) {
             if (value instanceof Map<?, ?> series) {

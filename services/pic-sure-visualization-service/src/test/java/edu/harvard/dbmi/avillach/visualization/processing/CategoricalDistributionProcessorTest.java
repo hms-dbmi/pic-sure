@@ -1,14 +1,13 @@
 package edu.harvard.dbmi.avillach.visualization.processing;
 
-import edu.harvard.dbmi.avillach.visualization.model.CategoricalDistributionData;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
+import edu.harvard.dbmi.avillach.visualization.model.CategoricalDistributionData;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class CategoricalDistributionProcessorTest {
 
@@ -22,13 +21,23 @@ class CategoricalDistributionProcessorTest {
     @Test
     void process_simpleCategoricalData_returnsDistributionData() {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
-        data.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000, "Asian", 8000)));
+        data.put(
+            "\\demographics\\race\\",
+            new LinkedHashMap<>(
+                Map.of("White", 45000, "Black", 12000, "Asian", 8000)
+            )
+        );
 
-        List<CategoricalDistributionData> result = processor.process(data, false, true);
+        List<CategoricalDistributionData> result = processor.process(
+            data,
+            false,
+            true
+        );
 
         assertEquals(1, result.size());
         CategoricalDistributionData distribution = result.get(0);
-        assertEquals("Variable distribution of demographics: race", distribution.title());
+        assertEquals("\\demographics\\race\\", distribution.conceptPath());
+        assertEquals("demographics: race", distribution.title());
         assertFalse(distribution.continuous());
         assertFalse(distribution.obfuscated());
         assertFalse(distribution.categoricalMap().isEmpty());
@@ -106,7 +115,11 @@ class CategoricalDistributionProcessorTest {
         Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
         data.put("\\demographics\\race\\", categories);
 
-        List<CategoricalDistributionData> result = processor.process(data, true, false);
+        List<CategoricalDistributionData> result = processor.process(
+            data,
+            true,
+            false
+        );
 
         assertFalse(result.get(0).categoricalMap().containsKey("Other"));
         assertTrue(result.get(0).obfuscated());
@@ -119,9 +132,16 @@ class CategoricalDistributionProcessorTest {
         data.put("\\_consents\\", Map.of("consent1", 100));
         data.put("\\_harmonized_consent\\", Map.of("consent2", 200));
         data.put("\\empty\\", Map.of());
-        data.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000)));
+        data.put(
+            "\\demographics\\race\\",
+            new LinkedHashMap<>(Map.of("White", 45000))
+        );
 
-        List<CategoricalDistributionData> result = processor.process(data, false, true);
+        List<CategoricalDistributionData> result = processor.process(
+            data,
+            false,
+            true
+        );
 
         assertEquals(1, result.size());
     }
@@ -130,7 +150,7 @@ class CategoricalDistributionProcessorTest {
     void metadata_extractsTitleAndXAxisLabel() {
         String title = DistributionMetadata.titleFor("\\demographics\\race\\");
 
-        assertEquals("Variable distribution of demographics: race", title);
+        assertEquals("demographics: race", title);
         assertEquals("race", DistributionMetadata.xAxisLabelFor(title));
         assertEquals("race", DistributionMetadata.titleFor("race"));
     }

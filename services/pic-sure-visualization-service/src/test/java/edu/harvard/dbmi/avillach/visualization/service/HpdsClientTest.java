@@ -56,6 +56,7 @@ class HpdsClientTest {
 
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(header("Authorization", "Bearer token")).andExpect(header("X-Request-Id", "request-1"))
+            .andExpect(header("Accept", MediaType.ALL_VALUE))
             .andExpect(content().contentType(MediaType.APPLICATION_JSON))
             .andExpect(content().json("{\"resourceUUID\":\"" + RESOURCE_UUID + "\"}"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
@@ -129,7 +130,8 @@ class HpdsClientTest {
         expected.put("\\test\\", Map.of("a", "1"));
 
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/query/sync")).andExpect(method(HttpMethod.POST))
-            .andExpect(headerDoesNotExist("Authorization")).andExpect(content().json("{\"resourceUUID\":\"" + RESOURCE_UUID + "\"}"))
+            .andExpect(headerDoesNotExist("Authorization")).andExpect(header("Accept", MediaType.ALL_VALUE))
+            .andExpect(content().json("{\"resourceUUID\":\"" + RESOURCE_UUID + "\"}"))
             .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
             .andExpect(content().json("{\"resourceCredentials\":{}}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));

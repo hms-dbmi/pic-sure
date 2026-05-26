@@ -21,7 +21,7 @@ public class BinningController {
         this.visualizationService = visualizationService;
     }
 
-    @PostMapping("/bin/continuous")
+    @PostMapping({"/bin/continuous", "/v3/bin/continuous"})
     public ResponseEntity<Map<String, Map<String, Integer>>> binContinuous(
         @Valid @RequestBody ContinuousBinningRequest request, HttpServletRequest servletRequest
     ) {

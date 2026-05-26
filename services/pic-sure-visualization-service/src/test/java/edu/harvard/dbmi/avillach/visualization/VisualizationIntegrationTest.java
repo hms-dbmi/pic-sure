@@ -155,6 +155,23 @@ class VisualizationIntegrationTest {
     }
 
     @Test
+    void binContinuous_v3RouteAcceptsQueryRequestFormat() throws Exception {
+        Map<String, Object> requestBody = Map.of(
+            "query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)), "resourceUUID",
+            "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
+        );
+
+        MvcResult result = mockMvc
+            .perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
+            .andExpect(status().isOk()).andReturn();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
+        assertTrue(response.containsKey("\\measurements\\bmi\\"));
+        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
+    }
+
+    @Test
     void info_returnsResourceInfo() throws Exception {
         MvcResult result =
             mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
