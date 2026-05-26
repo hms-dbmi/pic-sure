@@ -45,7 +45,7 @@ pipeline {
             -v "$MOUNT_PATH/:/app:Z" \
             -v maven_m2_cache:/root/.m2 \
             -w /app \
-            maven:3.9.9-amazoncorretto-24 \
+            maven:3.9-amazoncorretto-25 \
             sh -lc "mvn clean install -B -T 1C -DskipTests -Dmaven.test.skip=true"
 
           ls -lah target || true
@@ -102,13 +102,15 @@ pipeline {
                 echo "TARGET_STACK is required for s3 deploy." >&2
                 exit 1
               fi
-              if [ -z "${STACK_S3_BUCKET:-}" ]; then
+              S3_BUCKET="${STACK_S3_BUCKET:-${stack_s3_bucket:-}}"
+
+              if [ -z "$S3_BUCKET" ]; then
                 echo "STACK_S3_BUCKET is required for s3 deploy." >&2
                 exit 1
               fi
 
               docker save "${IMAGE_NAME}:${LATEST_TAG}" | gzip > pic-sure-visualization.tar.gz
-              aws s3 --sse=AES256 cp pic-sure-visualization.tar.gz "s3://${STACK_S3_BUCKET}/${TARGET_STACK}/containers/pic-sure-visualization.tar.gz"
+              aws s3 --sse=AES256 cp pic-sure-visualization.tar.gz "s3://${S3_BUCKET}/${TARGET_STACK}/containers/pic-sure-visualization.tar.gz"
             '''
           } else {
             echo "Deployment skipped."

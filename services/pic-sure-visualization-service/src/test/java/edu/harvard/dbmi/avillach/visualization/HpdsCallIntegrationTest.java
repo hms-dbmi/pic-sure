@@ -131,7 +131,7 @@ class HpdsCallIntegrationTest {
         Map<String, Map<String, String>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", "45000±3", "Black", "12000", "Other", "< 10")));
 
-        mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo("http://localhost:9999/mock-hpds/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(

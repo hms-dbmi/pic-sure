@@ -1,4 +1,4 @@
-FROM amazoncorretto:24-alpine
+FROM amazoncorretto:25-alpine
 EXPOSE 80
 COPY target/pic-sure-visualization-service-*.jar /pic-sure-visualization-service.jar
 
