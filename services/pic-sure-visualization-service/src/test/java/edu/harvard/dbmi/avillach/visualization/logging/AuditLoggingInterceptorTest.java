@@ -45,9 +45,9 @@ class AuditLoggingInterceptorTest {
     }
 
     @Test
-    void afterCompletion_sendsLoggingEventForQuerySync() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/query/sync");
-        request.addHeader("request-source", "Authorized");
+    void afterCompletion_sendsLoggingEventForDistributions() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        request.setAttribute(AuditLoggingInterceptor.ACCESS_TYPE_ATTR, "authorized");
         request.setAttribute("vizStartTime", System.currentTimeMillis() - 150);
         request.setAttribute("vizRequestId", "test-request-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -60,12 +60,12 @@ class AuditLoggingInterceptorTest {
 
         LoggingEvent event = eventCaptor.getValue();
         assertEquals("VISUALIZATION_QUERY", event.getEventType());
-        assertEquals("query_sync", event.getAction());
+        assertEquals("distributions", event.getAction());
     }
 
     @Test
     void afterCompletion_detectsBinContinuousAction() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/bin/continuous");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/bin/continuous");
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -80,7 +80,7 @@ class AuditLoggingInterceptorTest {
 
     @Test
     void afterCompletion_detectsInfoAction() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/info");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/info");
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -94,7 +94,7 @@ class AuditLoggingInterceptorTest {
 
     @Test
     void afterCompletion_unknownPath_setsUnknownAction() {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/visualization/v3/something");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/something");
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -107,9 +107,9 @@ class AuditLoggingInterceptorTest {
     }
 
     @Test
-    void afterCompletion_nullRequestSource_setsUnknownAccessType() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/query/sync");
-        // No request-source header
+    void afterCompletion_nullAccessType_setsUnknownAccessType() {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
+        // No resolved access type attribute
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -122,7 +122,7 @@ class AuditLoggingInterceptorTest {
 
     @Test
     void afterCompletion_loggingClientThrows_doesNotPropagate() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/query/sync");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -135,7 +135,7 @@ class AuditLoggingInterceptorTest {
 
     @Test
     void afterCompletion_cleansMDC() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/query/sync");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
         request.setAttribute("vizStartTime", System.currentTimeMillis());
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -148,7 +148,7 @@ class AuditLoggingInterceptorTest {
 
     @Test
     void afterCompletion_nullStartTime_handlesGracefully() {
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/v3/query/sync");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/distributions");
         // No vizStartTime attribute — simulates preHandle not being called
         request.setAttribute("vizRequestId", "req-id");
         MockHttpServletResponse response = new MockHttpServletResponse();

@@ -37,7 +37,7 @@ public class VisualizationService {
         this.binningService = binningService;
     }
 
-    public VisualizationResponse handleQuerySync(Query query, AccessType accessType, String bearerToken) {
+    public VisualizationResponse generateDistributions(Query query, HpdsAccessContext accessContext, String bearerToken) {
         List<QueryDecomposer.SubQueryDescriptor> subQueries = queryDecomposer.decompose(query);
         List<ChartData> allCharts = new ArrayList<>();
 
@@ -46,16 +46,16 @@ public class VisualizationService {
             ChartProcessor processor = chartProcessorRegistry.get(chartType);
 
             try {
-                if (accessType == AccessType.AUTHORIZED) {
-                    Map<String, Map<String, Integer>> crossCounts =
-                        hpdsClient.getAuthCrossCounts(descriptor.query(), descriptor.resultType(), bearerToken);
+                if (accessContext.accessType() == AccessType.AUTHORIZED) {
+                    Map<String, Map<String, Integer>> crossCounts = hpdsClient
+                        .getAuthCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken);
                     if (crossCounts != null && !crossCounts.isEmpty()) {
                         Map<String, Map<String, Integer>> processed = processor.preProcess(crossCounts);
                         allCharts.addAll(processor.process(processed, false));
                     }
                 } else {
-                    Map<String, Map<String, String>> rawCrossCounts =
-                        hpdsClient.getOpenCrossCounts(descriptor.query(), descriptor.resultType(), bearerToken);
+                    Map<String, Map<String, String>> rawCrossCounts = hpdsClient
+                        .getOpenCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken);
                     if (rawCrossCounts != null && !rawCrossCounts.isEmpty()) {
                         boolean isObfuscated = obfuscationParser.isObfuscated(rawCrossCounts);
                         Map<String, Map<String, Integer>> cleanedCounts = obfuscationParser.clean(rawCrossCounts);
@@ -64,7 +64,8 @@ public class VisualizationService {
                 }
             } catch (HttpStatusCodeException e) {
                 logger.error(
-                    "HPDS returned HTTP {} for {} {} query", e.getStatusCode().value(), accessType.getValue(), descriptor.resultType(), e
+                    "HPDS returned HTTP {} for {} {} query", e.getStatusCode().value(), accessContext.accessType().getValue(),
+                    descriptor.resultType(), e
                 );
                 throw new VisualizationException(
                     "HPDS query failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
@@ -72,7 +73,7 @@ public class VisualizationService {
             } catch (VisualizationException e) {
                 throw e;
             } catch (Exception e) {
-                logger.error("Failed to execute {} {} query", accessType.getValue(), descriptor.resultType(), e);
+                logger.error("Failed to execute {} {} query", accessContext.accessType().getValue(), descriptor.resultType(), e);
                 throw new VisualizationException("HPDS query failed: " + e.getMessage(), e);
             }
         }

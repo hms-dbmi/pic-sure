@@ -2,9 +2,7 @@ package edu.harvard.dbmi.avillach.visualization.model;
 
 public enum AccessType {
 
-    AUTHORIZED("Authorized"), OPEN("Open");
-
-    public static final String HEADER_NAME = "request-source";
+    AUTHORIZED("authorized"), OPEN("open");
 
     private final String value;
 
@@ -16,10 +14,4 @@ public enum AccessType {
         return value;
     }
 
-    public static AccessType fromHeader(String headerValue) {
-        if (AUTHORIZED.value.equalsIgnoreCase(headerValue)) {
-            return AUTHORIZED;
-        }
-        return OPEN;
-    }
 }

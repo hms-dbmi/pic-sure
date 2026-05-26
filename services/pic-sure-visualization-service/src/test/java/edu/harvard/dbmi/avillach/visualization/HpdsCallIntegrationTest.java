@@ -31,6 +31,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class HpdsCallIntegrationTest {
 
+    private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
+    private static final String OPEN_UUID = "550e8400-e29b-41d4-a716-446655440001";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -48,7 +51,7 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void querySync_authorized_categoricalFilter_callsHpdsAndReturnsBarChart() throws Exception {
+    void distributions_authorized_categoricalFilter_callsHpdsAndReturnsBarChart() throws Exception {
         // Simulate HPDS response for categorical cross-counts
         Map<String, Map<String, Integer>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000, "Asian", 8000)));
@@ -63,11 +66,10 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White", "Black")),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
         ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
@@ -87,7 +89,7 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void querySync_authorized_continuousFilter_callsHpdsAndReturnsHistogram() throws Exception {
+    void distributions_authorized_continuousFilter_callsHpdsAndReturnsHistogram() throws Exception {
         // Simulate HPDS response for continuous cross-counts (raw values, not yet binned)
         Map<String, Map<String, Integer>> hpdsResponse = new LinkedHashMap<>();
         Map<String, Integer> bmiValues = new LinkedHashMap<>();
@@ -105,11 +107,10 @@ class HpdsCallIntegrationTest {
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
         ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
@@ -131,7 +132,7 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void querySync_open_callsHpdsAndReturnsObfuscatedChart() throws Exception {
+    void distributions_open_callsHpdsAndReturnsObfuscatedChart() throws Exception {
         // Simulate HPDS open response with obfuscation markers (string values)
         Map<String, Map<String, String>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", "45000±3", "Black", "12000", "Other", "< 10")));
@@ -144,11 +145,10 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", OPEN_UUID, "query", query));
 
-        MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Open").content(body)
-        ).andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
 
@@ -165,7 +165,7 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void querySync_hpdsReturns500_returns502BadGateway() throws Exception {
+    void distributions_hpdsReturns500_returns502BadGateway() throws Exception {
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withServerError().body("{\"error\":\"internal error\"}"));
 
@@ -174,11 +174,10 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", query));
 
         MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
         ).andExpect(status().isBadGateway()).andReturn();
 
         mockServer.verify();
@@ -188,7 +187,7 @@ class HpdsCallIntegrationTest {
     }
 
     @Test
-    void querySync_hpdsTimeout_returns502BadGateway() throws Exception {
+    void distributions_hpdsTimeout_returns502BadGateway() throws Exception {
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
             .andRespond(withServiceUnavailable());
 
@@ -197,11 +196,10 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", query));
 
         mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
         ).andExpect(status().isBadGateway());
 
         mockServer.verify();

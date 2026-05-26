@@ -19,6 +19,7 @@ public class AuditLoggingInterceptor implements HandlerInterceptor {
     private static final Logger logger = LoggerFactory.getLogger(AuditLoggingInterceptor.class);
     private static final String START_TIME_ATTR = "vizStartTime";
     private static final String REQUEST_ID_ATTR = "vizRequestId";
+    public static final String ACCESS_TYPE_ATTR = "vizAccessType";
 
     private final LoggingClient loggingClient;
 
@@ -41,21 +42,22 @@ public class AuditLoggingInterceptor implements HandlerInterceptor {
         String requestId = (String) request.getAttribute(REQUEST_ID_ATTR);
         long duration = startTime != null ? System.currentTimeMillis() - startTime : 0;
 
-        String requestSource = request.getHeader("request-source");
+        String accessType = (String) request.getAttribute(ACCESS_TYPE_ATTR);
         String path = request.getRequestURI();
         int status = response.getStatus();
 
-        String action = path.contains("/query/sync") ? "query_sync"
-            : path.contains("/bin/continuous") ? "bin_continuous" : path.contains("/info") ? "info" : "unknown";
+        String action = switch (path) {
+            case "/distributions" -> "distributions";
+            case "/bin/continuous" -> "bin_continuous";
+            case "/info" -> "info";
+            case "/query/format" -> "query_format";
+            default -> "unknown";
+        };
 
         try {
-            LoggingEvent event = LoggingEvent.builder("VISUALIZATION_QUERY").action(action)
-                .metadata(
-                    Map.of(
-                        "duration_ms", duration, "status", status, "access_type", requestSource != null ? requestSource : "unknown", "path",
-                        path
-                    )
-                ).build();
+            LoggingEvent event = LoggingEvent.builder("VISUALIZATION_QUERY").action(action).metadata(
+                Map.of("duration_ms", duration, "status", status, "access_type", accessType != null ? accessType : "unknown", "path", path)
+            ).build();
             loggingClient.send(event, null, requestId);
         } catch (Exception e) {
             logger.debug("Failed to send audit log event: {}", e.getMessage());

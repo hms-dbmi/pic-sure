@@ -23,6 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class VisualizationIntegrationTest {
 
+    private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
+    private static final String OPEN_UUID = "550e8400-e29b-41d4-a716-446655440001";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -35,21 +38,11 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void querySync_withoutRequestSourceHeader_returns403() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
-        mockMvc.perform(post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void querySync_withRequestSourceHeader_returnsOk() throws Exception {
-        // Empty query with no filters should return empty charts, not an error
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
+    void distributions_withAuthorizedHpdsUUID_returnsOk() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", Map.of()));
 
         MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
         ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
@@ -58,74 +51,88 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void querySync_nullQuery_returns400() throws Exception {
-        // {"query": null} should fail @NotNull validation
-        String body = "{\"query\": null}";
+    void distributions_withOpenHpdsUUID_returnsOk() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", OPEN_UUID, "query", Map.of()));
 
-        MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .content(body)
-        ).andExpect(status().isBadRequest()).andReturn();
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk()).andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("query"));
+        VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
+        assertNotNull(response);
+        assertTrue(response.charts().isEmpty());
     }
 
     @Test
-    void querySync_missingQueryField_returns400() throws Exception {
-        // {} with no "query" key should fail @NotNull validation
-        String body = "{}";
+    void distributions_missingHpdsResourceUUID_returns400() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
-        MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .content(body)
-        ).andExpect(status().isBadRequest()).andReturn();
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("query"));
+        assertTrue(result.getResponse().getContentAsString().contains("hpdsResourceUUID"));
     }
 
     @Test
-    void querySync_malformedJson_returns400() throws Exception {
-        String body = "not valid json";
+    void distributions_unknownHpdsResourceUUID_returns400() throws Exception {
+        String body =
+            objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
-        MvcResult result = mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized")
-                .content(body)
-        ).andExpect(status().isBadRequest()).andReturn();
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("Malformed request body"));
+        assertTrue(result.getResponse().getContentAsString().contains("Unsupported HPDS resource UUID"));
     }
 
     @Test
-    void querySync_emptyBody_returns400() throws Exception {
-        mockMvc.perform(
-            post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized").content("")
-        ).andExpect(status().isBadRequest());
+    void distributions_nullQuery_returns400() throws Exception {
+        String body = "{\"hpdsResourceUUID\":\"" + AUTHORIZED_UUID + "\",\"query\":null}";
+
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("query"));
+    }
+
+    @Test
+    void distributions_malformedJson_returns400() throws Exception {
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content("not valid json"))
+            .andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
+    void oldVisualizationV3Routes_areRemoved() throws Exception {
+        mockMvc.perform(post("/visualization/v3/query/sync").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(post("/visualization/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(post("/visualization/v3/info").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isNotFound());
     }
 
     @Test
     void binContinuous_nullQueryField_returns400() throws Exception {
-        String body = "{\"query\": null}";
-
-        MvcResult result = mockMvc.perform(post("/visualization/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(body))
+        MvcResult result = mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
             .andExpect(status().isBadRequest()).andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("error"));
+        assertTrue(result.getResponse().getContentAsString().contains("error"));
     }
 
     @Test
     void binContinuous_invalidDataFormat_returns400() throws Exception {
-        // query field is a string, not a map — should fail convertValue
-        String body = "{\"query\": \"not a map\"}";
+        MvcResult result =
+            mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": \"not a map\"}"))
+                .andExpect(status().isBadRequest()).andReturn();
 
-        MvcResult result = mockMvc.perform(post("/visualization/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest()).andReturn();
+        assertTrue(result.getResponse().getContentAsString().contains("Could not parse continuous data"));
+    }
 
-        String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("Could not parse continuous data"));
+    @Test
+    void binContinuous_rejectsRawDataFormat() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("\\measurements\\bmi\\", Map.of("18.0", 100)));
+
+        mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -135,9 +142,8 @@ class VisualizationIntegrationTest {
             "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
         );
 
-        String body = objectMapper.writeValueAsString(requestBody);
-
-        MvcResult result = mockMvc.perform(post("/visualization/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(body))
+        MvcResult result = mockMvc
+            .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
             .andExpect(status().isOk()).andReturn();
 
         @SuppressWarnings("unchecked")
@@ -147,12 +153,22 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void info_withRequestSourceHeader_returnsResourceInfo() throws Exception {
-        MvcResult result = mockMvc.perform(
-            post("/visualization/v3/info").contentType(MediaType.APPLICATION_JSON).header("request-source", "Authorized").content("{}")
-        ).andExpect(status().isOk()).andReturn();
+    void info_returnsResourceInfo() throws Exception {
+        MvcResult result =
+            mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
 
         String content = result.getResponse().getContentAsString();
         assertTrue(content.contains("PIC-SURE Visualization Service"));
+        assertTrue(content.contains("queryFormats"));
+    }
+
+    @Test
+    void queryFormat_returnsDistributionFormat() throws Exception {
+        MvcResult result = mockMvc.perform(post("/query/format").contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isOk()).andReturn();
+
+        String content = result.getResponse().getContentAsString();
+        assertTrue(content.contains("POST /distributions"));
+        assertTrue(content.contains("hpdsResourceUUID"));
     }
 }

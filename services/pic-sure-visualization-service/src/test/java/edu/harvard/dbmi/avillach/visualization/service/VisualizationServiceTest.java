@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
+import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.dbmi.avillach.visualization.processing.BarChartProcessor;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
@@ -23,6 +24,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class VisualizationServiceTest {
 
+    private static final UUID AUTHORIZED_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
+    private static final UUID OPEN_UUID = UUID.fromString("550e8400-e29b-41d4-a716-446655440001");
+
     @Mock
     private HpdsClient hpdsClient;
 
@@ -40,16 +44,18 @@ class VisualizationServiceTest {
     }
 
     @Test
-    void handleQuerySync_authorized_categoricalFilter() {
+    void generateDistributions_authorized_categoricalFilter() {
         PhenotypicFilter catFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", List.of("White", "Black"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White", "Black"), null, null, null);
         Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
         crossCounts.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 45000, "Black", 12000)));
-        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), any())).thenReturn(crossCounts);
+        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(AUTHORIZED_UUID), any()))
+            .thenReturn(crossCounts);
 
-        VisualizationResponse response = service.handleQuerySync(query, AccessType.AUTHORIZED, "Bearer token");
+        VisualizationResponse response =
+            service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
         assertFalse(response.charts().isEmpty());
         assertEquals("bar", response.charts().get(0).chartType());
@@ -57,32 +63,34 @@ class VisualizationServiceTest {
     }
 
     @Test
-    void handleQuerySync_open_withObfuscation() {
+    void generateDistributions_open_withObfuscation() {
         PhenotypicFilter catFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", List.of("White"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
         Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
 
         Map<String, Map<String, String>> openCrossCounts = new LinkedHashMap<>();
         openCrossCounts.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", "45000±3", "Other", "< 10")));
-        when(hpdsClient.getOpenCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), any())).thenReturn(openCrossCounts);
+        when(hpdsClient.getOpenCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(OPEN_UUID), any()))
+            .thenReturn(openCrossCounts);
 
-        VisualizationResponse response = service.handleQuerySync(query, AccessType.OPEN, null);
+        VisualizationResponse response = service.generateDistributions(query, new HpdsAccessContext(OPEN_UUID, AccessType.OPEN), null);
 
         assertFalse(response.charts().isEmpty());
         assertTrue(response.charts().get(0).isObfuscated());
     }
 
     @Test
-    void handleQuerySync_noFilters_returnsEmptyCharts() {
+    void generateDistributions_noFilters_returnsEmptyCharts() {
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
 
-        VisualizationResponse response = service.handleQuerySync(query, AccessType.AUTHORIZED, "Bearer token");
+        VisualizationResponse response =
+            service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
         assertTrue(response.charts().isEmpty());
     }
 
     @Test
-    void handleQuerySync_authorized_continuousFilter_binsData() {
+    void generateDistributions_authorized_continuousFilter_binsData() {
         PhenotypicFilter numFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\measurements\\bmi\\", null, 18.0, 40.0, null);
         Query query = new Query(List.of(), List.of(), numFilter, List.of(), null, null, null);
 
@@ -94,9 +102,11 @@ class VisualizationServiceTest {
         rawValues.put("35.0", 50);
         Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
         crossCounts.put("\\measurements\\bmi\\", rawValues);
-        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CONTINUOUS_CROSS_COUNT), any())).thenReturn(crossCounts);
+        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CONTINUOUS_CROSS_COUNT), eq(AUTHORIZED_UUID), any()))
+            .thenReturn(crossCounts);
 
-        VisualizationResponse response = service.handleQuerySync(query, AccessType.AUTHORIZED, "Bearer token");
+        VisualizationResponse response =
+            service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
         assertFalse(response.charts().isEmpty());
         assertEquals("histogram", response.charts().get(0).chartType());
@@ -107,14 +117,16 @@ class VisualizationServiceTest {
     }
 
     @Test
-    void handleQuerySync_selectFallback_whenNoFilters() {
+    void generateDistributions_selectFallback_whenNoFilters() {
         Query query = new Query(List.of("\\demographics\\race\\"), List.of(), null, List.of(), null, null, null);
 
         Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
         crossCounts.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", 100)));
-        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), any())).thenReturn(crossCounts);
+        when(hpdsClient.getAuthCrossCounts(any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(AUTHORIZED_UUID), any()))
+            .thenReturn(crossCounts);
 
-        VisualizationResponse response = service.handleQuerySync(query, AccessType.AUTHORIZED, "Bearer token");
+        VisualizationResponse response =
+            service.generateDistributions(query, new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED), "Bearer token");
 
         assertFalse(response.charts().isEmpty());
         assertEquals("bar", response.charts().get(0).chartType());

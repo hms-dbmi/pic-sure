@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,7 +22,7 @@ class QueryDecomposerTest {
     @Test
     void decompose_withCategoricalFilter_returnsCategoricalSubQuery() {
         PhenotypicFilter catFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", List.of("White", "Black"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White", "Black"), null, null, null);
         Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
 
         List<QueryDecomposer.SubQueryDescriptor> result = decomposer.decompose(query);
@@ -47,7 +48,7 @@ class QueryDecomposerTest {
     @Test
     void decompose_withBothFilterTypes_returnsTwoSubQueries() {
         PhenotypicFilter catFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", List.of("White"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
         PhenotypicFilter numFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\measurements\\bmi\\", null, 18.0, 40.0, null);
         PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(catFilter, numFilter), Operator.AND);
         Query query = new Query(List.of(), List.of(), subquery, List.of(), null, null, null);
@@ -91,7 +92,7 @@ class QueryDecomposerTest {
     @Test
     void decompose_withFiltersAndSelect_ignoresSelectFallback() {
         PhenotypicFilter catFilter =
-            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", List.of("White"), null, null, null);
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null);
         Query query = new Query(List.of("\\some\\other\\path\\"), List.of(), catFilter, List.of(), null, null, null);
 
         List<QueryDecomposer.SubQueryDescriptor> result = decomposer.decompose(query);

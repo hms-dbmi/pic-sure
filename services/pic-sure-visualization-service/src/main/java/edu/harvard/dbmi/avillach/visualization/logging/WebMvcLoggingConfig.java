@@ -15,6 +15,6 @@ public class WebMvcLoggingConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(auditLoggingInterceptor).addPathPatterns("/visualization/**");
+        registry.addInterceptor(auditLoggingInterceptor).addPathPatterns("/distributions", "/bin/continuous", "/info", "/query/format");
     }
 }
