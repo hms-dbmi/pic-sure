@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
@@ -130,5 +133,27 @@ class CountV3ProcessorTest {
         assertEquals(4, crossCountsMap.get(conceptPath1));
         // should not include 34 as it is not in the base patient set
         assertEquals(-1, crossCountsMap.get(conceptPath2));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void runContinuousCrossCounts_requiredNumericConcept_returnsObservedValues() {
+        String conceptPath = "\\demographics\\AGE\\";
+        PhenotypicFilter required = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, conceptPath, null, null, null, null);
+        Query query = new Query(List.of(), List.of(), required, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
+
+        PhenoCube<Double> cube = new PhenoCube<>(conceptPath, Double.class);
+        cube.setSortedByKey(
+            new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)}
+        );
+
+        when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 3));
+        when(queryExecutor.getDictionary()).thenReturn(Map.of(conceptPath, new ColumnMeta().setName(conceptPath).setCategorical(false)));
+        when(phenotypicObservationStore.getCube(conceptPath)).thenReturn(java.util.Optional.of(cube));
+
+        Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);
+
+        assertEquals(1, crossCounts.get(conceptPath).get(18.0));
+        assertEquals(1, crossCounts.get(conceptPath).get(19.0));
     }
 }

@@ -359,7 +359,7 @@ public class PicSureV3Service {
     }
 
     @AuditEvent(type = "QUERY", action = "query.sync")
-    @PostMapping(value = "/query/sync", produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping(value = "/query/sync", produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
     public ResponseEntity querySync(@RequestBody QueryRequest resultRequest) {
         if (Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)) {
             try {

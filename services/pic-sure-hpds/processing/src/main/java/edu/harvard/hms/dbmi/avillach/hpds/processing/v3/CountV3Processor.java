@@ -176,7 +176,7 @@ public class CountV3Processor implements HpdsV3Processor {
     public Map<String, Map<Double, Integer>> runContinuousCrossCounts(Query query) {
         TreeMap<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
-        query.allFilters().parallelStream().filter(PhenotypicFilter::isCategoricalFilter).forEach(numericFilter -> {
+        query.allFilters().parallelStream().filter(this::isContinuousCrossCountFilter).forEach(numericFilter -> {
             KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(numericFilter.conceptPath()).map(phenoCube -> {
                 return ((PhenoCube<Double>) phenoCube).getEntriesForValueRange(numericFilter.min(), numericFilter.max());
             }).orElseGet(() -> new KeyAndValue[] {});
@@ -194,6 +194,12 @@ public class CountV3Processor implements HpdsV3Processor {
             conceptMap.put(numericFilter.conceptPath(), countMap);
         });
         return conceptMap;
+    }
+
+    private boolean isContinuousCrossCountFilter(PhenotypicFilter phenotypicFilter) {
+        return Optional.ofNullable(queryExecutor.getDictionary().get(phenotypicFilter.conceptPath()))
+            .map(meta -> !meta.isCategorical())
+            .orElse(false);
     }
 
     /**
