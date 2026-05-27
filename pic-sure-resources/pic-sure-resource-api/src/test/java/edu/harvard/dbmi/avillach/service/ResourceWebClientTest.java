@@ -4,12 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
 import edu.harvard.dbmi.avillach.domain.*;
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.util.EntityUtils;
 import org.glassfish.jersey.internal.RuntimeDelegateImpl;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -19,14 +15,11 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.RuntimeDelegate;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-
 import static org.junit.Assert.*;
 
 @RunWith(MockitoJUnitRunner.class)

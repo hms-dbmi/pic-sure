@@ -340,6 +340,11 @@
         <artifactId>pic-sure-logging-client</artifactId>
         <version>1.0.0</version>
       </dependency>
+      <dependency>
+        <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+        <artifactId>pic-sure-api-model</artifactId>
+        <version>3.0.0-SNAPSHOT</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
   <distributionManagement>

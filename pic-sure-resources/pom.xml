@@ -11,7 +11,6 @@
   <name>pic-sure-resources</name>
   <modules>
     <module>pic-sure-resource-api</module>
-    <module>pic-sure-ga4gh-dos</module>
     <module>pic-sure-passthrough-resource</module>
     <module>pic-sure-aggregate-data-sharing-resource</module>
     <module>pic-sure-visualization-resource</module>
