@@ -1,7 +1,6 @@
 package edu.harvard.dbmi.avillach.dictionary.dataset;
 
-import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
-import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
+import edu.harvard.dbmi.avillach.dictionary.util.MapExtractorWithPrettyKeys;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -15,7 +14,7 @@ import java.util.Optional;
 public class DatasetRepository {
     private final NamedParameterJdbcTemplate template;
     private final DatasetMapper mapper;
-    private final MapExtractor metaExtractor = new MapExtractor("key", "value");
+    private final MapExtractorWithPrettyKeys metaExtractor = new MapExtractorWithPrettyKeys("key", "value");
 
     @Autowired
     public DatasetRepository(NamedParameterJdbcTemplate template, DatasetMapper mapper) {

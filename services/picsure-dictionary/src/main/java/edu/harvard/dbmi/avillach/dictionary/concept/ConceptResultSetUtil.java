@@ -23,7 +23,11 @@ public class ConceptResultSetUtil {
 
     public CategoricalConcept mapCategoricalWithMetadata(ResultSet rs) throws SQLException {
         Map<String, String> metadata = jsonBlobParser.parseMetaData(rs.getString("metadata"));
-        return new CategoricalConcept(getCategoricalConcept(rs), metadata);
+        return new CategoricalConcept(
+            rs.getString("concept_path"), rs.getString("name"), rs.getString("display"), rs.getString("dataset"),
+            rs.getString("description"), null, rs.getBoolean("allowFiltering"), rs.getString("studyAcronym"), null, metadata
+        );
+
     }
 
     private CategoricalConcept getCategoricalConcept(ResultSet rs) throws SQLException {
@@ -36,7 +40,10 @@ public class ConceptResultSetUtil {
 
     public ContinuousConcept mapContinuousWithMetadata(ResultSet rs) throws SQLException {
         Map<String, String> metadata = jsonBlobParser.parseMetaData(rs.getString("metadata"));
-        return new ContinuousConcept(getContinuousConcept(rs), metadata);
+        return new ContinuousConcept(
+            rs.getString("concept_path"), rs.getString("name"), rs.getString("display"), rs.getString("dataset"),
+            rs.getString("description"), rs.getBoolean("allowFiltering"), null, null, rs.getString("studyAcronym"), metadata
+        );
     }
 
     private ContinuousConcept getContinuousConcept(ResultSet rs) throws SQLException {

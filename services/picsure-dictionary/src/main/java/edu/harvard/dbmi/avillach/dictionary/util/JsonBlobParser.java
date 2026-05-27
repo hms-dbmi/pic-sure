@@ -10,12 +10,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class JsonBlobParser {
@@ -78,9 +77,16 @@ public class JsonBlobParser {
             // convert the list to a flat map
             Map<String, String> map = new HashMap<>();
             for (Map<String, String> entry : maps) {
-                if (map.put(entry.get("key"), entry.get("value")) != null) {
+                String rawKey = entry.get("key");
+                if (rawKey == null || rawKey.isBlank()) {
+                    throw new IllegalStateException("parseMetaData() Missing metadata key. Entry: " + entry);
+                }
+                String prettyKey = Arrays.stream(rawKey.split("_")).filter(word -> !word.isBlank())
+                    .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1).toLowerCase()).collect(Collectors.joining(" "));
+                if (map.put(prettyKey, entry.get("value")) != null) {
                     throw new IllegalStateException(
-                        "parseMetaData() Duplicate key found in metadata. Key: " + entry.get("key") + " Value: " + entry.get("value")
+                        "parseMetaData() Duplicate key found in metadata. Key: " + prettyKey + "(" + entry.get("key") + ") Value: "
+                            + entry.get("value")
                     );
                 }
             }

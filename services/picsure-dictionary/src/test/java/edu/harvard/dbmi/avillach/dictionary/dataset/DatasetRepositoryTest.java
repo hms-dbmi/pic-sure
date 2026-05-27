@@ -57,7 +57,7 @@ class DatasetRepositoryTest {
     void shouldGetDatasetMeta() {
         Map<String, String> actual = subject.getDatasetMeta("phs002715");
         Map<String, String> expected = Map
-            .of("focus", "Sleep Apnea Syndromes", "design", "Prospective Longitudinal Cohort", "clinvars", "500", "participants", "23432");
+            .of("Focus", "Sleep Apnea Syndromes", "Design", "Prospective Longitudinal Cohort", "Clinvars", "500", "Participants", "23432");
 
         Assertions.assertEquals(expected, actual);
     }

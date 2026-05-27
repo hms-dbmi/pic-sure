@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
+import edu.harvard.dbmi.avillach.dictionary.util.MapExtractorWithPrettyKeys;
 import edu.harvard.dbmi.avillach.dictionary.util.QueryUtility;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 
 @Repository
@@ -28,12 +30,15 @@ public class ConceptRepository {
     private final ConceptResultSetExtractor conceptResultSetExtractor;
     private final ConceptRowWithMetaMapper conceptRowWithMetaMapper;
     private final List<String> disallowedMetaFields;
+    private final Set<String> noShowList;
+
 
     @Autowired
     public ConceptRepository(
         NamedParameterJdbcTemplate template, ConceptRowMapper mapper, ConceptFilterQueryGenerator filterGen,
         ConceptMetaExtractor conceptMetaExtractor, ConceptResultSetExtractor conceptResultSetExtractor,
-        ConceptRowWithMetaMapper conceptRowWithMetaMapper, @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields
+        ConceptRowWithMetaMapper conceptRowWithMetaMapper, @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields,
+        @Value("#{'${metadata.no_show_list}'}") Set<String> noShowList
     ) {
         this.template = template;
         this.mapper = mapper;
@@ -42,6 +47,7 @@ public class ConceptRepository {
         this.conceptResultSetExtractor = conceptResultSetExtractor;
         this.conceptRowWithMetaMapper = conceptRowWithMetaMapper;
         this.disallowedMetaFields = disallowedMetaFields;
+        this.noShowList = noShowList;
     }
 
 
@@ -119,10 +125,12 @@ public class ConceptRepository {
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
             WHERE
                 concept_node.concept_path = :conceptPath
+                AND concept_node_meta.key NOT IN (:noShowList)
                 AND dataset.REF = :dataset
             """;
-        MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", conceptPath).addValue("dataset", dataset);
-        return template.query(sql, params, new MapExtractor("KEY", "VALUE"));
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPath", conceptPath).addValue("dataset", dataset)
+            .addValue("noShowList", noShowList);
+        return template.query(sql, params, new MapExtractorWithPrettyKeys("KEY", "VALUE"));
     }
 
     public Map<Concept, Map<String, String>> getConceptMetaForConcepts(List<Concept> concepts) {
@@ -136,10 +144,12 @@ public class ConceptRepository {
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
             WHERE
                 (concept_node.CONCEPT_PATH, dataset.REF) IN (:pairs)
+                                        AND
+                 concept_node_meta.key NOT IN (:noShowList)
             ORDER BY concept_node.CONCEPT_PATH, dataset.REF
             """;
         List<String[]> pairs = concepts.stream().map(c -> new String[] {c.conceptPath(), c.dataset()}).toList();
-        MapSqlParameterSource params = new MapSqlParameterSource().addValue("pairs", pairs);
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("pairs", pairs).addValue("noShowList", noShowList);
 
         return template.query(sql, params, conceptMetaExtractor);
 
@@ -298,6 +308,8 @@ public class ConceptRepository {
                          concept_node_meta.concept_node_id IN (
                              SELECT concept_node_id FROM filtered_concepts
                          )
+                        AND
+                        concept_node_meta.key NOT IN (:noShowList)
                      GROUP BY
                          concept_node_meta.concept_node_id
                  )
@@ -309,7 +321,7 @@ public class ConceptRepository {
                      categorical_values.VALUE as values,
                      coalesce(allow_filtering.allowFiltering, TRUE) AS allowFiltering,
                      meta_description.VALUE AS description,
-                     aggregated_meta.metadata AS metadata
+                     coalesce(aggregated_meta.metadata, '[]'::json) AS metadata
                  FROM
                      filtered_concepts as concept_node
                      LEFT JOIN dataset AS ds ON concept_node.dataset_id = ds.dataset_id
@@ -321,8 +333,8 @@ public class ConceptRepository {
                      LEFT JOIN aggregated_meta ON concept_node.concept_node_id = aggregated_meta.concept_node_id
                 """;
 
-        MapSqlParameterSource params =
-            new MapSqlParameterSource().addValue("conceptPaths", conceptPaths).addValue("disallowed_meta_keys", disallowedMetaFields);
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("conceptPaths", conceptPaths)
+            .addValue("disallowed_meta_keys", disallowedMetaFields).addValue("noShowList", noShowList);
         return template.query(sql, params, conceptRowWithMetaMapper);
     }
 }
