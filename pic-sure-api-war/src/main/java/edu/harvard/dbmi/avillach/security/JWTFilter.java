@@ -24,10 +24,12 @@ import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Priority;
 import javax.annotation.Resource;
 import javax.inject.Inject;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.Priorities;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
@@ -62,7 +64,11 @@ class PathRule {
 }
 
 
+// Runs at AUTHENTICATION priority so the SecurityContext is installed before RESTEasy's
+// RolesAllowed enforcement (RoleBasedSecurityFilter, Priorities.AUTHORIZATION); otherwise the
+// role check evaluates an anonymous context and @RolesAllowed cannot see the user's roles.
 @Provider
+@Priority(Priorities.AUTHENTICATION)
 public class JWTFilter implements ContainerRequestFilter {
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
     private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
