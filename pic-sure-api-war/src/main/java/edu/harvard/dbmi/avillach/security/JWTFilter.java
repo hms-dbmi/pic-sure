@@ -198,6 +198,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
                     // The request context wants to remember who the user is
                     requestContext.setProperty("username", userForLogging);
+                    // TEMP DIAGNOSTIC (remove after root-causing @RolesAllowed): shows the roles string PSAMA
+                    // introspection returned for this user, which is what @RolesAllowed is matched against.
+                    logger.info("Installing AuthSecurityContext for user '{}' with roles='{}'", userForLogging, authenticatedUser.getRoles());
                     requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
                     auditContext.put("auth_result", "success");

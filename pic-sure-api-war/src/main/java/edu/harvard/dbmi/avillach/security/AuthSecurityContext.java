@@ -2,12 +2,16 @@ package edu.harvard.dbmi.avillach.security;
 
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.json.Json;
 import javax.ws.rs.core.SecurityContext;
 import java.security.Principal;
 import java.util.Arrays;
 
 public class AuthSecurityContext implements SecurityContext {
+    private static final Logger logger = LoggerFactory.getLogger(AuthSecurityContext.class);
     private AuthUser user;
     private String scheme;
 
@@ -23,12 +27,16 @@ public class AuthSecurityContext implements SecurityContext {
 
     @Override
     public boolean isUserInRole(String role) {
+        boolean result = false;
         if (user.getRoles() != null) {
-            return Arrays.stream(user.getRoles().split(","))
+            result = Arrays.stream(user.getRoles().split(","))
                          .map(String::trim)
                          .anyMatch(r -> r.equals(role));
         }
-        return false;
+        // TEMP DIAGNOSTIC (remove after root-causing @RolesAllowed): confirms whether RESTEasy invokes
+        // this custom SecurityContext for @RolesAllowed, and what roles it compares against.
+        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getRoles(), result);
+        return result;
     }
 
     @Override
