@@ -137,6 +137,8 @@ public class JWTFilterTest {
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
         filter.filter(ctx);
         verify(ctx, never()).setProperty(eq("username"), anyString());
+        verify(ctx, never()).abortWith(any(Response.class));
+        verify(ctx, never()).getHeaderString(HttpHeaders.AUTHORIZATION);
     }
 
     @Test

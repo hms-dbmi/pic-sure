@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.data.request;
 
 import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -18,12 +19,15 @@ public class ConfigurationRequest {
     // Matches strings containing only alphanumeric characters, underscores, hyphens,
     // question marks, brackets, parentheses, colons, and periods from start to end
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
+    @Size(max = 255)
     private String name;
     @Pattern(regexp = "^[\\w\\d\\-?\\[\\].():]+$")
+    @Size(max = 255)
     private String kind;
 
     private String value;
 
+    @Size(max = 255)
     private String description;
 
     private Boolean markForDelete;

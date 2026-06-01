@@ -42,10 +42,14 @@ public class ConfigurationService {
 
     public Optional<Configuration> getConfigurationByIdentifier(String identifier) {
         try {
-            // Try to parse as UUID first
+            // Try to parse as UUID first, but fall back to name lookup if not found
             UUID uuid = UUID.fromString(identifier);
             Configuration config = configurationRepository.getById(uuid);
-            return Optional.ofNullable(config);
+            if (config != null) {
+                return Optional.of(config);
+            }
+            List<Configuration> byName = configurationRepository.getByColumn("name", identifier);
+            return byName != null && !byName.isEmpty() ? Optional.of(byName.get(0)) : Optional.empty();
         } catch (IllegalArgumentException e) {
             // Not a valid UUID, treat as name
             List<Configuration> configs = configurationRepository.getByColumn("name", identifier);
@@ -83,13 +87,17 @@ public class ConfigurationService {
                 logger.error("Configuration not found with id " + request.getUuid().toString());
                 return Optional.empty();
             }
-            config.patch(request);
+            Configuration proposed = new Configuration();
+            proposed.setUuid(config.getUuid());
+            proposed.setName(request.getName() != null ? request.getName() : config.getName());
+            proposed.setKind(request.getKind() != null ? request.getKind() : config.getKind());
 
-            if (nameKindPairExists(config)) {
+            if (nameKindPairExists(proposed)) {
                 logger.error("Error updating configuration: new name already exists " + request.getName());
                 return Optional.empty();
             }
 
+            config.patch(request);
             configurationRepository.merge(config);
             logger.debug("Updated configuration " + config.getUuid().toString() + "(" + config.getName() + ")");
             return Optional.of(config);
