@@ -132,7 +132,8 @@ public class JWTFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         logger.debug("Entered jwtfilter.filter()...");
-        String path = requestContext.getUriInfo().getPath();
+        String rawPath = requestContext.getUriInfo().getPath();
+        String path = rawPath.startsWith("/") ? rawPath : "/" + rawPath;
         String method = requestContext.getRequest().getMethod();
 
         if (EXCLUDED_PATHS.stream().anyMatch(rule -> rule.matches(path, method))) {

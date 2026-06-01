@@ -147,6 +147,23 @@ public class ConfigurationServiceTest {
     }
 
     @Test
+    public void getConfigurationByIdentifier_withUUIDShapedName_success() {
+        // Given a config whose name happens to look like a UUID, and no record exists for that UUID
+        UUID configId = UUID.randomUUID();
+        Configuration config = makeConfiguration(UUID.randomUUID());
+        config.setName(configId.toString());
+        when(configurationRepository.getById(configId)).thenReturn(null);
+        when(configurationRepository.getByColumn("name", configId.toString())).thenReturn(List.of(config));
+
+        // When the identifier is that UUID string
+        Optional<Configuration> response = configurationService.getConfigurationByIdentifier(configId.toString());
+
+        // Then the config is found via name lookup
+        assertTrue(response.isPresent());
+        assertEquals(configId.toString(), response.get().getName());
+    }
+
+    @Test
     public void getConfigurationByIdentifier_withName_notFound() {
         // Given there is no configuration with this name
         ArrayList<Configuration> configs = new ArrayList<Configuration>();
@@ -293,7 +310,7 @@ public class ConfigurationServiceTest {
         ConfigurationRequest request = makeConfigurationRequest();
         request.setUuid(configId);
         request.setName(newName);
-        request.setKind("some other kind");
+        request.setKind(newKind);
         Optional<Configuration> response = configurationService.updateConfiguration(request);
 
         // Then return an empty optional

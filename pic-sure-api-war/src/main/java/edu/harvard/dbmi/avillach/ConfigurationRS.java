@@ -10,6 +10,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
+import javax.annotation.security.PermitAll;
 import javax.annotation.security.RolesAllowed;
 
 import edu.harvard.dbmi.avillach.data.entity.Configuration;
@@ -34,6 +35,7 @@ public class ConfigurationRS {
 
     @GET
     @Path("/")
+    @PermitAll
     @Operation(
         summary = "Returns a list of all configurations.", tags = {"configuration"}, operationId = "getConfigurations",
         responses = {
@@ -57,6 +59,7 @@ public class ConfigurationRS {
 
     @GET
     @Path("/{configuration}/")
+    @PermitAll
     @Operation(
         summary = "Returns a configuration by ID.", tags = {"configuration"}, operationId = "getConfigurationById",
         responses = {

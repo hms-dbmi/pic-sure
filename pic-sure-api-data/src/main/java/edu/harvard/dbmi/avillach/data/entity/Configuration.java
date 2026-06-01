@@ -82,9 +82,8 @@ public class Configuration extends BaseEntity {
     @Override
     public String toString() {
         return Json.createObjectBuilder().add("uuid", uuid != null ? uuid.toString() : "").add("name", name != null ? name : "")
-            .add("kind", kind != null ? kind : "").add("value", value != null ? value : "")
-            .add("description", description != null ? description : "").add("markForDelete", markForDelete != null ? markForDelete : false)
-            .build().toString();
+            .add("kind", kind != null ? kind : "").add("description", description != null ? description : "")
+            .add("markForDelete", markForDelete != null ? markForDelete : false).build().toString();
     }
 
     public Configuration patch(ConfigurationRequest request) {

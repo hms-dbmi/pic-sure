@@ -35,18 +35,14 @@ public class ConfigurationRSTest {
         assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), SUPER_ADMIN);
     }
 
-    private void assertNotRestrictedToSuperAdmin(Method method) {
+    private void assertPermitAll(Method method) {
         PermitAll permitAll = method.getAnnotation(PermitAll.class);
-        RolesAllowed rolesAllowed = method.getAnnotation(RolesAllowed.class);
-        assertTrue(
-            method.getName() + " must not restrict access to " + SUPER_ADMIN,
-            permitAll != null || rolesAllowed == null || !Arrays.asList(rolesAllowed.value()).contains(SUPER_ADMIN)
-        );
+        assertNotNull(method.getName() + " must have @PermitAll annotation", permitAll);
     }
 
     @Test
-    public void readEndpoints_doNotRequireSuperAdminRole() throws NoSuchMethodException {
-        assertNotRestrictedToSuperAdmin(ConfigurationRS.class.getMethod("getConfigurations", SecurityContext.class, String.class));
-        assertNotRestrictedToSuperAdmin(ConfigurationRS.class.getMethod("getConfigurationById", SecurityContext.class, String.class));
+    public void readEndpoints_arePermitAll() throws NoSuchMethodException {
+        assertPermitAll(ConfigurationRS.class.getMethod("getConfigurations", SecurityContext.class, String.class));
+        assertPermitAll(ConfigurationRS.class.getMethod("getConfigurationById", SecurityContext.class, String.class));
     }
 }
