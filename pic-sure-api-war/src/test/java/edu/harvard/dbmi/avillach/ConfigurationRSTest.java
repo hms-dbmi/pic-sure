@@ -14,7 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class ConfigurationRSTest {
-    private final String SUPER_ADMIN = "SUPER_ADMIN";
+    private final String TOP_ADMIN = "PIC-SURE Top Admin";
 
     private void assertRolesAllowed(Method method, String role) {
         RolesAllowed annotation = method.getAnnotation(RolesAllowed.class);
@@ -24,15 +24,15 @@ public class ConfigurationRSTest {
 
     // These unit tests only guard against accidental removal during refactor & they are not an E2E test of the functionality
     @Test
-    public void adminEndpoints_requireSuperAdminRole() throws NoSuchMethodException {
+    public void adminEndpoints_requireAdminRole() throws NoSuchMethodException {
         assertRolesAllowed(
-            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class), SUPER_ADMIN
+            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class), TOP_ADMIN
         );
         assertRolesAllowed(
             ConfigurationRS.class.getMethod("updateConfiguration", SecurityContext.class, UUID.class, ConfigurationRequest.class),
-            SUPER_ADMIN
+            TOP_ADMIN
         );
-        assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), SUPER_ADMIN);
+        assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), TOP_ADMIN);
     }
 
     private void assertPermitAll(Method method) {
