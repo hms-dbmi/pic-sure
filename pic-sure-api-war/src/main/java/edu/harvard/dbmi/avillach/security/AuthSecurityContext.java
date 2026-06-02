@@ -33,9 +33,8 @@ public class AuthSecurityContext implements SecurityContext {
                          .map(String::trim)
                          .anyMatch(r -> r.equals(role));
         }
-        // TEMP DIAGNOSTIC (remove after root-causing @RolesAllowed): confirms whether RESTEasy invokes
-        // this custom SecurityContext for @RolesAllowed, and what roles it compares against.
-        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getRoles(), result);
+
+        logger.debug("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getRoles(), result);
         return result;
     }
 
