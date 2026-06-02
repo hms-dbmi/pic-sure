@@ -1,11 +1,11 @@
 # This image layer is used to cache dependencies specifically used for BDC. The dependencies can be found in the
 # pom.xml in this directory.
-FROM maven:3.6.3-jdk-11 as dependencies
+FROM maven:3.9.5-openjdk-21 as dependencies
 COPY docker/bdc/pom.xml /tmp/
 # Resolve and download dependencies, potentially using the dependency:copy-dependencies goal to place them into a target directory
 RUN mvn -f /tmp/pom.xml dependency:copy-dependencies -DoutputDirectory=/tmp/dependencies
 
-FROM jboss/wildfly:17.0.0.Final
+FROM quay.io/wildfly/wildfly:35.0.0.Final-jdk21
 
 USER root
 
