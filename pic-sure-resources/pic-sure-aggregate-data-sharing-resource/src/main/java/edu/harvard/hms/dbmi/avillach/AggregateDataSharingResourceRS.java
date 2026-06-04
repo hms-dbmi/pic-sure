@@ -364,7 +364,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         switch (expectedResultType) {
             case "COUNT":
                 int requestVariance = generateRequestVariance(entityString);
-                responseString = aggregateCount(entityString).orElse(randomize(entityString, requestVariance));
+                responseString = aggregateCount(entityString)
+                    .map(ObfuscatedCount::display)
+                    .orElseGet(() -> randomize(entityString, requestVariance).display());
 
                 break;
             case "CROSS_COUNT":
@@ -523,9 +525,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         if (crossCounts != null) {
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
-                Optional<String> aggregatedCount = aggregateCount(crossCount);
+                Optional<ObfuscatedCount> aggregatedCount = aggregateCount(crossCount);
                 aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
-                crossCounts.put(key, aggregatedCount.orElse(crossCount));
+                crossCounts.put(key, aggregatedCount.map(ObfuscatedCount::display).orElse(crossCount));
             });
 
             Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(this::generateParents).collect(Collectors.toSet());
@@ -533,7 +535,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
                 if (!obfuscatedKeys.contains(key)) {
-                    crossCounts.put(key, randomize(crossCount, requestVariance));
+                    crossCounts.put(key, randomize(crossCount, requestVariance).display());
                 }
             });
         }
@@ -695,7 +697,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     private void obfuscatedCrossCount(int generatedVariance, Map<String, Map<String, Object>> crossCount) {
         crossCount.forEach((key, value) -> {
             value.forEach((innerKey, innerValue) -> {
-                Optional<String> aggregateCount = aggregateCountHelper(innerValue);
+                Optional<ObfuscatedCount> aggregateCount = aggregateCountHelper(innerValue);
                 if (aggregateCount.isPresent()) {
                     value.put(innerKey, aggregateCount.get());
                 } else {
@@ -746,8 +748,9 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
     }
 
-    private String randomize(String crossCount, int requestVariance) {
-        return Math.max((Integer.parseInt(crossCount) + requestVariance), threshold) + " \u00B1" + variance;
+    ObfuscatedCount randomize(String crossCount, int requestVariance) {
+        int randomized = Math.max((Integer.parseInt(crossCount) + requestVariance), threshold);
+        return new ObfuscatedCount(randomized, randomized + " \u00B1" + variance);
     }
 
     private Stream<String> generateParents(String key) {
@@ -767,11 +770,11 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @param actualCount
      * @return
      */
-    private Optional<String> aggregateCount(String actualCount) {
+    Optional<ObfuscatedCount> aggregateCount(String actualCount) {
         try {
             int queryResult = Integer.parseInt(actualCount);
             if (queryResult < threshold) {
-                return Optional.of("< " + threshold);
+                return Optional.of(new ObfuscatedCount(threshold - 1, "< " + threshold));
             }
         } catch (NumberFormatException nfe) {
             logger.warn("Count was not a number! " + actualCount);
@@ -785,7 +788,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
      * @param actualCount
      * @return
      */
-    private Optional<String> aggregateCountHelper(Object actualCount) {
+    private Optional<ObfuscatedCount> aggregateCountHelper(Object actualCount) {
         if (actualCount instanceof Integer) {
             return aggregateCount(actualCount.toString());
         } else if (actualCount instanceof String) {
