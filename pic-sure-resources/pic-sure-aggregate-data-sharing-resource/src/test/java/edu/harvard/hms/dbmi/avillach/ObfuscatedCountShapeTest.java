@@ -7,6 +7,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -32,8 +35,8 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void aggregateCount_belowThreshold_returnsThresholdMinusOneAndLessThanDisplay() {
-        Optional<ObfuscatedCount> result = subject.aggregateCount("3");
+    public void applyThresholdFloor_belowThreshold_returnsThresholdMinusOneAndLessThanDisplay() {
+        Optional<ObfuscatedCount> result = subject.applyThresholdFloor(3);
 
         assertTrue("Below-threshold counts must be obfuscated", result.isPresent());
         assertEquals(9, result.get().count());
@@ -41,8 +44,8 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void aggregateCount_zero_returnsThresholdMinusOneAndLessThanDisplay() {
-        Optional<ObfuscatedCount> result = subject.aggregateCount("0");
+    public void applyThresholdFloor_zero_returnsThresholdMinusOneAndLessThanDisplay() {
+        Optional<ObfuscatedCount> result = subject.applyThresholdFloor(0);
 
         assertTrue("Zero is treated as below-threshold (privacy floor)", result.isPresent());
         assertEquals(9, result.get().count());
@@ -50,19 +53,19 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void aggregateCount_atOrAboveThreshold_returnsEmpty() {
-        assertTrue(subject.aggregateCount("10").isEmpty());
-        assertTrue(subject.aggregateCount("999").isEmpty());
+    public void applyThresholdFloor_atOrAboveThreshold_returnsEmpty() {
+        assertTrue(subject.applyThresholdFloor(10).isEmpty());
+        assertTrue(subject.applyThresholdFloor(999).isEmpty());
     }
 
     @Test
-    public void aggregateCount_nonNumeric_returnsEmpty() {
-        assertTrue(subject.aggregateCount("not-a-number").isEmpty());
+    public void applyThresholdFloor_stringOverload_nonNumeric_returnsEmpty() {
+        assertTrue(subject.applyThresholdFloor("not-a-number").isEmpty());
     }
 
     @Test
     public void randomize_appliesVariance_returnsBothNumericAndDisplay() {
-        ObfuscatedCount result = subject.randomize("100", 2);
+        ObfuscatedCount result = subject.randomize(100, 2);
 
         assertEquals("count must be the numeric obfuscated value", 102, result.count());
         assertEquals("display must carry the formatted variance string", "102 ±3", result.display());
@@ -70,15 +73,15 @@ public class ObfuscatedCountShapeTest {
 
     @Test
     public void randomize_floorsAtThreshold_whenVarianceTakesItBelow() {
-        ObfuscatedCount result = subject.randomize("10", -5);
+        ObfuscatedCount result = subject.randomize(10, -5);
 
         assertEquals("Floored at threshold so the numeric stays >= threshold", 10, result.count());
         assertEquals("10 ±3", result.display());
     }
 
     @Test
-    public void v3_aggregateCount_belowThreshold_sameContract() {
-        Optional<ObfuscatedCount> result = subjectV3.aggregateCount("5");
+    public void v3_applyThresholdFloor_belowThreshold_sameContract() {
+        Optional<ObfuscatedCount> result = subjectV3.applyThresholdFloor(5);
 
         assertTrue(result.isPresent());
         assertEquals(9, result.get().count());
@@ -87,9 +90,38 @@ public class ObfuscatedCountShapeTest {
 
     @Test
     public void v3_randomize_sameContract() {
-        ObfuscatedCount result = subjectV3.randomize("200", 1);
+        ObfuscatedCount result = subjectV3.randomize(200, 1);
 
         assertEquals(201, result.count());
         assertEquals("201 ±3", result.display());
+    }
+
+    @Test
+    public void ofInt_factory_producesStringifiedDisplay() {
+        ObfuscatedCount result = ObfuscatedCount.ofInt(45000);
+
+        assertEquals(45000, result.count());
+        assertEquals("45000", result.display());
+    }
+
+    /**
+     * Pins the JSON wire shape that visualization-resource (and any other consumer) deserializes against.
+     * If field names ever drift (e.g. someone renames the record component), this test fails BEFORE the
+     * cross-repo contract silently breaks in production.
+     */
+    @Test
+    public void jsonShape_serializesAsCountAndDisplayFields() throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+        ObfuscatedCount value = new ObfuscatedCount(222, "222 ±3");
+
+        String json = mapper.writeValueAsString(value);
+
+        // Exact-match assertion on serialized form. Field order is conventional for clarity but not load-bearing
+        // for consumers; we accept either ordering by JSON equality below.
+        assertEquals("{\"count\":222,\"display\":\"222 ±3\"}", json);
+
+        // Round-trip back through the mapper, asserting both fields survived.
+        ObfuscatedCount roundTripped = mapper.readValue(json, ObfuscatedCount.class);
+        assertEquals(value, roundTripped);
     }
 }

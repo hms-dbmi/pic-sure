@@ -2,14 +2,33 @@ package edu.harvard.hms.dbmi.avillach;
 
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public final class ObfuscatedCount {
 
+    @JsonProperty("count")
     private final int count;
+
+    @JsonProperty("display")
     private final String display;
 
-    public ObfuscatedCount(int count, String display) {
+    @JsonCreator
+    public ObfuscatedCount(
+        @JsonProperty("count") int count,
+        @JsonProperty("display") String display
+    ) {
         this.count = count;
         this.display = display;
+    }
+
+    /**
+     * Wraps a plain (non-obfuscated) integer count. The display is just the
+     * stringified number; this is the right factory for the authorized path
+     * where no threshold floor or variance applies.
+     */
+    public static ObfuscatedCount ofInt(int count) {
+        return new ObfuscatedCount(count, Integer.toString(count));
     }
 
     public int count() {
