@@ -34,7 +34,7 @@ public class AuthSecurityContext implements SecurityContext {
                          .anyMatch(r -> r.equals(role));
         }
 
-        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getRoles(), result);
+        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getPrivileges(), result);
         return result;
     }
 
