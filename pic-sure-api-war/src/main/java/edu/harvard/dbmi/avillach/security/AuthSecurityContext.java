@@ -29,9 +29,7 @@ public class AuthSecurityContext implements SecurityContext {
     public boolean isUserInRole(String role) {
         boolean result = false;
         if (user.getPrivileges() != null) {
-            result = Arrays.stream(user.getPrivileges().split(","))
-                         .map(String::trim)
-                         .anyMatch(r -> r.equals(role));
+            result = user.getPrivileges().stream().map(String::trim).anyMatch(r -> r.equals(role));
         }
 
         logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getPrivileges(), result);
