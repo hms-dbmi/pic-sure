@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.data.entity;
 
 import java.security.Principal;
+import java.util.Set;
 
 import javax.json.Json;
 
@@ -15,6 +16,7 @@ public class AuthUser extends BaseEntity implements Principal {
     private String roles;
 
     private String email;
+    private Set<String> privileges;
 
     public String getUserId() {
         return userId;
@@ -49,6 +51,15 @@ public class AuthUser extends BaseEntity implements Principal {
 
     public AuthUser setEmail(String email){
         this.email = email;
+        return this;
+    }
+
+    public Set<String> getPrivileges() {
+        return privileges;
+    }
+
+    public AuthUser setPrivileges(Set<String> privileges) {
+        this.privileges = privileges;
         return this;
     }
 

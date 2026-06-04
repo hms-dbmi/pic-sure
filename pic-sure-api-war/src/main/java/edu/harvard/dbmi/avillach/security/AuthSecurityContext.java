@@ -28,13 +28,11 @@ public class AuthSecurityContext implements SecurityContext {
     @Override
     public boolean isUserInRole(String role) {
         boolean result = false;
-        if (user.getRoles() != null) {
-            result = Arrays.stream(user.getRoles().split(","))
-                         .map(String::trim)
-                         .anyMatch(r -> r.equals(role));
+        if (user.getPrivileges() != null) {
+            result = user.getPrivileges().stream().map(String::trim).anyMatch(r -> r.equals(role));
         }
 
-        logger.debug("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getRoles(), result);
+        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getPrivileges(), result);
         return result;
     }
 
