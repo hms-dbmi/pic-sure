@@ -567,16 +567,20 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
     }
 
     /**
-     * This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous cross count, we are
-     * unable to directly obfuscate it in its original form. First, we send the continuous cross count data to the visualization resource to
-     * group it into bins. Once the data is binned, we assess whether obfuscation is necessary for this particular continuous cross count.
-     * If obfuscation is not required, we return the data in string format. However, if obfuscation is needed, we first obfuscate the data
-     * and then return it.
+     * Returns the obfuscated continuous cross-count JSON. Continuous values can't be obfuscated directly in their
+     * raw form (one entry per distinct numeric value gives too many cells with small counts), so we first bin them
+     * via the visualization resource — when a visualization service is configured — and obfuscate the binned counts.
+     * Without a configured visualization service we obfuscate the raw per-value counts as a fallback.
+     *
+     * Either way, every value in the returned map is obfuscated through {@link #obfuscateCrossCount}: counts below
+     * the threshold collapse to {@code "< threshold"}, larger counts get variance-randomized. Returns null only when
+     * the upstream produced no data or when {@link #canShowContinuousCrossCounts} signals the cohort is too small
+     * to safely render.
      *
      * @param continuousCrossCountResponse The continuous cross count response
      * @param crossCountResponse The cross count response
      * @param queryRequest The original query request
-     * @return String The obfuscated binned continuous cross count
+     * @return String The obfuscated continuous cross count JSON, or null if not safe / nothing to return
      * @throws IOException If there is an error processing the JSON
      */
     protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest)
@@ -708,10 +712,16 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
         return result;
     }
 
-    private static int toInt(Object value) {
-        if (value instanceof Integer) return (Integer) value;
+    /**
+     * Jackson hands us {@code Object}-typed values from JSON; the runtime type depends on the number's magnitude
+     * (Integer, Long, Double, BigInteger, ...) and on whether the upstream stringified it. Accept anything that
+     * represents an integral count and narrow to int. The previous shape ({@code innerValue.toString()} into
+     * {@link Integer#parseInt}) silently accepted Long/Double for free; preserve that breadth via {@link Number}.
+     */
+    static int toInt(Object value) {
+        if (value instanceof Number) return ((Number) value).intValue();
         if (value instanceof String) return Integer.parseInt((String) value);
-        throw new IllegalArgumentException("Cross-count value was neither Integer nor numeric String: " + value);
+        throw new IllegalArgumentException("Cross-count value was neither Number nor numeric String: " + value);
     }
 
 

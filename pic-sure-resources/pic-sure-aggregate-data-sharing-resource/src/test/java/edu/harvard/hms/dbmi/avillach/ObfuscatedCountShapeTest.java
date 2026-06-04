@@ -97,6 +97,18 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
+    public void toInt_acceptsAllJacksonNumberRuntimeTypes() {
+        // Jackson deserializes JSON numbers into Integer when they fit, Long for larger magnitudes, Double when
+        // decimal. The previous innerValue.toString() shape silently accepted all of these via Integer.parseInt
+        // (well, except Double — which it would have crashed on anyway). The replacement must not narrow.
+        assertEquals(42, AggregateDataSharingResourceRS.toInt(Integer.valueOf(42)));
+        assertEquals(42, AggregateDataSharingResourceRS.toInt(Long.valueOf(42L)));
+        assertEquals(42, AggregateDataSharingResourceRS.toInt(Double.valueOf(42.0)));
+        assertEquals(42, AggregateDataSharingResourceRS.toInt(Short.valueOf((short) 42)));
+        assertEquals(42, AggregateDataSharingResourceRS.toInt("42"));
+    }
+
+    @Test
     public void ofInt_factory_producesStringifiedDisplay() {
         ObfuscatedCount result = ObfuscatedCount.ofInt(45000);
 
