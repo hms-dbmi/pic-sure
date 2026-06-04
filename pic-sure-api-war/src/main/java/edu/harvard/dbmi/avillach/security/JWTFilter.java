@@ -282,6 +282,7 @@ public class JWTFilter implements ContainerRequestFilter {
                 );
             }
             JsonNode responseContent = json.readTree(response.getEntity().getContent());
+            logger.info("Response from token introspection endpoint: {}", responseContent);
             if (!responseContent.get("active").asBoolean()) {
                 logger.error("callTokenIntroEndpoint() Token intro endpoint return invalid token, content: " + responseContent);
                 throw new NotAuthorizedException("Token invalid or expired");
