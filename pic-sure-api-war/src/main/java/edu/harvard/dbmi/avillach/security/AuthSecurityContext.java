@@ -27,9 +27,8 @@ public class AuthSecurityContext implements SecurityContext {
 
     @Override
     public boolean isUserInRole(String role) {
-        boolean result = false;
-        if (user.getRoles() != null) {
-            result = Arrays.stream(user.getRoles().split(","))
+        if (user.getPrivileges() != null) {
+            return Arrays.stream(user.getPrivileges().split(","))
                          .map(String::trim)
                          .anyMatch(r -> r.equals(role));
         }

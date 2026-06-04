@@ -15,6 +15,7 @@ public class AuthUser extends BaseEntity implements Principal {
     private String roles;
 
     private String email;
+    private String privileges;
 
     public String getUserId() {
         return userId;
@@ -49,6 +50,15 @@ public class AuthUser extends BaseEntity implements Principal {
 
     public AuthUser setEmail(String email){
         this.email = email;
+        return this;
+    }
+
+    public String getPrivileges() {
+        return privileges;
+    }
+
+    public AuthUser setPrivileges(String privileges) {
+        this.privileges = privileges;
         return this;
     }
 
