@@ -83,7 +83,7 @@ public class ConfigurationRS {
 
     @POST
     @Path("/admin/")
-    @RolesAllowed("PIC-SURE Top Admin")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Creates a new configuration.", tags = {"configuration"}, operationId = "addConfiguration",
         responses = {
@@ -113,7 +113,7 @@ public class ConfigurationRS {
 
     @PATCH
     @Path("/admin/{configurationId}/")
-    @RolesAllowed("PIC-SURE Top Admin")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Updates an existing configuration.", tags = {"configuration"}, operationId = "updateConfiguration",
         responses = {
@@ -146,7 +146,7 @@ public class ConfigurationRS {
 
     @DELETE
     @Path("/admin/{configurationId}/")
-    @RolesAllowed("PIC-SURE Top Admin")
+    @RolesAllowed("SUPER_ADMIN")
     @Operation(
         summary = "Deletes a configuration.", tags = {"configuration"}, operationId = "deleteConfiguration",
         responses = {@ApiResponse(responseCode = "200", description = "Configuration successfully deleted."),
