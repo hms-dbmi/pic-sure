@@ -35,21 +35,23 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void applyThresholdFloor_belowThreshold_returnsThresholdMinusOneAndLessThanDisplay() {
+    public void applyThresholdFloor_belowThreshold_returnsZeroCountWithThresholdBandAndLessThanDisplay() {
         Optional<ObfuscatedCount> result = subject.applyThresholdFloor(3);
 
         assertTrue("Below-threshold counts must be obfuscated", result.isPresent());
-        assertEquals(9, result.get().count());
+        assertEquals(0, result.get().count());
         assertEquals("< 10", result.get().display());
+        assertEquals("Band [max(0, 0-9), 0+9] renders 0..threshold-1", Integer.valueOf(9), result.get().variance());
     }
 
     @Test
-    public void applyThresholdFloor_zero_returnsThresholdMinusOneAndLessThanDisplay() {
+    public void applyThresholdFloor_zero_returnsZeroCountWithThresholdBandAndLessThanDisplay() {
         Optional<ObfuscatedCount> result = subject.applyThresholdFloor(0);
 
         assertTrue("Zero is treated as below-threshold (privacy floor)", result.isPresent());
-        assertEquals(9, result.get().count());
+        assertEquals(0, result.get().count());
         assertEquals("< 10", result.get().display());
+        assertEquals(Integer.valueOf(9), result.get().variance());
     }
 
     @Test
@@ -64,11 +66,12 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void randomize_appliesVariance_returnsBothNumericAndDisplay() {
+    public void randomize_appliesVariance_returnsNumericDisplayAndVariance() {
         ObfuscatedCount result = subject.randomize(100, 2);
 
         assertEquals("count must be the numeric obfuscated value", 102, result.count());
         assertEquals("display must carry the formatted variance string", "102 ±3", result.display());
+        assertEquals("variance must carry the configured band half-width", Integer.valueOf(3), result.variance());
     }
 
     @Test
@@ -77,6 +80,7 @@ public class ObfuscatedCountShapeTest {
 
         assertEquals("Floored at threshold so the numeric stays >= threshold", 10, result.count());
         assertEquals("10 ±3", result.display());
+        assertEquals(Integer.valueOf(3), result.variance());
     }
 
     @Test
@@ -84,8 +88,9 @@ public class ObfuscatedCountShapeTest {
         Optional<ObfuscatedCount> result = subjectV3.applyThresholdFloor(5);
 
         assertTrue(result.isPresent());
-        assertEquals(9, result.get().count());
+        assertEquals(0, result.get().count());
         assertEquals("< 10", result.get().display());
+        assertEquals(Integer.valueOf(9), result.get().variance());
     }
 
     @Test
@@ -94,6 +99,7 @@ public class ObfuscatedCountShapeTest {
 
         assertEquals(201, result.count());
         assertEquals("201 ±3", result.display());
+        assertEquals(Integer.valueOf(3), result.variance());
     }
 
     @Test
@@ -109,11 +115,12 @@ public class ObfuscatedCountShapeTest {
     }
 
     @Test
-    public void ofInt_factory_producesStringifiedDisplay() {
+    public void ofInt_factory_producesStringifiedDisplayAndNullVariance() {
         ObfuscatedCount result = ObfuscatedCount.ofInt(45000);
 
         assertEquals(45000, result.count());
         assertEquals("45000", result.display());
+        assertEquals("Exact (authorized) values carry no uncertainty band", null, result.variance());
     }
 
     /**
@@ -122,18 +129,32 @@ public class ObfuscatedCountShapeTest {
      * cross-repo contract silently breaks in production.
      */
     @Test
-    public void jsonShape_serializesAsCountAndDisplayFields() throws JsonProcessingException {
+    public void jsonShape_serializesAsCountDisplayAndVarianceFields() throws JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
-        ObfuscatedCount value = new ObfuscatedCount(222, "222 ±3");
+        ObfuscatedCount value = new ObfuscatedCount(222, "222 ±3", 3);
 
         String json = mapper.writeValueAsString(value);
 
         // Exact-match assertion on serialized form. Field order is conventional for clarity but not load-bearing
         // for consumers; we accept either ordering by JSON equality below.
-        assertEquals("{\"count\":222,\"display\":\"222 ±3\"}", json);
+        assertEquals("{\"count\":222,\"display\":\"222 ±3\",\"variance\":3}", json);
 
-        // Round-trip back through the mapper, asserting both fields survived.
+        // Round-trip back through the mapper, asserting all fields survived.
         ObfuscatedCount roundTripped = mapper.readValue(json, ObfuscatedCount.class);
         assertEquals(value, roundTripped);
+    }
+
+    /**
+     * Exact (authorized) values serialize variance as an explicit null, and below-threshold values pin
+     * the {count: 0, variance: threshold-1} encoding the frontend's band rule depends on.
+     */
+    @Test
+    public void jsonShape_nullVarianceAndBelowThresholdEncoding() throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertEquals("{\"count\":45000,\"display\":\"45000\",\"variance\":null}", mapper.writeValueAsString(ObfuscatedCount.ofInt(45000)));
+
+        ObfuscatedCount belowThreshold = subject.applyThresholdFloor(3).orElseThrow(IllegalStateException::new);
+        assertEquals("{\"count\":0,\"display\":\"< 10\",\"variance\":9}", mapper.writeValueAsString(belowThreshold));
     }
 }

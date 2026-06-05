@@ -767,7 +767,7 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     ObfuscatedCount randomize(int crossCount, int requestVariance) {
         int randomized = Math.max(crossCount + requestVariance, threshold);
-        return new ObfuscatedCount(randomized, randomized + " \u00B1" + variance);
+        return new ObfuscatedCount(randomized, randomized + " \u00B1" + variance, variance);
     }
 
     private Stream<String> generateParents(String key) {
@@ -783,14 +783,15 @@ public class AggregateDataSharingResourceRS implements IResourceRS {
 
     /**
      * Core privacy floor: small (potentially identifiable) cohorts get hidden behind a "< threshold" display.
-     * The numeric component is set to threshold-1 so the chart bar still renders at a visible height just under
-     * the threshold; the true count lies in [0, threshold-1] but we don't disclose which.
+     * The value is encoded as count 0 with variance threshold-1, so consumers rendering the uncertainty band
+     * [max(0, count - variance), count + variance] draw 0..threshold-1 — the true count lies somewhere in that
+     * band but we don't disclose where.
      *
      * Returns empty when the value is at or above the threshold (caller should then call {@link #randomize}).
      */
     Optional<ObfuscatedCount> applyThresholdFloor(int actualCount) {
         if (actualCount < threshold) {
-            return Optional.of(new ObfuscatedCount(threshold - 1, "< " + threshold));
+            return Optional.of(new ObfuscatedCount(0, "< " + threshold, threshold - 1));
         }
         return Optional.empty();
     }
