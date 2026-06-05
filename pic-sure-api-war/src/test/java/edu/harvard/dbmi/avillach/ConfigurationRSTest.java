@@ -14,7 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class ConfigurationRSTest {
-    private final String TOP_ADMIN = "PIC-SURE Top Admin";
+    private final String SUPER_ADMIN = "SUPER_ADMIN";
 
     private void assertRolesAllowed(Method method, String role) {
         RolesAllowed annotation = method.getAnnotation(RolesAllowed.class);
@@ -26,13 +26,13 @@ public class ConfigurationRSTest {
     @Test
     public void adminEndpoints_requireAdminRole() throws NoSuchMethodException {
         assertRolesAllowed(
-            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class), TOP_ADMIN
+            ConfigurationRS.class.getMethod("addConfiguration", SecurityContext.class, ConfigurationRequest.class), SUPER_ADMIN
         );
         assertRolesAllowed(
             ConfigurationRS.class.getMethod("updateConfiguration", SecurityContext.class, UUID.class, ConfigurationRequest.class),
-            TOP_ADMIN
+            SUPER_ADMIN
         );
-        assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), TOP_ADMIN);
+        assertRolesAllowed(ConfigurationRS.class.getMethod("deleteConfiguration", SecurityContext.class, UUID.class), SUPER_ADMIN);
     }
 
     private void assertPermitAll(Method method) {
