@@ -32,9 +32,7 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
@@ -339,10 +337,16 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         String crossCountResponse;
         switch (expectedResultType) {
             case "COUNT":
-                int requestVariance = generateRequestVariance(entityString);
-                responseString = applyThresholdFloor(entityString)
-                    .map(ObfuscatedCount::display)
-                    .orElseGet(() -> randomize(Integer.parseInt(entityString), requestVariance).display());
+                try {
+                    int count = Integer.parseInt(entityString);
+                    int requestVariance = generateRequestVariance(entityString);
+                    responseString = applyThresholdFloor(count)
+                        .map(ObfuscatedCount::display)
+                        .orElseGet(() -> randomize(count, requestVariance).display());
+                } catch (NumberFormatException nfe) {
+                    logger.warn("COUNT response was not a number! " + entityString);
+                    responseString = entityString;
+                }
 
                 break;
             case "CROSS_COUNT":
@@ -505,8 +509,6 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
                 floored.ifPresent((x) -> obfuscatedKeys.add(key));
                 crossCounts.put(key, floored.map(ObfuscatedCount::display).orElse(crossCount));
             });
-
-            Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(this::generateParents).collect(Collectors.toSet());
 
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
@@ -744,17 +746,6 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
     ObfuscatedCount randomize(int crossCount, int requestVariance) {
         int randomized = Math.max(crossCount + requestVariance, threshold);
         return new ObfuscatedCount(randomized, randomized + " \u00B1" + variance, variance);
-    }
-
-    private Stream<String> generateParents(String key) {
-        StringJoiner stringJoiner = new StringJoiner("\\", "\\", "\\");
-
-        String[] split = key.split("\\\\");
-        if (split.length > 1) {
-            return Arrays.stream(Arrays.copyOfRange(split, 0, split.length - 1)).filter(Predicate.not(String::isEmpty))
-                .map(segment -> stringJoiner.add(segment).toString());
-        }
-        return Stream.empty();
     }
 
     /**
