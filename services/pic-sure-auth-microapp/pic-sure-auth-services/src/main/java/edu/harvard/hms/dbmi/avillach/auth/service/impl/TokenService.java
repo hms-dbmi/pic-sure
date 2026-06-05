@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
 import edu.harvard.hms.dbmi.avillach.auth.model.*;
@@ -191,11 +192,6 @@ public class TokenService {
             tokenInspection.addField("active", true);
         } else if (isAuthorizationPassed) {
             tokenInspection.addField("active", true);
-            ArrayList<String> roles = new ArrayList<>();
-            for (Privilege p : user.getTotalPrivilege()) {
-                roles.add(p.getName());
-            }
-            tokenInspection.addField("roles", String.join(",", roles));
 
             // Refresh token if expiring soon
             Date expiration = jws.getPayload().getExpiration();
@@ -219,7 +215,10 @@ public class TokenService {
 
         // Include token payload and privileges
         tokenInspection.addAllFields(jws.getPayload());
-        tokenInspection.addField("privileges", user.getPrivilegeNameSetByApplication(application));
+        tokenInspection.addField("roles", user.getRoleString());
+        Set<String> userPrivileges = user.getPrivilegeNameSetByApplication(application);
+        userPrivileges.addAll(user.getPrivilegeNameSet());
+        tokenInspection.addField("privileges", userPrivileges);
 
         logger.debug(
             "_inspectToken() Successfully inspect and return response map: {}",
@@ -228,7 +227,6 @@ public class TokenService {
         );
 
         return tokenInspection;
-
     }
 
     public RefreshToken refreshToken(String authorizationHeader) {

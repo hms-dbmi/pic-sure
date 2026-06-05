@@ -93,7 +93,7 @@ public class TokenServiceTest {
         assertNull(response.get("message"));
         assertTrue((Boolean) response.get("active"));
         assertEquals(user.getSubject(), response.get("sub"));
-        assertEquals(application.getPrivileges(), response.get("privileges"));
+        assertEquals(user.getPrivilegeNameSet(), response.get("privileges"));
     }
 
     @Test
@@ -221,7 +221,7 @@ public class TokenServiceTest {
         assertNull(response.get("message"));
         assertTrue((Boolean) response.get("active"));
         assertEquals(AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + claims.get("sub").toString(), response.get("sub"));
-        assertEquals(application.getPrivileges(), response.get("privileges"));
+        assertEquals(user.getPrivilegeNameSet(), response.get("privileges"));
     }
 
     @Test
