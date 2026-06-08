@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.security;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.PicSureWarInit;
@@ -24,10 +25,12 @@ import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Priority;
 import javax.annotation.Resource;
 import javax.inject.Inject;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.NotAuthorizedException;
+import javax.ws.rs.Priorities;
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ResourceInfo;
@@ -40,13 +43,42 @@ import javax.servlet.http.HttpServletRequest;
 
 import java.io.*;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static edu.harvard.dbmi.avillach.util.Utilities.buildHttpClientContext;
 
-@Provider
-public class JWTFilter implements ContainerRequestFilter {
+class PathRule {
+    final Pattern pattern;
+    final Set<String> allowedMethods; // null means all methods
 
+    PathRule(String regex, String... methods) {
+        this.pattern = Pattern.compile(regex);
+        this.allowedMethods = methods.length == 0 ? null : Set.of(methods);
+    }
+
+    boolean matches(String path, String method) {
+        if (!pattern.matcher(path).find()) {
+            return false;
+        }
+        return allowedMethods == null || allowedMethods.contains(method);
+    }
+}
+
+
+// Runs at AUTHENTICATION priority so the SecurityContext is installed before RESTEasy's
+// RolesAllowed enforcement (RoleBasedSecurityFilter, Priorities.AUTHORIZATION); otherwise the
+// role check evaluates an anonymous context and @RolesAllowed cannot see the user's roles.
+@Provider
+@Priority(Priorities.AUTHENTICATION)
+public class JWTFilter implements ContainerRequestFilter {
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
+    private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
+        new PathRule("\\/openapi\\.json$"),
+        // Matches GET /configuration or /configuration/<uuid or config-name> with optional trailing slash
+        // Excludes /configuration/admin(/*) routes
+        new PathRule("^\\/configuration(\\/(?!admin\\/?$)[\\w\\d\\-?\\[\\].():]*)?\\/?$", HttpMethod.GET),
+        new PathRule("^\\/proxy/pic-sure-logging")
+    );
 
     @Context
     UriInfo uriInfo;
@@ -101,19 +133,16 @@ public class JWTFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
         logger.debug("Entered jwtfilter.filter()...");
+        String rawPath = requestContext.getUriInfo().getPath();
+        String path = rawPath.startsWith("/") ? rawPath : "/" + rawPath;
+        String method = requestContext.getRequest().getMethod();
 
-        if (uriInfo.getPath().endsWith("/openapi.json")) {
+        if (EXCLUDED_PATHS.stream().anyMatch(rule -> rule.matches(path, method))) {
+            logger.info("Accessing excluded path " + path + " method " + method);
             return;
         }
 
-        if (uriInfo.getPath().startsWith("proxy/pic-sure-logging/")) {
-            return;
-        }
-
-        if (
-            requestContext.getUriInfo().getPath().contentEquals("/system/status")
-                && requestContext.getRequest().getMethod().contentEquals(HttpMethod.GET)
-        ) {
+        if (path.contentEquals("/system/status") && method.contentEquals(HttpMethod.GET)) {
             // GET calls to /system/status do not require authentication or authorization
             requestContext.setProperty("username", "SYSTEM_MONITOR");
         } else {
@@ -171,6 +200,9 @@ public class JWTFilter implements ContainerRequestFilter {
 
                     // The request context wants to remember who the user is
                     requestContext.setProperty("username", userForLogging);
+                    // TEMP DIAGNOSTIC (remove after root-causing @RolesAllowed): shows the roles string PSAMA
+                    // introspection returned for this user, which is what @RolesAllowed is matched against.
+                    logger.info("Installing AuthSecurityContext for user '{}' with roles='{}'", userForLogging, authenticatedUser.getRoles());
                     requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
                     auditContext.put("auth_result", "success");
@@ -264,7 +296,10 @@ public class JWTFilter implements ContainerRequestFilter {
             String sub = responseContent.get("sub") != null ? responseContent.get("sub").asText() : null;
             String email = responseContent.get("email") != null ? responseContent.get("email").asText() : null;
             String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
-            AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles);
+            Set<String> privileges = responseContent.get("privileges") != null
+                    ? json.convertValue(responseContent.get("privileges"), new TypeReference<>() {})
+                    : Collections.emptySet();
+            AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles).setPrivileges(privileges);
 
             // If there is a query in the response, PSAMA has updated the authorization filters and we must update the query
             if (responseContent.get("query") != null) {

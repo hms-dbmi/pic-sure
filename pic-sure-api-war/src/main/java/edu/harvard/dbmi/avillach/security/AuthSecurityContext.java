@@ -2,12 +2,16 @@ package edu.harvard.dbmi.avillach.security;
 
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.json.Json;
 import javax.ws.rs.core.SecurityContext;
 import java.security.Principal;
 import java.util.Arrays;
 
 public class AuthSecurityContext implements SecurityContext {
+    private static final Logger logger = LoggerFactory.getLogger(AuthSecurityContext.class);
     private AuthUser user;
     private String scheme;
 
@@ -23,12 +27,13 @@ public class AuthSecurityContext implements SecurityContext {
 
     @Override
     public boolean isUserInRole(String role) {
-        if (user.getRoles() != null) {
-            return Arrays.stream(user.getRoles().split(","))
-                         .map(String::trim)
-                         .anyMatch(r -> r.equals(role));
+        boolean result = false;
+        if (user.getPrivileges() != null) {
+            result = user.getPrivileges().stream().map(String::trim).anyMatch(r -> r.equals(role));
         }
-        return false;
+
+        logger.info("isUserInRole() check: requestedRole='{}', userRoles='{}', result={}", role, user.getPrivileges(), result);
+        return result;
     }
 
     @Override
