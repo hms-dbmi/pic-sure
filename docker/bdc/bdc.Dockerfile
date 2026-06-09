@@ -1,6 +1,6 @@
 # This image layer is used to cache dependencies specifically used for BDC. The dependencies can be found in the
 # pom.xml in this directory.
-FROM maven:3.9.5-openjdk-21 as dependencies
+FROM maven:3.9.9-eclipse-temurin-21 as dependencies
 COPY docker/bdc/pom.xml /tmp/
 # Resolve and download dependencies, potentially using the dependency:copy-dependencies goal to place them into a target directory
 RUN mvn -f /tmp/pom.xml dependency:copy-dependencies -DoutputDirectory=/tmp/dependencies
