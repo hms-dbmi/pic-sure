@@ -289,13 +289,6 @@ public class AuthorizationService {
             return true;
         }
 
-        // Load the auth access rules
-        Role authAccessRole = this.roleService.getRoleByName(MANAGED_AUTH_ACCESS_ROLE_NAME);
-        if (authAccessRole == null) {
-            logger.info("{} has not be created for this environment. Please create the role and its permissions before attempting to use auth access.", MANAGED_AUTH_ACCESS_ROLE_NAME);
-            return false;
-        }
-
         // Load the open access rules
         Role openAccessRole = this.roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
         if (openAccessRole == null) {

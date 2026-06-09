@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME;
 
 @Service
@@ -164,28 +165,41 @@ JsonNode introspectResponse = super.introspectToken(userToken);
         String userEmail = introspectResponse.get("sub").asText();
         try {
             // connection id = okta
-            Optional<User> user = userService.findByEmailAndConnection(userEmail, this.connectionId);
+            User user = userService.findByEmailAndConnection(userEmail, this.connectionId).orElse(null);
+            if (user == null) {
+                return null;
+            }
 
             // If the user does not yet have a subject, set it to the subject from the introspect response
-            if (user.get().getSubject() == null) {
-                user.get().setSubject("okta|" + introspectResponse.get("uid").asText());
+            if (user.getSubject() == null) {
+                user.setSubject("okta|" + introspectResponse.get("uid").asText());
             }
 
-            // todo: MANAGED_AUTH_ACCESS_ROLE_NAME too?
+            Role authAccessRole = this.roleService.getRoleByName(MANAGED_AUTH_ACCESS_ROLE_NAME);
+            if (authAccessRole != null) {
+                logger.info("Adding auth access role to user: {}", user.getUuid());
+                Set<Role> roles = user.getRoles();
+                roles.add(authAccessRole);
+                user = userService.changeRole(user, roles);
+                userService.updateUserConsents(user, Set.of());
+            } else {
+                logger.info("{} has not be created for this environment. Please create the role and its permissions before attempting to use auth access.", MANAGED_AUTH_ACCESS_ROLE_NAME);
+            }
+
             // All users that login through OKTA should have the fence_open_access role, or they will not be able to interact with the UI
             Role openAccessRole = roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
-            if (!user.get().getRoles().contains(openAccessRole)) {
-                logger.info("Adding fence_open_access role to user: {}", user.get().getUuid());
-                Set<Role> roles = user.get().getRoles();
+            if (!user.getRoles().contains(openAccessRole)) {
+                logger.info("Adding fence_open_access role to user: {}", user.getUuid());
+                Set<Role> roles = user.getRoles();
                 roles.add(openAccessRole);
-                user = Optional.ofNullable(userService.changeRole(user.orElse(null), roles));
+                user = userService.changeRole(user, roles);
             }
 
-            user.get().setGeneralMetadata(generateUserMetadata(introspectResponse, user.orElse(null)).toString());
+            user.setGeneralMetadata(generateUserMetadata(introspectResponse, user).toString());
 
-            userService.save(user.orElse(null));
+            userService.save(user);
             logger.info("LOGIN SUCCESS ___ USER DATA: {}", user);
-            return user.orElse(null);
+            return user;
         } catch (NoResultException ex) {
             logger.info("LOGIN FAILED ___ USER NOT FOUND ___ {} ___", userEmail);
             return null;
