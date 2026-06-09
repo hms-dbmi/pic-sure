@@ -26,6 +26,10 @@
 			<version>${project.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-api-model</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt</artifactId>
 		</dependency>

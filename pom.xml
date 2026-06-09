@@ -16,7 +16,8 @@
   <repositories>
     <repository>
       <id>github</id>
-      <url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+      <name>GitHub HMS-DBMI Apache Maven Packages</name>
+      <url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
@@ -56,7 +57,7 @@
           <artifactId>maven-compiler-plugin</artifactId>
           <version>3.11.0</version>
           <configuration>
-            <release>11</release>
+            <release>21</release>
           </configuration>
         </plugin>
         <plugin>
@@ -339,6 +340,11 @@
         <groupId>edu.harvard.dbmi.avillach</groupId>
         <artifactId>pic-sure-logging-client</artifactId>
         <version>1.0.0</version>
+      </dependency>
+      <dependency>
+        <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+        <artifactId>pic-sure-api-model</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
