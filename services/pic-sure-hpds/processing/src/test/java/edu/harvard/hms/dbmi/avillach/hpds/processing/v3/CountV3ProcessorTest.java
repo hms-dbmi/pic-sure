@@ -4,8 +4,10 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicSubquery;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +18,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -155,5 +160,80 @@ class CountV3ProcessorTest {
 
         assertEquals(1, crossCounts.get(conceptPath).get(18.0));
         assertEquals(1, crossCounts.get(conceptPath).get(19.0));
+    }
+
+    @Test
+    public void runCategoryCrossCounts_duplicateValueFiltersSamePath_mergesValues() {
+        String sexPath = "\\demographics\\SEX\\";
+        PhenotypicFilter maleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("male"), null, null, null);
+        PhenotypicFilter femaleFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, sexPath, Set.of("female"), null, null, null);
+        PhenotypicSubquery subquery = new PhenotypicSubquery(null, List.of(maleFilter, femaleFilter), Operator.OR);
+        Query query = new Query(List.of(), List.of(), subquery, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
+
+        TreeMap<String, TreeSet<Integer>> categoryMap = new TreeMap<>();
+        categoryMap.put("male", new TreeSet<>(Set.of(1, 2, 3)));
+        categoryMap.put("female", new TreeSet<>(Set.of(4, 5)));
+        PhenoCube<String> cube = new PhenoCube<>(sexPath, String.class);
+        cube.setCategoryMap(categoryMap);
+
+        when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2, 3, 4, 5));
+        when(phenotypicObservationStore.getCube(sexPath)).thenReturn(Optional.of(cube));
+
+        Map<String, Map<String, Integer>> crossCounts = countV3Processor.runCategoryCrossCounts(query);
+
+        // Both filter values land in a single SEX entry instead of one overwriting the other
+        assertEquals(1, crossCounts.size());
+        assertEquals(Set.of("male", "female"), crossCounts.get(sexPath).keySet());
+        assertEquals(3, crossCounts.get(sexPath).get("male"));
+        assertEquals(2, crossCounts.get(sexPath).get("female"));
+    }
+
+    @Test
+    public void runCategoryCrossCounts_requiredFilterPartialBaseSet_countsEachPatientOnce() {
+        String sexPath = "\\demographics\\SEX\\";
+        PhenotypicFilter requiredSex = new PhenotypicFilter(PhenotypicFilterType.REQUIRED, sexPath, null, null, null, null);
+        Query query = new Query(List.of(), List.of(), requiredSex, List.of(), ResultType.CATEGORICAL_CROSS_COUNT, null, null);
+
+        TreeMap<String, TreeSet<Integer>> categoryMap = new TreeMap<>();
+        categoryMap.put("male", new TreeSet<>(Set.of(1, 2, 3)));
+        categoryMap.put("female", new TreeSet<>(Set.of(4, 5)));
+        PhenoCube<String> cube = new PhenoCube<>(sexPath, String.class);
+        cube.setCategoryMap(categoryMap);
+
+        // Base set is a partial subset of every category, forcing the per-patient counting path.
+        // Only patient 1 (male) and patient 4 (female) are in the cohort, so each category count must be exactly 1.
+        when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 4));
+        when(queryExecutor.getDictionary()).thenReturn(Map.of(sexPath, new ColumnMeta().setName(sexPath).setCategorical(true)));
+        when(phenotypicObservationStore.getCube(sexPath)).thenReturn(Optional.of(cube));
+
+        Map<String, Map<String, Integer>> crossCounts = countV3Processor.runCategoryCrossCounts(query);
+
+        assertEquals(1, crossCounts.get(sexPath).get("male"));
+        assertEquals(1, crossCounts.get(sexPath).get("female"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void runContinuousCrossCounts_showsCohortValuesOutsideFilterRange() {
+        String agePath = "\\demographics\\AGE\\";
+        // A range filter (age 10-20); the cohort, however, includes patient 2 (age 40) who is outside that range -- as happens when the
+        // range is OR'd with a filter on another concept. The age distribution must include 40 because patient 2 is in the cohort; the
+        // filter range only constrains the cohort, not which values are displayed.
+        PhenotypicFilter youngFilter = new PhenotypicFilter(PhenotypicFilterType.FILTER, agePath, null, 10.0, 20.0, null);
+        Query query = new Query(List.of(), List.of(), youngFilter, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
+
+        PhenoCube<Double> cube = new PhenoCube<>(agePath, Double.class);
+        cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 15.0), new KeyAndValue<>(2, 40.0), new KeyAndValue<>(3, 65.0)});
+
+        when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2));
+        when(queryExecutor.getDictionary()).thenReturn(Map.of(agePath, new ColumnMeta().setName(agePath).setCategorical(false)));
+        when(phenotypicObservationStore.getCube(agePath)).thenReturn(Optional.of(cube));
+
+        Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);
+
+        assertEquals(1, crossCounts.get(agePath).get(15.0));
+        assertEquals(1, crossCounts.get(agePath).get(40.0));
+        // patient 3 (65) is not in the cohort, so it is absent
+        assertNull(crossCounts.get(agePath).get(65.0));
     }
 }

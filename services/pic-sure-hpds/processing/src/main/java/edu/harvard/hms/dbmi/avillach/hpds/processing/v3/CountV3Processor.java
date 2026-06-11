@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Note: This class was copied from {@link edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor} and updated to use new Query entity
@@ -105,94 +106,93 @@ public class CountV3Processor implements HpdsV3Processor {
 
     /**
      * Returns a separate count for each field in the requiredFields and categoryFilters query.
+     * <p>
+     * The v3 query lets a user add multiple filters on the same variable (e.g. sex=male OR sex=female). Filters are grouped by concept path
+     * so each variable produces exactly one entry rather than later filters overwriting earlier ones.
+     * <p>
+     * A cross count reports each concept's distribution across the cohort. A category is included when it has members in the cohort, OR when
+     * it was explicitly named ("called out") by a value filter. This means a value filter never hides cohort members that arrived via an OR
+     * branch on another concept (sex=male OR age-required still shows females that have an age), while a value the user specifically asked
+     * for is always shown even when its cohort count is zero. Categories that are neither called out nor present in the cohort are omitted,
+     * so AND-narrowed concepts do not sprout empty bars.
      *
      * @param query
      * @return a map of categorical data and their counts
      */
     public Map<String, Map<String, Integer>> runCategoryCrossCounts(Query query) {
-        Map<String, Map<String, Integer>> categoryCounts = new TreeMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
-        query.allFilters().parallelStream()
-            .filter(phenotypicFilter -> PhenotypicFilterType.REQUIRED.equals(phenotypicFilter.phenotypicFilterType()))
-            .map(PhenotypicFilter::conceptPath).forEach(concept -> {
-                Map<String, Integer> varCount = new TreeMap<>();;
-                TreeMap<String, TreeSet<Integer>> categoryMap = (TreeMap<String, TreeSet<Integer>>) phenotypicObservationStore
-                    .getCube(concept).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
-                // We do not have all the categories (aka variables) for required fields, so we need to get them and
-                // then ensure that our base patient set, which is filtered down by our filters. Which may include
-                // not only other required filters, but categorical filters, numerical filters, or genomic filters.
-                // We then need to get the amount a patients for each category and map that to the concept path.
-                categoryMap.forEach((String category, TreeSet<Integer> patientSet) -> {
-                    // If all the patients are in the base then no need to loop, this would always be true for single
-                    // filter queries.
-                    if (baseQueryPatientSet.containsAll(patientSet)) {
-                        varCount.put(category, patientSet.size());
-                    } else {
-                        for (Integer patient : patientSet) {
-                            if (baseQueryPatientSet.contains(patient)) {
-                                // If we have a patient in the base set, we add 1 to the count.
-                                // We are only worried about patients in the base set
-                                varCount.put(category, varCount.getOrDefault(category, 1) + 1);
-                            } else {
-                                // If we don't have a patient in the base set, we add 0 to the count.
-                                // This is necessary because we need to ensure that all categories are included in the
-                                // map, even if they have a count of 0. This is because we are displaying the counts
-                                // in a table (or other form).
-                                varCount.put(category, varCount.getOrDefault(category, 0));
-                            }
-                        }
-                    }
-                });
-                categoryCounts.put(concept, varCount);
-            });
-        // For categoryFilters we need to ensure the variables included in the filter are the ones included in our count
-        // map. Then we make sure that the patients who have that variable are also in our base set.
-        // query.getCategoryFilters().entrySet().parallelStream().forEach(categoryFilterEntry-> {
-        query.allFilters().parallelStream().filter(PhenotypicFilter::isCategoricalFilter).forEach(categoryFilter -> {
-            // Variant spec filter should not be included in cross count map
-            if (VariantUtils.pathIsVariantSpec(categoryFilter.conceptPath())) {
-                return;
-            }
-            Map<String, Integer> varCount;
+
+        Map<String, List<PhenotypicFilter>> filtersByConcept = query.allFilters().stream()
+            .filter(this::isCategoryCrossCountFilter).collect(Collectors.groupingBy(PhenotypicFilter::conceptPath));
+
+        Map<String, Map<String, Integer>> categoryCounts = new TreeMap<>();
+        for (Map.Entry<String, List<PhenotypicFilter>> entry : filtersByConcept.entrySet()) {
+            String conceptPath = entry.getKey();
+
             TreeMap<String, TreeSet<Integer>> categoryMap = (TreeMap<String, TreeSet<Integer>>) phenotypicObservationStore
-                .getCube(categoryFilter.conceptPath()).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
-            varCount = new TreeMap<>();
+                .getCube(conceptPath).map(PhenoCube::getCategoryMap).orElseGet(TreeMap::new);
+
+            Set<String> calledOutValues = entry.getValue().stream().filter(PhenotypicFilter::isCategoricalFilter)
+                .flatMap(filter -> filter.values().stream()).collect(Collectors.toSet());
+
+            Map<String, Integer> varCount = new TreeMap<>();
             categoryMap.forEach((String category, TreeSet<Integer> patientSet) -> {
-                if (categoryFilter.values().contains(category)) {
-                    varCount.put(category, Sets.intersection(patientSet, baseQueryPatientSet).size());
+                int count = Sets.intersection(patientSet, baseQueryPatientSet).size();
+                if (count > 0 || calledOutValues.contains(category)) {
+                    varCount.put(category, count);
                 }
             });
-            categoryCounts.put(categoryFilter.conceptPath(), varCount);
-        });
+            categoryCounts.put(conceptPath, varCount);
+        }
         return categoryCounts;
     }
 
     /**
-     * Returns a separate count for each range in numericFilters in query.
+     * A categorical cross count is produced for value filters and for REQUIRED filters on categorical concepts, excluding variant-spec
+     * paths. A REQUIRED filter on a continuous concept is gated out here (it is handled by {@link #runContinuousCrossCounts}); otherwise it
+     * would be admitted and rely on the cube having no category map to avoid emitting a meaningless empty entry.
+     */
+    private boolean isCategoryCrossCountFilter(PhenotypicFilter filter) {
+        if (VariantUtils.pathIsVariantSpec(filter.conceptPath())) {
+            return false;
+        }
+        if (filter.isCategoricalFilter()) {
+            return true;
+        }
+        return PhenotypicFilterType.REQUIRED.equals(filter.phenotypicFilterType())
+            && Optional.ofNullable(queryExecutor.getDictionary().get(filter.conceptPath())).map(meta -> meta.isCategorical()).orElse(false);
+    }
+
+    /**
+     * Returns the distribution of observed values for each continuous concept in the query.
+     * <p>
+     * A continuous concept reports the distribution of every observed value across the cohort. Each filter's min/max only constrains the
+     * cohort (handled by the query executor); it does not limit which values are shown. So a range filter never hides cohort members that
+     * arrived via an OR branch on another concept (age&gt;50 OR sex=male still shows the younger ages of the OR'd males), and multiple range
+     * filters on the same concept collapse to one entry since every patient is counted once from the cube.
      *
      * @param query
      * @return a map of numerical data and their counts
      */
     public Map<String, Map<Double, Integer>> runContinuousCrossCounts(Query query) {
-        TreeMap<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
         Set<Integer> baseQueryPatientSet = queryExecutor.getPatientSubsetForQuery(query);
-        query.allFilters().parallelStream().filter(this::isContinuousCrossCountFilter).forEach(numericFilter -> {
-            KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(numericFilter.conceptPath()).map(phenoCube -> {
-                return ((PhenoCube<Double>) phenoCube).getEntriesForValueRange(numericFilter.min(), numericFilter.max());
-            }).orElseGet(() -> new KeyAndValue[] {});
+
+        Set<String> conceptPaths = query.allFilters().stream().filter(this::isContinuousCrossCountFilter)
+            .map(PhenotypicFilter::conceptPath).collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<String, Map<Double, Integer>> conceptMap = new TreeMap<>();
+        for (String conceptPath : conceptPaths) {
+            KeyAndValue<Double>[] pairs = phenotypicObservationStore.getCube(conceptPath)
+                .map(phenoCube -> ((PhenoCube<Double>) phenoCube).getEntriesForValueRange(null, null))
+                .orElseGet(() -> new KeyAndValue[] {});
             Map<Double, Integer> countMap = new TreeMap<>();
-            Arrays.stream(pairs).forEach(patientConceptPair -> {
-                // The key of the patientConceptPair is the patient id. We need to make sure the patient matches our query.
+            for (KeyAndValue<Double> patientConceptPair : pairs) {
                 if (baseQueryPatientSet.contains(patientConceptPair.getKey())) {
-                    if (countMap.containsKey(patientConceptPair.getValue())) {
-                        countMap.put((double) patientConceptPair.getValue(), countMap.get(patientConceptPair.getValue()) + 1);
-                    } else {
-                        countMap.put((double) patientConceptPair.getValue(), 1);
-                    }
+                    countMap.merge((double) patientConceptPair.getValue(), 1, Integer::sum);
                 }
-            });
-            conceptMap.put(numericFilter.conceptPath(), countMap);
-        });
+            }
+            conceptMap.put(conceptPath, countMap);
+        }
         return conceptMap;
     }
 
