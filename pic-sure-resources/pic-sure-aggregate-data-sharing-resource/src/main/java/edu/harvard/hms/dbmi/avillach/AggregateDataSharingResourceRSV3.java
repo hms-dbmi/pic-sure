@@ -32,9 +32,7 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD;
 import static edu.harvard.dbmi.avillach.util.HttpClientUtil.closeHttpResponse;
@@ -339,8 +337,16 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         String crossCountResponse;
         switch (expectedResultType) {
             case "COUNT":
-                int requestVariance = generateRequestVariance(entityString);
-                responseString = aggregateCount(entityString).orElse(randomize(entityString, requestVariance));
+                try {
+                    int count = Integer.parseInt(entityString);
+                    int requestVariance = generateRequestVariance(entityString);
+                    responseString = applyThresholdFloor(count)
+                        .map(ObfuscatedCount::display)
+                        .orElseGet(() -> randomize(count, requestVariance).display());
+                } catch (NumberFormatException nfe) {
+                    logger.warn("COUNT response was not a number! " + entityString);
+                    responseString = entityString;
+                }
 
                 break;
             case "CROSS_COUNT":
@@ -499,17 +505,15 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         if (crossCounts != null) {
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
-                Optional<String> aggregatedCount = aggregateCount(crossCount);
-                aggregatedCount.ifPresent((x) -> obfuscatedKeys.add(key));
-                crossCounts.put(key, aggregatedCount.orElse(crossCount));
+                Optional<ObfuscatedCount> floored = applyThresholdFloor(crossCount);
+                floored.ifPresent((x) -> obfuscatedKeys.add(key));
+                crossCounts.put(key, floored.map(ObfuscatedCount::display).orElse(crossCount));
             });
-
-            Set<String> obfuscatedParents = obfuscatedKeys.stream().flatMap(this::generateParents).collect(Collectors.toSet());
 
             crossCounts.keySet().forEach(key -> {
                 String crossCount = crossCounts.get(key);
                 if (!obfuscatedKeys.contains(key)) {
-                    crossCounts.put(key, randomize(crossCount, requestVariance));
+                    crossCounts.put(key, randomize(Integer.parseInt(crossCount), requestVariance).display());
                 }
             });
         }
@@ -541,16 +545,20 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
     }
 
     /**
-     * This method will return an obfuscated binned count of continuous crosses. Due to the format of a continuous cross count, we are
-     * unable to directly obfuscate it in its original form. First, we send the continuous cross count data to the visualization resource to
-     * group it into bins. Once the data is binned, we assess whether obfuscation is necessary for this particular continuous cross count.
-     * If obfuscation is not required, we return the data in string format. However, if obfuscation is needed, we first obfuscate the data
-     * and then return it.
+     * Returns the obfuscated continuous cross-count JSON. Continuous values can't be obfuscated directly in their
+     * raw form (one entry per distinct numeric value gives too many cells with small counts), so we first bin them
+     * via the visualization resource — when a visualization service is configured — and obfuscate the binned counts.
+     * Without a configured visualization service we obfuscate the raw per-value counts as a fallback.
+     *
+     * Either way, every value in the returned map is obfuscated through {@link #obfuscateCrossCount}: counts below
+     * the threshold collapse to {@code "< threshold"}, larger counts get variance-randomized. Returns null only when
+     * the upstream produced no data or when {@link #canShowContinuousCrossCounts} signals the cohort is too small
+     * to safely render.
      *
      * @param continuousCrossCountResponse The continuous cross count response
      * @param crossCountResponse The cross count response
      * @param queryRequest The original query request
-     * @return String The obfuscated binned continuous cross count
+     * @return String The obfuscated continuous cross count JSON, or null if not safe / nothing to return
      * @throws IOException If there is an error processing the JSON
      */
     protected String processContinuousCrossCounts(String continuousCrossCountResponse, String crossCountResponse, QueryRequest queryRequest)
@@ -578,15 +586,12 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
             // Log the binned continuous cross counts
             logger.info("Binned continuous cross counts: {}", binnedContinuousCrossCounts);
 
-            obfuscatedCrossCount(generatedVariance, binnedContinuousCrossCounts);
-
-            return objectMapper.writeValueAsString(binnedContinuousCrossCounts);
+            return objectMapper.writeValueAsString(obfuscateCrossCount(generatedVariance, binnedContinuousCrossCounts));
         } else {
             Map<String, Map<String, Object>> continuousCrossCounts =
                 objectMapper.readValue(continuousCrossCountResponse, new TypeReference<>() {});
 
-            obfuscatedCrossCount(generatedVariance, continuousCrossCounts);
-            return objectMapper.writeValueAsString(continuousCrossCounts);
+            return objectMapper.writeValueAsString(obfuscateCrossCount(generatedVariance, continuousCrossCounts));
         }
     }
 
@@ -647,9 +652,7 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         processResults(categoricalCrossCount);
 
         // Now we need to obfuscate our return data. The only consideration is do we apply < threshold or variance
-        obfuscatedCrossCount(generatedVariance, categoricalCrossCount);
-
-        return objectMapper.writeValueAsString(categoricalCrossCount);
+        return objectMapper.writeValueAsString(obfuscateCrossCount(generatedVariance, categoricalCrossCount));
     }
 
     private static void processResults(Map<String, Map<String, Object>> categoricalCrossCount) {
@@ -662,23 +665,41 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
     }
 
     /**
-     * This method will obfuscate the cross counts based on the generated variance. We do not have a return because we are modifying the
-     * passed crossCount object. Java passes objects by reference value, so we do not need to return.
+     * Obfuscates every value in a cross-count map. Returns a freshly constructed map keyed identically to the
+     * input but with values replaced by either a threshold-floor obfuscation (for counts below the threshold)
+     * or a variance-randomized one.
      *
      * @param generatedVariance The variance for the request
-     * @param crossCount The cross count that will be obfuscated
+     * @param crossCount The cross count to obfuscate; values are JSON-deserialized so may be Integer or String
      */
-    private void obfuscatedCrossCount(int generatedVariance, Map<String, Map<String, Object>> crossCount) {
+    private Map<String, Map<String, ObfuscatedCount>> obfuscateCrossCount(
+        int generatedVariance, Map<String, Map<String, Object>> crossCount
+    ) {
+        Map<String, Map<String, ObfuscatedCount>> result = new LinkedHashMap<>();
         crossCount.forEach((key, value) -> {
+            Map<String, ObfuscatedCount> obfuscated = new LinkedHashMap<>();
             value.forEach((innerKey, innerValue) -> {
-                Optional<String> aggregateCount = aggregateCountHelper(innerValue);
-                if (aggregateCount.isPresent()) {
-                    value.put(innerKey, aggregateCount.get());
-                } else {
-                    value.put(innerKey, randomize(innerValue.toString(), generatedVariance));
-                }
+                int count = toInt(innerValue);
+                obfuscated.put(
+                    innerKey,
+                    applyThresholdFloor(count).orElseGet(() -> randomize(count, generatedVariance))
+                );
             });
+            result.put(key, obfuscated);
         });
+        return result;
+    }
+
+    /**
+     * Jackson hands us {@code Object}-typed values from JSON; the runtime type depends on the number's magnitude
+     * (Integer, Long, Double, BigInteger, ...) and on whether the upstream stringified it. Accept anything that
+     * represents an integral count and narrow to int. The previous shape ({@code innerValue.toString()} into
+     * {@link Integer#parseInt}) silently accepted Long/Double for free; preserve that breadth via {@link Number}.
+     */
+    static int toInt(Object value) {
+        if (value instanceof Number) return ((Number) value).intValue();
+        if (value instanceof String) return Integer.parseInt((String) value);
+        throw new IllegalArgumentException("Cross-count value was neither Number nor numeric String: " + value);
     }
 
 
@@ -722,51 +743,36 @@ public class AggregateDataSharingResourceRSV3 implements IResourceRS {
         return Math.abs((entityString + randomSalt).hashCode()) % (variance * 2 + 1) - variance;
     }
 
-    private String randomize(String crossCount, int requestVariance) {
-        return Math.max((Integer.parseInt(crossCount) + requestVariance), threshold) + " \u00B1" + variance;
-    }
-
-    private Stream<String> generateParents(String key) {
-        StringJoiner stringJoiner = new StringJoiner("\\", "\\", "\\");
-
-        String[] split = key.split("\\\\");
-        if (split.length > 1) {
-            return Arrays.stream(Arrays.copyOfRange(split, 0, split.length - 1)).filter(Predicate.not(String::isEmpty))
-                .map(segment -> stringJoiner.add(segment).toString());
-        }
-        return Stream.empty();
+    ObfuscatedCount randomize(int crossCount, int requestVariance) {
+        int randomized = Math.max(crossCount + requestVariance, threshold);
+        return new ObfuscatedCount(randomized, randomized + " \u00B1" + variance, variance);
     }
 
     /**
-     * Here's the core of this resource - make sure we do not return results with small (potentially identifiable) cohorts.
+     * Core privacy floor: small (potentially identifiable) cohorts get hidden behind a "< threshold" display.
+     * The value is encoded as count 0 with variance threshold-1, so consumers rendering the uncertainty band
+     * [max(0, count - variance), count + variance] draw 0..threshold-1 — the true count lies somewhere in that
+     * band but we don't disclose where.
      *
-     * @param actualCount
-     * @return
+     * Returns empty when the value is at or above the threshold (caller should then call {@link #randomize}).
      */
-    private Optional<String> aggregateCount(String actualCount) {
+    Optional<ObfuscatedCount> applyThresholdFloor(int actualCount) {
+        if (actualCount < threshold) {
+            return Optional.of(new ObfuscatedCount(0, "< " + threshold, threshold - 1));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * String overload for callers (COUNT / CROSS_COUNT) that hold the value as a JSON string. Logs and returns
+     * empty on parse failure so the caller can fall through to its untouched-value path.
+     */
+    Optional<ObfuscatedCount> applyThresholdFloor(String actualCount) {
         try {
-            int queryResult = Integer.parseInt(actualCount);
-            if (queryResult < threshold) {
-                return Optional.of("< " + threshold);
-            }
+            return applyThresholdFloor(Integer.parseInt(actualCount));
         } catch (NumberFormatException nfe) {
             logger.warn("Count was not a number! " + actualCount);
+            return Optional.empty();
         }
-        return Optional.empty();
-    }
-
-    /**
-     * Helper method to handle the fact that the actualCount could be an Integer or a String.
-     *
-     * @param actualCount
-     * @return
-     */
-    private Optional<String> aggregateCountHelper(Object actualCount) {
-        if (actualCount instanceof Integer) {
-            return aggregateCount(actualCount.toString());
-        } else if (actualCount instanceof String) {
-            return aggregateCount((String) actualCount);
-        }
-        return Optional.empty();
     }
 }
