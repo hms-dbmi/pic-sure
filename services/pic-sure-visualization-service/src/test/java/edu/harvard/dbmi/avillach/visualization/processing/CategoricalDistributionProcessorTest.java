@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.visualization.processing;
 import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.visualization.model.CategoricalDistributionData;
+import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,24 +16,22 @@ class CategoricalDistributionProcessorTest {
 
     @BeforeEach
     void setUp() {
-        processor = new CategoricalDistributionProcessor(7);
+        processor = new CategoricalDistributionProcessor();
     }
 
     @Test
     void process_simpleCategoricalData_returnsDistributionData() {
-        Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
+        Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
         data.put(
             "\\demographics\\race\\",
-            new LinkedHashMap<>(
-                Map.of("White", 45000, "Black", 12000, "Asian", 8000)
-            )
+            new LinkedHashMap<>(Map.of(
+                "White", new ObfuscatedCount(45000, "45000"),
+                "Black", new ObfuscatedCount(12000, "12000"),
+                "Asian", new ObfuscatedCount(8000, "8000")
+            ))
         );
 
-        List<CategoricalDistributionData> result = processor.process(
-            data,
-            false,
-            true
-        );
+        List<CategoricalDistributionData> result = processor.process(data, false);
 
         assertEquals(1, result.size());
         CategoricalDistributionData distribution = result.get(0);
@@ -40,118 +39,81 @@ class CategoricalDistributionProcessorTest {
         assertEquals("demographics: race", distribution.title());
         assertFalse(distribution.continuous());
         assertFalse(distribution.obfuscated());
-        assertFalse(distribution.categoricalMap().isEmpty());
+        ObfuscatedCount white = distribution.categoricalMap().get("White");
+        assertEquals(45000, white.count());
+        assertEquals("45000", white.display());
         assertEquals("race", distribution.xaxisName());
         assertEquals("Number of Participants", distribution.yaxisName());
     }
 
     @Test
-    void aggregateTopN_moreThanMaxCategories_createsOtherBucket() {
-        Map<String, Integer> categories = new LinkedHashMap<>();
-        categories.put("Cat1", 100);
-        categories.put("Cat2", 90);
-        categories.put("Cat3", 80);
-        categories.put("Cat4", 70);
-        categories.put("Cat5", 60);
-        categories.put("Cat6", 50);
-        categories.put("Cat7", 40);
-        categories.put("Cat8", 30);
-        categories.put("Cat9", 20);
-
-        Map<String, Integer> result = processor.aggregateTopN(categories);
-
-        assertTrue(result.containsKey("Other"));
-        assertEquals(50, result.get("Other"));
-    }
-
-    @Test
-    void aggregateTopN_exactlyOneOverMax_createsOtherBucket() {
-        Map<String, Integer> categories = new LinkedHashMap<>();
-        categories.put("Cat1", 100);
-        categories.put("Cat2", 90);
-        categories.put("Cat3", 80);
-        categories.put("Cat4", 70);
-        categories.put("Cat5", 60);
-        categories.put("Cat6", 50);
-        categories.put("Cat7", 40);
-        categories.put("Cat8", 30);
-
-        Map<String, Integer> result = processor.aggregateTopN(categories);
-
-        assertTrue(result.containsKey("Other"));
-        assertEquals(30, result.get("Other"));
-        assertEquals(8, result.size());
-    }
-
-    @Test
-    void aggregateTopN_exactlyAtMax_noOtherBucket() {
-        Map<String, Integer> categories = new LinkedHashMap<>();
-        categories.put("Cat1", 100);
-        categories.put("Cat2", 90);
-        categories.put("Cat3", 80);
-        categories.put("Cat4", 70);
-        categories.put("Cat5", 60);
-        categories.put("Cat6", 50);
-        categories.put("Cat7", 40);
-
-        Map<String, Integer> result = processor.aggregateTopN(categories);
-
-        assertFalse(result.containsKey("Other"));
-        assertEquals(7, result.size());
-    }
-
-    @Test
-    void process_canSkipAggregationForOpenData() {
-        Map<String, Integer> categories = new LinkedHashMap<>();
-        categories.put("Cat1", 100);
-        categories.put("Cat2", 90);
-        categories.put("Cat3", 80);
-        categories.put("Cat4", 70);
-        categories.put("Cat5", 60);
-        categories.put("Cat6", 50);
-        categories.put("Cat7", 40);
-        categories.put("Cat8", 30);
-
-        Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
-        data.put("\\demographics\\race\\", categories);
-
-        List<CategoricalDistributionData> result = processor.process(
-            data,
-            true,
-            false
+    void process_obfuscatedValues_passedThroughUnchanged() {
+        Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
+        data.put(
+            "\\demographics\\race\\",
+            new LinkedHashMap<>(Map.of(
+                "White", new ObfuscatedCount(45000, "45000 ±3", 3),
+                "Black", new ObfuscatedCount(0, "< 10", 9)
+            ))
         );
 
-        assertFalse(result.get(0).categoricalMap().containsKey("Other"));
+        List<CategoricalDistributionData> result = processor.process(data, true);
+
+        assertEquals(1, result.size());
         assertTrue(result.get(0).obfuscated());
-        assertEquals(8, result.get(0).categoricalMap().size());
+        ObfuscatedCount white = result.get(0).categoricalMap().get("White");
+        assertEquals(45000, white.count());
+        assertEquals("45000 ±3", white.display());
+        assertEquals(Integer.valueOf(3), white.variance());
+        ObfuscatedCount black = result.get(0).categoricalMap().get("Black");
+        assertEquals(0, black.count());
+        assertEquals("< 10", black.display());
+        assertEquals(Integer.valueOf(9), black.variance());
     }
 
     @Test
     void process_skipsConsentKeysAndEmptySeries() {
-        Map<String, Map<String, Integer>> data = new LinkedHashMap<>();
-        data.put("\\_consents\\", Map.of("consent1", 100));
-        data.put("\\_harmonized_consent\\", Map.of("consent2", 200));
+        Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
+        data.put("\\_consents\\", Map.of("consent1", new ObfuscatedCount(100, "100")));
+        data.put("\\_harmonized_consent\\", Map.of("consent2", new ObfuscatedCount(200, "200")));
         data.put("\\empty\\", Map.of());
-        data.put(
-            "\\demographics\\race\\",
-            new LinkedHashMap<>(Map.of("White", 45000))
-        );
+        data.put("\\demographics\\race\\", new LinkedHashMap<>(Map.of("White", new ObfuscatedCount(45000, "45000"))));
 
-        List<CategoricalDistributionData> result = processor.process(
-            data,
-            false,
-            true
-        );
+        List<CategoricalDistributionData> result = processor.process(data, false);
 
         assertEquals(1, result.size());
     }
 
     @Test
-    void metadata_extractsTitleAndXAxisLabel() {
-        String title = DistributionMetadata.titleFor("\\demographics\\race\\");
+    void process_nullInnerMap_skippedWithoutCrash() {
+        Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
+        data.put("\\demographics\\race\\", null);
+        data.put("\\demographics\\sex\\", new LinkedHashMap<>(Map.of("Female", new ObfuscatedCount(100, "100"))));
 
-        assertEquals("demographics: race", title);
-        assertEquals("race", DistributionMetadata.xAxisLabelFor(title));
+        List<CategoricalDistributionData> result = processor.process(data, false);
+
+        assertEquals(1, result.size());
+        assertEquals("\\demographics\\sex\\", result.get(0).conceptPath());
+    }
+
+    @Test
+    void metadata_extractsTitleAndXAxisLabel() {
+        assertEquals("demographics: race", DistributionMetadata.titleFor("\\demographics\\race\\"));
+        assertEquals("race", DistributionMetadata.xAxisLabelFor("\\demographics\\race\\"));
         assertEquals("race", DistributionMetadata.titleFor("race"));
+    }
+
+    @Test
+    void metadata_depthOnePath_hasNoLeadingColon() {
+        assertEquals("age", DistributionMetadata.titleFor("\\age\\"));
+        assertEquals("age", DistributionMetadata.xAxisLabelFor("\\age\\"));
+    }
+
+    @Test
+    void metadata_multiWordVariableName_keepsFullNameForXAxis() {
+        assertEquals(
+            "family history of heart attack",
+            DistributionMetadata.xAxisLabelFor("\\demographics\\family history of heart attack\\")
+        );
     }
 }

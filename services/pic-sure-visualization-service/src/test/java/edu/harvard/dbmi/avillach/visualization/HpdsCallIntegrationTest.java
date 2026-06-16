@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -218,7 +219,7 @@ class HpdsCallIntegrationTest {
             .continuousMap()
             .values()
             .stream()
-            .mapToInt(Integer::intValue)
+            .mapToInt(ObfuscatedCount::count)
             .sum();
         assertEquals(600, total);
     }
@@ -226,76 +227,45 @@ class HpdsCallIntegrationTest {
     @Test
     void distributions_open_callsHpdsAndReturnsObfuscatedChart()
         throws Exception {
-        // Simulate HPDS open response with obfuscation markers (string values)
-        Map<String, Map<String, String>> hpdsResponse = new LinkedHashMap<>();
+        Map<String, Map<String, ObfuscatedCount>> hpdsResponse = new LinkedHashMap<>();
         hpdsResponse.put(
             "\\demographics\\race\\",
-            new LinkedHashMap<>(
-                Map.of("White", "45000±3", "Black", "12000", "Other", "< 10")
-            )
+            new LinkedHashMap<>(Map.of(
+                "White", new ObfuscatedCount(45000, "45000 ±3", 3),
+                "Black", new ObfuscatedCount(12000, "12000"),
+                "Other", new ObfuscatedCount(0, "< 10", 9)
+            ))
         );
 
         mockServer
             .expect(requestTo("http://localhost:9999/mock-hpds/query/sync"))
             .andExpect(method(HttpMethod.POST))
-            .andRespond(
-                withSuccess(
-                    objectMapper.writeValueAsString(hpdsResponse),
-                    MediaType.APPLICATION_JSON
-                )
-            );
+            .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(
             "phenotypicClause",
-            Map.of(
-                "phenotypicFilterType",
-                "FILTER",
-                "conceptPath",
-                "\\demographics\\race\\",
-                "values",
-                List.of("White")
-            ),
-            "select",
-            List.of(),
-            "authorizationFilters",
-            List.of(),
-            "genomicFilters",
-            List.of()
+            Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")),
+            "select", List.of(),
+            "authorizationFilters", List.of(),
+            "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(
-            Map.of("hpdsResourceUUID", OPEN_UUID, "query", query)
-        );
+        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", OPEN_UUID, "query", query));
 
-        MvcResult result = mockMvc
-            .perform(
-                post("/distributions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(body)
-            )
-            .andExpect(status().isOk())
-            .andReturn();
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body)
+        ).andExpect(status().isOk()).andReturn();
 
         mockServer.verify();
 
         VisualizationResponse response = objectMapper.readValue(
-            result.getResponse().getContentAsString(),
-            VisualizationResponse.class
+            result.getResponse().getContentAsString(), VisualizationResponse.class
         );
         assertFalse(response.categoricalData().isEmpty());
         assertTrue(response.categoricalData().get(0).obfuscated());
-
-        // Verify obfuscation markers were cleaned
-        // "< 10" should have become 9, "45000±3" should have become 45000
-        assertTrue(
-            response.categoricalData().get(0).categoricalMap().containsValue(9)
-        );
-        assertTrue(
-            response
-                .categoricalData()
-                .get(0)
-                .categoricalMap()
-                .containsValue(45000)
-        );
+        Map<String, ObfuscatedCount> race = response.categoricalData().get(0).categoricalMap();
+        assertEquals(new ObfuscatedCount(45000, "45000 ±3", 3), race.get("White"));
+        assertEquals(new ObfuscatedCount(12000, "12000"), race.get("Black"));
+        assertEquals(new ObfuscatedCount(0, "< 10", 9), race.get("Other"));
     }
 
     @Test
@@ -382,5 +352,62 @@ class HpdsCallIntegrationTest {
             .andExpect(status().isBadGateway());
 
         mockServer.verify();
+    }
+
+    @Test
+    void distributions_open_continuous_callsHpdsAndForwardsBinnedObfuscatedValues()
+        throws Exception {
+        Map<String, Map<String, ObfuscatedCount>> hpdsResponse = new LinkedHashMap<>();
+        hpdsResponse.put(
+            "\\measurements\\bmi\\",
+            new LinkedHashMap<>(Map.of(
+                "18.0 - 24.0", new ObfuscatedCount(600, "600 ±3", 3),
+                "24.0 - 30.0", new ObfuscatedCount(0, "< 10", 9),
+                "30.0 +", new ObfuscatedCount(150, "150 ±3", 3)
+            ))
+        );
+
+        mockServer
+            .expect(requestTo("http://localhost:9999/mock-hpds/query/sync"))
+            .andExpect(method(HttpMethod.POST))
+            .andRespond(
+                withSuccess(
+                    objectMapper.writeValueAsString(hpdsResponse),
+                    MediaType.APPLICATION_JSON
+                )
+            );
+
+        Map<String, Object> query = Map.of(
+            "phenotypicClause",
+            Map.of(
+                "phenotypicFilterType", "FILTER",
+                "conceptPath", "\\measurements\\bmi\\",
+                "min", 18.0,
+                "max", 40.0
+            ),
+            "select", List.of(),
+            "authorizationFilters", List.of(),
+            "genomicFilters", List.of()
+        );
+        String body = objectMapper.writeValueAsString(
+            Map.of("hpdsResourceUUID", OPEN_UUID, "query", query)
+        );
+
+        MvcResult result = mockMvc
+            .perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        mockServer.verify();
+
+        VisualizationResponse response = objectMapper.readValue(
+            result.getResponse().getContentAsString(), VisualizationResponse.class
+        );
+        assertFalse(response.continuousData().isEmpty());
+        assertTrue(response.continuousData().get(0).obfuscated());
+        Map<String, ObfuscatedCount> bmi = response.continuousData().get(0).continuousMap();
+        assertEquals(new ObfuscatedCount(600, "600 ±3", 3), bmi.get("18.0 - 24.0"));
+        assertEquals(new ObfuscatedCount(0, "< 10", 9), bmi.get("24.0 - 30.0"));
+        assertEquals(new ObfuscatedCount(150, "150 ±3", 3), bmi.get("30.0 +"));
     }
 }

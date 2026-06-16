@@ -6,8 +6,10 @@ import static org.mockito.Mockito.*;
 
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
+import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.dbmi.avillach.visualization.processing.BinningService;
+import edu.harvard.dbmi.avillach.visualization.processing.CategoricalAggregationService;
 import edu.harvard.dbmi.avillach.visualization.processing.CategoricalDistributionProcessor;
 import edu.harvard.dbmi.avillach.visualization.processing.ContinuousDistributionProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -37,19 +39,17 @@ class VisualizationServiceTest {
     @BeforeEach
     void setUp() {
         QueryDecomposer decomposer = new QueryDecomposer();
-        ObfuscationParser obfuscationParser = new ObfuscationParser(10, 3);
         BinningService binningService = new BinningService();
-        CategoricalDistributionProcessor categoricalProcessor =
-            new CategoricalDistributionProcessor(7);
-        ContinuousDistributionProcessor continuousProcessor =
-            new ContinuousDistributionProcessor(binningService);
+        CategoricalAggregationService aggregationService = new CategoricalAggregationService(7);
+        CategoricalDistributionProcessor categoricalProcessor = new CategoricalDistributionProcessor();
+        ContinuousDistributionProcessor continuousProcessor = new ContinuousDistributionProcessor();
         service = new VisualizationService(
             decomposer,
             hpdsClient,
-            obfuscationParser,
             categoricalProcessor,
             continuousProcessor,
-            binningService
+            binningService,
+            aggregationService
         );
     }
 
@@ -121,11 +121,14 @@ class VisualizationServiceTest {
             null
         );
 
-        Map<String, Map<String, String>> openCrossCounts =
+        Map<String, Map<String, ObfuscatedCount>> openCrossCounts =
             new LinkedHashMap<>();
         openCrossCounts.put(
             "\\demographics\\race\\",
-            new LinkedHashMap<>(Map.of("White", "45000±3", "Other", "< 10"))
+            new LinkedHashMap<>(Map.of(
+                "White", new ObfuscatedCount(45000, "45000±3", 3),
+                "Other", new ObfuscatedCount(0, "< 10", 9)
+            ))
         );
         when(
             hpdsClient.getOpenCrossCounts(
@@ -144,6 +147,38 @@ class VisualizationServiceTest {
 
         assertFalse(response.categoricalData().isEmpty());
         assertTrue(response.categoricalData().get(0).obfuscated());
+    }
+
+    @Test
+    void generateDistributions_open_setsObfuscatedFromAccessTypeRegardlessOfValues() {
+        PhenotypicFilter catFilter = new PhenotypicFilter(
+            PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null
+        );
+        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+
+        // All values look like plain integers — no markers at all.
+        Map<String, Map<String, ObfuscatedCount>> openCrossCounts = new LinkedHashMap<>();
+        openCrossCounts.put(
+            "\\demographics\\race\\",
+            new LinkedHashMap<>(Map.of(
+                "White", new ObfuscatedCount(45000, "45000"),
+                "Black", new ObfuscatedCount(12000, "12000")
+            ))
+        );
+        when(hpdsClient.getOpenCrossCounts(
+            any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(OPEN_UUID), any()
+        )).thenReturn(openCrossCounts);
+
+        VisualizationResponse response = service.generateDistributions(
+            query,
+            new HpdsAccessContext(OPEN_UUID, AccessType.OPEN),
+            null
+        );
+
+        assertTrue(
+            response.categoricalData().get(0).obfuscated(),
+            "OPEN access must set obfuscated=true even if values contain no markers"
+        );
     }
 
     @Test
@@ -212,14 +247,8 @@ class VisualizationServiceTest {
         );
 
         assertFalse(response.continuousData().isEmpty());
-        int totalOutput = response
-            .continuousData()
-            .get(0)
-            .continuousMap()
-            .values()
-            .stream()
-            .mapToInt(Integer::intValue)
-            .sum();
+        int totalOutput = response.continuousData().get(0).continuousMap().values().stream()
+            .mapToInt(ObfuscatedCount::count).sum();
         assertEquals(600, totalOutput);
     }
 
@@ -320,5 +349,66 @@ class VisualizationServiceTest {
 
         assertEquals(1, response.continuousData().size());
         assertTrue(response.categoricalData().isEmpty());
+    }
+
+    @Test
+    void generateDistributions_authorized_categoricalWithManyCategories_aggregatesToOther() {
+        PhenotypicFilter catFilter = new PhenotypicFilter(
+            PhenotypicFilterType.FILTER,
+            "\\demographics\\race\\",
+            Set.of("A", "B"),
+            null, null, null
+        );
+        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+
+        Map<String, Integer> manyCategories = new LinkedHashMap<>();
+        for (int i = 1; i <= 9; i++) {
+            manyCategories.put("Cat" + i, 100 - i * 5);
+        }
+        Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
+        crossCounts.put("\\demographics\\race\\", manyCategories);
+        when(hpdsClient.getAuthCrossCounts(
+            any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(AUTHORIZED_UUID), any()
+        )).thenReturn(crossCounts);
+
+        VisualizationResponse response = service.generateDistributions(
+            query,
+            new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED),
+            "Bearer token"
+        );
+
+        assertFalse(response.categoricalData().isEmpty());
+        assertTrue(
+            response.categoricalData().get(0).categoricalMap().containsKey("Other"),
+            "VisualizationService should run CategoricalAggregationService on AUTH categorical data"
+        );
+    }
+
+    @Test
+    void generateDistributions_authorized_nullCountInResponse_skipsNullEntries() {
+        PhenotypicFilter catFilter = new PhenotypicFilter(
+            PhenotypicFilterType.FILTER, "\\demographics\\race\\", Set.of("White"), null, null, null
+        );
+        Query query = new Query(List.of(), List.of(), catFilter, List.of(), null, null, null);
+
+        Map<String, Integer> values = new LinkedHashMap<>();
+        values.put("White", 45000);
+        values.put("Black", null);
+        Map<String, Map<String, Integer>> crossCounts = new LinkedHashMap<>();
+        crossCounts.put("\\demographics\\race\\", values);
+        when(hpdsClient.getAuthCrossCounts(
+            any(), eq(ResultType.CATEGORICAL_CROSS_COUNT), eq(AUTHORIZED_UUID), any()
+        )).thenReturn(crossCounts);
+
+        VisualizationResponse response = service.generateDistributions(
+            query,
+            new HpdsAccessContext(AUTHORIZED_UUID, AccessType.AUTHORIZED),
+            "Bearer token"
+        );
+
+        assertFalse(response.categoricalData().isEmpty());
+        Map<String, ObfuscatedCount> race = response.categoricalData().get(0).categoricalMap();
+        assertEquals(new ObfuscatedCount(45000, "45000"), race.get("White"));
+        assertFalse(race.containsKey("Black"), "Null counts must be skipped, not crash");
     }
 }

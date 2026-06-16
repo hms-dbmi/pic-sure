@@ -15,21 +15,19 @@ final class DistributionMetadata {
 
     static String titleFor(String conceptPath) {
         String[] titleParts = conceptPath.split("\\\\");
-        if (titleParts.length >= 2) {
-            return (
-                titleParts[titleParts.length - 2] +
-                ": " +
-                titleParts[titleParts.length - 1]
-            );
+        if (titleParts.length == 0) {
+            return conceptPath;
         }
-        return conceptPath;
+        String leaf = titleParts[titleParts.length - 1];
+        String parent = titleParts.length >= 2 ? titleParts[titleParts.length - 2] : "";
+        return parent.isEmpty() ? leaf : parent + ": " + leaf;
     }
 
-    static String xAxisLabelFor(String title) {
-        int lastSpace = title.lastIndexOf(' ');
-        if (lastSpace >= 0 && lastSpace < title.length() - 1) {
-            return title.substring(lastSpace + 1);
+    static String xAxisLabelFor(String conceptPath) {
+        String[] titleParts = conceptPath.split("\\\\");
+        if (titleParts.length == 0) {
+            return conceptPath;
         }
-        return title;
+        return titleParts[titleParts.length - 1];
     }
 }

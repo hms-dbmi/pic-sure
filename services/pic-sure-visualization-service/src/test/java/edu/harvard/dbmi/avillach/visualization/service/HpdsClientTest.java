@@ -12,6 +12,7 @@ import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.visualization.error.VisualizationException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
+import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import java.util.LinkedHashMap;
@@ -126,8 +127,8 @@ class HpdsClientTest {
 
     @Test
     void getOpenCrossCounts_postsHpdsQueryRequestWithoutAuthorizationHeader() throws Exception {
-        Map<String, Map<String, String>> expected = new LinkedHashMap<>();
-        expected.put("\\test\\", Map.of("a", "1"));
+        Map<String, Map<String, ObfuscatedCount>> expected = new LinkedHashMap<>();
+        expected.put("\\test\\", Map.of("a", new ObfuscatedCount(1, "1")));
 
         mockServer.expect(requestTo("http://localhost:9999/mock-hpds/query/sync")).andExpect(method(HttpMethod.POST))
             .andExpect(headerDoesNotExist("Authorization")).andExpect(header("Accept", MediaType.ALL_VALUE))
@@ -137,7 +138,8 @@ class HpdsClientTest {
             .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
 
         Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
-        Map<String, Map<String, String>> result = client.getOpenCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, RESOURCE_UUID, null);
+        Map<String, Map<String, ObfuscatedCount>> result =
+            client.getOpenCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, RESOURCE_UUID, null);
 
         assertEquals(expected, result);
         mockServer.verify();

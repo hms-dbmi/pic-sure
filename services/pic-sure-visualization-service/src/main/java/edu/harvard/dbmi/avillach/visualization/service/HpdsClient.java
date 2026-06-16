@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
+import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import java.net.URI;
@@ -53,11 +54,11 @@ public class HpdsClient {
         );
     }
 
-    public Map<String, Map<String, String>> getOpenCrossCounts(Query query, ResultType resultType, UUID resourceUUID, String bearerToken) {
+    public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(Query query, ResultType resultType, UUID resourceUUID, String bearerToken) {
         return getOpenCrossCounts(query, resultType, resourceUUID, bearerToken, null, AccessType.OPEN, null);
     }
 
-    public Map<String, Map<String, String>> getOpenCrossCounts(
+    public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(
         Query query, ResultType resultType, UUID resourceUUID, String bearerToken, String requestId, AccessType accessType,
         DistributionType distributionKind
     ) {

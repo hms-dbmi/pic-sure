@@ -4,7 +4,6 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Component
 public class BinningService {
@@ -24,7 +23,6 @@ public class BinningService {
             return new LinkedHashMap<>();
         }
 
-        boolean isSameMinMax = originalMap.size() == 1;
         Map<Double, Integer> data = new LinkedHashMap<>();
         for (Map.Entry<String, Integer> entry : originalMap.entrySet()) {
             try {
@@ -37,6 +35,8 @@ public class BinningService {
         if (data.isEmpty()) {
             return new LinkedHashMap<>();
         }
+
+        boolean isSameMinMax = data.size() == 1;
 
         int numBins = calcNumBins(data);
         double min = data.keySet().stream().min(Double::compareTo).orElse(0.0);
@@ -51,34 +51,16 @@ public class BinningService {
             binSize = 1.0;
         }
 
-        Map<Integer, Integer> results = createBinsAndMergeCounts(data, numBins, min, binSize);
+        Map<Integer, Integer> counts = createBinsAndMergeCounts(data, numBins, min, binSize);
 
+        int bucketMax = counts.keySet().stream().max(Integer::compareTo).orElse(0);
+        Map<Integer, Integer> results = new LinkedHashMap<>();
         Map<Integer, List<Double>> ranges = new HashMap<>();
-        List<Integer> keysToAdd = new ArrayList<>();
-        int bucketMax = results.keySet().stream().max(Integer::compareTo).orElse(0);
-
-        for (Map.Entry<Integer, Integer> bucket : results.entrySet()) {
-            int key = bucket.getKey();
+        for (int key = 0; key <= bucketMax; key++) {
             double rangeStart = min + (key * binSize);
             double rangeEnd = min + ((key + 1) * binSize);
             ranges.put(key, new ArrayList<>(List.of(rangeStart, rangeEnd)));
-
-            if (key != bucketMax && !results.containsKey(key + 1)) {
-                keysToAdd.add(key + 1);
-                double gapStart = min + ((key + 1) * binSize);
-                double gapEnd = min + ((key + 2) * binSize);
-                ranges.put(key + 1, new ArrayList<>(List.of(gapStart, gapEnd)));
-            }
-        }
-
-        Map<Integer, Integer> finalResults = results;
-        keysToAdd.forEach(key -> finalResults.put(key, 0));
-
-        if (!keysToAdd.isEmpty()) {
-            results = finalResults.entrySet().stream().sorted(Map.Entry.comparingByKey())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, LinkedHashMap::new));
-        } else {
-            results = finalResults;
+            results.put(key, counts.getOrDefault(key, 0));
         }
 
         return createLabelsForBins(results, ranges, isSameMinMax);
@@ -117,11 +99,12 @@ public class BinningService {
             double minForLabel = ranges.get(bucket.getKey()).stream().min(Double::compareTo).orElse(0.0);
             double maxForLabel = ranges.get(bucket.getKey()).stream().max(Double::compareTo).orElse(0.0);
             if (minForLabel == maxForLabel || isSameMinMax) {
-                label = String.format("%.1f", maxForLabel);
+                label = String.format("%.1f", minForLabel);
             } else {
                 label = String.format("%.1f", minForLabel) + " - " + String.format("%.1f", maxForLabel);
             }
-            finalMap.put(label, bucket.getValue());
+            // Adjacent bins can round to the same %.1f label; merge so counts aren't dropped
+            finalMap.merge(label, bucket.getValue(), Integer::sum);
         }
 
         Integer lastCount = finalMap.get(label);
@@ -132,7 +115,7 @@ public class BinningService {
                 newLabel = label.substring(0, hasDash);
             }
             finalMap.remove(label);
-            finalMap.put(newLabel + " +", lastCount);
+            finalMap.merge(newLabel + " +", lastCount, Integer::sum);
         }
 
         return finalMap;
