@@ -14,37 +14,26 @@ class WeightUpdateCreatorTest {
 
     @Test
     void shouldCreateQueryForWeights() {
-        List<Weight> weights = List.of(new Weight("TABLE_A.COLUMN", 2), new Weight("TABLE_B.COLUMN", 1));
+        List<Weight> weights = List.of(new Weight("TABLE_A.COLUMN", "A"), new Weight("TABLE_B.COLUMN", "B"));
 
         String actual = subject.createUpdate(weights);
-        String expected = """
-            UPDATE concept_node
-            SET SEARCHABLE_FIELDS = data_table.search_str
-            FROM
-            (
-                SELECT
-                    concat(
-                        TABLE_A.COLUMN, ' ',
-                        TABLE_A.COLUMN, ' ',
-                        TABLE_B.COLUMN
-                    ) AS search_str,
-                    concept_node.concept_node_id AS search_key
-                FROM
-                    concept_node
-                    LEFT JOIN
-                    (
-                        SELECT
-                            concept_node.concept_node_id AS id, string_agg(value, ' ') AS values
-                        FROM
-                            concept_node
-                            join concept_node_meta on concept_node.concept_node_id = concept_node_meta.concept_node_id
-                        GROUP BY
-                            concept_node.concept_node_id
-                    ) AS inner_q ON inner_q.id = concept_node.concept_node_id
-            ) AS data_table
-            WHERE concept_node.concept_node_id = data_table.search_key;
-            """;
 
-        Assertions.assertEquals(expected.trim(), actual.trim());
+        // Verify setweight structure with tier labels
+        Assertions.assertTrue(
+            actual.contains("setweight(to_tsvector('english', replace(coalesce(TABLE_A.COLUMN, ''), '_', ' ')), 'A')"),
+            "Should contain setweight for TABLE_A.COLUMN with tier A"
+        );
+        Assertions.assertTrue(
+            actual.contains("setweight(to_tsvector('english', replace(coalesce(TABLE_B.COLUMN, ''), '_', ' ')), 'B')"),
+            "Should contain setweight for TABLE_B.COLUMN with tier B"
+        );
+        // Verify fields are concatenated with ||
+        Assertions.assertTrue(actual.contains("||"), "Should concatenate tsvectors with ||");
+        // Verify underscore replacement uses space (not slash)
+        Assertions.assertTrue(actual.contains("'_', ' '"), "Should replace underscores with spaces");
+        Assertions.assertFalse(actual.contains("'_', '/'"), "Should not replace underscores with slashes");
+        // Verify output is a search_vector, not search_str
+        Assertions.assertTrue(actual.contains("AS search_vector"), "Should output as search_vector");
+        Assertions.assertFalse(actual.contains("concat("), "Should not use concat (old pattern)");
     }
 }

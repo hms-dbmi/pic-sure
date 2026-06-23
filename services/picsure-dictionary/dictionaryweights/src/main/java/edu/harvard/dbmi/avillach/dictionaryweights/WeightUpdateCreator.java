@@ -5,15 +5,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /**
  * Generates the SQL UPDATE statement that populates the searchable_fields tsvector
- * column on concept_node. The tsvector is built from weighted fields (display name,
- * concept path, dataset info, parent/grandparent names) and a filtered subset of
- * concept_node_meta values.
+ * column on concept_node. Each field is wrapped in {@code setweight(to_tsvector(...), tier)}
+ * and concatenated with {@code ||} to produce a single weighted tsvector per concept.
+ *
+ * <p>Weight tiers (A/B/C/D) control ranking via {@code ts_rank}/{@code ts_rank_cd}:
+ * A = highest priority (display name, path), D = lowest (meta values).</p>
+ *
+ * <p>Underscores in field values are replaced with spaces before tsvector conversion
+ * so that terms like {@code pasc_pg2023} are tokenized as two independent terms
+ * ({@code pasc}, {@code pg2023}) rather than a single file-path token.</p>
  *
  * <p>Meta values are filtered to a whitelist of searchable keys (description, values,
  * derived_values, variable_type, comment, domain, question, unit) to avoid indexing
@@ -30,26 +35,32 @@ import java.util.stream.Stream;
 public class WeightUpdateCreator {
 
     private static final Logger LOG = LoggerFactory.getLogger(WeightUpdateCreator.class);
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_.]*$");
 
     /**
      * Builds the UPDATE statement from the given weight configuration. Each weight entry
-     * specifies a field name and a repeat count — higher weights mean the field's text
-     * appears more times in the concat, increasing its tsvector rank contribution.
+     * specifies a field name and a tier (A/B/C/D). The field is wrapped in
+     * {@code setweight(to_tsvector('english', replace(coalesce(FIELD, ''), '_', ' ')), 'TIER')}
+     * and all entries are joined with {@code ||}.
      */
     public String createUpdate(List<Weight> weights) {
-        LOG.info("Turning {} weights into a big concat query", weights.size());
-        String searchableFields = weights.stream()
-            .flatMap(this::expand)
-            .collect(Collectors.joining(", ' ',\n            "));
+        LOG.info("Turning {} weights into a setweight query", weights.size());
+        String searchVector = weights.stream()
+            .map(w -> {
+                if (!SAFE_SQL_IDENTIFIER.matcher(w.key()).matches()) {
+                    throw new IllegalArgumentException("Unsafe SQL identifier in weight key: " + w.key());
+                }
+                return "setweight(to_tsvector('english', replace(coalesce(%s, ''), '_', ' ')), '%s')".formatted(w.key(), w.tier());
+            })
+            .collect(Collectors.joining(" ||\n            "));
         return """
             UPDATE concept_node
-            SET SEARCHABLE_FIELDS = to_tsvector('english', replace(data_table.search_str, '_', '/'))
+            SET SEARCHABLE_FIELDS = data_table.search_vector
             FROM
             (
                 SELECT
-                    concat(
-                        %s
-                    ) AS search_str,
+                    %s
+                    AS search_vector,
                     concept_node.concept_node_id AS search_key
                 FROM
                     concept_node
@@ -90,11 +101,6 @@ public class WeightUpdateCreator {
                     ) AS dataset ON dataset.concept_path = REGEXP_REPLACE(concept_node.concept_path, '(^\\\\[^\\\\]*\\\\[^\\\\]*\\\\)(.*$)', '\\1')
             ) AS data_table
             WHERE concept_node.concept_node_id = data_table.search_key;
-            """.formatted(searchableFields);
-    }
-
-    private Stream<String> expand(Weight weight) {
-        return IntStream.range(0, weight.weight()).boxed()
-            .map(i -> weight.key());
+            """.formatted(searchVector);
     }
 }

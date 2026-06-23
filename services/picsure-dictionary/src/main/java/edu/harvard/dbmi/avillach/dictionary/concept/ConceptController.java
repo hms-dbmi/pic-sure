@@ -15,6 +15,9 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Controller
 public class ConceptController {
@@ -40,8 +43,23 @@ public class ConceptController {
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);
-        long count = conceptService.countConcepts(filter);
-        PageImpl<Concept> pageResp = new PageImpl<>(conceptService.listConcepts(filter, pagination), pagination, count);
+
+        // Run count and list in parallel — both are independent and cached separately
+        long count;
+        List<Concept> concepts;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<Long> countFuture = executor.submit(() -> conceptService.countConcepts(filter));
+            Future<List<Concept>> conceptsFuture = executor.submit(() -> conceptService.listConcepts(filter, pagination));
+            count = countFuture.get();
+            concepts = conceptsFuture.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Parallel concept query interrupted", e);
+        } catch (Exception e) {
+            throw new RuntimeException("Parallel concept query failed", e);
+        }
+
+        PageImpl<Concept> pageResp = new PageImpl<>(concepts, pagination, count);
 
         AuditAttributes.putMetadata(httpRequest, "search_term", filter.search() != null ? filter.search() : "");
         AuditAttributes.putMetadata(httpRequest, "result_count", String.valueOf(count));

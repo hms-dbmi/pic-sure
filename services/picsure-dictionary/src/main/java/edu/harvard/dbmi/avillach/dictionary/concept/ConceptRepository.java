@@ -12,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -51,7 +52,9 @@ public class ConceptRepository {
     }
 
 
+    @Transactional(readOnly = true)
     public List<Concept> getConcepts(Filter filter, Pageable pageable) {
+        template.getJdbcTemplate().execute("SET LOCAL work_mem = '64MB'");
         QueryParamPair filterQ = filterGen.generateFilterQuery(filter, pageable);
         String sql = QueryUtility.ALLOW_FILTERING_Q + ", " + filterQ.query()
             + """
@@ -80,10 +83,11 @@ public class ConceptRepository {
         return template.query(sql, params, mapper);
     }
 
+    @Transactional(readOnly = true)
     public long countConcepts(Filter filter) {
-        QueryParamPair pair = filterGen.generateFilterQuery(filter, Pageable.unpaged());
-        String sql = "WITH " + pair.query() + " SELECT count(*) FROM concepts_filtered_sorted;";
-        Long count = template.queryForObject(sql, pair.params(), Long.class);
+        template.getJdbcTemplate().execute("SET LOCAL work_mem = '64MB'");
+        QueryParamPair pair = filterGen.generateCountQuery(filter);
+        Long count = template.queryForObject(pair.query(), pair.params(), Long.class);
         return count == null ? 0 : count;
     }
 

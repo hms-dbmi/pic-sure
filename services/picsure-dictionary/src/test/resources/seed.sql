@@ -52,7 +52,8 @@ CREATE TABLE public.concept_node (
     concept_type character varying(32) DEFAULT 'Interior'::character varying NOT NULL,
     concept_path character varying(10000) DEFAULT 'INVALID'::character varying NOT NULL,
     parent_id integer,
-    searchable_fields tsvector
+    searchable_fields tsvector,
+    is_queryable boolean NOT NULL DEFAULT FALSE
 );
 
 --
@@ -194,7 +195,8 @@ CREATE TABLE public.facet (
 CREATE TABLE public.facet__concept_node (
     facet__concept_node_id integer NOT NULL,
     facet_id integer NOT NULL,
-    concept_node_id integer NOT NULL
+    concept_node_id integer NOT NULL,
+    is_queryable boolean NOT NULL DEFAULT FALSE
 );
 
 --
@@ -1126,6 +1128,21 @@ INSERT INTO public.concept_node__remote_dictionary (CONCEPT_NODE_ID, REMOTE_DICT
     (229, 3), (230, 3), (233, 3), (234, 3), (235, 3), (237, 3), (238, 3), (239, 3), (240, 3), (242, 3),
     (244, 3), (245, 3), (246, 3), (248, 3), (249, 3), (251, 3), (252, 3), (253, 3), (254, 3), (255, 3),
     (256, 3), (257, 3), (258, 3), (261, 3), (264, 3), (266, 3), (267, 3), (268, 3), (269, 3);
+
+-- Backfill is_queryable: concepts with non-empty 'values' metadata are queryable
+UPDATE public.concept_node cn
+SET is_queryable = TRUE
+WHERE EXISTS (
+    SELECT 1 FROM public.concept_node_meta cnm
+    WHERE cnm.concept_node_id = cn.concept_node_id
+      AND cnm.key = 'values' AND cnm.value <> ''
+);
+
+-- Backfill facet__concept_node.is_queryable from concept_node.is_queryable
+UPDATE public.facet__concept_node fcn
+SET is_queryable = cn.is_queryable
+FROM public.concept_node cn
+WHERE cn.concept_node_id = fcn.concept_node_id;
 
 --
 -- PostgreSQL database dump complete

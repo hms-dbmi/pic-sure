@@ -4,6 +4,7 @@ import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.QueryUtility;
+import edu.harvard.dbmi.avillach.dictionary.util.SchemaDetector;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +24,7 @@ import java.util.stream.Stream;
 @Component
 public class ConceptFilterQueryGenerator {
     private final List<String> disallowedMetaFields;
+    private final SchemaDetector schemaDetector;
 
     /**
      * CTE fragment that computes a rank adjustment multiplier per concept. Concepts flagged with disallowed meta keys (e.g.
@@ -66,8 +68,11 @@ public class ConceptFilterQueryGenerator {
         """;
 
     @Autowired
-    public ConceptFilterQueryGenerator(@Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields) {
+    public ConceptFilterQueryGenerator(
+        @Value("${filtering.unfilterable_concepts}") List<String> disallowedMetaFields, SchemaDetector schemaDetector
+    ) {
         this.disallowedMetaFields = disallowedMetaFields;
+        this.schemaDetector = schemaDetector;
     }
 
     /**
@@ -92,7 +97,16 @@ public class ConceptFilterQueryGenerator {
         if (!CollectionUtils.isEmpty(filter.consents())) {
             params.addValue("consents", filter.consents());
         }
-        clauses.add(createValuelessNodeFilter(filter.search(), filter.consents()));
+        // Only add the base filter when it contributes conditions beyond is_queryable.
+        // For facet-only with no search and no consents, createFacetFilter already checks
+        // is_queryable = TRUE, so the INTERSECT with createValuelessNodeFilter (which just adds
+        // "WHERE is_queryable = TRUE AND TRUE") is redundant and prevents parallel execution.
+        if (
+            StringUtils.hasLength(filter.search()) || !CollectionUtils.isEmpty(filter.consents())
+                || CollectionUtils.isEmpty(filter.facets())
+        ) {
+            clauses.add(createValuelessNodeFilter(filter.search(), filter.consents()));
+        }
         String superQuery = getSuperQuery(pageable, clauses, params);
 
         return new QueryParamPair(superQuery, params);
@@ -124,11 +138,10 @@ public class ConceptFilterQueryGenerator {
             FROM
                 concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
-            """
-            .formatted(rankQuery, whereClause);
+                AND %s
+            """.formatted(rankQuery, schemaDetector.conceptNodeQueryableClause("concept_node"), whereClause);
     }
 
     /**
@@ -162,13 +175,83 @@ public class ConceptFilterQueryGenerator {
                         LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
                     WHERE
                         %s
+                        AND %s
                         %s
                         facet.name IN (:facets_for_category_%s ) AND facet_category.name = :category_%s
                     GROUP BY
                         facet__concept_node.concept_node_id
                 )
-                """.formatted(rankQuery, rankWhere, consentWhere, facetsForCategory.getKey(), facetsForCategory.getKey());
+                """.formatted(
+                rankQuery, schemaDetector.conceptNodeQueryableClause("concept_node"), rankWhere, consentWhere, facetsForCategory.getKey(),
+                facetsForCategory.getKey()
+            );
         }).toList();
+    }
+
+    /**
+     * Generates an optimized count query that avoids the CTE/ranking/allow_filtering overhead of {@link #generateFilterQuery}. Uses EXISTS
+     * with concept_node as the driving table, which enables parallel execution and leverages idx_fcn_concept_node_id.
+     */
+    public QueryParamPair generateCountQuery(Filter filter) {
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        String searchCondition = "";
+        if (StringUtils.hasLength(filter.search())) {
+            params.addValue("search", filter.search().trim());
+            searchCondition = " AND " + QueryUtility.SEARCH_WHERE;
+        }
+        String consentCondition = "";
+        if (!CollectionUtils.isEmpty(filter.consents())) {
+            params.addValue("consents", filter.consents());
+            consentCondition = " AND " + CONSENT_QUERY.strip().replaceAll("\\s+AND\\s*$", "");
+        }
+
+        if (CollectionUtils.isEmpty(filter.facets())) {
+            // No facets: count all queryable concepts matching search/consents
+            String sql = """
+                SELECT count(*)
+                FROM concept_node
+                LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
+                WHERE %s
+                %s
+                %s
+                """.formatted(schemaDetector.conceptNodeQueryableClause("concept_node"), searchCondition, consentCondition);
+            return new QueryParamPair(sql, params);
+        }
+
+        // Group facets by category — each category produces an EXISTS clause
+        var grouped = filter.facets().stream().collect(Collectors.groupingBy(Facet::category));
+
+        List<String> existsClauses = grouped.entrySet().stream().map(entry -> {
+            String categoryKey = entry.getKey();
+            params.addValue("facets_for_category_%s".formatted(categoryKey), entry.getValue().stream().map(Facet::name).toList());
+            params.addValue("category_%s".formatted(categoryKey), categoryKey);
+            return """
+                EXISTS (
+                    SELECT 1 FROM facet__concept_node fcn_%1$s
+                    WHERE fcn_%1$s.concept_node_id = cn.concept_node_id
+                      AND fcn_%1$s.facet_id IN (
+                        SELECT f.facet_id FROM facet f
+                        JOIN facet_category fc ON fc.facet_category_id = f.facet_category_id
+                        WHERE f.name IN (:facets_for_category_%1$s) AND fc.name = :category_%1$s
+                      )
+                )
+                """.formatted(categoryKey);
+        }).toList();
+
+        String existsWhere = String.join(" AND ", existsClauses);
+
+        String sql = """
+            SELECT count(*)
+            FROM concept_node cn
+            LEFT JOIN dataset ON cn.dataset_id = dataset.dataset_id
+            WHERE %s
+            AND %s
+            %s
+            %s
+            """.formatted(
+            schemaDetector.conceptNodeQueryableClause("cn"), existsWhere, searchCondition.replace("concept_node.", "cn."), consentCondition
+        );
+        return new QueryParamPair(sql, params);
     }
 
     public QueryParamPair generateLegacyFilterQuery(Filter filter, Pageable pageable) {
@@ -188,7 +271,7 @@ public class ConceptFilterQueryGenerator {
         String rankQuery = "0 as rank";
         String whereClause = "TRUE";
         if (StringUtils.hasLength(search)) {
-            rankQuery = "ts_rank(searchable_fields, to_tsquery(:dynamic_tsquery)) AS rank";
+            rankQuery = "ts_rank_cd(searchable_fields, to_tsquery(:dynamic_tsquery)) AS rank";
             whereClause = "concept_node.searchable_fields @@ to_tsquery(:dynamic_tsquery)";
         }
         return """
@@ -198,11 +281,10 @@ public class ConceptFilterQueryGenerator {
             FROM
                 concept_node
                 LEFT JOIN dataset ON concept_node.dataset_id = dataset.dataset_id
-                JOIN concept_node_meta AS categorical_values ON concept_node.concept_node_id = categorical_values.concept_node_id AND categorical_values.KEY = 'values' AND categorical_values.value <> ''
             WHERE
                 %s
-            """
-            .formatted(rankQuery, whereClause);
+                AND %s
+            """.formatted(rankQuery, schemaDetector.conceptNodeQueryableClause("concept_node"), whereClause);
     }
 
     /**

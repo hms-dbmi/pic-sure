@@ -28,7 +28,7 @@ public class QueryUtility {
      */
     private static final String TSQUERY_EXPR = "to_tsquery('english', regexp_replace(trim(:search), '\\s+', ':* & ', 'g') || ':*')";
 
-    public static final String SEARCH_QUERY = "ts_rank(searchable_fields, " + TSQUERY_EXPR + ")";
+    public static final String SEARCH_QUERY = "ts_rank_cd(searchable_fields, " + TSQUERY_EXPR + ")";
 
     /**
      * WHERE clause filter for full-text search. Uses the GIN-indexed searchable_fields tsvector column with prefix matching via to_tsquery.

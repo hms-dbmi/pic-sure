@@ -1,7 +1,7 @@
-concept_node.DISPLAY,2
-concept_node.CONCEPT_PATH,2
-dataset.FULL_NAME,1
-dataset.DESCRIPTION,1
-parent.DISPLAY,1
-grandparent.DISPLAY,1
-concept_node_meta_str,1
+concept_node.DISPLAY,A
+concept_node.CONCEPT_PATH,A
+dataset.FULL_NAME,B
+dataset.DESCRIPTION,B
+parent.DISPLAY,C
+grandparent.DISPLAY,C
+concept_node_meta_str.values,D

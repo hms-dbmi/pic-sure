@@ -1,12 +1,19 @@
 package edu.harvard.dbmi.avillach.dictionary.facet;
 
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
+import edu.harvard.dbmi.avillach.dictionary.filter.QueryParamPair;
 import edu.harvard.dbmi.avillach.dictionary.util.MapExtractor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,7 +34,9 @@ public class FacetRepository {
         this.mapper = mapper;
     }
 
+    @Transactional(readOnly = true)
     public List<FacetCategory> getFacets(Filter filter) {
+        template.getJdbcTemplate().execute("SET LOCAL work_mem = '64MB'");
         MapSqlParameterSource params = new MapSqlParameterSource();
         String innerSQL = generator.createFacetSQLAndPopulateParams(filter, params);
         // return a list of facets and the number of concepts associated with them
@@ -55,6 +64,55 @@ public class FacetRepository {
                 .formatted(innerSQL);
 
         return template.query(sql, params, new FacetCategoryExtractor());
+    }
+
+    /**
+     * Returns all facets with metadata (category, display, parent, full_name) but no counts. Used as the base for merging parallel count
+     * results.
+     */
+    public List<FacetCategory> getFacetMetadata() {
+        String sql =
+            """
+                SELECT
+                    facet_category.name AS category_name,
+                    parent_facet.name AS parent_name,
+                    0 AS facet_count,
+                    facet_category.display AS category_display,
+                    facet_category.description AS category_description,
+                    facet.name, facet.display, facet.description,
+                    facet_meta_full_name.value AS full_name
+                FROM
+                    facet
+                    LEFT JOIN facet_category ON facet_category.facet_category_id = facet.facet_category_id
+                    LEFT JOIN facet AS parent_facet ON facet.parent_id = parent_facet.facet_id
+                    LEFT JOIN facet_meta AS facet_meta_full_name ON facet.facet_id = facet_meta_full_name.facet_id AND facet_meta_full_name.KEY = 'full_name'
+                """;
+        return template.query(sql, new FacetCategoryExtractor());
+    }
+
+    /**
+     * Executes a single count block on its own connection with work_mem set. Designed to be called from virtual threads for parallel
+     * execution. Returns a map of (category_name + "|" + facet_name) → count.
+     */
+    public Map<String, Integer> executeCountBlock(QueryParamPair block) throws SQLException {
+        DataSource ds = template.getJdbcTemplate().getDataSource();
+        try (Connection conn = ds.getConnection()) {
+            conn.setAutoCommit(false);
+            conn.setReadOnly(true);
+            conn.createStatement().execute("SET LOCAL work_mem = '64MB'");
+
+            NamedParameterJdbcTemplate localTemplate = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(conn, true));
+            Map<String, Integer> counts = localTemplate.query(block.query(), block.params(), rs -> {
+                Map<String, Integer> map = new HashMap<>();
+                while (rs.next()) {
+                    String key = rs.getString("category_name") + "|" + rs.getString("facet_name");
+                    map.put(key, rs.getInt("facet_count"));
+                }
+                return map;
+            });
+            conn.commit();
+            return counts;
+        }
     }
 
     public Map<String, String> getFacetCategoryOrder(List<String> categoryNames) {

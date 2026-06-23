@@ -17,6 +17,7 @@ import org.testcontainers.utility.MountableFile;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Comparator;
 import java.util.List;
 
 @Testcontainers
@@ -52,6 +53,11 @@ class FacetQueryGeneratorTest {
         }
     }
 
+    // Sort by facet_id for order-insensitive comparison when counts are tied
+    static List<IdCountPair> byFacetId(List<IdCountPair> list) {
+        return list.stream().sorted(Comparator.comparingInt(IdCountPair::facetId)).toList();
+    }
+
     @Test
     void shouldCountFacetsWithNoSearchAndNoSelectedFacetsAndNoConsents() {
         Filter filter = new Filter(List.of(), "", List.of());
@@ -61,11 +67,11 @@ class FacetQueryGeneratorTest {
 
         List<IdCountPair> actual = template.query(query, params, new IdCountPairMapper());
         List<IdCountPair> expected = List.of(
-            new IdCountPair(22, 13), new IdCountPair(26, 3), new IdCountPair(27, 3), new IdCountPair(28, 3), new IdCountPair(31, 3),
-            new IdCountPair(25, 2), new IdCountPair(21, 2), new IdCountPair(23, 2), new IdCountPair(20, 1)
+            new IdCountPair(20, 1), new IdCountPair(21, 2), new IdCountPair(22, 13), new IdCountPair(23, 2), new IdCountPair(25, 2),
+            new IdCountPair(26, 3), new IdCountPair(27, 3), new IdCountPair(28, 3), new IdCountPair(31, 3)
         );
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected, byFacetId(actual));
     }
 
     @Test
@@ -151,7 +157,7 @@ class FacetQueryGeneratorTest {
             new IdCountPair(28, 3), new IdCountPair(31, 3)
         );
 
-        Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected, byFacetId(actual));
     }
 
     @Test
