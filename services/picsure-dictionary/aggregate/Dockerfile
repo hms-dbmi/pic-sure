@@ -1,4 +1,4 @@
-FROM amazoncorretto:24.0.1-alpine3.18
+FROM amazoncorretto:25-alpine
 
 COPY target/dump-*.jar /dump.jar
 
