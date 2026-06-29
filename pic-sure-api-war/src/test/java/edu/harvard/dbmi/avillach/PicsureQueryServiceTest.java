@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +18,8 @@ import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
+import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,8 +40,6 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.dbmi.avillach.service.PicsureQueryService;
 import edu.harvard.dbmi.avillach.service.AuditContext;
-import edu.harvard.dbmi.avillach.service.ResourceWebClient;
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 

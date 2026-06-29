@@ -7,7 +7,7 @@ import java.util.zip.GZIPOutputStream;
 
 import javax.persistence.*;
 
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
+import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 @Entity(name = "query")
 public class Query extends BaseEntity {

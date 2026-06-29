@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.HttpClientUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -28,12 +29,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.dbmi.avillach.domain.QueryFormat;
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 

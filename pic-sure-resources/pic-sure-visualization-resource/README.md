@@ -1,1 +1,0 @@
-# pic-sure-visualization-resource
