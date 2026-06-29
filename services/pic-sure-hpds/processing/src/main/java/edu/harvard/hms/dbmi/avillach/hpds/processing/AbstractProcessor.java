@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genomic.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -9,7 +9,7 @@ For genomic data, variants that are not represented in the database are not stor
 
 ## Pre-requisites
 
-* Java 21
+* Java 25
 * Before contributing code, please set up our git hook:
   `cp code-formatting/pre-commit.sh .git/hooks/pre-commit`
     * To skip formatting on a block of code, wrap in `spotless:off`, `spotless:on` comments

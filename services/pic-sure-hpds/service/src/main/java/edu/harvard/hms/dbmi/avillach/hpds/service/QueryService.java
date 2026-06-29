@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genomic.VariantUtils;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.QueryDecorator;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.patient.PatientProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.timeseries.TimeseriesProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -17,7 +19,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryServic
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,10 +65,9 @@ public class QueryService {
     public QueryService(
         AbstractProcessor abstractProcessor, QueryProcessor queryProcessor, TimeseriesProcessor timeseriesProcessor,
         CountProcessor countProcessor, MultiValueQueryProcessor multiValueQueryProcessor,
-        @Autowired(required = false) DictionaryService dictionaryService, QueryDecorator queryDecorator,
-        @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit, @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads,
-        @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads, PatientProcessor patientProcessor,
-        @Autowired(required = false) LoggingClient loggingClient
+        @Autowired(required = false) DictionaryService dictionaryService, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
+        @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
+        PatientProcessor patientProcessor, @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.abstractProcessor = abstractProcessor;
         this.queryProcessor = queryProcessor;
@@ -75,7 +75,7 @@ public class QueryService {
         this.countProcessor = countProcessor;
         this.multiValueQueryProcessor = multiValueQueryProcessor;
         this.dictionaryService = dictionaryService;
-        this.queryDecorator = queryDecorator;
+        this.queryDecorator = new QueryDecorator();
 
         SMALL_JOB_LIMIT = smallJobLimit;
         SMALL_TASK_THREADS = smallTaskThreads;
@@ -116,15 +116,16 @@ public class QueryService {
 
             if (loggingClient != null && loggingClient.isEnabled()) {
                 try {
-                    loggingClient.send(LoggingEvent.builder("QUERY")
-                        .action("query.enqueued")
-                        .metadata(Map.of(
-                            "query_id", result.getId(),
-                            "result_type", String.valueOf(query.getExpectedResultType()),
-                            "field_count", String.valueOf(query.getFields().size()),
-                            "queue", query.getFields().size() > SMALL_JOB_LIMIT ? "large" : "small"
-                        ))
-                        .build());
+                    loggingClient.send(
+                        LoggingEvent.builder("QUERY").action("query.enqueued")
+                            .metadata(
+                                Map.of(
+                                    "query_id", result.getId(), "result_type", String.valueOf(query.getExpectedResultType()), "field_count",
+                                    String.valueOf(query.getFields().size()), "queue",
+                                    query.getFields().size() > SMALL_JOB_LIMIT ? "large" : "small"
+                                )
+                            ).build()
+                    );
                 } catch (Exception e) {
                     log.warn("Failed to send audit log event", e);
                 }

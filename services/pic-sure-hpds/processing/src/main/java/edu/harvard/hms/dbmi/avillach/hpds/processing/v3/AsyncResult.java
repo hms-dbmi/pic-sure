@@ -1,11 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import edu.harvard.dbmi.avillach.util.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStoreStream;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
+import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -224,10 +224,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
     private void sendEvent(String eventType, String action, Map<String, String> metadata) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder(eventType)
-                    .action(action)
-                    .metadata(Map.copyOf(metadata))
-                    .build());
+                loggingClient.send(LoggingEvent.builder(eventType).action(action).metadata(Map.copyOf(metadata)).build());
             } catch (Exception e) {
                 log.warn("Failed to send audit log event", e);
             }
@@ -239,10 +236,7 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
         status = Status.RUNNING;
         long startTime = System.currentTimeMillis();
 
-        sendEvent("QUERY", "query.execution.started", Map.of(
-            "query_id", id,
-            "result_type", String.valueOf(query.expectedResultType())
-        ));
+        sendEvent("QUERY", "query.execution.started", Map.of("query_id", id, "result_type", String.valueOf(query.expectedResultType())));
 
         try {
             processor.runQuery(query, this);
@@ -252,24 +246,25 @@ public class AsyncResult implements Runnable, Comparable<AsyncResult> {
             log.info("Ran Query in " + durationMs + "ms for " + numRows + " rows and " + numColumns + " columns");
             this.status = Status.SUCCESS;
 
-            sendEvent("QUERY", "query.completed", Map.of(
-                "query_id", id,
-                "result_type", String.valueOf(query.expectedResultType()),
-                "status", "success",
-                "duration_ms", String.valueOf(durationMs),
-                "row_count", String.valueOf(numRows)
-            ));
+            sendEvent(
+                "QUERY", "query.completed",
+                Map.of(
+                    "query_id", id, "result_type", String.valueOf(query.expectedResultType()), "status", "success", "duration_ms",
+                    String.valueOf(durationMs), "row_count", String.valueOf(numRows)
+                )
+            );
         } catch (Exception e) {
             long durationMs = System.currentTimeMillis() - startTime;
             log.error("Query failed in " + durationMs + "ms", e);
             this.status = Status.ERROR;
 
-            sendEvent("QUERY", "query.completed", Map.of(
-                "query_id", id,
-                "result_type", String.valueOf(query.expectedResultType()),
-                "status", "error",
-                "duration_ms", String.valueOf(durationMs)
-            ));
+            sendEvent(
+                "QUERY", "query.completed",
+                Map.of(
+                    "query_id", id, "result_type", String.valueOf(query.expectedResultType()), "status", "error", "duration_ms",
+                    String.valueOf(durationMs)
+                )
+            );
         } finally {
             this.completedTime = System.currentTimeMillis();
         }

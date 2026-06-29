@@ -1,4 +1,4 @@
-FROM amazoncorretto:24-alpine
+FROM amazoncorretto:25-alpine
 
 RUN apk add --no-cache --purge -uU bash curl wget unzip gnupg openssl && \
     rm -rf /var/cache/apk/* /tmp/*

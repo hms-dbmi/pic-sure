@@ -8,6 +8,7 @@ import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.QueryDecorator;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
@@ -15,13 +16,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
 import com.fasterxml.jackson.core.JsonParseException;
@@ -50,7 +49,7 @@ public class PicSureService {
     public PicSureService(
         QueryService queryService, CountProcessor countProcessor, VariantListProcessor variantListProcessor,
         AbstractProcessor abstractProcessor, Paginator paginator, SignUrlService signUrlService, FileSharingService fileSystemService,
-        QueryDecorator queryDecorator, TestDataService testDataService
+        TestDataService testDataService
     ) {
         this.queryService = queryService;
         this.countProcessor = countProcessor;
@@ -58,7 +57,7 @@ public class PicSureService {
         this.abstractProcessor = abstractProcessor;
         this.paginator = paginator;
         this.fileSystemService = fileSystemService;
-        this.queryDecorator = queryDecorator;
+        this.queryDecorator = new QueryDecorator();
         this.signUrlService = signUrlService;
         this.testDataService = testDataService;
         Crypto.loadDefaultKey();
@@ -195,14 +194,16 @@ public class PicSureService {
                     infoColumnMeta.description().toLowerCase(Locale.ENGLISH).contains(lowerCase)
                         || infoColumnMeta.key().toLowerCase(Locale.ENGLISH).contains(lowerCase)
                 ) {
-                    infoResults.put(
-                        infoColumnMeta.key(),
-                        ImmutableMap.of(
-                            "description", infoColumnMeta.description(), "values",
-                            storeIsNumeric ? new ArrayList<String>() : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""),
-                            "continuous", storeIsNumeric
-                        )
-                    );
+                    infoResults
+                        .put(
+                            infoColumnMeta.key(),
+                            ImmutableMap.of(
+                                "description", infoColumnMeta.description(), "values",
+                                storeIsNumeric ? new ArrayList<String>()
+                                    : abstractProcessor.searchInfoConceptValues(infoColumnMeta.key(), ""),
+                                "continuous", storeIsNumeric
+                            )
+                        );
                 }
             });
         }
@@ -258,8 +259,8 @@ public class PicSureService {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @PostMapping(value = "/query/{resourceQueryId}/result")
-    public ResponseEntity queryResult(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) throws IOException {
+    public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
+        throws IOException {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId.toString());
         if (result == null) {
@@ -283,8 +284,7 @@ public class PicSureService {
 
     @AuditEvent(type = "DATA_ACCESS", action = "data.write")
     @PostMapping("/write/{dataType}")
-    public ResponseEntity<String> writeQueryResult(
-        @RequestBody() Query query, @PathVariable("dataType") String datatype    ) {
+    public ResponseEntity<String> writeQueryResult(@RequestBody() Query query, @PathVariable("dataType") String datatype) {
         AuditAttributes.putMetadata(httpRequest, "data_type", datatype);
         AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(query.getExpectedResultType()));
         if ("test_upload".equals(datatype)) {
@@ -340,8 +340,8 @@ public class PicSureService {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed.url")
     @PostMapping(value = "/query/{resourceQueryId}/signed-url")
-    public ResponseEntity querySignedURL(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) throws IOException {
+    public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
+        throws IOException {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId.toString());
         if (result == null) {
@@ -360,8 +360,7 @@ public class PicSureService {
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{resourceQueryId}/status")
-    public QueryStatus queryStatus(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request    ) {
+    public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
     }
@@ -397,7 +396,8 @@ public class PicSureService {
     @GetMapping("/search/values/")
     public PaginatedSearchResult<String> searchGenomicConceptValues(
         @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query, @RequestParam("page") int page,
-        @RequestParam("size") int size    ) {
+        @RequestParam("size") int size
+    ) {
         AuditAttributes.putMetadata(httpRequest, "genomic_concept_path", genomicConceptPath);
         if (page < 1) {
             throw new IllegalArgumentException("Page must be greater than 0");

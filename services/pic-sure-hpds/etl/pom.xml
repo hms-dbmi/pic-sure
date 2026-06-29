@@ -36,10 +36,6 @@
 			<artifactId>common</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-resource-api</artifactId>
-		</dependency>
-		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
 		</dependency>

@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.dictionary.DictionaryService;
@@ -10,6 +9,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.*;
+import edu.harvard.dbmi.avillach.util.UUIDv5;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,8 +57,7 @@ public class QueryV3Service {
         MultiValueQueryV3Processor multiValueQueryProcessor, @Autowired(required = false) DictionaryService dictionaryService,
         QueryValidator queryValidator, @Value("${SMALL_JOB_LIMIT}") Integer smallJobLimit,
         @Value("${SMALL_TASK_THREADS}") Integer smallTaskThreads, @Value("${LARGE_TASK_THREADS}") Integer largeTaskThreads,
-        PatientV3Processor patientProcessor,
-        @Autowired(required = false) LoggingClient loggingClient
+        PatientV3Processor patientProcessor, @Autowired(required = false) LoggingClient loggingClient
     ) {
         this.queryProcessor = queryProcessor;
         this.timeseriesProcessor = timeseriesProcessor;
@@ -97,15 +96,14 @@ public class QueryV3Service {
 
             if (loggingClient != null && loggingClient.isEnabled()) {
                 try {
-                    loggingClient.send(LoggingEvent.builder("QUERY")
-                        .action("query.enqueued")
-                        .metadata(Map.of(
-                            "query_id", result.getId(),
-                            "result_type", String.valueOf(query.expectedResultType()),
-                            "field_count", String.valueOf(query.select().size()),
-                            "queue", query.select().size() > SMALL_JOB_LIMIT ? "large" : "small"
-                        ))
-                        .build());
+                    loggingClient.send(
+                        LoggingEvent.builder("QUERY").action("query.enqueued").metadata(
+                            Map.of(
+                                "query_id", result.getId(), "result_type", String.valueOf(query.expectedResultType()), "field_count",
+                                String.valueOf(query.select().size()), "queue", query.select().size() > SMALL_JOB_LIMIT ? "large" : "small"
+                            )
+                        ).build()
+                    );
                 } catch (Exception e) {
                     log.warn("Failed to send audit log event", e);
                 }

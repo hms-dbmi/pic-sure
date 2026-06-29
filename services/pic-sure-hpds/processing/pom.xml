@@ -18,8 +18,12 @@
 		</dependency>
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-			<artifactId>client-api</artifactId>
-		</dependency> 
+			<artifactId>pic-sure-hpds-model</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-api-model</artifactId>
+		</dependency>
 		<dependency>
 		    <groupId>org.mockito</groupId>
 		    <artifactId>mockito-core</artifactId>

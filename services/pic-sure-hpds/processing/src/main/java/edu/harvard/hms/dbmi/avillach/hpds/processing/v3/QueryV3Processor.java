@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import com.google.common.collect.Lists;
+import edu.harvard.hms.dbmi.avillach.hpds.data.genomic.VariantUtils;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.caching.VariantBucketHolder;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
@@ -8,7 +9,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStore;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

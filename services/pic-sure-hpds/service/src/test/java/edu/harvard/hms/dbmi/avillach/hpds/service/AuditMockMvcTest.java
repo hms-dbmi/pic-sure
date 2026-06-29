@@ -15,7 +15,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,9 +25,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Verifies that Spring actually registers the AuditLoggingFilter and AuditInterceptor,
- * and that @AuditEvent annotations on real controller methods produce correct logging events
- * through the full HTTP pipeline.
+ * Verifies that Spring actually registers the AuditLoggingFilter and AuditInterceptor, and that @AuditEvent annotations on real controller
+ * methods produce correct logging events through the full HTTP pipeline.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -55,8 +53,6 @@ class AuditMockMvcTest {
     SignUrlService signUrlService;
     @MockBean
     FileSharingService fileSystemService;
-    @MockBean
-    QueryDecorator queryDecorator;
     @MockBean
     TestDataService testDataService;
 

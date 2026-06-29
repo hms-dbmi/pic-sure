@@ -1,7 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.service;
 
 import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -255,8 +254,7 @@ public class PicSureV3Service {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.result")
     @PostMapping(value = "/query/{resourceQueryId}/result")
-    public ResponseEntity queryResult(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) {
+    public ResponseEntity queryResult(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest) {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId);
         if (result == null) {
@@ -272,8 +270,7 @@ public class PicSureV3Service {
 
     @AuditEvent(type = "DATA_ACCESS", action = "data.write")
     @PostMapping("/write/{dataType}")
-    public ResponseEntity<String> writeQueryResult(
-        @RequestBody() Query query, @PathVariable("dataType") String datatype    ) {
+    public ResponseEntity<String> writeQueryResult(@RequestBody() Query query, @PathVariable("dataType") String datatype) {
         AuditAttributes.putMetadata(httpRequest, "data_type", datatype);
         AuditAttributes.putMetadata(httpRequest, "result_type", String.valueOf(query.expectedResultType()));
         if ("test_upload".equals(datatype)) {
@@ -322,8 +319,8 @@ public class PicSureV3Service {
 
     @AuditEvent(type = "DATA_ACCESS", action = "query.signed.url")
     @PostMapping(value = "/query/{resourceQueryId}/signed-url")
-    public ResponseEntity querySignedURL(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest    ) throws IOException {
+    public ResponseEntity querySignedURL(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest resultRequest)
+        throws IOException {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         AsyncResult result = queryService.getResultFor(queryId);
         if (result == null) {
@@ -342,8 +339,7 @@ public class PicSureV3Service {
 
     @AuditEvent(type = "QUERY", action = "query.status")
     @PostMapping("/query/{resourceQueryId}/status")
-    public QueryStatus queryStatus(
-        @PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request    ) {
+    public QueryStatus queryStatus(@PathVariable("resourceQueryId") UUID queryId, @RequestBody QueryRequest request) {
         AuditAttributes.putMetadata(httpRequest, "query_id", queryId.toString());
         return convertToQueryStatus(queryService.getStatusFor(queryId.toString()));
     }
@@ -377,7 +373,8 @@ public class PicSureV3Service {
     @GetMapping("/search/values/")
     public PaginatedSearchResult<String> searchGenomicConceptValues(
         @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query, @RequestParam("page") int page,
-        @RequestParam("size") int size    ) {
+        @RequestParam("size") int size
+    ) {
         AuditAttributes.putMetadata(httpRequest, "genomic_concept_path", genomicConceptPath);
         if (page < 1) {
             throw new IllegalArgumentException("Page must be greater than 0");

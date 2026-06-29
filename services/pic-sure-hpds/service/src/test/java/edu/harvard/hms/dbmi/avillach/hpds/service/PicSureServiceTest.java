@@ -9,7 +9,6 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
-import edu.harvard.hms.dbmi.avillach.hpds.service.util.QueryDecorator;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -44,8 +43,6 @@ class PicSureServiceTest {
     SignUrlService signUrlService;
     @MockBean
     FileSharingService fileSystemService;
-    @MockBean
-    QueryDecorator queryDecorator;
     @MockBean
     TestDataService testDataService;
 
