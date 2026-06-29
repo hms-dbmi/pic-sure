@@ -1,4 +1,4 @@
-FROM amazoncorretto:24-alpine
+FROM amazoncorretto:25-alpine
 
 # Copy jar and access token from maven build
 COPY pic-sure-auth-services/target/pic-sure-auth-services-*.jar /pic-sure-auth-service.jar

@@ -42,7 +42,7 @@ pipeline {
             -v "$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME/:/app" \
             -v maven_m2_cache:/root/.m2 \
             -w /app \
-            maven:3.9.9-amazoncorretto-24 \
+            maven:3.9-amazoncorretto-25 \
             sh -lc "mvn clean install -B -T 1C -DskipTests"
 
           ls -lah pic-sure-auth-services/target || true

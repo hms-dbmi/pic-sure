@@ -1,4 +1,4 @@
-FROM amazoncorretto:24-alpine
+FROM amazoncorretto:25-alpine
 
 ARG DATASOURCE_URL
 ARG DATASOURCE_USERNAME
