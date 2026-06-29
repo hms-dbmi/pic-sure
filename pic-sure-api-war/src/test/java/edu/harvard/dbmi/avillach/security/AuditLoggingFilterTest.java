@@ -546,4 +546,34 @@ public class AuditLoggingFilterTest {
         // Also has filter-level session_id
         assertNotNull(event.getSessionId());
     }
+
+    // ---- Client type (X-Client-Type header) ----
+
+    @Test
+    public void testXClientTypeHeaderRecordedInMetadata() throws IOException {
+        when(httpServletRequest.getHeader("X-Client-Type")).thenReturn("PYTHON_ADAPTER");
+
+        ContainerRequestContext reqCtx = mockRequestContext("/query", "POST");
+        ContainerResponseContext respCtx = mockResponseContext(200);
+
+        filter.filter(reqCtx, respCtx);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertEquals("PYTHON_ADAPTER", captor.getValue().getMetadata().get("caller"));
+    }
+
+    @Test
+    public void testNoXClientTypeHeaderOmitsCallerMetadata() throws IOException {
+        when(httpServletRequest.getHeader("X-Client-Type")).thenReturn(null);
+
+        ContainerRequestContext reqCtx = mockRequestContext("/query", "POST");
+        ContainerResponseContext respCtx = mockResponseContext(200);
+
+        filter.filter(reqCtx, respCtx);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertFalse(captor.getValue().getMetadata().containsKey("caller"));
+    }
 }

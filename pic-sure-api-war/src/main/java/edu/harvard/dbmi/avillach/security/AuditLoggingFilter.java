@@ -205,6 +205,15 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
                 metadata.put("user_email", userEmail);
             }
 
+            // Originating caller (e.g. PYTHON_ADAPTER / R_ADAPTER), set by the
+            // adapters via the X-Client-Type header. Recorded as "caller" to
+            // distinguish it from the top-level client_type, which identifies
+            // the emitting service ("api").
+            String caller = httpServletRequest.getHeader("X-Client-Type");
+            if (caller != null && !caller.isEmpty()) {
+                metadata.put("caller", caller);
+            }
+
             // Session ID
             String sessionId =
                 SessionIdResolver.resolve(httpServletRequest.getHeader("X-Session-Id"), srcIp, httpServletRequest.getHeader("User-Agent"));
