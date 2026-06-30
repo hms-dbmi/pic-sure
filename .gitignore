@@ -26,3 +26,8 @@ log/
 # Avoid ignoring Maven wrapper jar file (.jar files are usually ignored)
 !/.mvn/wrapper/maven-wrapper.jar
 
+# Claude Code: local-only files, never commit (plans, specs, reviews, tickets, settings)
+.claude/
+**/.claude/
+docs/superpowers/
+
