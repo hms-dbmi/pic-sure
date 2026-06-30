@@ -5,13 +5,13 @@
 --   2. trg_cascade_is_queryable_to_fcn: cascades concept_node.is_queryable changes
 
 
-ALTER TABLE facet__concept_node
+ALTER TABLE dict.facet__concept_node
     ADD COLUMN IF NOT EXISTS is_queryable BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Backfill from concept_node.is_queryable (populated by V7)
-UPDATE facet__concept_node fcn
+UPDATE dict.facet__concept_node fcn
 SET is_queryable = cn.is_queryable
-FROM concept_node cn
+FROM dict.concept_node cn
 WHERE cn.concept_node_id = fcn.concept_node_id;
 
 -- Trigger 1: set is_queryable on fcn INSERT/UPDATE (covers ETL reload)
@@ -26,9 +26,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_set_fcn_is_queryable ON facet__concept_node;
+DROP TRIGGER IF EXISTS trg_set_fcn_is_queryable ON dict.facet__concept_node;
 CREATE TRIGGER trg_set_fcn_is_queryable
-    BEFORE INSERT OR UPDATE ON facet__concept_node
+    BEFORE INSERT OR UPDATE ON dict.facet__concept_node
     FOR EACH ROW EXECUTE FUNCTION dict.set_fcn_is_queryable();
 
 -- Trigger 2: cascade concept_node.is_queryable changes to fcn
@@ -43,16 +43,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_cascade_is_queryable_to_fcn ON concept_node;
+DROP TRIGGER IF EXISTS trg_cascade_is_queryable_to_fcn ON dict.concept_node;
 CREATE TRIGGER trg_cascade_is_queryable_to_fcn
-    AFTER UPDATE OF is_queryable ON concept_node
+    AFTER UPDATE OF is_queryable ON dict.concept_node
     FOR EACH ROW EXECUTE FUNCTION dict.cascade_is_queryable_to_fcn();
 
 -- Partial indexes (equivalent to matview indexes from Step 17B)
 CREATE INDEX IF NOT EXISTS idx_fcn_queryable_fid_cid
-    ON facet__concept_node(facet_id, concept_node_id)
+    ON dict.facet__concept_node(facet_id, concept_node_id)
     WHERE is_queryable = TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_fcn_queryable_cid
-    ON facet__concept_node(concept_node_id)
+    ON dict.facet__concept_node(concept_node_id)
     WHERE is_queryable = TRUE;
