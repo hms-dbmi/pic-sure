@@ -30,4 +30,5 @@ log/
 .claude/
 **/.claude/
 docs/superpowers/
+*.http
 
