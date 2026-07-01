@@ -8,6 +8,8 @@
     <packaging>pom</packaging>
     <name>pic-sure-api</name>
     <modules>
+        <module>libs/pic-sure-commons</module>
+        <module>libs/pic-sure-logging-client</module>
         <module>pic-sure-legacy</module>
     </modules>
     <repositories>
