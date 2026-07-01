@@ -109,7 +109,7 @@ public class ProxyWebClient {
             .toArray(NameValuePair[]::new);
     }
 
-    private static final String DEFAULT_FORWARDED_HEADERS = "authorization,x-api-key,x-request-id";
+    private static final String DEFAULT_FORWARDED_HEADERS = "authorization,x-api-key,x-request-id,x-session-id,x-client-type";
 
     private static final Set<String> FORWARDED_HEADERS = initForwardedHeaders();
 

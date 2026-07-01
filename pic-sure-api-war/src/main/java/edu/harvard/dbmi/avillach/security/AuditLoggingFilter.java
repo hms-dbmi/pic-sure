@@ -205,6 +205,9 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
                 metadata.put("user_email", userEmail);
             }
 
+            // Originating caller (e.g. PYTHON_ADAPTER / R_ADAPTER)
+            String caller = httpServletRequest.getHeader("X-Client-Type");
+
             // Session ID
             String sessionId =
                 SessionIdResolver.resolve(httpServletRequest.getHeader("X-Session-Id"), srcIp, httpServletRequest.getHeader("User-Agent"));
@@ -231,6 +234,10 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
             // Build the event
             LoggingEvent.Builder eventBuilder =
                 LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo).metadata(metadata);
+
+            if (caller != null && !caller.isEmpty()) {
+                eventBuilder.caller(caller);
+            }
 
             if (errorMap != null) {
                 eventBuilder.error(errorMap);

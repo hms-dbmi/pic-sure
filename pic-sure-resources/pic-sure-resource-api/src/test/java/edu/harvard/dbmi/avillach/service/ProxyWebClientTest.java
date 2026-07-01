@@ -147,6 +147,54 @@ public class ProxyWebClientTest {
     }
 
     @Test
+    public void shouldForwardSessionIdHeader() throws IOException {
+        Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
+        Mockito.when(client.execute(Mockito.argThat(request -> {
+            if (request instanceof HttpPost) {
+                HttpPost post = (HttpPost) request;
+                return post.getFirstHeader("x-session-id") != null
+                    && "sess-abc-123".equals(post.getFirstHeader("x-session-id").getValue());
+            }
+            return false;
+        }))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        subject.client = client;
+
+        HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+        Mockito.when(headers.getRequestHeader("x-session-id")).thenReturn(List.of("sess-abc-123"));
+
+        Response actual = subject.postProxy("foo", "/audit", "{}", new MultivaluedHashMap<>(), headers);
+        assertEquals(200, actual.getStatus());
+    }
+
+    @Test
+    public void shouldForwardClientTypeHeader() throws IOException {
+        Mockito.when(resourceRepository.getByColumn("name", "foo")).thenReturn(List.of(new Resource()));
+        Mockito.when(client.execute(Mockito.argThat(request -> {
+            if (request instanceof HttpPost) {
+                HttpPost post = (HttpPost) request;
+                return post.getFirstHeader("x-client-type") != null
+                    && "PYTHON_ADAPTER".equals(post.getFirstHeader("x-client-type").getValue());
+            }
+            return false;
+        }))).thenReturn(response);
+        Mockito.when(response.getStatusLine()).thenReturn(statusLine);
+        Mockito.when(statusLine.getStatusCode()).thenReturn(200);
+        Mockito.when(response.getEntity()).thenReturn(entity);
+        Mockito.when(entity.getContent()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        subject.client = client;
+
+        HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+        Mockito.when(headers.getRequestHeader("x-client-type")).thenReturn(List.of("PYTHON_ADAPTER"));
+
+        Response actual = subject.postProxy("foo", "/audit", "{}", new MultivaluedHashMap<>(), headers);
+        assertEquals(200, actual.getStatus());
+    }
+
+    @Test
     public void shouldNotFailWithNullHeaders() throws IOException {
         Mockito.when(client.execute(Mockito.any(HttpPost.class))).thenReturn(response);
         Mockito.when(response.getStatusLine()).thenReturn(statusLine);
