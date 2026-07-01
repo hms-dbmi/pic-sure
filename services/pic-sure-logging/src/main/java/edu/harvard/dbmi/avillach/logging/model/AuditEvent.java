@@ -10,8 +10,10 @@ public record AuditEvent(
     @JsonProperty("event_type") String eventType,
     @JsonProperty("action") String action,
     @JsonProperty("client_type") String clientType,
+    @JsonProperty("caller") String caller,
     @JsonProperty("session_id") String sessionId,
     @JsonProperty("request") RequestInfo request,
     @JsonProperty("metadata") Map<String, Object> metadata,
     @JsonProperty("error") Map<String, Object> error
-) {}
+) {
+}
