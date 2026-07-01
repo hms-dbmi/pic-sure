@@ -1,0 +1,8 @@
+package edu.harvard.hms.dbmi.avillach.hpds.data.genomic;
+
+public class VariantUtils {
+    public static boolean pathIsVariantSpec(String key) {
+        return key.matches("rs[0-9]+.*") || key.matches(".*,[0-9\\\\.]+,[CATGcatg]*,[CATGcatg]*")
+            || key.matches(".*,[0-9\\\\.]+,[CATGcatg]*,[CATGcatg]*,[\\w\\d_]*,[\\w\\d_]*");
+    }
+}
