@@ -31,3 +31,6 @@ log/
 **/.claude/
 docs/superpowers/
 *.http
+
+# TODO: Remove once development is complete
+george_development_notes.md
