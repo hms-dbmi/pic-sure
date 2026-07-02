@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -92,17 +93,21 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
             requestId = MDC.get("requestId");
         }
 
+        String srcIp = resolveSourceIp(request);
+        String userAgent = request.getHeader("User-Agent");
+        String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, userAgent);
+
         RequestInfo requestInfo = RequestInfo.builder().requestId(requestId).method(method).url(path).queryString(request.getQueryString())
-            .srcIp(resolveSourceIp(request)).status(response.getStatus()).duration(duration).httpUserAgent(request.getHeader("User-Agent"))
-            .httpContentType(response.getContentType()).build();
+            .srcIp(srcIp).status(response.getStatus()).duration(duration).httpUserAgent(userAgent)
+            .httpContentType(response.getContentType()).referrer(request.getHeader("Referer")).build();
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         if (audit != null) {
             audit.getMetadata().forEach(metadata::putIfAbsent);
         }
 
-        LoggingEvent.Builder eventBuilder =
-            LoggingEvent.builder(eventType).action(action).request(requestInfo).metadata(metadata.isEmpty() ? null : metadata);
+        LoggingEvent.Builder eventBuilder = LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo)
+            .metadata(metadata.isEmpty() ? null : metadata);
 
         if (response.getStatus() >= 400) {
             Map<String, Object> error = new LinkedHashMap<>();

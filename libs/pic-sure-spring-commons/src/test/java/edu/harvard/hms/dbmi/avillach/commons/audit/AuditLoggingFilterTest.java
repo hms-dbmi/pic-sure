@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -91,12 +92,21 @@ class AuditLoggingFilterTest {
         AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Session-Id", "session-123");
+        request.addHeader("Referer", "https://picsure.example.org/explore");
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(200);
 
         filter.doFilter(request, response, new MockFilterChain());
 
-        verify(client, times(1)).send(any(LoggingEvent.class));
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+
+        LoggingEvent event = eventCaptor.getValue();
+        assertThat(event.getEventType()).isEqualTo("QUERY");
+        assertThat(event.getAction()).isEqualTo("query.sync");
+        assertThat(event.getSessionId()).isEqualTo("session-123");
+        assertThat(event.getRequest().getReferrer()).isEqualTo("https://picsure.example.org/explore");
     }
 
     @Test
