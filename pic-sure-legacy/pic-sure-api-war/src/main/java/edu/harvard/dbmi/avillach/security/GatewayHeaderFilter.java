@@ -33,11 +33,15 @@ import java.util.stream.Collectors;
  * what gets mapped into the {@code AuthUser} field that backs {@code @RolesAllowed} / {@code isUserInRole} checks. Getting this backwards
  * would silently make every {@code @RolesAllowed} check fail (or, worse, pass) for gateway-owned requests.
  * <p>
- * TRUST NOTE: these headers are only safe to trust because (a) the gateway's identity-propagation filter strips any client-supplied
- * {@code X-User-*} headers before setting its own from a verified token-introspection result, and (b) the Apache httpd reverse proxy
- * only exposes the gateway to the outside world - WildFly is never directly reachable, so a client can never inject these headers
- * itself. If that network topology ever changes (WildFly exposed directly, or another untrusted hop added in front of the gateway),
- * this filter becomes a privilege-escalation vector and must be revisited.
+ * TRUST NOTE: these headers are only safe to trust because (a) the gateway's {@code InboundIdentityHeaderSanitizingFilter} ALWAYS
+ * strips any client-supplied {@code X-User-*} headers - unconditionally, independent of the gateway's own auth-enabled switch -
+ * before the identity-propagation filter (when the gateway's auth chain is on) sets its own from a verified token-introspection
+ * result, and (b) the Apache httpd reverse proxy only exposes the gateway to the outside world - WildFly is never directly
+ * reachable, so a client can never inject these headers itself. Both conditions are load-bearing: if (a) ever regressed to only
+ * stripping headers as part of the gated auth chain, a client could spoof these headers whenever that chain is off. If (b) ever
+ * changed (WildFly exposed directly, or another untrusted hop added in front of the gateway), this filter becomes a
+ * privilege-escalation vector. {@code GATEWAY_OWNS_AUTH} (the master switch) MUST be set consistently on both the gateway and
+ * WildFly - if only WildFly has it on, these headers would be trusted from a gateway that never resolved/validated them.
  * <p>
  * Runs at {@link Priorities#AUTHENTICATION} (same as {@link JWTFilter}) so the {@code SecurityContext} is installed before RESTEasy's
  * {@code RolesAllowed} enforcement (Priorities.AUTHORIZATION) evaluates it. For paths the gateway does not own (interim

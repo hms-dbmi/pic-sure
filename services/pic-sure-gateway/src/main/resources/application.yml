@@ -48,7 +48,7 @@ server:
 picsure:
   gateway:
     security:
-      auth-enabled: ${GATEWAY_AUTH_ENABLED:false}
+      auth-enabled: ${GATEWAY_OWNS_AUTH:false}
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

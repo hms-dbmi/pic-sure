@@ -76,9 +76,14 @@ public class GatewayAuthDelegationTest {
     // ---- Edge cases ----
 
     @Test
-    public void nullPath_notTreatedAsQueryRead() {
+    public void nullOrBlankPath_failsClosed_wildFlyOwnsAuth() {
+        // FIX 3: an unresolvable path must never default to gateway-owned -- that would silently skip WildFly's
+        // JWTFilter/AuditLoggingFilter for a request it can't even identify, leaving a gap in the audit trail.
         assertFalse(new GatewayAuthDelegation(false, false).gatewayOwnsAuth(null));
-        assertTrue(new GatewayAuthDelegation(true, false).gatewayOwnsAuth(null));
+        assertFalse(new GatewayAuthDelegation(true, false).gatewayOwnsAuth(null));
+        assertFalse(new GatewayAuthDelegation(true, true).gatewayOwnsAuth(null));
+        assertFalse(new GatewayAuthDelegation(true, false).gatewayOwnsAuth(""));
+        assertFalse(new GatewayAuthDelegation(true, false).gatewayOwnsAuth("   "));
     }
 
     @Test

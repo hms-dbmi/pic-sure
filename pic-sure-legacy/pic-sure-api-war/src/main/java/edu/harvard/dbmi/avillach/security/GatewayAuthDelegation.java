@@ -41,7 +41,13 @@ public final class GatewayAuthDelegation {
         if (!gatewayOwnsAuth) {
             return false; // legacy behavior: WildFly owns everything
         }
-        if (path != null && QUERY_READ_PATHS.matcher(path).matches()) {
+        if (path == null || path.isBlank()) {
+            // Fail CLOSED: an unresolvable path must not silently default to gateway-owned, or WildFly would skip its
+            // own JWTFilter/AuditLoggingFilter for a request it can't even identify -- a gap in the audit trail.
+            // WildFly authenticates and audits instead, exactly as it would with the master switch off.
+            return false;
+        }
+        if (QUERY_READ_PATHS.matcher(path).matches()) {
             return gatewayOwnsQueryReadAuth; // Phase 2: false -> WildFly still owns result/signed-url
         }
         return true; // all other paths are gateway-owned once GATEWAY_OWNS_AUTH is true

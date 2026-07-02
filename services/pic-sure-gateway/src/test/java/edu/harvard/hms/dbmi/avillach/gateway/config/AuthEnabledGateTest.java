@@ -34,6 +34,13 @@ class AuthEnabledGateTest {
             assertThat(context.containsBean("identityFilter")).isFalse();
             assertThat(context.containsBean("auditLoggingFilter")).isFalse();
         }
+
+        @Test
+        void inboundIdentityHeaderSanitizingFilterIsPresentEvenWithAuthDisabled() {
+            // FIX 1: this filter is the dangerous-case defense -- it must register even when every gated auth-chain
+            // filter above is absent, otherwise a client's spoofed X-User-* headers pass through untouched.
+            assertThat(context.containsBean("inboundIdentityHeaderSanitizingFilter")).isTrue();
+        }
     }
 
     @Nested
@@ -53,6 +60,11 @@ class AuthEnabledGateTest {
             assertThat(context.containsBean("tokenRefreshFilter")).isTrue();
             assertThat(context.containsBean("identityFilter")).isTrue();
             assertThat(context.containsBean("auditLoggingFilter")).isTrue();
+        }
+
+        @Test
+        void inboundIdentityHeaderSanitizingFilterIsAlsoPresentWhenAuthEnabled() {
+            assertThat(context.containsBean("inboundIdentityHeaderSanitizingFilter")).isTrue();
         }
     }
 }
