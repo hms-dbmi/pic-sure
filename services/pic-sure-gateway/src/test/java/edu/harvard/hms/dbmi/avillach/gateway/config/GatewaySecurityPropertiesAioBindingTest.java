@@ -1,0 +1,32 @@
+package edu.harvard.hms.dbmi.avillach.gateway.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+
+/**
+ * Pins the AIO profile override (Part C of Task 14): under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names
+ * rather than the empty base defaults.
+ */
+@SpringBootTest
+@ActiveProfiles("aio")
+@TestPropertySource(properties = "picsure.gateway.security.auth-enabled=true")
+class GatewaySecurityPropertiesAioBindingTest {
+
+    @Autowired
+    private GatewaySecurityProperties props;
+
+    @Test
+    void introspectionUrlResolvesToAioPsamaDns() {
+        assertThat(props.introspectionUrl()).isEqualTo("http://psama:8090/auth/token/inspect");
+    }
+
+    @Test
+    void openAccessValidateUrlResolvesToAioPsamaDns() {
+        assertThat(props.openAccessValidateUrl()).isEqualTo("http://psama:8090/auth/open/validate");
+    }
+}

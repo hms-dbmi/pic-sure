@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.gateway.filter;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,6 +50,7 @@ public class AuditFilterConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     public FilterRegistrationBean<GatewayAuditLoggingFilter> auditLoggingFilter(
         LoggingClient client, AuditRouteTable routes, AuditContext audit, GatewayAuthScope scope
     ) {

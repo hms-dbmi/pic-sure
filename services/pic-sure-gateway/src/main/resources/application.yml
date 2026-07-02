@@ -41,3 +41,27 @@ management:
 
 server:
   port: 8080
+
+# DB-free auth/audit chain (Phase 2). auth-enabled is the master switch: false
+# (default) => no auth/audit filters register, gateway is a pure pass-through.
+# Secrets come from the environment (gateway.env); non-secret defaults are here.
+picsure:
+  gateway:
+    security:
+      auth-enabled: ${GATEWAY_AUTH_ENABLED:false}
+      open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
+      user-id-claim: sub
+      max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
+      gateway-owns-query-read-auth: ${GATEWAY_OWNS_QUERY_READ_AUTH:false}
+      introspection-url: ${TOKEN_INTROSPECTION_URL:}
+      open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
+      service-token: ${TOKEN_INTROSPECTION_TOKEN:}
+      query-service-url: ${HPDS_QUERY_SERVICE_URL:}
+      query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+      allow-list-prefixes:
+        - /logging
+        - /actuator
+        - /openapi
+        - /swagger-ui
+      query-read-paths:
+        - ".*/query/[^/]+/(?:result|signed-url)/?$"

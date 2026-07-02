@@ -29,7 +29,7 @@ class SecurityConfigTest {
     void psamaClientAndQueryAuthFetcherBeansBuildSuccessfullyWithTimeoutBoundedClients() {
         SecurityConfig config = new SecurityConfig();
         GatewaySecurityProperties props = new GatewaySecurityProperties(
-            List.of(), false, "userId", 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
+            true, List.of(), false, "userId", 1024, "http://psama.local/introspect", "http://psama.local/open-access", "svc-token",
             "http://query.local", "internal-token", false, List.of()
         );
 

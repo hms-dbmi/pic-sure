@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.gateway.config;
 
 import java.time.Duration;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -90,6 +91,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<BufferingFilter> bufferingFilter(
         GatewaySecurityProperties props, GatewayAuthScope scope, MeterRegistry meterRegistry
     ) {
@@ -100,6 +102,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props
     ) {
@@ -110,6 +113,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewayAuthScope scope,
         GatewaySecurityProperties props
@@ -123,6 +127,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<BodyMutationFilter> bodyMutationFilter(ObjectMapper json) {
         var r = new FilterRegistrationBean<>(new BodyMutationFilter(json));
         r.setOrder(35);
@@ -131,6 +136,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<TokenRefreshResponseFilter> tokenRefreshFilter() {
         var r = new FilterRegistrationBean<>(new TokenRefreshResponseFilter());
         r.setOrder(40);
@@ -139,6 +145,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
     FilterRegistrationBean<IdentityPropagationFilter> identityFilter() {
         var r = new FilterRegistrationBean<>(new IdentityPropagationFilter());
         r.setOrder(50);

@@ -10,7 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "picsure.gateway.security")
 public record GatewaySecurityProperties(
-    List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
+    // GATEWAY_AUTH_ENABLED -- master switch. false (default) => no auth/audit filters register, gateway is a pure
+    // pass-through. Flip true ONLY during the coordinated cutover (after WildFly stops owning auth for these routes).
+    boolean authEnabled, List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
     // HPDS_QUERY_SERVICE_URL -- for QueryAuthFetcher dispatch
