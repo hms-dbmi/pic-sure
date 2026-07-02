@@ -36,14 +36,16 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real {@code Bearer} token
  * (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL request path as the
  * root-level {@code "Target Service"} (decision 4 — no canonical-mapping table) and the buffered body (or, for interim paths once they go
- * live in Phase 4, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, both with {@code resourceCredentials} stripped and
- * NEVER a {@code formattedQuery} field (decision 5 — PSAMA only ever uses it for logging, never authorization). On success this filter
- * stashes {@code X-User-*} request attributes — including privileges (decision 7), the real {@code @RolesAllowed} signal — for
- * {@code IdentityPropagationFilter} to turn into outbound headers; on {@code tokenRefreshed} it stashes {@link #ATTR_REFRESHED_TOKEN} for
- * {@code TokenRefreshResponseFilter}; on a returned {@code query} it stashes {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for
- * {@code BodyMutationFilter} to apply — this filter does NOT mutate the body itself. {@code active:false} denies with a 401 additive error
- * body (decision 10). {@link QueryAuthFetcher}/introspection infrastructure failures ({@link PicsureException}, or any introspection
- * transport error) are fail-closed: the mapped status/error body is written and the request is never forwarded.
+ * live in Phase 4, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with {@code resourceCredentials} stripped and NEVER a
+ * {@code formattedQuery} field (decision 5 — PSAMA only ever uses it for logging, never authorization). If the body is not valid JSON,
+ * {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still textually contain
+ * {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including privileges (decision 7), the
+ * real {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on {@code tokenRefreshed} it
+ * stashes {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it stashes
+ * {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply — this filter does NOT mutate the body itself.
+ * {@code active:false} denies with a 401 additive error body (decision 10). {@link QueryAuthFetcher}/introspection infrastructure failures
+ * ({@link PicsureException}, or any introspection transport error) are fail-closed: the mapped status/error body is written and the request
+ * is never forwarded.
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -84,7 +86,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         String path = req.getRequestURI() == null ? "" : req.getRequestURI();
         String method = req.getMethod();
 
-        if ("GET".equals(method) && (path.equals("/system/status") || path.endsWith("/system/status"))) {
+        if ("GET".equals(method) && (path.equals("/system/status") || path.equals("/v3/system/status"))) {
             audit.put("username", "SYSTEM_MONITOR");
             chain.doFilter(req, resp);
             return;
@@ -94,7 +96,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             return;
         }
         for (String prefix : allowListPrefixes) {
-            if (path.startsWith(prefix)) {
+            if (path.equals(prefix) || path.startsWith(prefix + "/")) {
                 chain.doFilter(req, resp);
                 return;
             }
@@ -120,15 +122,18 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             requestMeta = buildRequestMeta(req, path);
         } catch (PicsureException e) {
             // QueryAuthFetcher fail-closed (decision 8/10): honest status + additive error body.
-            audit.put("auth_result", "failure");
-            audit.put("auth_failure_reason", "dispatch_error");
-            GatewayErrors.write(resp, e.getStatus(), e.getErrorType(), e.getMessage());
+            mapPicsureException(resp, e);
             return;
         }
 
         IntrospectionResponse intro;
         try {
             intro = psama.introspect(token, requestMeta);
+        } catch (PicsureException e) {
+            // Preserve the existing PicsureException mapping (status/errorType from the exception) rather than
+            // flattening it into a generic 502 below.
+            mapPicsureException(resp, e);
+            return;
         } catch (Exception e) {
             log.error("PSAMA introspection failed", e);
             audit.put("auth_result", "failure");
@@ -168,6 +173,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         GatewayErrors.write(resp, HttpStatus.UNAUTHORIZED, "unauthorized", message);
     }
 
+    private void mapPicsureException(HttpServletResponse resp, PicsureException e) throws IOException {
+        audit.put("auth_result", "failure");
+        audit.put("auth_failure_reason", "dispatch_error");
+        GatewayErrors.write(resp, e.getStatus(), e.getErrorType(), e.getMessage());
+    }
+
     private Map<String, Object> buildRequestMeta(HttpServletRequest req, String path) {
         Map<String, Object> requestMeta = new HashMap<>();
         // decision 4: send the REAL request path verbatim, root-level. No canonical-mapping table.
@@ -187,10 +198,10 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
                 requestMeta.put("query", body);
             }
         } catch (IOException e) {
-            log.debug("Could not parse query for introspection meta: {}", e.getMessage());
-            if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
-                requestMeta.put("query", new String(buffered.getBody()));
-            }
+            // Do NOT forward the raw, unstripped body: a malformed body may still textually contain
+            // resourceCredentials secrets, and we have no parsed JSON to strip them from. Omit "query"
+            // entirely rather than risk leaking it to PSAMA. Never log body content here.
+            log.debug("request body was not valid JSON; omitting query from introspection payload");
         }
         // NO formattedQuery (decision 5): PSAMA uses it only for access-log strings, never for authorization.
         return requestMeta;

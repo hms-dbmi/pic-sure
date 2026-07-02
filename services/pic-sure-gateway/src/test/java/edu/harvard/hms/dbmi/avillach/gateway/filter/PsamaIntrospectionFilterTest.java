@@ -76,12 +76,37 @@ class PsamaIntrospectionFilterTest {
         BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
-        f.doFilter(req, resp, mock(FilterChain.class));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
 
         assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ID)).isEqualTo("u-1");
         assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_EMAIL)).isEqualTo("alice@example.com");
         assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_PRIVILEGES)).isEqualTo("SUPER_ADMIN");
         assertThat(ctx.getMetadata()).containsEntry("auth_result", "success");
+        verify(chain).doFilter(req, resp);
+    }
+
+    @Test
+    void onActiveTokenWithMultiplePrivilegesJoinsThemWithComma() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any())).thenReturn(
+            new IntrospectionResponse(
+                true, "u-1", "s-1", "alice@example.com", "ADMIN", List.of("SUPER_ADMIN", "DATA_ADMIN", "USER"), false, null, null
+            )
+        );
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_PRIVILEGES)).isEqualTo("SUPER_ADMIN,DATA_ADMIN,USER");
+        verify(chain).doFilter(req, resp);
     }
 
     @Test
@@ -106,6 +131,29 @@ class PsamaIntrospectionFilterTest {
         assertThat(meta.getValue().get("Target Service")).isEqualTo("/v3/query");
         assertThat(meta.getValue().toString()).doesNotContain("resourceCredentials");
         assertThat(meta.getValue().toString()).doesNotContain("formattedQuery");
+    }
+
+    @Test
+    void malformedJsonBodyOmitsQueryAndDoesNotLeakSecrets() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any()))
+            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), false, null, null));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        // Truncated/invalid JSON that still textually contains a resourceCredentials secret.
+        byte[] malformed = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"super-secret-value\"".getBytes();
+        BufferedRequestWrapper req = wrap("Bearer user-token", malformed, "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
+        verify(client).introspect(eq("user-token"), meta.capture());
+        assertThat(meta.getValue()).doesNotContainKey("query");
+        assertThat(meta.getValue().toString()).doesNotContain("super-secret-value");
     }
 
     @Test
@@ -178,6 +226,41 @@ class PsamaIntrospectionFilterTest {
 
         verifyNoInteractions(client);
         verify(chain).doFilter(eq(req), any());
+    }
+
+    @Test
+    void nestedSystemStatusPathIsNotAllowListed() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, mock(QueryAuthFetcher.class));
+
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/foo/system/status", "GET");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verifyNoInteractions(client);
+        verify(chain, never()).doFilter(any(), any());
+        verify(resp).setStatus(401);
+        assertThat(ctx.getMetadata()).doesNotContainEntry("username", "SYSTEM_MONITOR");
+    }
+
+    @Test
+    void prefixAllowListDoesNotMatchSiblingPathWithSamePrefixText() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), mock(QueryAuthFetcher.class));
+
+        // Allow-listed prefix is "/logging"; "/loggingAdmin/x" must NOT match it.
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/loggingAdmin/x");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verifyNoInteractions(client);
+        verify(chain, never()).doFilter(any(), any());
+        verify(resp).setStatus(401);
     }
 
     private static BufferedRequestWrapper wrap(String authHeader, byte[] body, String uri) {
