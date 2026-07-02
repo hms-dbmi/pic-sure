@@ -11,6 +11,7 @@
         <module>platform</module>
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
+        <module>libs/pic-sure-spring-commons</module>
         <module>services/pic-sure-gateway</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->

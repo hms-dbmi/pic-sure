@@ -21,6 +21,7 @@
         <pic-sure-api-model.version>3.0.0</pic-sure-api-model.version>
         <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
         <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
+        <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
         <!-- Shared third-party pins not governed by the Spring BOMs -->
         <wiremock.version>3.10.0</wiremock.version>
     </properties>
@@ -58,6 +59,11 @@
                 <groupId>edu.harvard.dbmi.avillach</groupId>
                 <artifactId>pic-sure-logging-client</artifactId>
                 <version>${pic-sure-logging-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-spring-commons</artifactId>
+                <version>${pic-sure-spring-commons.version}</version>
             </dependency>
             <!-- Test tooling shared across services -->
             <dependency>
