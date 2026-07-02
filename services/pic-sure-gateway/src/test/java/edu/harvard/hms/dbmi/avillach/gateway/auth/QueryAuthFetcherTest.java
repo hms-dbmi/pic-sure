@@ -45,9 +45,7 @@ class QueryAuthFetcherTest {
 
     @Test
     void fetchesStoredQueryForResultPathAndSendsInternalToken() {
-        qs.stubFor(
-            get(urlEqualTo("/internal/queries/abc-123/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"stored\\\":true}\"}"))
-        );
+        qs.stubFor(get(urlEqualTo("/internal/queries/abc-123/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"stored\\\":true}\"}")));
         assertThat(fetcher().queryJsonForPath("/query/abc-123/result")).contains("{\"stored\":true}");
         qs.verify(
             getRequestedFor(urlEqualTo("/internal/queries/abc-123/dispatch"))

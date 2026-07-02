@@ -26,9 +26,10 @@ import io.micrometer.core.instrument.MeterRegistry;
 /**
  * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
  * {@code PsamaIntrospectionFilter}(30) -&gt; {@code BodyMutationFilter}(35) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt;
- * {@code IdentityPropagationFilter}(50). Audit (60) lands in a later task. No datasource, no JPA -- {@link PsamaClient} and
- * {@link QueryAuthFetcher} talk to PSAMA / the query service over HTTP only. <p> Spring Security itself stays permit-all: the introspection
- * filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's authentication machinery.
+ * {@code IdentityPropagationFilter}(50). The audit filter (60) is wired in {@code AuditFilterConfig}. No datasource, no JPA --
+ * {@link PsamaClient} and {@link QueryAuthFetcher} talk to PSAMA / the query service over HTTP only. <p> Spring Security itself stays
+ * permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's
+ * authentication machinery.
  */
 @Configuration
 @EnableConfigurationProperties(GatewaySecurityProperties.class)

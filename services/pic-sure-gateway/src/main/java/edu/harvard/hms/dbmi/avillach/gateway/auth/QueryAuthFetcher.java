@@ -13,10 +13,9 @@ import org.springframework.web.client.RestClientResponseException;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from the query service's
- * gateway-only dispatch endpoint (§4.3.1), purely as the PSAMA introspection payload — NO database access
- * (decision 8). Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN, S-M4). Fail-closed:
- * ANY error (incl. 403) denies the request. Dormant during the Phase 2 interim (Task 5).
+ * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from the query service's gateway-only dispatch endpoint
+ * (§4.3.1), purely as the PSAMA introspection payload — NO database access (decision 8). Sends the mandatory internal dispatch token
+ * (X-PIC-SURE-INTERNAL-TOKEN, S-M4). Fail-closed: ANY error (incl. 403) denies the request. Dormant during the Phase 2 interim (Task 5).
  */
 public class QueryAuthFetcher {
 
@@ -73,5 +72,6 @@ public class QueryAuthFetcher {
         return resp.queryJson();
     }
 
-    record DispatchResponse(String queryJson) {}
+    record DispatchResponse(String queryJson) {
+    }
 }

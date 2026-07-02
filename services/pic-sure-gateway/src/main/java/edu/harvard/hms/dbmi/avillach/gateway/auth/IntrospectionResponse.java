@@ -6,14 +6,7 @@ import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record IntrospectionResponse(
-    boolean active,
-    String userId,
-    String sub,
-    String email,
-    String roles,
-    List<String> privileges,
-    Boolean tokenRefreshed,
-    String token,
+    boolean active, String userId, String sub, String email, String roles, List<String> privileges, Boolean tokenRefreshed, String token,
     String query
 ) {
 }
