@@ -1,23 +1,129 @@
 package edu.harvard.hms.dbmi.avillach.gateway.config;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.context.annotation.RequestScope;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.BodyMutationFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.BufferingFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * Interim security wiring introduced alongside {@code spring-boot-starter-security} (Task 1). Without an explicit
- * {@link SecurityFilterChain} bean, Spring Boot's default auto-configuration requires authentication on every request, which breaks
- * transparent pass-through. This permits all requests at the Spring Security layer; the real auth boundary is the PSAMA introspection
- * filter chain landing in a later task (plan: {@code SecurityConfig} Step 3), which will extend this class with
- * {@code GatewaySecurityProperties} and the filter registrations (BufferingFilter, OpenAccessFilter, PsamaIntrospectionFilter, ...).
+ * Wires the DB-free auth filter chain: {@code BufferingFilter}(10) -&gt; {@code OpenAccessFilter}(20) -&gt;
+ * {@code PsamaIntrospectionFilter}(30) -&gt; {@code BodyMutationFilter}(35) -&gt; {@code TokenRefreshResponseFilter}(40) -&gt;
+ * {@code IdentityPropagationFilter}(50). Audit (60) lands in a later task. No datasource, no JPA -- {@link PsamaClient} and
+ * {@link QueryAuthFetcher} talk to PSAMA / the query service over HTTP only. <p> Spring Security itself stays permit-all: the introspection
+ * filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's authentication machinery.
  */
 @Configuration
+@EnableConfigurationProperties(GatewaySecurityProperties.class)
 public class SecurityConfig {
 
     @Bean
     SecurityFilterChain http(HttpSecurity http) throws Exception {
-        // Gateway permits all at the Security layer; a later task adds the real auth boundary.
+        // Gateway permits all at the Security layer; the introspection filter is the real auth boundary.
         return http.csrf(csrf -> csrf.disable()).authorizeHttpRequests(a -> a.anyRequest().permitAll()).build();
+    }
+
+    @Bean
+    ObjectMapper objectMapper() {
+        return new ObjectMapper();
+    }
+
+    /**
+     * Per-request audit metadata holder. Request-scoped (rather than a shared singleton) so concurrent requests never leak metadata into
+     * each other; singleton filters hold a TARGET_CLASS scoped proxy that resolves to the current request's instance.
+     */
+    @Bean
+    @RequestScope
+    AuditContext auditContext() {
+        return new AuditContext();
+    }
+
+    @Bean
+    GatewayAuthScope gatewayAuthScope(GatewaySecurityProperties props) {
+        return new GatewayAuthScope(props.gatewayOwnsQueryReadAuth(), props.queryReadPaths());
+    }
+
+    @Bean
+    PsamaClient psamaClient(GatewaySecurityProperties props) {
+        return new PsamaClient(RestClient.builder().build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken());
+    }
+
+    @Bean
+    QueryAuthFetcher queryAuthFetcher(GatewaySecurityProperties props) {
+        return new QueryAuthFetcher(RestClient.builder().build(), props.queryServiceUrl(), props.queryServiceInternalToken());
+    }
+
+    @Bean
+    FilterRegistrationBean<BufferingFilter> bufferingFilter(
+        GatewaySecurityProperties props, GatewayAuthScope scope, MeterRegistry meterRegistry
+    ) {
+        var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), scope, meterRegistry));
+        r.setOrder(10);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
+        PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props
+    ) {
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled()));
+        r.setOrder(20);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
+        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewayAuthScope scope,
+        GatewaySecurityProperties props
+    ) {
+        var r = new FilterRegistrationBean<>(
+            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim())
+        );
+        r.setOrder(30);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<BodyMutationFilter> bodyMutationFilter(ObjectMapper json) {
+        var r = new FilterRegistrationBean<>(new BodyMutationFilter(json));
+        r.setOrder(35);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<TokenRefreshResponseFilter> tokenRefreshFilter() {
+        var r = new FilterRegistrationBean<>(new TokenRefreshResponseFilter());
+        r.setOrder(40);
+        r.addUrlPatterns("/*");
+        return r;
+    }
+
+    @Bean
+    FilterRegistrationBean<IdentityPropagationFilter> identityFilter() {
+        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter());
+        r.setOrder(50);
+        r.addUrlPatterns("/*");
+        return r;
     }
 }
