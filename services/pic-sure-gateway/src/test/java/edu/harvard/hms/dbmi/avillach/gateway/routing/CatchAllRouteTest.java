@@ -21,11 +21,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Proves the transparent catch-all: any inbound path is forwarded to ${WILDFLY_URL}
- * re-prefixed with /pic-sure-api-2/PICSURE/, and the upstream response flows back
- * unchanged. Also implicitly verifies the SC 2025.0.x property prefix
- * (spring.cloud.gateway.server.webmvc.routes) actually binds — if it did not,
- * no route would match and this test would 404.
+ * Proves the transparent catch-all: any inbound path is forwarded to ${WILDFLY_URL} re-prefixed with /pic-sure-api-2/PICSURE/, and the
+ * upstream response flows back unchanged. Also implicitly verifies the SC 2025.0.x property prefix
+ * (spring.cloud.gateway.server.webmvc.routes) actually binds — if it did not, no route would match and this test would 404.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class CatchAllRouteTest {
@@ -47,8 +45,8 @@ class CatchAllRouteTest {
     @BeforeEach
     void stubLegacy() {
         wildflyStub.resetAll();
-        wildflyStub.stubFor(get(urlPathMatching("/pic-sure-api-2/PICSURE/.*"))
-            .willReturn(aResponse().withStatus(200).withBody("legacy-ok")));
+        wildflyStub
+            .stubFor(get(urlPathMatching("/pic-sure-api-2/PICSURE/.*")).willReturn(aResponse().withStatus(200).withBody("legacy-ok")));
     }
 
     @Autowired
