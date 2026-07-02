@@ -1,0 +1,2 @@
+# Local profile: point WILDFLY_URL at a locally reachable WildFly, e.g.
+#   WILDFLY_URL=http://localhost:8080 java -jar target/pic-sure-gateway-*.jar --spring.profiles.active=local

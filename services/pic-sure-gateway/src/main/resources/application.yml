@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: pic-sure-gateway
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            # Phase 1: single low-priority catch-all — everything forwards to WildFly
+            # with the legacy context path re-prefixed. Public URLs are unchanged.
+            - id: legacy-wildfly-catchall
+              uri: ${WILDFLY_URL:http://wildfly:8080}
+              order: 1000
+              predicates:
+                - Path=/**
+              filters:
+                - RewritePath=/(?<segment>.*), /pic-sure-api-2/PICSURE/$\{segment}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    distribution:
+      # Publish client-observable latency percentiles per route for the Phase-1
+      # baseline and ongoing comparison (visible at /actuator/prometheus and
+      # /actuator/metrics/http.server.requests).
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+      percentiles-histogram:
+        http.server.requests: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+server:
+  port: 8080

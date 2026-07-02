@@ -5,16 +5,12 @@
   <parent>
     <groupId>edu.harvard.hms.dbmi.avillach</groupId>
     <artifactId>pic-sure-common</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
   </parent>
   <artifactId>pic-sure-api-model</artifactId>
   <name>pic-sure-api-common</name>
   <url>http://maven.apache.org</url>
     <packaging>jar</packaging>
-  <properties>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-      <maven.compiler.release>11</maven.compiler.release>
-  </properties>
   <dependencies>
       <dependency>
           <groupId>com.fasterxml.jackson.core</groupId>
@@ -33,7 +29,7 @@
       <dependency>
           <groupId>org.junit.vintage</groupId>
           <artifactId>junit-vintage-engine</artifactId>
-          <version>5.10.0</version>
+          <!-- version managed by the imported Spring Boot BOM (keeps the JUnit platform aligned) -->
           <scope>test</scope>
       </dependency>
 

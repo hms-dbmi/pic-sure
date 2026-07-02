@@ -344,7 +344,8 @@
       <dependency>
         <groupId>edu.harvard.hms.dbmi.avillach</groupId>
         <artifactId>pic-sure-api-model</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <!-- Frozen Java 11 release — the 3.0.0 line in libs/ is Java 25 and must never be consumed here. -->
+        <version>1.0.0</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

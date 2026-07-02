@@ -4,14 +4,27 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>edu.harvard.hms.dbmi.avillach</groupId>
     <artifactId>pic-sure-api</artifactId>
-    <version>3.0.0</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
     <name>pic-sure-api</name>
     <modules>
+        <module>platform</module>
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
-        <module>pic-sure-legacy</module>
+        <module>services/pic-sure-gateway</module>
+        <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
+             (Java 11/javax, own parent pom) and builds independently. -->
     </modules>
+    <properties>
+        <revision>3.0.0</revision>
+        <java.version>25</java.version>
+        <!-- Duplicated in platform/pom.xml (the standalone BOM cannot inherit these).
+             Bump both files in lockstep. -->
+        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <spotless.version>2.46.1</spotless.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
     <repositories>
         <repository>
             <id>github</id>
@@ -22,16 +35,134 @@
             </snapshots>
         </repository>
     </repositories>
-    <properties>
-    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <!-- The single version catalog. Standalone (no parent) so this import
+                 cannot create a model-resolution cycle. -->
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-bom</artifactId>
+                <version>${revision}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <build>
         <pluginManagement>
             <plugins>
+                <plugin>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>3.5.0</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.3.1</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                        <release>${java.version}</release>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.3</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>3.4.2</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>3.1.4</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>3.1.4</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <!-- Pinned here because modules do not inherit spring-boot-starter-parent. -->
+                    <version>${spring-boot.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>com.diffplug.spotless</groupId>
+                    <artifactId>spotless-maven-plugin</artifactId>
+                    <version>${spotless.version}</version>
+                    <configuration>
+                        <java>
+                            <eclipse>
+                                <version>4.26</version>
+                                <file>${maven.multiModuleProjectDirectory}/code-formatting/eclipse-formatter.xml</file>
+                            </eclipse>
+                            <toggleOffOn/>
+                        </java>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>1.6.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>3.5.0</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- Java 25 is ENFORCED at build time, not merely requested. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-jdk-25</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[25,26)</version>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Resolves ${revision} into published/installed POMs (CI-friendly versions). -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
-    <dependencyManagement>
-    </dependencyManagement>
     <distributionManagement>
         <repository>
             <id>github</id>

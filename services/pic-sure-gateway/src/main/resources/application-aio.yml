@@ -1,0 +1,2 @@
+# AIO profile: WildFly is reachable by Docker DNS on the shared `picsure` network.
+# WILDFLY_URL may still override (defaults to http://wildfly:8080 in application.yml).
