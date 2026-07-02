@@ -112,6 +112,56 @@ public class JWTFilterTest {
         );
     }
 
+    // ---- Gateway-owns-auth bypass (Task 17 / Option A) ----
+
+    @Test
+    public void testGatewayOwnsAuthBypassesIntrospectionForOrdinaryPath() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/query");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
+
+        filter.filter(ctx);
+
+        verify(ctx, never()).getHeaderString(HttpHeaders.AUTHORIZATION);
+        verify(ctx, never()).setProperty(eq("username"), anyString());
+        verify(ctx, never()).setSecurityContext(any());
+    }
+
+    @Test
+    public void testGatewayOwnsAuthStillRunsFullIntrospectionForInterimResultPath() throws IOException {
+        tokenIntrospectionStub();
+        queryFormatStub();
+        persistedQuery();
+
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        when(picSureWarInit.isGatewayOwnsQueryReadAuth()).thenReturn(false);
+
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/query/e830138f-2943-4661-90ae-da053bd94a18/result");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
+        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
+
+        filter.filter(ctx);
+
+        verify(postRequestedFor(urlEqualTo("/introspection_endpoint")));
+        verify(ctx).setProperty("username", "TEST_USER");
+    }
+
+    @Test
+    public void testGatewayOwnsAuthAndQueryReadAuthBypassesResultPathToo() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        when(picSureWarInit.isGatewayOwnsQueryReadAuth()).thenReturn(true);
+
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/query/e830138f-2943-4661-90ae-da053bd94a18/result");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
+
+        filter.filter(ctx);
+
+        verify(ctx, never()).getHeaderString(HttpHeaders.AUTHORIZATION);
+    }
+
     @Test
     public void testSystemPathDoesNotRequireAuthenticationHeader() throws IOException {
         ContainerRequestContext ctx = createRequestContext();

@@ -35,10 +35,28 @@ public class PicSureWarInit {
     @Resource(mappedName = "java:global/openAccessValidateUrl")
     private String open_access_validate_url;
 
+    // Option-A gateway-owns-auth flags (decision 11 / P-M2, Task 17). Master switch: when false
+    // (the default, and how the WAR must ship until the gateway auth/audit chain is live), WildFly
+    // keeps authenticating and auditing every request exactly as it always has.
+    @Resource(mappedName = "java:global/gatewayOwnsAuth")
+    private String gateway_owns_auth_str;
+
+    private boolean gateway_owns_auth;
+
+    // Phase 4 sub-flag: only meaningful once gateway_owns_auth is true. Keeps result/signed-url
+    // (query-read) owned by WildFly until the gateway's QueryAuthFetcher is live.
+    @Resource(mappedName = "java:global/gatewayOwnsQueryReadAuth")
+    private String gateway_owns_query_read_auth_str;
+
+    private boolean gateway_owns_query_read_auth;
+
     @PostConstruct
     public void init() {
         this.open_access_enabled = Boolean.parseBoolean(open_access_enabled_str);
         logger.info("Open access enabled: {}", open_access_enabled);
+        this.gateway_owns_auth = Boolean.parseBoolean(gateway_owns_auth_str);
+        this.gateway_owns_query_read_auth = Boolean.parseBoolean(gateway_owns_query_read_auth_str);
+        logger.info("Gateway owns auth: {}, gateway owns query-read auth: {}", gateway_owns_auth, gateway_owns_query_read_auth);
     }
 
     // to be able to pre modified
@@ -81,6 +99,14 @@ public class PicSureWarInit {
 
     public String getOpenAccessValidateUrl() {
         return this.open_access_validate_url;
+    }
+
+    public boolean isGatewayOwnsAuth() {
+        return gateway_owns_auth;
+    }
+
+    public boolean isGatewayOwnsQueryReadAuth() {
+        return gateway_owns_query_read_auth;
     }
 
 }

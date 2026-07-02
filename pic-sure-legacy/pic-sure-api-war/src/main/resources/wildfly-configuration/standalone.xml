@@ -436,6 +436,10 @@
                 <simple name="java:global/roles_claim" value="${env.PICSURE2_ROLES_CLAIM:privileges}"/>
                 <simple name="java:global/token_introspection_url" value="${env.TOKEN_INTROSPECTION_URL}"/>
                 <simple name="java:global/token_introspection_token" value="${env.TOKEN_INTROSPECTION_TOKEN}"/>
+                <!-- Option-A gateway-owns-auth flags (decision 11 / P-M2, Task 17). Default false: WildFly
+                     owns auth/audit for everything until the gateway cutover flips GATEWAY_OWNS_AUTH true. -->
+                <simple name="java:global/gatewayOwnsAuth" value="${env.GATEWAY_OWNS_AUTH:false}"/>
+                <simple name="java:global/gatewayOwnsQueryReadAuth" value="${env.GATEWAY_OWNS_QUERY_READ_AUTH:false}"/>
             </bindings>
             <remote-naming/>
         </subsystem>

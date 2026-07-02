@@ -17,6 +17,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -29,6 +30,7 @@ public class AuditLoggingFilterTest {
     private LoggingClient loggingClient;
     private HttpServletRequest httpServletRequest;
     private AuditContext auditContext;
+    private PicSureWarInit picSureWarInit;
 
     @Before
     public void setup() {
@@ -43,9 +45,14 @@ public class AuditLoggingFilterTest {
         auditContext = mock(AuditContext.class);
         when(auditContext.getMetadata()).thenReturn(new java.util.HashMap<>());
 
+        // Default mock booleans are false, i.e. GATEWAY_OWNS_AUTH off - matches legacy (pre-gateway)
+        // behavior so none of the existing tests below need to know about the gateway delegation flags.
+        picSureWarInit = mock(PicSureWarInit.class);
+
         filter.loggingClient = loggingClient;
         filter.auditContext = auditContext;
         filter.httpServletRequest = httpServletRequest;
+        filter.picSureWarInit = picSureWarInit;
     }
 
     private ContainerRequestContext mockRequestContext(String path, String method) {
@@ -73,6 +80,67 @@ public class AuditLoggingFilterTest {
         ContainerRequestContext ctx = mock(ContainerRequestContext.class);
         filter.filter(ctx);
         verify(ctx).setProperty(eq("audit_start_time"), anyLong());
+    }
+
+    // ---- Gateway-owns-auth bypass (Task 17 / Option A) ----
+
+    @Test
+    public void testRequestFilterSkipsAuditStartTimeWhenGatewayOwnsAuth() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        ContainerRequestContext reqCtx = mockRequestContext("/query", "POST");
+
+        filter.filter(reqCtx);
+
+        verify(reqCtx, never()).setProperty(eq("audit_start_time"), anyLong());
+    }
+
+    @Test
+    public void testRequestFilterStillSetsAuditStartTimeForInterimResultPathWhenGatewayOwnsAuth() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        when(picSureWarInit.isGatewayOwnsQueryReadAuth()).thenReturn(false);
+        ContainerRequestContext reqCtx = mockRequestContext("/query/abc-123/result", "POST");
+
+        filter.filter(reqCtx);
+
+        verify(reqCtx).setProperty(eq("audit_start_time"), anyLong());
+    }
+
+    @Test
+    public void testResponseFilterSkipsSendingEventWhenGatewayOwnsAuth() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        ContainerRequestContext reqCtx = mockRequestContext("/query", "POST");
+        ContainerResponseContext respCtx = mockResponseContext(200);
+
+        filter.filter(reqCtx, respCtx);
+
+        verify(loggingClient, never()).send(any(LoggingEvent.class));
+        verify(loggingClient, never()).send(any(LoggingEvent.class), anyString(), anyString());
+    }
+
+    @Test
+    public void testResponseFilterStillSendsEventForInterimResultPathWhenGatewayOwnsAuth() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        when(picSureWarInit.isGatewayOwnsQueryReadAuth()).thenReturn(false);
+        ContainerRequestContext reqCtx = mockRequestContext("/query/abc-123/signed-url", "POST");
+        ContainerResponseContext respCtx = mockResponseContext(200);
+
+        filter.filter(reqCtx, respCtx);
+
+        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(loggingClient).send(captor.capture());
+        assertEquals("query.signed_url", captor.getValue().getAction());
+    }
+
+    @Test
+    public void testResponseFilterSendsEventForResultPathWhenGatewayOwnsQueryReadAuthToo() throws IOException {
+        when(picSureWarInit.isGatewayOwnsAuth()).thenReturn(true);
+        when(picSureWarInit.isGatewayOwnsQueryReadAuth()).thenReturn(true);
+        ContainerRequestContext reqCtx = mockRequestContext("/query/abc-123/result", "POST");
+        ContainerResponseContext respCtx = mockResponseContext(200);
+
+        filter.filter(reqCtx, respCtx);
+
+        verify(loggingClient, never()).send(any(LoggingEvent.class));
     }
 
     // ---- URL categorization ----

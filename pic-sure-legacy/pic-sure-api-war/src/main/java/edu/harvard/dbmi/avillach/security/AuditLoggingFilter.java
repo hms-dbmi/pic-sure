@@ -14,11 +14,13 @@ import javax.ws.rs.container.ContainerRequestFilter;
 import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ContainerResponseFilter;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.UriInfo;
 import javax.ws.rs.ext.Provider;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import edu.harvard.dbmi.avillach.PicSureWarInit;
 import edu.harvard.dbmi.avillach.data.entity.AuthUser;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
@@ -100,13 +102,47 @@ public class AuditLoggingFilter implements ContainerRequestFilter, ContainerResp
     @Inject
     AuditContext auditContext;
 
+    @Inject
+    PicSureWarInit picSureWarInit;
+
+    /**
+     * Strips the servlet context / application path prefix (e.g. {@code /pic-sure-api-2/PICSURE}) the same way the response-phase
+     * categorization below does, so the {@link GatewayAuthDelegation} check sees the same post-{@code /PICSURE} path shape the route
+     * table matches against. Null-safe: returns {@code null} if the request's {@link UriInfo} isn't available (e.g. a bare mock in
+     * tests), in which case {@link GatewayAuthDelegation#gatewayOwnsAuth(String)} treats it as a non-query-read path.
+     */
+    private String normalizePath(ContainerRequestContext requestContext) {
+        UriInfo uriInfo = requestContext.getUriInfo();
+        if (uriInfo == null || uriInfo.getRequestUri() == null) {
+            return null;
+        }
+        String path = uriInfo.getRequestUri().getPath();
+        int picsureIdx = path.indexOf("/PICSURE");
+        if (picsureIdx >= 0) {
+            path = path.substring(picsureIdx + "/PICSURE".length());
+        }
+        return path;
+    }
+
+    private GatewayAuthDelegation gatewayAuthDelegation() {
+        return new GatewayAuthDelegation(picSureWarInit.isGatewayOwnsAuth(), picSureWarInit.isGatewayOwnsQueryReadAuth());
+    }
+
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
+        if (gatewayAuthDelegation().gatewayOwnsAuth(normalizePath(requestContext))) {
+            return; // the gateway already emits the audit event for this path
+        }
         requestContext.setProperty(AUDIT_START_TIME, System.currentTimeMillis());
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException {
+        if (gatewayAuthDelegation().gatewayOwnsAuth(normalizePath(requestContext))) {
+            // Gateway already emitted the audit event for this path; the interim result/signed-url paths
+            // (Phase 2) stay WildFly-owned and fall through to the full categorization below.
+            return;
+        }
         try {
             if (loggingClient == null || !loggingClient.isEnabled()) {
                 return;

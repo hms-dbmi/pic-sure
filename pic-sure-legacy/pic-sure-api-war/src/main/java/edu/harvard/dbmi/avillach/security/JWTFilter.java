@@ -137,6 +137,17 @@ public class JWTFilter implements ContainerRequestFilter {
         String path = rawPath.startsWith("/") ? rawPath : "/" + rawPath;
         String method = requestContext.getRequest().getMethod();
 
+        GatewayAuthDelegation gatewayAuthDelegation =
+            new GatewayAuthDelegation(picSureWarInit.isGatewayOwnsAuth(), picSureWarInit.isGatewayOwnsQueryReadAuth());
+        if (gatewayAuthDelegation.gatewayOwnsAuth(path)) {
+            // The gateway is the auth boundary for this path and has already authenticated + audited the
+            // request; GatewayHeaderFilter rebuilds the SecurityContext from the gateway's X-User-* headers.
+            // result/signed-url are not gatewayOwnsAuth() yet (interim, Phase 2), so they fall through to the
+            // full introspection flow below unchanged.
+            logger.debug("Gateway owns auth for path {} - bypassing JWTFilter introspection.", path);
+            return;
+        }
+
         if (EXCLUDED_PATHS.stream().anyMatch(rule -> rule.matches(path, method))) {
             logger.info("Accessing excluded path " + path + " method " + method);
             return;
