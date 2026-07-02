@@ -1,6 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.gateway.config;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,6 +39,18 @@ import io.micrometer.core.instrument.MeterRegistry;
 @EnableConfigurationProperties(GatewaySecurityProperties.class)
 public class SecurityConfig {
 
+    // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
+    // hung upstream must not tie up a Tomcat worker indefinitely, so both get bounded connect/read timeouts.
+    static final Duration AUTH_CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    static final Duration AUTH_READ_TIMEOUT = Duration.ofSeconds(10);
+
+    static final ClientHttpRequestFactorySettings AUTH_REQUEST_FACTORY_SETTINGS =
+        ClientHttpRequestFactorySettings.defaults().withConnectTimeout(AUTH_CONNECT_TIMEOUT).withReadTimeout(AUTH_READ_TIMEOUT);
+
+    private static RestClient.Builder timeoutBoundedRestClientBuilder() {
+        return RestClient.builder().requestFactory(ClientHttpRequestFactoryBuilder.detect().build(AUTH_REQUEST_FACTORY_SETTINGS));
+    }
+
     @Bean
     SecurityFilterChain http(HttpSecurity http) throws Exception {
         // Gateway permits all at the Security layer; the introspection filter is the real auth boundary.
@@ -63,12 +79,14 @@ public class SecurityConfig {
 
     @Bean
     PsamaClient psamaClient(GatewaySecurityProperties props) {
-        return new PsamaClient(RestClient.builder().build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken());
+        return new PsamaClient(
+            timeoutBoundedRestClientBuilder().build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken()
+        );
     }
 
     @Bean
     QueryAuthFetcher queryAuthFetcher(GatewaySecurityProperties props) {
-        return new QueryAuthFetcher(RestClient.builder().build(), props.queryServiceUrl(), props.queryServiceInternalToken());
+        return new QueryAuthFetcher(timeoutBoundedRestClientBuilder().build(), props.queryServiceUrl(), props.queryServiceInternalToken());
     }
 
     @Bean
