@@ -37,11 +37,30 @@
             <artifactId>slf4j-api</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <!-- Provides HttpSecurity/SecurityFilterChain for ActuatorSecurityHelper. Optional so it is not
+                 forced transitively onto commons consumers; gateway/platform/query already declare security. -->
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+            <!-- Provides EndpointRequest / HealthEndpoint for ActuatorSecurityHelper. Optional so it is not
+                 forced transitively onto commons consumers; gateway/platform/query already declare actuator. -->
+            <optional>true</optional>
+        </dependency>
 
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
