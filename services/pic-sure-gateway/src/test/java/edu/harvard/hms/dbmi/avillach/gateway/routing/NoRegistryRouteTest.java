@@ -19,9 +19,8 @@ import org.springframework.core.env.Environment;
  * (behavior-pinning, not a weak bean-name check) — the gateway exposes NO {@code /info/resources} or
  * {@code /resource} route. Those paths fall through to the WildFly catch-all until decommission.
  *
- * <p>Phase-3 configured routes today: {@code logging} (Task 1) + {@code legacy-wildfly-catchall} (Phase 1).
- * {@code dictionary}/{@code uploader} are deferred until the PSAMA access-rule migration, so they are not yet
- * present — the load-bearing assertion is that no registry id ever appears.
+ * <p>Phase-3 configured routes: {@code logging}, {@code dictionary}, {@code uploader} (Task 1) +
+ * {@code legacy-wildfly-catchall} (Phase 1). The load-bearing assertion is that no registry id ever appears.
  */
 @SpringBootTest
 class NoRegistryRouteTest {
@@ -41,7 +40,7 @@ class NoRegistryRouteTest {
     @Test
     void exposesOnlyTheExpectedRouteIdsAndNoRegistryRoute() {
         Set<String> ids = configuredRouteIds();
-        assertThat(ids).containsExactlyInAnyOrder("logging", "legacy-wildfly-catchall");
+        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "uploader", "legacy-wildfly-catchall");
         assertThat(ids).noneMatch(id -> {
             String lower = id.toLowerCase();
             return lower.contains("resource") || lower.contains("info-resources");
