@@ -21,6 +21,13 @@ spring:
         # unchanged, matching the schema exactly.
         physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
 
+picsure:
+  operations:
+    # Shared secret enforced by InternalTokenFilter on /internal/** (the gateway's QueryAuthFetcher dispatch calls,
+    # and any future hpds-query-service caller). Fail-closed: left blank, InternalTokenFilter rejects every
+    # /internal/** request rather than treating an unconfigured secret as "wide open".
+    internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+
 server:
   port: ${SERVER_PORT:8080}
 
