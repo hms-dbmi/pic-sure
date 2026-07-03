@@ -26,6 +26,11 @@ management:
       show-details: when_authorized # detail gated; Phase 6 supplies the app token
       probes:
         enabled: true # /actuator/health/liveness stays shallow-open
+      group:
+        liveness:
+          include: livenessState # pin liveness to the app's own state; downstreams
+          # (registered as the "downstreams" top-level contributor) must never flip
+          # this probe DOWN -- deploy/container healthchecks poll this endpoint.
   health:
     defaults:
       enabled: true

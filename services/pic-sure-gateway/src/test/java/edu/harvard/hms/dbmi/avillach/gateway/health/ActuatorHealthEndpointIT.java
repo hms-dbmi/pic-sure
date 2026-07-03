@@ -67,4 +67,21 @@ class ActuatorHealthEndpointIT {
         assertThat(hpdsComponent.path("status").asText()).isEqualTo("DOWN");
         assertThat(body.path("status").asText()).isEqualTo("DOWN");
     }
+
+    /**
+     * Pins the operational invariant this class exists to guard: {@code downstreams} is a top-level composite contributor, so a single DOWN
+     * sibling flips the ROOT {@code /actuator/health} to DOWN (asserted above) -- but {@code /actuator/health/liveness} is pinned via
+     * {@code management.endpoint.health.group.liveness.include: livenessState} (application.yml) and must stay UP regardless. Deploy
+     * smoke-polls and container healthchecks must probe this shallow endpoint, not the aggregate root, or a degraded/restarting downstream
+     * (e.g. HPDS) would fail the gateway's own healthcheck and could kill the container.
+     */
+    @Test
+    void livenessStaysUpWhenDownstreamIsDown() throws Exception {
+        ResponseEntity<String> response = rest.getForEntity("/actuator/health/liveness", String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+
+        JsonNode body = new ObjectMapper().readTree(response.getBody());
+        assertThat(body.path("status").asText()).isEqualTo("UP");
+    }
 }
