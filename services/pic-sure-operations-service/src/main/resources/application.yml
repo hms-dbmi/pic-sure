@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: pic-sure-operations-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://picsure-db:3306/picsure?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&autoReconnectForPools=true&serverTimezone=UTC}
+    username: ${SPRING_DATASOURCE_USERNAME:picsure}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      # The pic-sure MySQL schema (Configuration/NamedDataset/Query) already exists and is owned by the legacy Flyway
+      # migrations -- this service must never generate or alter DDL against it.
+      ddl-auto: none
+      naming:
+        # CRITICAL / LOAD-BEARING: Spring Boot's default SpringPhysicalNamingStrategy snake_cases identifiers even when
+        # pic-sure-api-data's entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
+        # "resourceResultId" -> "resource_result_id"). The real production schema is camelCase throughout, not snake_case.
+        # Without this override, Hibernate silently generates SQL that references columns which do not exist -- every query
+        # against the real database breaks. Hibernate's own PhysicalNamingStrategyStandardImpl passes names through
+        # unchanged, matching the schema exactly.
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Deep health: readiness is only reported UP once the datasource is actually reachable, not merely once the
+        # process is running (mirrors the Phase-3 gateway's liveness/readiness split, adapted here for a service that --
+        # unlike the gateway -- owns a real database dependency).
+        readiness:
+          include: readinessState,db
+  health:
+    defaults:
+      enabled: true

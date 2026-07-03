@@ -14,6 +14,7 @@
         <module>libs/pic-sure-api-data</module>
         <module>libs/pic-sure-spring-commons</module>
         <module>services/pic-sure-gateway</module>
+        <module>services/pic-sure-operations-service</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>
