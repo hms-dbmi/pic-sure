@@ -23,8 +23,12 @@ management:
         include: health,info,prometheus,metrics
   endpoint:
     health:
+      show-details: when_authorized # detail gated; Phase 6 supplies the app token
       probes:
-        enabled: true
+        enabled: true # /actuator/health/liveness stays shallow-open
+  health:
+    defaults:
+      enabled: true
   metrics:
     distribution:
       # Publish client-observable latency percentiles per route for the Phase-1
