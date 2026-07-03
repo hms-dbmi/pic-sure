@@ -24,6 +24,23 @@ picsure:
       # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
       internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
 
+aggregate:
+  # HPDS_OPEN_URL / HPDS_OPEN_TOKEN: same open-backend values as hpds.open-url / hpds.open-token above (Phase-4b),
+  # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
+  hpds-open-url: ${HPDS_OPEN_URL:}
+  hpds-open-token: ${HPDS_OPEN_TOKEN:}
+  # VISUALIZATION_URL: base URL of the visualization service; replaces the WAR's DB ResourceRepository.getById()
+  # lookup. Blank = no binning configured (continuous cross-count obfuscation falls back to raw per-value counts).
+  visualization-url: ${VISUALIZATION_URL:}
+  visualization-resource-id: ${AGGREGATE_VISUALIZATION_RESOURCE_ID:}
+  target-resource-id: ${AGGREGATE_TARGET_RESOURCE_ID:}
+  connect-timeout-sec: 10
+  read-timeout-sec: 60
+  obfuscation:
+    threshold: ${AGGREGATE_OBFUSCATION_THRESHOLD:10}
+    variance: ${AGGREGATE_OBFUSCATION_VARIANCE:3}
+    salt: ${AGGREGATE_OBFUSCATION_SALT:}
+
 management:
   endpoints:
     web:
