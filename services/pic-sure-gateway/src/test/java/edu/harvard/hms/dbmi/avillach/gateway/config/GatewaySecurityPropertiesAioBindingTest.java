@@ -29,4 +29,11 @@ class GatewaySecurityPropertiesAioBindingTest {
     void openAccessValidateUrlResolvesToAioPsamaDns() {
         assertThat(props.openAccessValidateUrl()).isEqualTo("http://psama:8090/auth/open/validate");
     }
+
+    @Test
+    void gatewayOwnsQueryReadAuthDefaultsTrueUnderAioProfile() {
+        // Phase 4: the aio profile flips the master query-read-auth flag to true (the gateway now owns
+        // result/signed-url auth), while the base application.yml default stays false.
+        assertThat(props.gatewayOwnsQueryReadAuth()).isTrue();
+    }
 }

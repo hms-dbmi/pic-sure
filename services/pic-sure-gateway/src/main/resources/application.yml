@@ -39,6 +39,29 @@ spring:
                 - Path=/uploader/**
               filters:
                 - StripPrefix=1
+            # Phase 4 (gateway integration): query-service and operations-service ingress. Unlike the routes
+            # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
+            # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
+            # /configuration/** and /dataset/** are served by operations-service, the sole DB owner (also home to
+            # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
+            # auth). /configuration/** carries a public-GET carve-out for the introspection filter itself (see
+            # PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
+            # /configuration/admin/**, and all of /dataset/**) is introspected as usual once auth-enabled is true.
+            - id: hpds
+              uri: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
+              order: 100
+              predicates:
+                - Path=/hpds/**
+            - id: configuration
+              uri: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+              order: 100
+              predicates:
+                - Path=/configuration/**
+            - id: dataset
+              uri: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+              order: 100
+              predicates:
+                - Path=/dataset/**
             # Phase 1: single low-priority catch-all — everything forwards to WildFly
             # with the legacy context path re-prefixed. Public URLs are unchanged.
             - id: legacy-wildfly-catchall
@@ -99,6 +122,7 @@ picsure:
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
       query-service-url: ${HPDS_QUERY_SERVICE_URL:}
+      operations-service-url: ${OPERATIONS_SERVICE_URL:}
       query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
       allow-list-prefixes:
         - /logging

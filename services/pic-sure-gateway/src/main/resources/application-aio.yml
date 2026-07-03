@@ -9,6 +9,9 @@ picsure:
     security:
       introspection-url: ${TOKEN_INTROSPECTION_URL:http://psama:8090/auth/token/inspect}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:http://psama:8090/auth/open/validate}
+      # Phase 4: the gateway now owns result/signed-url auth for the AIO deploy (QueryAuthFetcher dispatch is live,
+      # repointed at operations-service). The base application.yml default stays false; only this profile flips it.
+      gateway-owns-query-read-auth: ${GATEWAY_OWNS_QUERY_READ_AUTH:true}
     # Phase 3 (Task 13) — deep-health downstream list the gateway aggregates into
     # /system/status and /actuator/health. AIO service DNS on the picsure network.
     # PSAMA uses the transitional introspection-ping (active:false = reachable) until
@@ -41,5 +44,13 @@ picsure:
           require-status-up: true
         - name: dictionary
           base-url: ${DICTIONARY_URL:http://dictionary-api}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: operations-service
+          base-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: query-service
+          base-url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
           health-path: /actuator/health
           require-status-up: true

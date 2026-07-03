@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +55,11 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
     public static final String ATTR_REFRESHED_TOKEN = "refreshedToken";
 
+    // Phase 4: mirrors operations-service's own public-GET security rule — the configuration list (root) and a
+    // single {id} read are public, EXCEPT anything under /configuration/admin/**. Matches at most one path segment
+    // after /configuration/, with an optional trailing slash: /configuration/{id} or /configuration/{id}/.
+    private static final Pattern CONFIGURATION_ID_READ = Pattern.compile("^/configuration/([^/]+)/?$");
+
     private final PsamaClient psama;
     private final AuditContext audit;
     private final ObjectMapper json;
@@ -76,7 +83,24 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        return scope.interimOwnedByWildFly(req.getRequestURI());
+        return scope.interimOwnedByWildFly(req.getRequestURI()) || isPublicConfigurationRead(req.getMethod(), req.getRequestURI());
+    }
+
+    /**
+     * Phase-4 leftover from the operations-service split (§ config-GET bypass): {@code GET /configuration/} (the list) and {@code GET
+     * /configuration/{id}(/)?} (a single read) are public reads on operations-service itself, so the gateway must not demand a Bearer token
+     * for them either. Method-AND-path precise: any other method, and all of {@code /configuration/admin/**} (including bare
+     * {@code /configuration/admin}), stay introspected.
+     */
+    private boolean isPublicConfigurationRead(String method, String path) {
+        if (!"GET".equals(method) || path == null) {
+            return false;
+        }
+        if (path.equals("/configuration/")) {
+            return true;
+        }
+        Matcher m = CONFIGURATION_ID_READ.matcher(path);
+        return m.matches() && !"admin".equals(m.group(1));
     }
 
     @Override

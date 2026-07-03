@@ -17,9 +17,14 @@ public record GatewaySecurityProperties(
     boolean authEnabled, List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
-    // HPDS_QUERY_SERVICE_URL -- for QueryAuthFetcher dispatch
+    // HPDS_QUERY_SERVICE_URL -- Phase 2 leftover; no longer read by QueryAuthFetcher (Phase 4 repoints dispatch to
+    // operationsServiceUrl below), kept because the same env var also feeds the /hpds/** route and query-service
+    // health entry.
     String queryServiceUrl,
-    // QUERY_SERVICE_INTERNAL_TOKEN -- X-PIC-SURE-INTERNAL-TOKEN (S-M4)
+    // OPERATIONS_SERVICE_URL -- for QueryAuthFetcher dispatch (Phase 4: dispatch now lives on operations-service,
+    // the sole DB owner)
+    String operationsServiceUrl,
+    // QUERY_SERVICE_INTERNAL_TOKEN -- X-PIC-SURE-INTERNAL-TOKEN (S-M4), same value sent to operations-service now
     String queryServiceInternalToken,
     // GATEWAY_OWNS_QUERY_READ_AUTH -- false in Phase 2, true at Phase 4
     boolean gatewayOwnsQueryReadAuth,
