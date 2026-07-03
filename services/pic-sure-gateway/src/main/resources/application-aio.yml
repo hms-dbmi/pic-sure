@@ -40,6 +40,6 @@ picsure:
           health-path: /actuator/health
           require-status-up: true
         - name: dictionary
-          base-url: ${DICTIONARY_URL:http://dictionary-api:8080}
+          base-url: ${DICTIONARY_URL:http://dictionary-api}
           health-path: /actuator/health
           require-status-up: true
