@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.*;
@@ -45,6 +46,14 @@ import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.*;
 public class AuthorizationService {
 
     private final Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
+
+    /**
+     * Matches clean HPDS-v3 target service paths, e.g. {@code /hpds/auth/v3}, {@code /hpds/auth/v3/query},
+     * {@code /hpds/open/v3}, {@code /hpds/open/v3/query/abc/result}. Intentionally segment-aware so it does
+     * NOT match things like {@code /hpds/auth/v30/query}, {@code /hpds/auth/v3ish/query},
+     * {@code /hpds/v3/query}, {@code /foo/hpds/auth/v3/query}, or {@code /hpds/auth/v3-query}.
+     */
+    private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/(auth|open)/v3(/.*)?$");
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
@@ -235,7 +244,7 @@ public class AuthorizationService {
                 else {
                     String targetService = (String) ((Map) requestBody).get("Target Service");
                     logger.debug("Target service = " + targetService);
-                    if (targetService != null && targetService.startsWith("/v3")) {
+                    if (targetService != null && (targetService.startsWith("/v3") || isHpdsV3TargetService(targetService))) {
                         logger.debug("Skipping access rule {}", accessRule.getName());
                     }
                     else if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
@@ -274,6 +283,20 @@ public class AuthorizationService {
         return new EvaluateAccessRuleResult(result, failedRules, passRuleName, Optional.ofNullable(returnQuery));
     }
 
+    /**
+     * Returns true only when {@code targetService} is a clean HPDS-v3 target service path, i.e. exactly
+     * {@code /hpds/auth/v3}, {@code /hpds/auth/v3/**}, {@code /hpds/open/v3}, or {@code /hpds/open/v3/**}.
+     * <p>
+     * This is intentionally segment/prefix-aware (not a loose {@code contains("hpds") && contains("v3")}
+     * check) so that consent-rule evaluation is skipped only for genuine HPDS-v3 calls, not for
+     * unrelated paths that happen to contain those substrings.
+     */
+    static boolean isHpdsV3TargetService(String targetService) {
+        if (targetService == null) {
+            return false;
+        }
+        return HPDS_V3_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
+    }
 
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
 
