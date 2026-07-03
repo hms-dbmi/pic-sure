@@ -91,4 +91,40 @@ class InternalTokenFilterTest {
 
         verify(chain).doFilter(req, res);
     }
+
+    /**
+     * Regression test for the finding this filter was hardened against: gating {@code /internal/**} by checking
+     * {@code request.getRequestURI().startsWith("/internal/")} DIRECTLY breaks under a non-empty {@code server.servlet.context-path},
+     * because {@code getRequestURI()} includes the context path prefix (here, {@code /ops}) and so never starts with the literal string
+     * {@code "/internal/"} -- even though the container would still dispatch this exact request to {@code InternalQueryController} per the
+     * {@code addUrlPatterns("/internal/*")} registration. {@link InternalTokenFilter} now strips {@code getContextPath()} off first, so it
+     * agrees with the container's own routing decision regardless of context path.
+     */
+    @Test
+    void tokenStillEnforcedUnderANonEmptyContextPath() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setContextPath("/ops");
+        req.setRequestURI("/ops/internal/queries/abc/dispatch");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(req, res, chain);
+
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(res.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void validTokenPassesThroughUnderANonEmptyContextPath() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setContextPath("/ops");
+        req.setRequestURI("/ops/internal/queries/abc/dispatch");
+        req.addHeader(InternalTokenFilter.HEADER, "secret");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(req, res, chain);
+
+        verify(chain).doFilter(req, res);
+    }
 }

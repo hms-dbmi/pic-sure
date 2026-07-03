@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -78,7 +79,7 @@ class NamedDatasetServiceTest {
         Query q = new Query();
         q.setUuid(queryId);
         when(queryRepo.findById(queryId)).thenReturn(Optional.of(q));
-        when(repo.save(any())).thenAnswer(inv -> {
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
             NamedDataset e = inv.getArgument(0);
             e.setUuid(UUID.randomUUID());
             return e;
@@ -89,6 +90,20 @@ class NamedDatasetServiceTest {
 
         assertThat(dto.name()).isEqualTo("d2");
         assertThat(dto.queryId()).isEqualTo(queryId);
+    }
+
+    @Test
+    void createDuplicateQueryAndUserThrows409() {
+        UUID queryId = UUID.randomUUID();
+        Query q = new Query();
+        q.setUuid(queryId);
+        when(queryRepo.findById(queryId)).thenReturn(Optional.of(q));
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
+
+        NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "dup", false, null);
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create("alice@example.com", req));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -122,7 +137,7 @@ class NamedDatasetServiceTest {
         NamedDataset existing = new NamedDataset().setUser("alice@example.com").setName("old").setQuery(q).setArchived(false);
         existing.setUuid(id);
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.of(existing));
-        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(queryId, "renamed", true, null);
         NamedDatasetDto dto = service.update("alice@example.com", id, req);
@@ -144,12 +159,33 @@ class NamedDatasetServiceTest {
         existing.setUuid(id);
         when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.of(existing));
         when(queryRepo.findById(newQueryId)).thenReturn(Optional.of(newQuery));
-        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(newQueryId, "d1", false, null);
         NamedDatasetDto dto = service.update("alice@example.com", id, req);
 
         assertThat(dto.queryId()).isEqualTo(newQueryId);
+    }
+
+    @Test
+    void updateRepointingToADuplicateQueryAndUserThrows409() {
+        UUID id = UUID.randomUUID();
+        UUID oldQueryId = UUID.randomUUID();
+        UUID newQueryId = UUID.randomUUID();
+        Query oldQuery = new Query();
+        oldQuery.setUuid(oldQueryId);
+        Query newQuery = new Query();
+        newQuery.setUuid(newQueryId);
+        NamedDataset existing = new NamedDataset().setUser("alice@example.com").setName("d1").setQuery(oldQuery);
+        existing.setUuid(id);
+        when(repo.findByUuidAndUser(id, "alice@example.com")).thenReturn(Optional.of(existing));
+        when(queryRepo.findById(newQueryId)).thenReturn(Optional.of(newQuery));
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_queryId_user"));
+
+        NamedDatasetRequestDto req = new NamedDatasetRequestDto(newQueryId, "d1", false, null);
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.update("alice@example.com", id, req));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test

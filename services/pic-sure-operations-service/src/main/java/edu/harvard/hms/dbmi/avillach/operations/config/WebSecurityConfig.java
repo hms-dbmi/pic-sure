@@ -20,7 +20,11 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
  * public-read rule below so it wins for every HTTP method, including {@code GET}.</li> <li>{@code GET /configuration/} and
  * {@code GET /configuration/*&#47;} -- public, UNAUTHENTICATED reads. The gateway allow-lists these exact paths at its introspection layer,
  * so they arrive with NO {@code X-User-*} headers at all; security here must not require an identity that will never be present.</li>
- * <li>{@code /dataset/**} -- requires an authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's
+ * <li>{@code /internal/**} -- explicitly {@code permitAll()} at THIS layer (belt-and-suspenders, redundant with the catch-all rule below).
+ * Spring Security performs no authentication/authorization for these paths because it isn't the real gate:
+ * {@code edu.harvard.hms.dbmi.avillach.operations.query.InternalTokenFilter}, registered by {@code InternalTokenFilterConfig} against the
+ * exact same {@code /internal/*} URL pattern, is what actually enforces the shared-secret check on every request the container routes
+ * here.</li> <li>{@code /dataset/**} -- requires an authenticated caller, i.e. the gateway supplied {@code X-User-Id}. Spring Security's
  * {@code authenticated()} already excludes the default anonymous principal (see {@code AuthenticatedAuthorizationManager}), so a request
  * with no identity is correctly rejected rather than silently treated as authenticated.</li> <li>Everything else is permitted at this
  * layer; the config/dataset controllers built in later tasks enforce any remaining per-endpoint rules themselves (e.g. the
@@ -43,8 +47,8 @@ public class WebSecurityConfig {
             .authorizeHttpRequests(
                 auth -> auth.requestMatchers("/actuator/health", "/actuator/info", "/v3/api-docs/**", "/swagger-ui/**", "/openapi/**")
                     .permitAll().requestMatchers("/configuration/admin/**").hasAuthority(SUPER_ADMIN)
-                    .requestMatchers(HttpMethod.GET, "/configuration/", "/configuration/*/").permitAll().requestMatchers("/dataset/**")
-                    .authenticated().anyRequest().permitAll()
+                    .requestMatchers(HttpMethod.GET, "/configuration/", "/configuration/*/").permitAll().requestMatchers("/internal/**")
+                    .permitAll().requestMatchers("/dataset/**").authenticated().anyRequest().permitAll()
             ).build();
     }
 }

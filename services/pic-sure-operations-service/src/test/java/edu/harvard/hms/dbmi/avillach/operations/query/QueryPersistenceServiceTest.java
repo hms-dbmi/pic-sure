@@ -128,6 +128,24 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
+    void invalidBase64MetadataOnSaveThrowsBadRequest() {
+        SaveQueryRequest req = new SaveQueryRequest("{}", null, "QUEUED", null, "not-valid-base64!!!");
+        assertThatThrownBy(() -> service.save(req)).isInstanceOf(PicsureException.class)
+            .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(400));
+    }
+
+    @Test
+    void invalidBase64MetadataOnUpdateThrowsBadRequest() {
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        UpdateQueryRequest req = new UpdateQueryRequest(null, null, "not-valid-base64!!!");
+        assertThatThrownBy(() -> service.update(picsureId, req)).isInstanceOf(PicsureException.class)
+            .satisfies(e -> assertThat(((PicsureException) e).getStatus().value()).isEqualTo(400));
+    }
+
+    @Test
     void savedStatusEnumRoundTripsThroughOrdinalMapping() {
         for (PicSureStatus status : PicSureStatus.values()) {
             UUID picsureId = service.save(new SaveQueryRequest("{}", null, status.name(), null, null));

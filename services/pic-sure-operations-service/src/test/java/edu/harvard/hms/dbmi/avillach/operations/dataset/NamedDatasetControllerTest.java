@@ -88,6 +88,23 @@ class NamedDatasetControllerTest {
     }
 
     @Test
+    void createSecondDatasetOverSameQueryAndUserReturns409() throws Exception {
+        Query query = queryRepo.save(new Query());
+
+        mockMvc.perform(
+            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"first\"}")
+        ).andExpect(status().isCreated());
+
+        mockMvc.perform(
+            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"second\"}")
+        ).andExpect(status().isConflict());
+    }
+
+    @Test
     void createWithMissingNameReturns400() throws Exception {
         Query query = queryRepo.save(new Query());
 

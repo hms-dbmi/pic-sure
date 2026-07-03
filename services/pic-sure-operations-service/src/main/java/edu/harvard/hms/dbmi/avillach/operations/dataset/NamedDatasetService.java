@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.operations.dataset;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,11 @@ import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
  *
  * <p>{@code queryId} is resolved to a persisted {@code Query} via {@code QueryRepository.findById}, 404 when absent (preserving the WAR's
  * "query not found" branch).
+ *
+ * <p>{@code NamedDataset} carries a DB-level unique constraint on {@code (queryId, user)}. Rather than a check-then-save pre-check (which
+ * would race under concurrent requests), {@link #create} and {@link #update} (when it repoints the query) use {@code saveAndFlush} inside a
+ * try/catch so the constraint violation surfaces synchronously and is translated to {@code 409 CONFLICT} via {@link PicsureException},
+ * mirroring how {@code ConfigurationService} handles its name+kind conflict.
  */
 @Service
 public class NamedDatasetService {
@@ -52,7 +58,7 @@ public class NamedDatasetService {
     @Transactional
     public NamedDatasetDto create(String user, NamedDatasetRequestDto req) {
         Query query = resolveQuery(req.queryId());
-        NamedDataset saved = repo.save(mapper.toEntity(user, query, req));
+        NamedDataset saved = saveOrConflict(mapper.toEntity(user, query, req), req.queryId(), user);
         return mapper.toDto(saved);
     }
 
@@ -63,7 +69,7 @@ public class NamedDatasetService {
             existing.setQuery(resolveQuery(req.queryId()));
         }
         existing.setName(req.name()).setArchived(req.archived()).setMetadata(req.metadata());
-        return mapper.toDto(repo.save(existing));
+        return mapper.toDto(saveOrConflict(existing, req.queryId(), user));
     }
 
     @Transactional
@@ -77,7 +83,26 @@ public class NamedDatasetService {
             .orElseThrow(() -> new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query " + queryId + " not found"));
     }
 
+    /**
+     * {@code saveAndFlush} (not {@code save}) so the {@code unique_queryId_user} constraint violation -- if any -- is raised by the
+     * database and thrown here, inside the try/catch, rather than deferred to end-of-transaction flush where it could no longer be
+     * translated into a 409.
+     */
+    private NamedDataset saveOrConflict(NamedDataset entity, UUID queryId, String user) {
+        try {
+            return repo.saveAndFlush(entity);
+        } catch (DataIntegrityViolationException e) {
+            throw conflict(queryId, user);
+        }
+    }
+
     private static PicsureException notFound(UUID id) {
         return new PicsureException(HttpStatus.NOT_FOUND, "not_found", "NamedDataset " + id + " not found");
+    }
+
+    private static PicsureException conflict(UUID queryId, String user) {
+        return new PicsureException(
+            HttpStatus.CONFLICT, "conflict", "A NamedDataset for query " + queryId + " and user '" + user + "' already exists"
+        );
     }
 }

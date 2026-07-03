@@ -26,7 +26,7 @@ import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
  *
  * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, so callers never need the enum type; an
  * unrecognized name is a caller error (400), not a 500. {@code metadata} travels as base64-encoded bytes, matching the entity's raw
- * {@code byte[]} column.
+ * {@code byte[]} column; malformed base64 is likewise a caller error (400), not a 500.
  */
 @Service
 public class QueryPersistenceService {
@@ -127,7 +127,14 @@ public class QueryPersistenceService {
     }
 
     private static byte[] decodeMetadata(String metadata) {
-        return metadata == null ? null : Base64.getDecoder().decode(metadata);
+        if (metadata == null) {
+            return null;
+        }
+        try {
+            return Base64.getDecoder().decode(metadata);
+        } catch (IllegalArgumentException e) {
+            throw new PicsureException(HttpStatus.BAD_REQUEST, "invalid_metadata", "metadata is not valid base64");
+        }
     }
 
     private static String encodeMetadata(byte[] metadata) {

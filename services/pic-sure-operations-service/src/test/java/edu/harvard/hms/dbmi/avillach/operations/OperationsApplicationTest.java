@@ -2,10 +2,14 @@ package edu.harvard.hms.dbmi.avillach.operations;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
 
+import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
 import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 import edu.harvard.hms.dbmi.avillach.data.repository.NamedDatasetRepository;
 import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
@@ -42,11 +46,17 @@ class OperationsApplicationTest {
     }
 
     @Test
+    @Transactional
     void apiDataRepositoriesCanRoundTripAgainstTheRealEntityTables() {
-        // A trivial, real DB round trip (not just a non-null bean check) -- proves the naming-strategy override and
-        // entity scan actually produced working JPA repositories against the H2-backed schema, not merely that
-        // Spring wired *some* proxy.
-        long before = configurationRepository.count();
-        assertThat(before).isGreaterThanOrEqualTo(0);
+        // A real save -> reload round trip (not just a non-null bean / always-true count check) -- proves the
+        // naming-strategy override and entity scan actually produced a working JPA mapping against the H2-backed
+        // schema, not merely that Spring wired *some* proxy.
+        String uniqueName = "smoke-test-" + UUID.randomUUID();
+        Configuration saved = configurationRepository.save(new Configuration().setName(uniqueName).setKind("smoke-test"));
+
+        Configuration reloaded = configurationRepository.findById(saved.getUuid()).orElseThrow();
+
+        assertThat(reloaded.getName()).isEqualTo(uniqueName);
+        assertThat(reloaded.getKind()).isEqualTo("smoke-test");
     }
 }

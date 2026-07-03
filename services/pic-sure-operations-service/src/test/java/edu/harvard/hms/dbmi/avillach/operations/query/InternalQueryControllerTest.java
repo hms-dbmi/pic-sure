@@ -23,11 +23,12 @@ import edu.harvard.hms.dbmi.avillach.data.entity.Query;
 import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
- * Full-context MockMvc test exercising the real {@code InternalTokenFilter} (registered as a plain {@code @Component} servlet filter,
- * applied to every request but a no-op outside {@code /internal/**}) together with {@link InternalQueryController}, same posture as
- * {@code NamedDatasetControllerTest}: no mocked security layer. {@code picsure.operations.internal-token} is set in
+ * Full-context MockMvc test exercising the real {@code InternalTokenFilter} (registered by {@code InternalTokenFilterConfig} as a
+ * {@code FilterRegistrationBean} scoped to the {@code /internal/*} URL pattern) together with {@link InternalQueryController}, same posture
+ * as {@code NamedDatasetControllerTest}: no mocked security layer. {@code picsure.operations.internal-token} is set in
  * {@code src/test/resources/application.yml}, so the "unconfigured token fail-closed" behavior itself is covered by the dedicated pure-unit
- * {@code InternalTokenFilterTest} (constructing the filter directly with a blank token) rather than here.
+ * {@code InternalTokenFilterTest} (constructing the filter directly with a blank token) rather than here. The context-path-robustness of
+ * the URL-pattern-based registration itself is covered separately by {@code InternalTokenFilterContextPathTest}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -64,6 +65,14 @@ class InternalQueryControllerTest {
             post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\"}")
         ).andExpect(status().isCreated()).andExpect(jsonPath("$.picsureId").exists());
+    }
+
+    @Test
+    void saveWithMalformedBase64MetadataReturns400() throws Exception {
+        mockMvc.perform(
+            post("/internal/queries").header(InternalTokenFilter.HEADER, validToken).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"{\\\"q\\\":1}\",\"status\":\"QUEUED\",\"metadata\":\"not-valid-base64!!!\"}")
+        ).andExpect(status().isBadRequest());
     }
 
     @Test
