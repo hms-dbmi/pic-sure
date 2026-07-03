@@ -9,3 +9,37 @@ picsure:
     security:
       introspection-url: ${TOKEN_INTROSPECTION_URL:http://psama:8090/auth/token/inspect}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:http://psama:8090/auth/open/validate}
+    # Phase 3 (Task 13) — deep-health downstream list the gateway aggregates into
+    # /system/status and /actuator/health. AIO service DNS on the picsure network.
+    # PSAMA uses the transitional introspection-ping (active:false = reachable) until
+    # its Actuator lands (Task 4); HPDS/dictionary report DOWN until their Actuator
+    # (Tasks 5/6). visualization + logging already expose health today.
+    health:
+      connect-timeout-ms: 2000
+      read-timeout-ms: 3000
+      application-token: ${TOKEN_INTROSPECTION_TOKEN:}
+      downstreams:
+        - name: psama
+          base-url: ${PSAMA_URL:http://psama:8090}
+          health-path: /auth/token/inspect
+          method: POST
+          request-body: "{}"
+          send-app-token: true
+          success-status: 200
+          require-status-up: false
+        - name: visualization
+          base-url: ${VISUALIZATION_URL:http://visualization}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: logging
+          base-url: ${LOGGING_HEALTH_URL:http://pic-sure-logging}
+          health-path: /health
+          require-status-up: false
+        - name: hpds
+          base-url: ${HPDS_URL:http://hpds:8080}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: dictionary
+          base-url: ${DICTIONARY_URL:http://dictionary-api:8080}
+          health-path: /actuator/health
+          require-status-up: true
