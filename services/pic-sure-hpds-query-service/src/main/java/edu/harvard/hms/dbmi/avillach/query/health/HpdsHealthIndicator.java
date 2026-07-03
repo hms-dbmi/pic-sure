@@ -22,8 +22,10 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
  * Deep health for this DB-free service: there is no {@code DataSource} to probe (this module owns no database at all -- see the class
  * javadoc on {@code QueryService}), so the only real dependency worth reporting on is HPDS reachability. Probes each DISTINCT configured
  * backend base (auth/open -- in AIO they're typically the same URL and collapse to a single probe) with a short GET to
- * {@code {base}{healthPath}}; {@code UP} only when every distinct base responds with a 2xx. The gateway composes this service's own deep
- * health into its aggregate view -- this indicator does not cascade into probing anything beyond HPDS itself.
+ * {@code {origin(base)}{healthPath}} -- HPDS exposes Actuator at the host root, not under the {@code /PIC-SURE} query context, so the probe
+ * uses the base URL's origin ({@code scheme://authority}), not the full query base; {@code UP} only when every distinct base responds with
+ * a 2xx. The gateway composes this service's own deep health into its aggregate view -- this indicator does not cascade into probing
+ * anything beyond HPDS itself.
  *
  * <p>The probe client uses its OWN short, health-check-specific connect/read timeouts ({@link #HEALTH_CONNECT_TIMEOUT_SEC}/
  * {@link #HEALTH_READ_TIMEOUT_SEC}) rather than {@link HpdsProperties#getConnectTimeoutSec()}/{@link HpdsProperties#getReadTimeoutSec()} --
@@ -79,7 +81,7 @@ public class HpdsHealthIndicator implements HealthIndicator {
         Health.Builder result = Health.up();
         boolean down = false;
         for (String base : bases) {
-            String url = base + props.getHealthPath();
+            String url = originOf(base) + props.getHealthPath();
             try {
                 probe.get().uri(url).retrieve().toBodilessEntity(); // 2xx -> reachable
                 result.withDetail(base, "UP");
@@ -89,5 +91,23 @@ public class HpdsHealthIndicator implements HealthIndicator {
             }
         }
         return down ? result.status(Status.DOWN).build() : result.build();
+    }
+
+    /**
+     * HPDS serves its Actuator health at the host ROOT (e.g. {@code http://hpds:8080/actuator/health}), while the query API base carries
+     * the {@code /PIC-SURE} context (e.g. {@code http://hpds:8080/PIC-SURE}). So the health probe targets the URL's ORIGIN
+     * ({@code scheme://authority}) + {@code healthPath}, not the query base + {@code healthPath} (which would 404). Falls back to the raw
+     * base if it can't be parsed as an absolute URL.
+     */
+    static String originOf(String base) {
+        try {
+            java.net.URI u = java.net.URI.create(base.trim());
+            if (u.getScheme() != null && u.getAuthority() != null) {
+                return u.getScheme() + "://" + u.getAuthority();
+            }
+        } catch (RuntimeException ignored) {
+            // fall through to raw base
+        }
+        return base;
     }
 }

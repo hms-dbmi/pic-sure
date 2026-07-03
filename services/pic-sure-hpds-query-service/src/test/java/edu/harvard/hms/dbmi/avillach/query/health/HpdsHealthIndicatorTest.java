@@ -19,7 +19,8 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 
 /**
  * DB-free deep health: this service owns no DataSource, so its only real dependency to probe is HPDS reachability. Both configured backends
- * (auth/open) are probed via a short GET to {@code {base}{healthPath}}; UP only when every distinct base responds 2xx.
+ * (auth/open) are probed via a short GET to {@code {origin(base)}{healthPath}} (HPDS Actuator is at the host root, not under /PIC-SURE); UP
+ * only when every distinct base responds 2xx.
  */
 class HpdsHealthIndicatorTest {
 
@@ -47,7 +48,7 @@ class HpdsHealthIndicatorTest {
 
     @Test
     void upWhenHpdsResponds() {
-        hpds.stubFor(get(urlEqualTo("/PIC-SURE/actuator/health")).willReturn(aResponse().withStatus(200)));
+        hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(200)));
 
         Health h = new HpdsHealthIndicator(props(), RestClient.builder().build()).health();
 
@@ -57,7 +58,7 @@ class HpdsHealthIndicatorTest {
     @Test
     void downWhenHpdsErrors() {
         hpds.resetAll();
-        hpds.stubFor(get(urlEqualTo("/PIC-SURE/actuator/health")).willReturn(aResponse().withStatus(503)));
+        hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(503)));
 
         Health h = new HpdsHealthIndicator(props(), RestClient.builder().build()).health();
 
@@ -79,7 +80,7 @@ class HpdsHealthIndicatorTest {
 
     @Test
     void dedupesIdenticalAuthAndOpenBases() {
-        hpds.stubFor(get(urlEqualTo("/PIC-SURE/actuator/health")).willReturn(aResponse().withStatus(200)));
+        hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(200)));
         HpdsProperties p = props(); // authUrl == openUrl
 
         Health h = new HpdsHealthIndicator(p, RestClient.builder().build()).health();
@@ -97,7 +98,7 @@ class HpdsHealthIndicatorTest {
     @Test
     void probeFailsFastInsteadOfHangingOnASlowHpds() {
         hpds.resetAll();
-        hpds.stubFor(get(urlEqualTo("/PIC-SURE/actuator/health")).willReturn(aResponse().withStatus(200).withFixedDelay(15_000)));
+        hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(200).withFixedDelay(15_000)));
 
         long start = System.nanoTime();
         Health h = new HpdsHealthIndicator(props(), RestClient.builder()).health(); // real ctor: builder gets timeout-bound requestFactory
