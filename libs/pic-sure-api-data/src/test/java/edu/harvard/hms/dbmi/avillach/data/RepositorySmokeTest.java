@@ -164,6 +164,42 @@ class RepositorySmokeTest {
     }
 
     @Test
+    void findsConfigurationsByKind() {
+        Configuration ui = new Configuration().setName("feature-x").setKind("ui");
+        Configuration backend = new Configuration().setName("feature-y").setKind("backend");
+        configurationRepository.save(ui);
+        configurationRepository.save(backend);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(configurationRepository.findByKind("ui")).extracting(Configuration::getName).containsExactly("feature-x");
+        assertThat(configurationRepository.findByKind("nonexistent-kind")).isEmpty();
+    }
+
+    @Test
+    void findsConfigurationsByName() {
+        Configuration config = new Configuration().setName("shared-name").setKind("ui");
+        configurationRepository.save(config);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(configurationRepository.findByName("shared-name")).extracting(Configuration::getKind).containsExactly("ui");
+        assertThat(configurationRepository.findByName("nonexistent-name")).isEmpty();
+    }
+
+    @Test
+    void findsConfigurationByNameAndKind() {
+        Configuration config = new Configuration().setName("A").setKind("ui");
+        configurationRepository.save(config);
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(configurationRepository.findByNameAndKind("A", "ui")).isPresent();
+        assertThat(configurationRepository.findByNameAndKind("A", "backend")).isEmpty();
+        assertThat(configurationRepository.findByNameAndKind("nope", "ui")).isEmpty();
+    }
+
+    @Test
     void namedDatasetPersistsAndLinksToQueryAcrossAKeywordUserColumn() {
         Query query = queryRepository.save(new Query());
 

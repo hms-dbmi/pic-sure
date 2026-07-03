@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.data.repository;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -7,9 +9,21 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
 
 /**
- * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.repository.ConfigurationRepository} (CDI/{@code BaseRepository}), which had
- * no custom finder methods beyond generic CRUD. A bare {@link JpaRepository} therefore preserves the same lookups
- * ({@code findById}/{@code findAll}/ {@code save}/{@code delete}, all inherited).
+ * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.repository.ConfigurationRepository} (CDI/{@code BaseRepository}).
+ * {@code findById}/{@code findAll}/{@code save}/{@code delete} are inherited from {@link JpaRepository}; the derived queries below replace
+ * the legacy {@code BaseRepository.getByColumn}/{@code getByColumns} calls used by {@code ConfigurationService}.
  */
 public interface ConfigurationRepository extends JpaRepository<Configuration, UUID> {
+
+    /** Replaces {@code getByColumn("kind", kind)} -- the kind filter on the list endpoint. */
+    List<Configuration> findByKind(String kind);
+
+    /** Replaces {@code getByColumn("name", name)} -- the name-based identifier lookup. */
+    List<Configuration> findByName(String name);
+
+    /**
+     * Replaces {@code getByColumns({name, kind})} for the uniqueness check. The unique constraint {@code unique_name_kind} guarantees at
+     * most one match.
+     */
+    Optional<Configuration> findByNameAndKind(String name, String kind);
 }
