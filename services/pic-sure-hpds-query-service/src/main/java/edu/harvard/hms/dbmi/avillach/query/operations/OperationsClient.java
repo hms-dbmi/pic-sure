@@ -1,7 +1,9 @@
 package edu.harvard.hms.dbmi.avillach.query.operations;
 
+import java.util.List;
 import java.util.UUID;
 
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -33,6 +35,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 public class OperationsClient {
 
     private static final String QUERIES_PATH = "/internal/queries";
+    private static final String SITES_PATH = "/internal/sites";
 
     private final RestClient http;
 
@@ -76,6 +79,26 @@ public class OperationsClient {
         return execute(
             () -> http.get().uri(QUERIES_PATH + "/by-common-area/{uuid}", commonAreaUUID).retrieve().body(StoredQuery.class),
             "findByCommonAreaUUID"
+        );
+    }
+
+    /**
+     * {@code GET /internal/sites/by-domain/{domain}} -&gt; 200 a JSON array of site codes (empty array when no site is registered for that
+     * domain). Backs {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService}: since this module owns no database (not even for
+     * the small institutional/GIC site-of-origin reference table), the site lookup goes over HTTP to operations-service exactly like query
+     * persistence does, rather than reintroducing a local {@code SiteRepository}/JPA dependency.
+     *
+     * <p><b>Note:</b> this endpoint does not exist on pic-sure-operations-service yet (as of this module's Query-lifecycle task); it is a
+     * documented follow-up for whoever builds operations-service's Site surface (mirroring its existing Configuration/NamedDataset/Query
+     * surfaces). Until then this call will fail with a mapped {@link PicsureException} (502/504), which
+     * {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService} treats as "no site match" -- consistent with the GIC
+     * site-of-origin feature not being exercised by the AIO deployment yet.
+     */
+    public List<String> findSitesByDomain(String domain) {
+        return execute(
+            () -> http.get().uri(SITES_PATH + "/by-domain/{domain}", domain).retrieve()
+                .body(new ParameterizedTypeReference<List<String>>() {}),
+            "findSitesByDomain"
         );
     }
 

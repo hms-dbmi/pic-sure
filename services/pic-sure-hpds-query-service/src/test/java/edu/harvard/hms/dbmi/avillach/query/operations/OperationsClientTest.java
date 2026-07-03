@@ -174,4 +174,32 @@ class OperationsClientTest {
         assertThatThrownBy(() -> client().findByCommonAreaUUID(commonAreaUUID))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
+
+    @Test
+    void findSitesByDomainReturnsCodes() {
+        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/harvard.edu")).willReturn(okJson("[\"HARVARD\"]")));
+
+        java.util.List<String> result = client().findSitesByDomain("harvard.edu");
+
+        assertThat(result).containsExactly("HARVARD");
+        ops.verify(
+            getRequestedFor(urlEqualTo("/internal/sites/by-domain/harvard.edu"))
+                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
+        );
+    }
+
+    @Test
+    void findSitesByDomainEmptyWhenNoMatch() {
+        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/nowhere.com")).willReturn(okJson("[]")));
+
+        assertThat(client().findSitesByDomain("nowhere.com")).isEmpty();
+    }
+
+    @Test
+    void findSitesByDomainServerErrorThrowsBadGateway() {
+        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/harvard.edu")).willReturn(aResponse().withStatus(500)));
+
+        assertThatThrownBy(() -> client().findSitesByDomain("harvard.edu"))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
+    }
 }
