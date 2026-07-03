@@ -87,4 +87,23 @@ class HpdsHealthIndicatorTest {
         assertThat(h.getStatus()).isEqualTo(Status.UP);
         assertThat(h.getDetails()).hasSize(1); // one distinct base, not two
     }
+
+    /**
+     * The probe must fail fast rather than hang on a black-holed HPDS. Exercises the real {@code @Autowired}-visible constructor (which
+     * wires the short, health-specific read timeout onto the probe's {@code RestClient.Builder}) against a WireMock stub that delays its
+     * response far longer than that timeout. If the timeout were NOT applied (the pre-fix behavior), this call would block for the full
+     * stubbed delay instead of failing at the ~3s read-timeout mark.
+     */
+    @Test
+    void probeFailsFastInsteadOfHangingOnASlowHpds() {
+        hpds.resetAll();
+        hpds.stubFor(get(urlEqualTo("/PIC-SURE/actuator/health")).willReturn(aResponse().withStatus(200).withFixedDelay(15_000)));
+
+        long start = System.nanoTime();
+        Health h = new HpdsHealthIndicator(props(), RestClient.builder()).health(); // real ctor: builder gets timeout-bound requestFactory
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(h.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(elapsedMs).isLessThan(10_000); // well under the 15s stub delay -- the read timeout fired, the probe did not wait it out
+    }
 }

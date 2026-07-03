@@ -223,6 +223,26 @@ class HpdsQueryControllerTest {
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
     }
 
+    // --- isInstitute=true requires a federated request body: a malformed client request is a 400, never a 500 ---
+
+    @Test
+    void isInstituteWithNonFederatedBodyIsRejectedAs400() throws Exception {
+        mockMvc.perform(
+            post("/hpds/auth/query").param("isInstitute", "true").header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"q\"}") // no "@type" discriminator -> deserializes to GeneralQueryRequest, not FederatedQueryRequest
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("invalid_request"));
+    }
+
+    @Test
+    void isInstituteWithNonFederatedBodyIsRejectedAs400OnV3Controller() throws Exception {
+        mockMvc.perform(
+            post("/hpds/auth/v3/query").param("isInstitute", "true").header(GatewayUserResolver.HEADER_USER_ID, USER)
+                .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"q\"}") // no "@type" discriminator -> deserializes to GeneralQueryRequest, not FederatedQueryRequest
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("invalid_request"));
+    }
+
     // --- /hpds/** requires an authenticated caller ---
 
     @Test

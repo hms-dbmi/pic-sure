@@ -42,7 +42,13 @@ public class HpdsQueryV3Controller {
         @RequestParam(name = "isInstitute", required = false) Boolean isInstitute, GatewayUser user
     ) {
         if (Boolean.TRUE.equals(isInstitute)) {
-            return service.institutionalQuery(backend, (FederatedQueryRequest) req, requireEmail(user), true);
+            if (!(req instanceof FederatedQueryRequest federatedReq)) {
+                throw new PicsureException(
+                    HttpStatus.BAD_REQUEST, "invalid_request",
+                    "An institutional (isInstitute=true) query requires a federated query request body"
+                );
+            }
+            return service.institutionalQuery(backend, federatedReq, requireEmail(user), true);
         }
         return service.queryV3(backend, req);
     }

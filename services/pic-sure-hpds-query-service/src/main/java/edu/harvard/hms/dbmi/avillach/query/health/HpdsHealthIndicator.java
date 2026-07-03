@@ -2,11 +2,17 @@ package edu.harvard.hms.dbmi.avillach.query.health;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.Status;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -18,9 +24,17 @@ import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
  * backend base (auth/open -- in AIO they're typically the same URL and collapse to a single probe) with a short GET to
  * {@code {base}{healthPath}}; {@code UP} only when every distinct base responds with a 2xx. The gateway composes this service's own deep
  * health into its aggregate view -- this indicator does not cascade into probing anything beyond HPDS itself.
+ *
+ * <p>The probe client uses its OWN short, health-check-specific connect/read timeouts ({@link #HEALTH_CONNECT_TIMEOUT_SEC}/
+ * {@link #HEALTH_READ_TIMEOUT_SEC}) rather than {@link HpdsProperties#getConnectTimeoutSec()}/{@link HpdsProperties#getReadTimeoutSec()} --
+ * those are sized for real query traffic (default 300s read) and would let a black-holed HPDS hang {@code /actuator/health} (which the
+ * gateway aggregates) for minutes. A health probe must fail fast and report {@code DOWN}, never hang.
  */
 @Component("hpds")
 public class HpdsHealthIndicator implements HealthIndicator {
+
+    private static final int HEALTH_CONNECT_TIMEOUT_SEC = 2;
+    private static final int HEALTH_READ_TIMEOUT_SEC = 3;
 
     private final HpdsProperties props;
     private final RestClient probe;
@@ -28,12 +42,28 @@ public class HpdsHealthIndicator implements HealthIndicator {
     @Autowired
     public HpdsHealthIndicator(HpdsProperties props, RestClient.Builder builder) {
         this.props = props;
-        this.probe = builder.build();
+        this.probe = builder.requestFactory(timeoutBoundRequestFactory()).build();
     }
 
     HpdsHealthIndicator(HpdsProperties props, RestClient probe) { // test constructor
         this.props = props;
         this.probe = probe;
+    }
+
+    /**
+     * Mirrors {@code HpdsClientConfig}'s pooled-client timeout setup, but with short, health-specific values baked into the pooled
+     * {@link CloseableHttpClient} itself (a {@link org.apache.hc.client5.http.io.HttpClientConnectionManager}'s
+     * {@code defaultConnectionConfig} is where Apache HttpComponents 5 timeouts actually live -- the per-request setters on
+     * {@link HttpComponentsClientHttpRequestFactory} are no-ops once a preconfigured {@code CloseableHttpClient} is supplied).
+     */
+    private static HttpComponentsClientHttpRequestFactory timeoutBoundRequestFactory() {
+        PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
+        cm.setDefaultConnectionConfig(
+            ConnectionConfig.custom().setConnectTimeout(HEALTH_CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .setSocketTimeout(HEALTH_READ_TIMEOUT_SEC, TimeUnit.SECONDS).build()
+        );
+        CloseableHttpClient httpClient = HttpClients.custom().setConnectionManager(cm).build();
+        return new HttpComponentsClientHttpRequestFactory(httpClient);
     }
 
     @Override
