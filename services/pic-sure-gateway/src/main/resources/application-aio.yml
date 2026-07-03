@@ -20,13 +20,13 @@ picsure:
       application-token: ${TOKEN_INTROSPECTION_TOKEN:}
       downstreams:
         - name: psama
+          # PSAMA now ships Actuator (Task 4); use its real deep /auth/actuator/health
+          # (db indicator). context-path is /auth. The transitional introspection-ping
+          # (POST /auth/token/inspect, {}, app token) is retained in git history as the
+          # fallback if a PSAMA deploy ever lags the actuator rollout.
           base-url: ${PSAMA_URL:http://psama:8090}
-          health-path: /auth/token/inspect
-          method: POST
-          request-body: "{}"
-          send-app-token: true
-          success-status: 200
-          require-status-up: false
+          health-path: /auth/actuator/health
+          require-status-up: true
         - name: visualization
           base-url: ${VISUALIZATION_URL:http://visualization}
           health-path: /actuator/health
