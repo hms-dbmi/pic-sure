@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -25,6 +26,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
 
 import edu.harvard.dbmi.avillach.PicSureWarInit;
@@ -269,7 +271,6 @@ public class JWTFilterTest {
         when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
         when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
         filter.filter(ctx);
-        ArgumentCaptor<Map> requestBody = ArgumentCaptor.forClass(Map.class);
         verify(
             postRequestedFor(urlEqualTo("/introspection_endpoint"))
                 .withRequestBody(
@@ -278,6 +279,61 @@ public class JWTFilterTest {
                 .withRequestBody(matchingJsonPath("$.request.formattedQuery", equalToJson("{\"formatted\":\"query\"}")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
+    }
+
+    /**
+     * Regression test for the double-JSON-encoding bug: when PSAMA's token introspection response carries an updated "query" (it rewrote
+     * authorizationFilters for the caller's consents), the filter must parse that value back into an object before re-attaching it to the
+     * request, not store PSAMA's raw JSON-string text. Storing it as text causes it to be JSON-escaped an extra time on every subsequent
+     * serialization - including when the query is ultimately persisted - corrupting stored queries with doubled backslashes.
+     */
+    @Test
+    public void testFilterParsesPsamaUpdatedQueryIntoObjectInsteadOfRawText() throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+
+        Map<String, Object> updatedQuery = new HashMap<>();
+        updatedQuery.put("select", java.util.List.of("\\_consents\\"));
+        updatedQuery.put("authorizationFilters", java.util.List.of());
+        String updatedQueryAsJsonString = mapper.writeValueAsString(updatedQuery);
+
+        // PSAMA's introspection contract carries the rewritten query as a JSON string value, not a nested object
+        Map<String, Object> introspectionResponse = new HashMap<>();
+        introspectionResponse.put("active", true);
+        introspectionResponse.put("sub", "TEST_USER");
+        introspectionResponse.put("email", "some@email.com");
+        introspectionResponse.put("roles", "PIC_SURE_ANY_QUERY");
+        introspectionResponse.put("tokenRefreshed", false);
+        introspectionResponse.put("query", updatedQueryAsJsonString);
+
+        stubFor(
+            post(urlEqualTo("/introspection_endpoint")).willReturn(
+                aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(introspectionResponse))
+            )
+        );
+
+        String originalRequestBody = "{\"query\":{\"select\":[\"\\\\_consents\\\\\"]},\"resourceUUID\":\"" + RESOURCE_UUID + "\"}";
+
+        // A mock ContainerRequestContext has no real backing field for its entity stream, so getEntityStream()
+        // has to be wired to reflect whatever setEntityStream() last stored - mirroring how the filter reads,
+        // buffers, resets, and re-reads the stream within a single filter() call.
+        byte[][] currentBody = {originalRequestBody.getBytes()};
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
+        when(ctx.getEntityStream()).thenAnswer(inv -> new ByteArrayInputStream(currentBody[0]));
+        doAnswer(inv -> {
+            currentBody[0] = ((InputStream) inv.getArgument(0)).readAllBytes();
+            return null;
+        }).when(ctx).setEntityStream(any());
+        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
+
+        filter.filter(ctx);
+
+        Map<?, ?> finalRequestBody = mapper.readValue(currentBody[0], Map.class);
+        Object query = finalRequestBody.get("query");
+        assertTrue("PSAMA's updated query must be stored as a nested object, not a re-escaped JSON string", query instanceof Map);
+        assertEquals(updatedQuery, query);
     }
 
     private void queryFormatStub() {
