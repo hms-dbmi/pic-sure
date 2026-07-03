@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: pic-sure-hpds-query-service
+
+server:
+  port: ${SERVER_PORT:8080}
+
+hpds:
+  # HPDS_AUTH_URL / HPDS_AUTH_TOKEN: the auth (non-obfuscated) backend base + service Bearer token.
+  auth-url: ${HPDS_AUTH_URL:}
+  auth-token: ${HPDS_AUTH_TOKEN:}
+  # HPDS_OPEN_URL / HPDS_OPEN_TOKEN: the open (aggregate/obfuscated) backend base + service Bearer token.
+  # In AIO both HPDS_* URL vars point at the same HPDS instance.
+  open-url: ${HPDS_OPEN_URL:}
+  open-token: ${HPDS_OPEN_TOKEN:}
+
+picsure:
+  query:
+    operations:
+      # OPERATIONS_SERVICE_URL: base URL of pic-sure-operations-service (the sole pic-sure-DB owner). This service
+      # is DB-free -- every query read/write goes over HTTP through OperationsClient.
+      base-url: ${OPERATIONS_SERVICE_URL:}
+      # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
+      # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
+      internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true

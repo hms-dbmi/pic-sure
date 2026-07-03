@@ -24,6 +24,7 @@
         <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
         <pic-sure-api-data.version>3.0.0</pic-sure-api-data.version>
         <pic-sure-operations-service.version>3.0.0</pic-sure-operations-service.version>
+        <pic-sure-hpds-query-service.version>3.0.0</pic-sure-hpds-query-service.version>
         <!-- Shared third-party pins not governed by the Spring BOMs -->
         <wiremock.version>3.10.0</wiremock.version>
     </properties>
@@ -76,6 +77,11 @@
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
                 <artifactId>pic-sure-operations-service</artifactId>
                 <version>${pic-sure-operations-service.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-hpds-query-service</artifactId>
+                <version>${pic-sure-hpds-query-service.version}</version>
             </dependency>
             <!-- Test tooling shared across services -->
             <dependency>
