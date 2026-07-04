@@ -23,16 +23,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
+import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 /**
  * Direct port of {@code AggregateDataSharingResourceRS}/{@code AggregateDataSharingResourceRSV3}'s orchestration -- the querySync
  * obfuscation dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression
- * rule. Stateless: persists no {@code Query} rows (this module is DB-free), does not implement {@code RequestScopedHeader} (dead code in
- * the WAR -- dropped), and performs no inline audit logging (gateway-only, Task 10 elsewhere).
+ * rule. Stores no {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS
+ * dispatch to {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader}
+ * (dead code in the WAR -- dropped) or perform inline audit logging (gateway-only, Task 10 elsewhere).
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the exact 10-type allow-list from the WAR; a type not on it is rejected with
  * a 400 rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold/variance
@@ -57,50 +59,41 @@ public class AggregateService {
     private final AggregateBackendClient backend;
     private final ObfuscationService obfuscation;
     private final AggregateProperties props;
+    private final QueryService queryService;
 
-    public AggregateService(AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props) {
+    public AggregateService(
+        AggregateBackendClient backend, ObfuscationService obfuscation, AggregateProperties props, QueryService queryService
+    ) {
         this.backend = backend;
         this.obfuscation = obfuscation;
         this.props = props;
+        this.queryService = queryService;
     }
 
-    // ---- simple pass-throughs (no obfuscation; parity with the WAR) ----
+    // ---- async open submit ----
 
-    public ResourceInfo info(QueryRequest req) {
-        return backend.info(req);
-    }
-
-    public SearchResults search(QueryRequest req) {
-        checkQuery(req);
-        return backend.search(req);
-    }
-
-    /** CROSS_COUNT alteration only, submit is NOT obfuscated (WAR parity: query() never touched the response body). */
-    public QueryStatus query(QueryRequest req) {
+    /**
+     * Async open-channel submit. Direct port of the WAR aggregate resources' {@code query()} entry point
+     * ({@code AggregateDataSharingResourceRS.query} / {@code RSV3.query}): validate the request and -- only for a {@code CROSS_COUNT}
+     * submission -- rewrite it via {@link #changeQueryToOpenCrossCount} (force {@code CROSS_COUNT} + inject the full study-consents
+     * allow-list under the variant's consents field) BEFORE it is persisted and dispatched. Non-{@code CROSS_COUNT} types are forwarded
+     * unchanged, exactly as the WAR's async {@code query()} did (it had no allow-list; that guard existed only on {@code querySync}).
+     *
+     * <p><b>Consent-scoping fix (I6):</b> persistence + HPDS dispatch are delegated to {@link QueryService} (the module's DB-free create
+     * flow), so the STORED query is the REWRITTEN one. Every later status/result/signed-url/metadata call -- served by the generic
+     * {@code /hpds/{backend}} controller off the stored query -- therefore operates on the safe, consent-scoped query rather than the raw
+     * submission. This closes the gap where an unwired open async path dispatched the raw query with no consent-scoping.
+     */
+    public QueryStatus query(QueryRequest req, AggregateVariant variant) {
         checkQuery(req);
         JsonNode node = objectMapper.valueToTree(req.getQuery());
         req.setQuery(node);
         requireExpectedResultType(node);
         if ("CROSS_COUNT".equalsIgnoreCase(node.get("expectedResultType").asText())) {
-            changeQueryToOpenCrossCount(req, AggregateVariant.V1);
+            changeQueryToOpenCrossCount(req, variant);
         }
-        return backend.query(req);
-    }
-
-    public QueryStatus status(String resourceQueryId, QueryRequest req) {
-        checkQuery(req);
-        return backend.status(resourceQueryId, req);
-    }
-
-    /** Raw -- WAR parity, NOT obfuscated (queryResult never ran obfuscation; only querySync did). */
-    public String result(String resourceQueryId, QueryRequest req) {
-        checkQuery(req);
-        return backend.result(resourceQueryId, req);
-    }
-
-    public String queryFormat(QueryRequest req) {
-        checkQuery(req);
-        return backend.queryFormat(req);
+        return variant == AggregateVariant.V3 ? queryService.queryV3(HpdsBackendSelector.OPEN, req)
+            : queryService.query(HpdsBackendSelector.OPEN, req);
     }
 
     // ---- the obfuscation core ----

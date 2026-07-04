@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
@@ -81,7 +82,7 @@ class ConfigurationServiceTest {
     @Test
     void createPersistsAndReturnsDto() {
         when(repo.findByNameAndKind("A", "ui")).thenReturn(Optional.empty());
-        when(repo.save(any())).thenAnswer(inv -> {
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> {
             Configuration c = inv.getArgument(0);
             c.setUuid(UUID.randomUUID());
             return c;
@@ -90,6 +91,17 @@ class ConfigurationServiceTest {
         ConfigurationDto dto = service.create(req);
         assertThat(dto.name()).isEqualTo("A");
         assertThat(dto.value()).isEqualTo("true");
+    }
+
+    @Test
+    void createRaceLostToConcurrentDuplicateThrows409() {
+        when(repo.findByNameAndKind("A", "ui")).thenReturn(Optional.empty());
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_name_kind"));
+
+        ConfigurationRequestDto req = new ConfigurationRequestDto(null, "A", "ui", "true", null, null);
+        PicsureException ex = assertThrows(PicsureException.class, () -> service.create(req));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -118,13 +130,28 @@ class ConfigurationServiceTest {
     }
 
     @Test
+    void updateRaceLostToConcurrentDuplicateThrows409() {
+        UUID id = UUID.randomUUID();
+        Configuration existing = new Configuration().setName("A").setKind("ui");
+        existing.setUuid(id);
+        when(repo.findById(id)).thenReturn(Optional.of(existing));
+        when(repo.findByNameAndKind("B", "ui")).thenReturn(Optional.empty());
+        when(repo.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("unique_name_kind"));
+
+        PicsureException ex =
+            assertThrows(PicsureException.class, () -> service.update(id, new ConfigurationRequestDto(null, "B", "ui", null, null, null)));
+
+        assertThat(ex.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
     void updateAllowsKeepingItsOwnNameAndKind() {
         UUID id = UUID.randomUUID();
         Configuration existing = new Configuration().setName("A").setKind("ui").setValue("old");
         existing.setUuid(id);
         when(repo.findById(id)).thenReturn(Optional.of(existing));
         when(repo.findByNameAndKind("A", "ui")).thenReturn(Optional.of(existing));
-        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ConfigurationDto dto = service.update(id, new ConfigurationRequestDto(null, "A", "ui", "new", null, null));
 
