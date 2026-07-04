@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,12 @@ import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
  * {@link PicsureException} -- the actual {@code pic-sure-spring-commons} built for this monorepo ships only that one public error class (no
  * {@code PicsureNotFoundException} subclass), so 404 is carried the same way as 409: via the status code on {@link PicsureException}, not
  * the exception's Java type.
+ *
+ * <p>{@code Configuration} carries a DB-level unique constraint on {@code (name, kind)}. The {@code findByNameAndKind} pre-check above
+ * handles the common case, but a check-then-save is inherently racy under concurrent writers (two SUPER_ADMIN requests, or a residual
+ * WildFly writer during migration). {@link #create} and {@link #update} therefore also use {@code saveAndFlush} inside a try/catch so a
+ * constraint violation that slips past the pre-check is translated to {@code 409 CONFLICT} via {@link PicsureException}, mirroring
+ * {@code NamedDatasetService.saveOrConflict}.
  */
 @Service
 public class ConfigurationService {
@@ -52,7 +59,7 @@ public class ConfigurationService {
         if (repo.findByNameAndKind(config.getName(), config.getKind()).isPresent()) {
             throw conflict(config.getName(), config.getKind());
         }
-        return mapper.toDto(repo.save(config));
+        return mapper.toDto(saveOrConflict(config, config.getName(), config.getKind()));
     }
 
     @Transactional
@@ -65,7 +72,7 @@ public class ConfigurationService {
             throw conflict(proposedName, proposedKind);
         }
         mapper.applyPatch(existing, req);
-        return mapper.toDto(repo.save(existing));
+        return mapper.toDto(saveOrConflict(existing, proposedName, proposedKind));
     }
 
     @Transactional
@@ -73,6 +80,20 @@ public class ConfigurationService {
         Configuration existing = repo.findById(id).orElseThrow(() -> notFound(id.toString()));
         repo.delete(existing);
         return mapper.toDto(existing);
+    }
+
+    /**
+     * {@code saveAndFlush} (not {@code save}) so the {@code unique_name_kind} constraint violation -- if any -- is raised by the database
+     * and thrown here, inside the try/catch, rather than deferred to end-of-transaction flush where it could no longer be translated into a
+     * 409. On {@link #update}, a violation here means the proposed {@code (name,kind)} collides with a different row that was created
+     * concurrently after the pre-check ran -- same 409 as the create-path race.
+     */
+    private Configuration saveOrConflict(Configuration entity, String name, String kind) {
+        try {
+            return repo.saveAndFlush(entity);
+        } catch (DataIntegrityViolationException e) {
+            throw conflict(name, kind);
+        }
     }
 
     private Optional<Configuration> findEntityByIdentifier(String identifier) {
