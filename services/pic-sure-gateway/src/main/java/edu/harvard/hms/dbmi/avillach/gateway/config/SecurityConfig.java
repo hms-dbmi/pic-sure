@@ -18,6 +18,8 @@ import org.springframework.web.context.annotation.RequestScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
@@ -27,6 +29,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.shadow.CorrelationIdFilter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
@@ -38,7 +41,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * authentication machinery.
  */
 @Configuration
-@EnableConfigurationProperties(GatewaySecurityProperties.class)
+@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class})
 public class SecurityConfig {
 
     // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
@@ -94,6 +97,19 @@ public class SecurityConfig {
         return new QueryAuthFetcher(
             timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()
         );
+    }
+
+    /**
+     * Parity-verification infra (unconditional -- NOT gated on {@code auth-enabled}, since {@code mode} is an independent knob from the
+     * existing boolean; see {@link GatewayAuthMode}). Registered at the lowest order in the chain (5 < {@code BufferingFilter}'s 10) so the
+     * correlation id exists before any Phase-2 auth filter runs. It is a no-op in the default TRANSPARENT mode.
+     */
+    @Bean
+    FilterRegistrationBean<CorrelationIdFilter> correlationIdFilter(GatewayAuthProperties authProps) {
+        var r = new FilterRegistrationBean<>(new CorrelationIdFilter(authProps));
+        r.setOrder(5);
+        r.addUrlPatterns("/*");
+        return r;
     }
 
     @Bean

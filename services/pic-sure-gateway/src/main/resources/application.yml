@@ -121,6 +121,12 @@ picsure:
     header-name: X-Application-Token
   gateway:
     security:
+      # Parity-verification tri-state (additive; does NOT replace auth-enabled below). transparent = pure
+      # pass-through (default, matches auth-enabled=false); observe = build + shadow-log the would-be introspection
+      # request and forward unchanged, no PSAMA call; enforce = current Phase-2 behavior (matches auth-enabled=true).
+      # See GatewayAuthMode for the full mapping. Not yet wired into the filter chain's branching -- a later task
+      # does that; today only CorrelationIdFilter reads this.
+      mode: ${PICSURE_GATEWAY_AUTH_MODE:transparent}
       auth-enabled: ${GATEWAY_OWNS_AUTH:false}
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
