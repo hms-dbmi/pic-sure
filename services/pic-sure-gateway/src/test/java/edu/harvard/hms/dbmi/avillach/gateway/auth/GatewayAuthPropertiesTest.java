@@ -29,8 +29,10 @@ class GatewayAuthPropertiesTest {
     }
 
     @Test
-    void compactConstructorDefaultsNullModeToTransparent() {
-        assertThat(new GatewayAuthProperties(null).mode()).isEqualTo(GatewayAuthMode.TRANSPARENT);
+    void nullModeIsLeftUnsetNotCoercedToTransparent() {
+        // 'mode' is the RAW configured value: null means "not explicitly set" (a distinct state from explicit
+        // transparent), which GatewayModeResolver derives from auth-enabled. Coercing it here would erase that signal.
+        assertThat(new GatewayAuthProperties(null).mode()).isNull();
     }
 
     @Test

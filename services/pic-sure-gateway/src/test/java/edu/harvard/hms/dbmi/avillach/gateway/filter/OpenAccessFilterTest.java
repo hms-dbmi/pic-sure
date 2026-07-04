@@ -24,9 +24,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,7 +36,7 @@ class OpenAccessFilterTest {
     private static final GatewayAuthScope SCOPE = new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"));
 
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(client, ctx, new ObjectMapper(), SCOPE, enabled, new GatewayAuthProperties(GatewayAuthMode.ENFORCE));
+        return new OpenAccessFilter(client, ctx, new ObjectMapper(), SCOPE, enabled, GatewayModeResolver.enforcing());
     }
 
     @Test

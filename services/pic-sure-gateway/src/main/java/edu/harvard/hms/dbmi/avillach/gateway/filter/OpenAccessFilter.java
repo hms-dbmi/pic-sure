@@ -16,9 +16,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowRecord;
@@ -36,14 +35,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. A real bearer token, or
  * open access disabled, passes through untouched. Skips interim (result/signed-url) paths still owned by WildFly.
  *
- * <p><b>OBSERVE mode</b> ({@link GatewayAuthProperties#getMode()} == {@link GatewayAuthMode#OBSERVE}, the parity-verification shadow path):
- * triggered on the SAME {@code noToken} precondition as the real {@code validateOpenAccess} call above (a request carrying a real bearer
- * token is left untouched here -- {@code PsamaIntrospectionFilter}'s own observe branch records it on the introspection channel instead).
- * Builds the same open-access request shape via {@link #buildOpenAccessRequest}, emits one {@code SHADOW_GW} record (channel=open-access),
- * and always forwards unchanged -- no {@code validateOpenAccess} call, no attribute mutation, never a denial. Deliberately NOT gated on
- * {@code openAccessEnabled}: the shadow record captures what the request WOULD look like, independent of this gateway instance's local
- * feature toggle, so a toggle mismatch against WildFly's real configuration surfaces as a divergence rather than being hidden. Any failure
- * while building the shadow request is swallowed -- OBSERVE must never block or alter real traffic.
+ * <p><b>OBSERVE mode</b> (the parity-verification shadow path): the observe branch is taken per request, and ONLY on the legacy catch-all
+ * surface ({@link GatewayModeResolver#observesFor}) with the SAME {@code noToken} precondition as the real {@code validateOpenAccess} call
+ * above (a request carrying a real bearer token is left untouched here -- {@code PsamaIntrospectionFilter}'s own observe branch records it
+ * on the introspection channel instead). Gateway-owned routes run the real enforce path even in OBSERVE. For an observed catch-all request
+ * it builds the same open-access request shape via {@link #buildOpenAccessRequest}, emits one {@code SHADOW_GW} record
+ * (channel=open-access), and always forwards unchanged -- no {@code validateOpenAccess} call, no attribute mutation, never a denial.
+ * Deliberately NOT gated on {@code openAccessEnabled}: the shadow record captures what the request WOULD look like, independent of this
+ * gateway instance's local feature toggle, so a toggle mismatch against WildFly's real configuration surfaces as a divergence rather than
+ * being hidden. Any failure while building the shadow request is swallowed -- OBSERVE must never block or alter real traffic.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
@@ -54,18 +54,18 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     private final ObjectMapper json;
     private final GatewayAuthScope scope;
     private final boolean openAccessEnabled;
-    private final GatewayAuthProperties authProps;
+    private final GatewayModeResolver modeResolver;
 
     public OpenAccessFilter(
         PsamaClient psama, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, boolean openAccessEnabled,
-        GatewayAuthProperties authProps
+        GatewayModeResolver modeResolver
     ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.scope = scope;
         this.openAccessEnabled = openAccessEnabled;
-        this.authProps = authProps;
+        this.modeResolver = modeResolver;
     }
 
     @Override
@@ -79,7 +79,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
         String authz = req.getHeader("Authorization");
         boolean noToken = authz == null || authz.isBlank() || authz.length() <= 7; // JWTFilter.java:154-157
 
-        if (authProps.getMode() == GatewayAuthMode.OBSERVE && noToken) {
+        if (modeResolver.observesFor(req.getRequestURI()) && noToken) {
             observeAndForward(req, resp, chain);
             return;
         }

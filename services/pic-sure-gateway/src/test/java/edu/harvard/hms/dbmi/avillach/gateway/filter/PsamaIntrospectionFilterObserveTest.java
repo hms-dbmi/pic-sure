@@ -21,9 +21,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.qos.logback.classic.Logger;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowSupport;
@@ -33,9 +33,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Task 4: in {@link GatewayAuthMode#OBSERVE}, {@code PsamaIntrospectionFilter} builds the exact introspection request it would otherwise
- * send, emits one {@code SHADOW_GW} record (channel=introspection) via {@link ShadowSupport}, and forwards the request UNCHANGED -- no
- * PSAMA call, no body/attribute mutation. WildFly remains the sole real enforcer while in this mode.
+ * OBSERVE-mode behavior of {@code PsamaIntrospectionFilter}. The observe branch is taken ONLY on the legacy catch-all surface: the filter
+ * builds the exact introspection request it would otherwise send, emits one {@code SHADOW_GW} record (channel=introspection) via
+ * {@link ShadowSupport}, and forwards the request UNCHANGED -- no PSAMA call, no body/attribute mutation (WildFly stays the sole enforcer
+ * there). Gateway-owned routes ({@code /hpds}, {@code /dictionary}, ...) run the full enforce path even in OBSERVE and emit NO shadow
+ * record.
  */
 class PsamaIntrospectionFilterObserveTest {
 
@@ -53,7 +55,7 @@ class PsamaIntrospectionFilterObserveTest {
     private PsamaIntrospectionFilter observeFilter(PsamaClient client, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
             client, new AuditContext(), new ObjectMapper(), fetcher, SCOPE, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"),
-            "userId", new GatewayAuthProperties(GatewayAuthMode.OBSERVE)
+            "userId", GatewayModeResolver.observing()
         );
     }
 
@@ -114,6 +116,69 @@ class PsamaIntrospectionFilterObserveTest {
 
         verifyNoInteractions(client);
         verify(chain).doFilter(ArgumentMatchers.eq(req), any());
+        assertThat(appender.lines()).isEmpty();
+    }
+
+    @Test
+    void observeOwnedRouteEnforcesCallingPsamaAndAppliesMutationWithoutEmittingShadow() throws Exception {
+        // Gateway-owned routes have no WildFly counterpart, so OBSERVE still runs the full enforce path there (and emits
+        // NO shadow record -- an owned-route SHADOW_GW would be an unpaired record).
+        appender = ShadowTestAppender.attach("picsure.shadow");
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(ArgumentMatchers.eq("user-token"), any()))
+            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of("SUPER_ADMIN"), false, null, "{\"new\":1}"));
+        PsamaIntrospectionFilter f = observeFilter(client, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"query\":{}}".getBytes(), "/hpds/auth/v3/query/sync");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(client).introspect(ArgumentMatchers.eq("user-token"), any()); // enforced, not observed
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isEqualTo("{\"new\":1}");
+        verify(chain).doFilter(ArgumentMatchers.eq(req), any());
+        assertThat(appender.lines()).isEmpty(); // no SHADOW_GW for an owned route
+    }
+
+    @Test
+    void observeOwnedRouteRejectsUnauthenticatedExactlyAsEnforce() throws Exception {
+        // Unauthenticated request to a gateway-owned route (e.g. /dictionary/**) is 401'd, not forwarded -- an observe
+        // window must never unprotect owned routes.
+        appender = ShadowTestAppender.attach("picsure.shadow");
+        PsamaClient client = mock(PsamaClient.class);
+        PsamaIntrospectionFilter f = observeFilter(client, mock(QueryAuthFetcher.class));
+
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/dictionary/concepts");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        org.mockito.Mockito.lenient().when(resp.getWriter()).thenReturn(new java.io.PrintWriter(new java.io.StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verifyNoInteractions(client);
+        verify(chain, org.mockito.Mockito.never()).doFilter(any(), any());
+        verify(resp).setStatus(401);
+        assertThat(appender.lines()).isEmpty();
+    }
+
+    @Test
+    void observeCatchAllShadowBuildFailureDoesNotAffectResponse() throws Exception {
+        // A shadow-side failure (e.g. QueryAuthFetcher blowing up) must be swallowed and the request forwarded unchanged.
+        appender = ShadowTestAppender.attach("picsure.shadow");
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenThrow(new RuntimeException("boom"));
+        PsamaIntrospectionFilter f = observeFilter(client, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer abc", "{\"query\":{}}".getBytes(), "/picsure/query/sync");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, mock(HttpServletResponse.class), chain); // must not throw
+
+        verifyNoInteractions(client);
+        verify(chain).doFilter(ArgumentMatchers.eq(req), any()); // forwarded unchanged despite the shadow failure
         assertThat(appender.lines()).isEmpty();
     }
 

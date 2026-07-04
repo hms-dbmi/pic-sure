@@ -8,8 +8,7 @@ import java.util.UUID;
 
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,31 +16,30 @@ import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * High-precedence filter for the parity-verification shadow pipeline (registered ahead of the Phase-2 auth chain -- see
- * {@code SecurityConfig} -- so the correlation id exists before {@code PsamaIntrospectionFilter}/ {@code OpenAccessFilter} run). Note this
- * class does not itself branch behavior in those filters; a later task reads {@link ShadowSupport#ATTR_CORRELATION_ID} to do that.
+ * High-precedence filter for the parity-verification shadow pipeline (registered ahead of the auth chain -- see {@code SecurityConfig} --
+ * so the correlation id exists before {@code OpenAccessFilter}/{@code PsamaIntrospectionFilter} emit their {@code SHADOW_GW} records).
  *
- * <p>When {@code picsure.gateway.security.mode} ({@link GatewayAuthProperties#getMode()}) is anything other than
- * {@link GatewayAuthMode#TRANSPARENT}, mints a UUID, stores it under {@link ShadowSupport#ATTR_CORRELATION_ID} for downstream filters, and
- * adds the {@value #HEADER} header to the request forwarded downstream so WildFly can correlate its own {@code side=WF} shadow log line. In
- * {@link GatewayAuthMode#TRANSPARENT} mode (the default) this is a pure no-op -- no attribute, no header -- matching the "pure proxy"
- * requirement for that mode.
+ * <p>Mints a UUID and propagates it -- storing it under {@link ShadowSupport#ATTR_CORRELATION_ID} for downstream filters and adding the
+ * {@value #HEADER} header to the forwarded request so WildFly can correlate its own {@code side=WF} shadow line -- EXACTLY when the request
+ * will emit a {@code SHADOW_GW} record: OBSERVE mode on the legacy catch-all surface ({@link GatewayModeResolver#observesFor}). It is a
+ * pure no-op otherwise -- in ENFORCE and TRANSPARENT (so the production enforce path forwards no extra header), and on OBSERVE
+ * gateway-owned routes (which enforce, and have no WildFly pair to correlate against).
  */
 public class CorrelationIdFilter extends OncePerRequestFilter {
 
-    /** Correlation header propagated to the forwarded/downstream request; WildFly (a later task) reads this back. */
+    /** Correlation header propagated to the forwarded/downstream request; WildFly reads this back to pair its own shadow line. */
     public static final String HEADER = "X-PICSURE-Shadow-Id";
 
-    private final GatewayAuthProperties props;
+    private final GatewayModeResolver modeResolver;
 
-    public CorrelationIdFilter(GatewayAuthProperties props) {
-        this.props = props;
+    public CorrelationIdFilter(GatewayModeResolver modeResolver) {
+        this.modeResolver = modeResolver;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
-        if (props.getMode() == GatewayAuthMode.TRANSPARENT) {
+        if (!modeResolver.observesFor(request.getRequestURI())) {
             chain.doFilter(request, response);
             return;
         }

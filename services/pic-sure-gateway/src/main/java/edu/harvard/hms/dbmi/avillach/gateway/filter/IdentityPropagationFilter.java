@@ -15,6 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,14 +31,29 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) are gateway-owned: the wrapper NEVER falls through to the raw
  * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
  * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
+ *
+ * <p>In OBSERVE mode on the legacy catch-all surface ({@code !modeResolver.enforcesFor}) this filter is a pure pass-through: no identity
+ * headers are injected and no request-id header is added, so the request reaches WildFly byte-identical (WildFly resolves its own
+ * identity).
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     static final String HEADER_REQUEST_ID = "X-Request-Id"; // commons RequestIdFilter owns generation
 
+    private final GatewayModeResolver modeResolver;
+
+    public IdentityPropagationFilter(GatewayModeResolver modeResolver) {
+        this.modeResolver = modeResolver;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
+        if (!modeResolver.enforcesFor(req.getRequestURI())) {
+            // OBSERVE catch-all: forward unchanged; WildFly is the sole enforcer and resolves identity itself.
+            chain.doFilter(req, resp);
+            return;
+        }
         chain.doFilter(new IdentityHeadersRequest(req), resp);
     }
 

@@ -22,9 +22,10 @@ import ch.qos.logback.classic.Logger;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
+import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
 import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowSupport;
 import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowTestAppender;
 import jakarta.servlet.FilterChain;
@@ -32,10 +33,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Task 5: in {@link GatewayAuthMode#OBSERVE}, {@code OpenAccessFilter} builds the open-access request shape it would otherwise validate,
- * emits one {@code SHADOW_GW} record (channel=open-access) via {@link ShadowSupport}, and forwards the request UNCHANGED -- no
- * {@code validateOpenAccess} call, no attribute mutation. Triggered on the same no-bearer-token precondition as the real enforce path;
- * requests carrying a real bearer token are left to {@code PsamaIntrospectionFilter}'s own observe branch (channel=introspection).
+ * OBSERVE-mode behavior of {@code OpenAccessFilter}. On the legacy catch-all surface it builds the open-access request shape it would
+ * otherwise validate, emits one {@code SHADOW_GW} record (channel=open-access) via {@link ShadowSupport}, and forwards the request
+ * UNCHANGED -- no {@code validateOpenAccess} call, no attribute mutation. Triggered on the same no-bearer-token precondition as the real
+ * enforce path; requests carrying a real bearer token are left to {@code PsamaIntrospectionFilter}'s own observe branch. Gateway-owned
+ * routes run the real enforce path even in OBSERVE and emit NO shadow record.
  */
 class OpenAccessFilterObserveTest {
 
@@ -52,7 +54,8 @@ class OpenAccessFilterObserveTest {
 
     private OpenAccessFilter observeFilter(PsamaClient client, boolean openAccessEnabled) {
         return new OpenAccessFilter(
-            client, new AuditContext(), new ObjectMapper(), SCOPE, openAccessEnabled, new GatewayAuthProperties(GatewayAuthMode.OBSERVE)
+            client, new AuditContext(), new ObjectMapper(), SCOPE, openAccessEnabled,
+            new GatewayModeResolver(GatewayAuthMode.OBSERVE, RouteSurfaces.withDefaults())
         );
     }
 
@@ -90,9 +93,30 @@ class OpenAccessFilterObserveTest {
         assertThat(appender.lines()).isEmpty();
     }
 
+    @Test
+    void observeOwnedRouteEnforcesOpenAccessWithoutEmittingShadow() throws Exception {
+        // Gateway-owned route with no bearer token in OBSERVE: the real validateOpenAccess call runs (enforce), and NO
+        // shadow record is emitted -- owned routes are never observed.
+        appender = ShadowTestAppender.attach("picsure.shadow");
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = observeFilter(client, true);
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/dictionary/concepts");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verify(client).validateOpenAccess(any()); // enforced, not observed
+        assertThat(appender.lines()).isEmpty();
+    }
+
     private static BufferedRequestWrapper wrap(String authHeader, byte[] body) {
+        return wrap(authHeader, body, "/v3/search/abc");
+    }
+
+    private static BufferedRequestWrapper wrap(String authHeader, byte[] body, String uri) {
         HttpServletRequest base = mock(HttpServletRequest.class);
-        when(base.getRequestURI()).thenReturn("/v3/search/abc");
+        when(base.getRequestURI()).thenReturn(uri);
         lenient().when(base.getMethod()).thenReturn("POST");
         lenient().when(base.getServerName()).thenReturn("aio.local");
         if (authHeader != null) when(base.getHeader("Authorization")).thenReturn(authHeader);

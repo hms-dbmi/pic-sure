@@ -7,13 +7,14 @@ package edu.harvard.hms.dbmi.avillach.gateway.auth;
  * which continues to gate the Phase-2 filter chain ({@code BufferingFilter}, {@code OpenAccessFilter}, {@code PsamaIntrospectionFilter},
  * etc.) exactly as before.
  *
- * <p>Mapping intent for the eventual cutover (documented here, NOT wired by this enum or by
- * {@link edu.harvard.hms.dbmi.avillach.gateway.config.SecurityConfig} yet -- a later task wires the branch):
+ * <p>{@link GatewayModeResolver} turns the {@code (auth-enabled, mode)} tuple into ONE effective mode and drives the whole filter chain:
  *
- * <ul> <li>{@link #TRANSPARENT} &lt;-&gt; {@code auth-enabled=false}: pure proxy, no gateway auth/audit filters register.
- * <li>{@link #ENFORCE} &lt;-&gt; {@code auth-enabled=true}: current Phase-2 behavior (introspect + mutate + enforce). <li>{@link #OBSERVE}:
- * NEW. Build the introspection request the gateway *would* send, emit a {@code picsure.shadow} record (side=GW), and forward the request
- * UNCHANGED -- no PSAMA call, no body mutation -- so WildFly remains the sole enforcer while the two sides' requests are compared
+ * <ul> <li>{@link #TRANSPARENT}: pure proxy, no gateway auth/audit filters register. Resolved from mode-unset + {@code auth-enabled=false}.
+ * <li>{@link #ENFORCE}: full Phase-2 behavior (introspect + mutate + enforce) on EVERY route. Resolved from mode-unset +
+ * {@code auth-enabled=true} (today's production topology) or an explicit {@code mode=enforce}. <li>{@link #OBSERVE}: the full chain still
+ * registers, but behavior splits PER REQUEST -- gateway-OWNED routes enforce exactly as ENFORCE, while the legacy catch-all is observed:
+ * build the introspection request the gateway *would* send, emit a {@code picsure.shadow} record (side=GW), and forward UNCHANGED (no PSAMA
+ * call, no body mutation, no identity injection) so WildFly stays the sole enforcer there and the two sides' requests are compared
  * out-of-band by a standalone reconciler. </ul>
  */
 public enum GatewayAuthMode {

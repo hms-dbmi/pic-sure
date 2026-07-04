@@ -121,13 +121,18 @@ picsure:
     header-name: X-Application-Token
   gateway:
     security:
-      # Parity-verification tri-state (additive; does NOT replace auth-enabled below). transparent = pure
-      # pass-through (default, matches auth-enabled=false); observe = build + shadow-log the would-be introspection
-      # request and forward unchanged, no PSAMA call; enforce = current Phase-2 behavior (matches auth-enabled=true).
-      # See GatewayAuthMode for the full mapping. Not yet wired into the filter chain's branching -- a later task
-      # does that; today only CorrelationIdFilter reads this.
-      mode: ${PICSURE_GATEWAY_AUTH_MODE:transparent}
+      # Effective auth mode is RESOLVED from (auth-enabled, mode) by GatewayModeResolver, the single source of truth:
+      # an explicit mode wins; if mode is unset, auth-enabled drives it (true => ENFORCE, false => TRANSPARENT). So
+      # today's production topology (GATEWAY_OWNS_AUTH=true, mode unset) resolves to ENFORCE unchanged, and an observe
+      # window is entered purely by setting PICSURE_GATEWAY_SECURITY_MODE=observe (auth-enabled no longer needs touching).
+      #   transparent = pure pass-through, no auth filters; enforce = full gateway enforcement on every route;
+      #   observe = gateway-owned routes enforce, legacy catch-all is log-only shadow (WildFly enforces there).
+      # 'mode' is intentionally left UNSET here (no default) so absence is distinguishable from an explicit transparent;
+      # set the PICSURE_GATEWAY_SECURITY_MODE env var (relaxed-bound to picsure.gateway.security.mode) to override.
       auth-enabled: ${GATEWAY_OWNS_AUTH:false}
+      # Gateway-owned route surfaces (no WildFly counterpart) that stay fully enforced during an observe window. Default
+      # (RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES) matches the non-catch-all routes above; a drift-guard test fails
+      # the build if a route is added without extending it. Override via picsure.gateway.security.owned-prefixes if needed.
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

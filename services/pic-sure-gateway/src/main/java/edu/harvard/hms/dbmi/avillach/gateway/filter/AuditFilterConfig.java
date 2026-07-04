@@ -3,15 +3,17 @@ package edu.harvard.hms.dbmi.avillach.gateway.filter;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
+import edu.harvard.hms.dbmi.avillach.gateway.config.GatewayAuthActiveCondition;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
@@ -50,15 +52,16 @@ public class AuditFilterConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     public FilterRegistrationBean<GatewayAuditLoggingFilter> auditLoggingFilter(
-        LoggingClient client, AuditRouteTable routes, AuditContext audit, GatewayAuthScope scope
+        LoggingClient client, AuditRouteTable routes, AuditContext audit, GatewayAuthScope scope, GatewayModeResolver modeResolver
     ) {
         // VERIFIED skip-list (AuditLoggingFilter.java:122-127): ends-with /system/status, /openapi.json (base
         // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
         // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
         GatewayAuditLoggingFilter filter = new GatewayAuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), scope
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), scope,
+            modeResolver
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(60); // outermost emitter on the way out

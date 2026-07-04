@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.gateway.config;
 
 import java.time.Duration;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -22,6 +21,7 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
+import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BodyMutationFilter;
@@ -41,16 +41,17 @@ import io.micrometer.core.instrument.MeterRegistry;
  * permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's
  * authentication machinery.
  *
- * <p><b>Mode &lt;-&gt; auth-enabled precedence (parity verification):</b> {@code openAccessFilter} and {@code introspectionFilter} register
- * under {@link GatewayAuthActiveCondition} -- {@code auth-enabled=true} (unchanged ENFORCE) OR {@code picsure.gateway.security.mode !=
- * TRANSPARENT} (new: OBSERVE builds + shadow-logs + forwards unchanged; a bare {@code mode=ENFORCE} without {@code auth-enabled=true} is
- * treated the same as {@code auth-enabled=true} inside those filters). {@code BufferingFilter}, {@code BodyMutationFilter},
- * {@code TokenRefreshResponseFilter}, and {@code IdentityPropagationFilter} stay gated on {@code auth-enabled=true} ONLY -- unchanged -- so
- * OBSERVE mode never buffers/caps the body, never mutates it, and never sets identity headers. The default ({@code auth-enabled=false},
- * {@code mode=TRANSPARENT}) registers none of these filters at all, exactly as before this parity-verification work.
+ * <p><b>Resolved effective mode (single source of truth):</b> all SEVEN filters register under one gate, {@link GatewayAuthActiveCondition}
+ * -- true whenever {@link GatewayModeResolver#resolve the resolved effective mode} is not {@link GatewayAuthMode#TRANSPARENT} (i.e. ENFORCE
+ * or OBSERVE). So ENFORCE and OBSERVE both bring up the FULL chain; the enforce-vs-observe difference is a PER-REQUEST decision the filters
+ * make via the injected {@link GatewayModeResolver} ({@code enforcesFor}/{@code observesFor}), keyed on whether the request is on a
+ * gateway-owned route surface. In OBSERVE, gateway-owned routes enforce exactly as ENFORCE, while the legacy catch-all is observed --
+ * built, shadow-logged, forwarded unchanged (no buffering, no mutation, no identity injection). The default (mode unset,
+ * {@code auth-enabled=false} → TRANSPARENT) registers none of these filters, exactly as before this work; the deployed production topology
+ * (mode unset, {@code auth-enabled=true} → ENFORCE) registers the full chain and enforces every route, unchanged.
  */
 @Configuration
-@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class})
+@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class, RouteSurfaceProperties.class})
 public class SecurityConfig {
 
     // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
@@ -93,6 +94,21 @@ public class SecurityConfig {
     }
 
     @Bean
+    RouteSurfaces routeSurfaces(RouteSurfaceProperties props) {
+        return new RouteSurfaces(props.ownedPrefixes());
+    }
+
+    /**
+     * The single source of truth for the effective auth mode and the per-request enforce/observe decision. Resolves the
+     * {@code (auth-enabled, mode)} tuple once and logs it prominently at startup (WARN on an unusual tuple). Every mode-aware filter reads
+     * this rather than the raw {@code mode} property.
+     */
+    @Bean
+    GatewayModeResolver gatewayModeResolver(GatewaySecurityProperties props, GatewayAuthProperties authProps, RouteSurfaces routeSurfaces) {
+        return GatewayModeResolver.create(authProps.mode(), props.authEnabled(), routeSurfaces);
+    }
+
+    @Bean
     PsamaClient psamaClient(GatewaySecurityProperties props) {
         return new PsamaClient(
             timeoutBoundedRestClientBuilder().build(), props.introspectionUrl(), props.openAccessValidateUrl(), props.serviceToken()
@@ -109,24 +125,25 @@ public class SecurityConfig {
     }
 
     /**
-     * Parity-verification infra (unconditional -- NOT gated on {@code auth-enabled}, since {@code mode} is an independent knob from the
-     * existing boolean; see {@link GatewayAuthMode}). Registered at the lowest order in the chain (5 < {@code BufferingFilter}'s 10) so the
-     * correlation id exists before any Phase-2 auth filter runs. It is a no-op in the default TRANSPARENT mode.
+     * Shadow-correlation infra. Registered unconditionally at the lowest order in the chain (5 < {@code BufferingFilter}'s 10) so the
+     * correlation id exists before any auth filter runs, but it only mints/propagates the id for requests that will emit a
+     * {@code SHADOW_GW} record -- OBSERVE on the legacy catch-all surface. It is a no-op in ENFORCE and TRANSPARENT (so the production
+     * enforce path forwards no extra header), and on OBSERVE gateway-owned routes (which enforce, and have no WildFly pair to correlate).
      */
     @Bean
-    FilterRegistrationBean<CorrelationIdFilter> correlationIdFilter(GatewayAuthProperties authProps) {
-        var r = new FilterRegistrationBean<>(new CorrelationIdFilter(authProps));
+    FilterRegistrationBean<CorrelationIdFilter> correlationIdFilter(GatewayModeResolver modeResolver) {
+        var r = new FilterRegistrationBean<>(new CorrelationIdFilter(modeResolver));
         r.setOrder(5);
         r.addUrlPatterns("/*");
         return r;
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<BufferingFilter> bufferingFilter(
-        GatewaySecurityProperties props, GatewayAuthScope scope, MeterRegistry meterRegistry
+        GatewaySecurityProperties props, GatewayAuthScope scope, MeterRegistry meterRegistry, GatewayModeResolver modeResolver
     ) {
-        var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), scope, meterRegistry));
+        var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), scope, meterRegistry, modeResolver));
         r.setOrder(10);
         r.addUrlPatterns("/*");
         return r;
@@ -136,9 +153,9 @@ public class SecurityConfig {
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props,
-        GatewayAuthProperties authProps
+        GatewayModeResolver modeResolver
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled(), authProps));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled(), modeResolver));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
@@ -148,10 +165,10 @@ public class SecurityConfig {
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewayAuthScope scope,
-        GatewaySecurityProperties props, GatewayAuthProperties authProps
+        GatewaySecurityProperties props, GatewayModeResolver modeResolver
     ) {
         var r = new FilterRegistrationBean<>(
-            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim(), authProps)
+            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim(), modeResolver)
         );
         r.setOrder(30);
         r.addUrlPatterns("/*");
@@ -159,7 +176,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<BodyMutationFilter> bodyMutationFilter(ObjectMapper json) {
         var r = new FilterRegistrationBean<>(new BodyMutationFilter(json));
         r.setOrder(35);
@@ -168,7 +185,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<TokenRefreshResponseFilter> tokenRefreshFilter() {
         var r = new FilterRegistrationBean<>(new TokenRefreshResponseFilter());
         r.setOrder(40);
@@ -177,9 +194,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
-    FilterRegistrationBean<IdentityPropagationFilter> identityFilter() {
-        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter());
+    @Conditional(GatewayAuthActiveCondition.class)
+    FilterRegistrationBean<IdentityPropagationFilter> identityFilter(GatewayModeResolver modeResolver) {
+        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter(modeResolver));
         r.setOrder(50);
         r.addUrlPatterns("/*");
         return r;
