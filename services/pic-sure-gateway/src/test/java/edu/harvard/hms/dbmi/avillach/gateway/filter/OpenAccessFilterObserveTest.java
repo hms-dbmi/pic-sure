@@ -94,6 +94,24 @@ class OpenAccessFilterObserveTest {
     }
 
     @Test
+    void observeModeDoesNotEmitForGatewaySelfServedActuatorPath() throws Exception {
+        // I8: a no-token OBSERVE request to a gateway-self-served /actuator probe takes the observe branch (it is on the
+        // catch-all surface and Spring-Security-permitted) but must emit NO shadow record -- WildFly never pairs it, so it
+        // would otherwise be a spurious UNPAIRED that fails the exit gate. The request is still forwarded unchanged.
+        appender = ShadowTestAppender.attach("picsure.shadow");
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = observeFilter(client, false);
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/actuator/health/liveness");
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, mock(HttpServletResponse.class), chain);
+
+        verifyNoInteractions(client);
+        verify(chain).doFilter(eq(req), any());
+        assertThat(appender.lines()).isEmpty();
+    }
+
+    @Test
     void observeOwnedRouteEnforcesOpenAccessWithoutEmittingShadow() throws Exception {
         // Gateway-owned route with no bearer token in OBSERVE: the real validateOpenAccess call runs (enforce), and NO
         // shadow record is emitted -- owned routes are never observed.

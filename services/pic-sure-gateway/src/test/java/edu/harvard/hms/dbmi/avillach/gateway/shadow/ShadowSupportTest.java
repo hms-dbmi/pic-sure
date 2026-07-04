@@ -100,4 +100,44 @@ class ShadowSupportTest {
                 + "\"ipAddress\":null,\"decision\":null}"
         );
     }
+
+    @Test
+    void emitSuppressesGatewaySelfServedActuatorPaths() {
+        // I8: an OBSERVE catch-all request to a gateway-self-served /actuator probe would build a record WildFly never pairs.
+        ShadowSupport.emit(ShadowRecord.gwOpenAccess("cid-a", null, "/actuator/health/liveness", null, "OPEN_ACCESS:host"));
+        ShadowSupport.emit(ShadowRecord.gwOpenAccess("cid-m", null, "/actuator/prometheus", null, "OPEN_ACCESS:host"));
+
+        assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void emitSuppressesGatewaySelfServedDocPaths() {
+        ShadowSupport.emit(ShadowRecord.gwOpenAccess("cid-o", null, "/openapi.json", null, "OPEN_ACCESS:host"));
+        ShadowSupport.emit(ShadowRecord.gwIntrospection("cid-s", "h", "/swagger-ui/index.html", Map.of()));
+
+        assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void emitStillEmitsForCatchAllPathsThatLookSimilar() {
+        // Segment-safe: a different route whose name merely starts with the guarded token still emits.
+        ShadowSupport.emit(ShadowRecord.gwIntrospection("cid-x", "h", "/actuatorial/query", Map.of("k", "v")));
+
+        assertThat(appender.list).hasSize(1);
+        assertThat(appender.list.get(0).getFormattedMessage()).contains("\"correlationId\":\"cid-x\"");
+    }
+
+    @Test
+    void isGatewaySelfServedSegmentSafety() {
+        assertThat(ShadowSupport.isGatewaySelfServed("/actuator")).isTrue();
+        assertThat(ShadowSupport.isGatewaySelfServed("/actuator/health/liveness")).isTrue();
+        assertThat(ShadowSupport.isGatewaySelfServed("/swagger-ui/index.html")).isTrue();
+        assertThat(ShadowSupport.isGatewaySelfServed("/openapi.json")).isTrue();
+        assertThat(ShadowSupport.isGatewaySelfServed("/v3/openapi.json")).isTrue();
+        // Not self-served: real catch-all traffic and look-alike routes.
+        assertThat(ShadowSupport.isGatewaySelfServed("/picsure/query/sync")).isFalse();
+        assertThat(ShadowSupport.isGatewaySelfServed("/actuatorial/query")).isFalse();
+        assertThat(ShadowSupport.isGatewaySelfServed("/swagger-ui-custom")).isFalse();
+        assertThat(ShadowSupport.isGatewaySelfServed(null)).isFalse();
+    }
 }

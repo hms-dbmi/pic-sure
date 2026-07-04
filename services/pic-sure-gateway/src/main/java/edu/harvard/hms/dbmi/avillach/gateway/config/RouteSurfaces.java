@@ -11,6 +11,13 @@ import java.util.List;
  * <p>Matching is SEGMENT-SAFE: a prefix matches only on an exact equal or a following {@code /} boundary ({@code equals(prefix)} or
  * {@code startsWith(prefix + "/")}) — never a bare {@code startsWith}. So {@code /logging} covers {@code /logging} and {@code /logging/x}
  * but NOT {@code /loggingAdmin/x}, which is a different route.
+ *
+ * <p><b>Raw-requestURI safety.</b> Callers match on the raw {@code getRequestURI()} (not a decoded/normalized path). That is safe against
+ * matrix-parameter (e.g. {@code /hpds;x=y}), encoded-slash ({@code %2F}) and double-slash ({@code //}) evasion ONLY because Spring
+ * Security's default {@link org.springframework.security.web.firewall.StrictHttpFirewall} rejects those requests BEFORE the auth filters
+ * run — so a path that reaches this matcher has already been normalized/blocked upstream. A future custom {@code HttpFirewall} that relaxes
+ * those defaults would reopen the seam (a request could then present a raw URI that this segment-safe match reads as catch-all/owned
+ * differently than the backend resolves it); revisit this matching if the firewall is ever relaxed.
  */
 public final class RouteSurfaces {
 
