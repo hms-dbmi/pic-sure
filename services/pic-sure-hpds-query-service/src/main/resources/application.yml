@@ -23,6 +23,12 @@ picsure:
       # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
       # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
       internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+  # Phase 6: the X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
+  # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
 
 aggregate:
   # HPDS_OPEN_URL / HPDS_OPEN_TOKEN: same open-backend values as hpds.open-url / hpds.open-token above (Phase-4b),
@@ -45,12 +51,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized # was: always -- Phase 6 gates detail behind picsure.actuator.token
       probes:
-        enabled: true
+        enabled: true # /actuator/health/liveness stays shallow-open
+      group:
+        # Phase 6: explicit liveness group (mirrors the gateway's) -- pins /actuator/health/liveness to the app's
+        # own process state so it never depends on HPDS reachability or auto-registration nuances of probes.enabled.
+        liveness:
+          include: livenessState
   health:
     defaults:
       enabled: true

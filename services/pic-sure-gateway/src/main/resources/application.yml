@@ -111,6 +111,14 @@ server:
 # (default) => no auth/audit filters register, gateway is a pure pass-through.
 # Secrets come from the environment (gateway.env); non-secret defaults are here.
 picsure:
+  # Phase 6: the shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
+  # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons). Distinct from
+  # picsure.gateway.health.application-token below, which is the Bearer token the gateway sends OUTBOUND when
+  # probing downstreams' deep health -- same env-driven pattern, deliberately separate secrets/purposes.
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
   gateway:
     security:
       auth-enabled: ${GATEWAY_OWNS_AUTH:false}

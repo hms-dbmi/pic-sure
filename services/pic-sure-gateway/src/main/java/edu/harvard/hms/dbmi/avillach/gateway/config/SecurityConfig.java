@@ -9,6 +9,7 @@ import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.client.RestClient;
@@ -53,6 +54,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(10) // Phase 6: yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
     SecurityFilterChain http(HttpSecurity http) throws Exception {
         // Gateway permits all at the Security layer; the introspection filter is the real auth boundary.
         return http.csrf(csrf -> csrf.disable()).authorizeHttpRequests(a -> a.anyRequest().permitAll()).build();

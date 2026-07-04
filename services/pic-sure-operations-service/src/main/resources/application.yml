@@ -27,6 +27,12 @@ picsure:
     # and any future hpds-query-service caller). Fail-closed: left blank, InternalTokenFilter rejects every
     # /internal/** request rather than treating an unconfigured secret as "wide open".
     internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+  # Phase 6: the X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
+  # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
 
 server:
   port: ${SERVER_PORT:8080}
@@ -35,13 +41,17 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized # was: always -- Phase 6 gates detail behind picsure.actuator.token
       probes:
-        enabled: true
+        enabled: true # /actuator/health/liveness stays shallow-open
       group:
+        # Phase 6: explicit liveness group (mirrors the gateway's) -- pins /actuator/health/liveness to the app's
+        # own process state so it never depends on the datasource or auto-registration nuances of probes.enabled.
+        liveness:
+          include: livenessState
         # Deep health: readiness is only reported UP once the datasource is actually reachable, not merely once the
         # process is running (mirrors the Phase-3 gateway's liveness/readiness split, adapted here for a service that --
         # unlike the gateway -- owns a real database dependency).
@@ -50,3 +60,7 @@ management:
   health:
     defaults:
       enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
