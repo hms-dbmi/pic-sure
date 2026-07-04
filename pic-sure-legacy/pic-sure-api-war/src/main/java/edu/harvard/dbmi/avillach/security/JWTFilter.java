@@ -294,7 +294,21 @@ public class JWTFilter implements ContainerRequestFilter {
                 );
             }
             JsonNode responseContent = json.readTree(response.getEntity().getContent());
-            if (!responseContent.get("active").asBoolean()) {
+            boolean introspectionActive = responseContent.get("active").asBoolean();
+
+            // Task 7 (gateway-parity verification, throwaway/removed in Phase 7): flag-gated shadow log of the
+            // introspection request this WAR built + the decision PSAMA returned, so a standalone reconciler can
+            // compare it against the gateway's shadow-mode request for the same correlation id. Emitted before
+            // the active-token check below so both active and inactive decisions are captured.
+            if (ShadowLog.enabled()) {
+                String shadowCorrelationId = requestContext.getHeaderString("X-PICSURE-Shadow-Id");
+                ShadowLog.emitIntrospection(
+                    shadowCorrelationId, ShadowLog.tokenHash(token), (String) requestMap.get("Target Service"), requestMap.get("query"),
+                    introspectionActive
+                );
+            }
+
+            if (!introspectionActive) {
                 logger.error("callTokenIntroEndpoint() Token intro endpoint return invalid token, content: " + responseContent);
                 throw new NotAuthorizedException("Token invalid or expired");
             }
@@ -488,6 +502,15 @@ public class JWTFilter implements ContainerRequestFilter {
             } catch (IOException ex) {
                 logger.error("callOpenAccessValidateEndpoint() IOException when closing http response: {}", ex.getMessage());
             }
+        }
+
+        // Task 8 (gateway-parity verification, throwaway/removed in Phase 7): flag-gated shadow log of the
+        // open-access request this WAR built + the decision PSAMA returned.
+        if (ShadowLog.enabled()) {
+            ShadowLog.emitOpenAccess(
+                requestContext.getHeaderString("X-PICSURE-Shadow-Id"), (String) queryMap.get("Target Service"), queryMap.get("query"),
+                (String) requestMap.get("ipAddress"), isValid
+            );
         }
 
         return isValid;
