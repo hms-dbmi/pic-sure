@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.shadow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,6 +60,42 @@ class ClassifierTest {
             .classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":2}", "active")));
         assertEquals(VerdictType.DIVERGENCE, v.type());
         assertEquals("query-mismatch", v.reason());
+    }
+
+    @Test
+    void bothQueriesPresentAndMatchingIsPlainMatchNotPathOnly() throws Exception {
+        // both sides present -> strict compare, plain MATCH with no path-only tag (regression: path-only must not leak here)
+        Verdict v =
+            classifier().classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.MATCH, v.type());
+        assertNull(v.reason());
+    }
+
+    @Test
+    void gwQueryAbsentWfPresentMatchingPathIsPathOnlyMatch() throws Exception {
+        // I2: OBSERVE never buffers the POST body so the GW query is null by design while WF logged the parsed body.
+        // Matching path + token -> MATCH, tagged path-only (NOT a query-mismatch DIVERGENCE).
+        Verdict v = classifier().classify(new Pair("c", gw("/query/sync", "h", "null"), wf("/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.MATCH, v.type());
+        assertEquals("path-only", v.reason());
+    }
+
+    @Test
+    void gwQueryAbsentCosmeticRouteIsPathOnlyExpectedDiff() throws Exception {
+        // The realistic observe shape: GW emits canonical, WF emits raw cosmetic path -> EXPECTED_DIFF, still tagged path-only.
+        Verdict v =
+            classifier().classify(new Pair("c", gw("/query/sync", "h", "null"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.EXPECTED_DIFF, v.type());
+        assertEquals("path-only", v.reason());
+    }
+
+    @Test
+    void gwQueryAbsentButPathMismatchStillDivergence() throws Exception {
+        // path-only skips the query dimension but a genuine target-service mismatch is still a DIVERGENCE.
+        Verdict v =
+            classifier().classify(new Pair("c", gw("/WRONG/sync", "h", "null"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.DIVERGENCE, v.type());
+        assertEquals("target-service", v.reason());
     }
 
     @Test
