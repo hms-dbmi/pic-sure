@@ -12,11 +12,10 @@ import org.springframework.web.client.RestClientException;
 
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.dbmi.avillach.domain.ResourceInfo;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
+import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 
 /**
  * Pooled client to the open HPDS backend (+ visualization service) that the aggregate/obfuscation surface talks to. Direct port of
@@ -25,6 +24,13 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
  * builds a fresh chained request body that carries the inbound query/credentials/resourceUUID but overrides the resourceUUID with the
  * configured {@code targetResourceId} when one is set (WAR's {@code createChainRequest}/info-request inline chaining).
  *
+ * <p>Only the calls the obfuscation surface actually makes are exposed here: {@link #search} (used to fetch the study-consents allow-list),
+ * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
+ * async query-lifecycle calls ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format},
+ * {@code /info}) are NOT proxied through this client: the open async submit is routed through {@code QueryService} (DB-free persistence +
+ * dispatch, see {@link AggregateService#query}), and every subsequent read op is served by the generic {@code /hpds/{backend}} controller
+ * off the stored (already consent-scoped) query.
+ *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
  * {@code edu.harvard.hms.dbmi.avillach.query.error.GlobalExceptionHandler}), mirroring {@code ResourceWebClient}'s error-handling
  * convention for the sibling HPDS client in this module.
@@ -32,8 +38,13 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 @Component
 public class AggregateBackendClient {
 
-    /** Mirrors {@code edu.harvard.dbmi.avillach.service.ResourceWebClient.QUERY_METADATA_FIELD} (the legacy WAR's header name). */
-    public static final String QUERY_METADATA_FIELD = "resultMetadata";
+    /**
+     * The HPDS response header carrying the query/result metadata (e.g. the result id). Sourced from the module's own
+     * {@link ResourceWebClient#QUERY_METADATA_FIELD} so the aggregate sync path reads AND re-emits the SAME header name
+     * ({@code "queryMetadata"}) that the legacy WAR's {@code ResourceWebClient} and both aggregate resources
+     * ({@code AggregateDataSharingResourceRS}/{@code RSV3}) used -- never a divergent literal that would silently drop the header.
+     */
+    public static final String QUERY_METADATA_FIELD = ResourceWebClient.QUERY_METADATA_FIELD;
 
     private final RestClient http;
     private final AggregateProperties props;
@@ -43,37 +54,11 @@ public class AggregateBackendClient {
         this.props = props;
     }
 
-    public ResourceInfo info(QueryRequest req) {
-        QueryRequest chained = chain(req);
-        ResourceInfo info = postJson(openUrl("/info"), chained, ResourceInfo.class);
-        // proxying info: return our own resource id when the caller supplied one (WAR parity)
-        if (req != null && req.getResourceUUID() != null && info != null) {
-            info.setId(req.getResourceUUID());
-        }
-        return info;
-    }
-
     public SearchResults search(QueryRequest req) {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }
 
-    public QueryStatus query(QueryRequest req) {
-        return postJson(openUrl("/query"), chain(req), QueryStatus.class);
-    }
-
-    public QueryStatus status(String resourceQueryId, QueryRequest req) {
-        return postJson(openUrl("/query/" + resourceQueryId + "/status"), chain(req), QueryStatus.class);
-    }
-
-    public String result(String resourceQueryId, QueryRequest req) {
-        return postJson(openUrl("/query/" + resourceQueryId + "/result"), chain(req), String.class);
-    }
-
-    public String queryFormat(QueryRequest req) {
-        return postJson(openUrl("/query/format"), chain(req), String.class);
-    }
-
-    /** Raw body + propagated resultMetadata header. The chained body carries the FULL request (resourceUUID injected). */
+    /** Raw body + propagated queryMetadata header. The chained body carries the FULL request (resourceUUID injected). */
     public ResponseEntity<String> querySync(QueryRequest req, AggregateVariant variant) {
         String uri = openUrl(variant.downstreamVersionPrefix + "/query/sync");
         try {
