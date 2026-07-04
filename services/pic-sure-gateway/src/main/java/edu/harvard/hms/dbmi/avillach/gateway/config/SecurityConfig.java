@@ -8,6 +8,7 @@ import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -39,6 +40,14 @@ import io.micrometer.core.instrument.MeterRegistry;
  * {@link PsamaClient} and {@link QueryAuthFetcher} talk to PSAMA / the query service over HTTP only. <p> Spring Security itself stays
  * permit-all: the introspection filter above is the real auth boundary, matching the WAR's JWTFilter model rather than Spring Security's
  * authentication machinery.
+ *
+ * <p><b>Mode &lt;-&gt; auth-enabled precedence (parity verification):</b> {@code openAccessFilter} and {@code introspectionFilter} register
+ * under {@link GatewayAuthActiveCondition} -- {@code auth-enabled=true} (unchanged ENFORCE) OR {@code picsure.gateway.security.mode !=
+ * TRANSPARENT} (new: OBSERVE builds + shadow-logs + forwards unchanged; a bare {@code mode=ENFORCE} without {@code auth-enabled=true} is
+ * treated the same as {@code auth-enabled=true} inside those filters). {@code BufferingFilter}, {@code BodyMutationFilter},
+ * {@code TokenRefreshResponseFilter}, and {@code IdentityPropagationFilter} stay gated on {@code auth-enabled=true} ONLY -- unchanged -- so
+ * OBSERVE mode never buffers/caps the body, never mutates it, and never sets identity headers. The default ({@code auth-enabled=false},
+ * {@code mode=TRANSPARENT}) registers none of these filters at all, exactly as before this parity-verification work.
  */
 @Configuration
 @EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class})
@@ -124,24 +133,25 @@ public class SecurityConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props
+        PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props,
+        GatewayAuthProperties authProps
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled()));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled(), authProps));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "picsure.gateway.security", name = "auth-enabled", havingValue = "true")
+    @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
         PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewayAuthScope scope,
-        GatewaySecurityProperties props
+        GatewaySecurityProperties props, GatewayAuthProperties authProps
     ) {
         var r = new FilterRegistrationBean<>(
-            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim())
+            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim(), authProps)
         );
         r.setOrder(30);
         r.addUrlPatterns("/*");
