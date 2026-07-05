@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.shadow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -24,30 +23,73 @@ class ClassifierTest {
     }
 
     @Test
-    void cleanMatch() throws Exception {
-        // cosmetic route, gateway emits canonical, WF emits raw -> MATCH/EXPECTED_DIFF
-        Verdict v = classifier()
-            .classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
-        assertTrue(v.type() == VerdictType.MATCH || v.type() == VerdictType.EXPECTED_DIFF);
-    }
-
-    @Test
-    void trueMatchWhenBothSidesCanonicalAndIpMatches() throws Exception {
+    void rawEqualIsMatch() throws Exception {
+        // Two independent systems sent PSAMA the identical raw target -> raw equality is parity -> MATCH.
         Verdict v =
             classifier().classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/query/sync", "h", "{\"a\":1}", "active")));
         assertEquals(VerdictType.MATCH, v.type());
+        assertNull(v.reason());
+    }
+
+    @Test
+    void bothRawPicsureQuerySyncIsMatch() throws Exception {
+        // Both sides sent the identical raw "/picsure/query/sync" (a COSMETIC-mapped prefix) -> raw equality is parity -> MATCH.
+        Verdict v = classifier()
+            .classify(new Pair("c", gw("/picsure/query/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.MATCH, v.type());
+        assertNull(v.reason());
+    }
+
+    @Test
+    void rawEqualButIpAddressDiffersIsExpectedDiff() throws Exception {
+        // Same raw target on both sides but different observer ipAddress -> an incidental difference (the ipAddress-only
+        // notion), not a disagreement about what is authorized -> EXPECTED_DIFF.
+        ShadowRecord gw = new ShadowRecord("GW", "c", "introspection", "h", "/query/sync", M.readTree("{\"a\":1}"), false, "1.1.1.1", null);
+        ShadowRecord wf =
+            new ShadowRecord("WF", "c", "introspection", "h", "/query/sync", M.readTree("{\"a\":1}"), false, "2.2.2.2", "active");
+        Verdict v = classifier().classify(new Pair("c", gw, wf));
+        assertEquals(VerdictType.EXPECTED_DIFF, v.type());
+    }
+
+    @Test
+    void rawDifferSameCanonicalBothCosmeticIsExpectedDiff() throws Exception {
+        // Raw targets DIFFER but share canonical "/query/" and both variants are COSMETIC -> a cosmetic rewrite difference
+        // the mapping's own definition says does not change PSAMA's evaluation -> EXPECTED_DIFF.
+        Verdict v = classifier()
+            .classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.EXPECTED_DIFF, v.type());
     }
 
     @Test
     void decisionAffectingIsIntentional() throws Exception {
+        // Raw targets DIFFER but share canonical "/query/"; the /v3 variant is DECISION_AFFECTING -> INTENTIONAL_BEHAVIOR_CHANGE.
         Verdict v =
             classifier().classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/v3/query/sync", "h", "{\"a\":1}", "active")));
         assertEquals(VerdictType.INTENTIONAL_BEHAVIOR_CHANGE, v.type());
     }
 
     @Test
-    void resolverBugIsDivergence() throws Exception {
-        // cosmetic route but gateway produced a non-canonical value
+    void rawDifferSameCanonicalDecisionAffectingIsIntentional() throws Exception {
+        // GW "/v3/query/sync" vs WF "/picsure/query/sync": raw differ, both canonicalize to "/query/", and the /v3 variant is
+        // DECISION_AFFECTING (changes which PSAMA rule applies) -> a known, intentional behavior difference.
+        Verdict v = classifier()
+            .classify(new Pair("c", gw("/v3/query/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.INTENTIONAL_BEHAVIOR_CHANGE, v.type());
+    }
+
+    @Test
+    void differentCanonicalsIsTargetServiceDivergence() throws Exception {
+        // Raw targets differ AND canonicalize to different routes ("/query/sync" vs "/search/x") -> the two sides genuinely
+        // disagree about what is being authorized -> DIVERGENCE("target-service").
+        Verdict v = classifier().classify(new Pair("c", gw("/query/sync", "h", "{\"a\":1}"), wf("/search/x", "h", "{\"a\":1}", "active")));
+        assertEquals(VerdictType.DIVERGENCE, v.type());
+        assertEquals("target-service", v.reason());
+    }
+
+    @Test
+    void gatewayUnmappedPathDifferentCanonicalIsDivergence() throws Exception {
+        // GW sent an unmapped raw path; the two sides canonicalize to different routes ("/WRONG/sync" vs "/query/sync") -> the
+        // sides genuinely disagree about what is being authorized -> DIVERGENCE("target-service").
         Verdict v = classifier()
             .classify(new Pair("c", gw("/WRONG/sync", "h", "{\"a\":1}"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
         assertEquals(VerdictType.DIVERGENCE, v.type());
@@ -81,8 +123,21 @@ class ClassifierTest {
     }
 
     @Test
+    void bothRawV3QuerySyncPathOnlyIsMatchNotDivergence() throws Exception {
+        // LIVE-SMOKE REGRESSION (2026-07-05): both sides sent PSAMA the identical raw "/v3/query/sync" (a DECISION_AFFECTING-
+        // mapped prefix), same tokenHash, GW query null by design (OBSERVE never buffers) / WF query present, same decision.
+        // Raw equality is parity -> MATCH tagged path-only. It is NOT DIVERGENCE (the old canonical-required rule false-diverged
+        // this in-parity pair) and NOT INTENTIONAL_BEHAVIOR_CHANGE (that verdict now requires the raw targets to DIFFER).
+        Verdict v =
+            classifier().classify(new Pair("c", gw("/v3/query/sync", "h", "null"), wf("/v3/query/sync", "h", "{\"a\":1}", "inactive")));
+        assertEquals(VerdictType.MATCH, v.type());
+        assertEquals("path-only", v.reason());
+    }
+
+    @Test
     void gwQueryAbsentCosmeticRouteIsPathOnlyExpectedDiff() throws Exception {
-        // The realistic observe shape: GW emits canonical, WF emits raw cosmetic path -> EXPECTED_DIFF, still tagged path-only.
+        // The realistic observe shape: raw targets differ on a cosmetic variant (same canonical), GW query null by design ->
+        // EXPECTED_DIFF, still tagged path-only.
         Verdict v =
             classifier().classify(new Pair("c", gw("/query/sync", "h", "null"), wf("/picsure/query/sync", "h", "{\"a\":1}", "active")));
         assertEquals(VerdictType.EXPECTED_DIFF, v.type());
