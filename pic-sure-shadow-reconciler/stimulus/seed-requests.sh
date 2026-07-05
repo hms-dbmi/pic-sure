@@ -18,9 +18,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROUTES_FILE="${ROUTES_FILE:-$SCRIPT_DIR/canonical-routes.txt}"
 
-# Placeholder resource id for path-parameterized routes (search). Valid-UUID-shaped so JAX-RS path binding accepts it;
-# the introspection decision is path+token based (evaluated by JWTFilter BEFORE the resource is looked up), not
-# resource-existence based -- so a placeholder id still yields a real allow/reject decision.
+# Placeholder resource id, used BOTH as the search path parameter AND as the /query/* body resourceUUID. It MUST be
+# valid-UUID-shaped: WildFly's JWTFilter.prepareRequestMap() calls UUID.fromString() on the body's resourceUUID for
+# /query/* (non-v3) paths BEFORE introspection runs -- a non-UUID value throws IllegalArgumentException there, the WAR
+# 500s, ShadowLog never fires, and the request lands as UNPAIRED (verified live 2026-07-05). A valid-but-nonexistent
+# UUID is fine: the resource lookup returns null, the queryFormat enrichment is skipped, and introspection proceeds,
+# so the decision is still path+token based, not resource-existence based.
 RESOURCE_ID="00000000-0000-0000-0000-000000000000"
 
 # Rewrite the covered-routes file from scratch each run, prefixed with a provenance header.
@@ -44,12 +47,17 @@ skip_route() { # $1=canonical route $2=reason -- explicit, never silent
   echo "SKIPPED $1 - $2"
 }
 
-echo "== /query/ : allow + reject (cosmetic /picsure + decision-affecting /v3 variants both canonicalize to /query/sync) =="
-post "$VALID_TOKEN"   "/picsure/query/sync" '{"resourceUUID":"R","query":{"fields":[]}}'   # allow-shaped
-post "$VALID_TOKEN"   "/v3/query/sync"      '{"resourceUUID":"R","query":{"fields":[]}}'   # allow-shaped (/v3 variant)
-post "$NOPRIV_TOKEN"  "/picsure/query/sync" '{"resourceUUID":"R","query":{"fields":[]}}'   # reject-shaped
-post "$EXPIRED_TOKEN" "/picsure/query/sync" '{"resourceUUID":"R","query":{"fields":[]}}'   # reject-shaped
-post "$NOPRIV_TOKEN"  "/v3/query/sync"      '{"resourceUUID":"R","query":{"fields":[]}}'   # reject-shaped (/v3 variant)
+# GATEWAY_URL is the INGRESS origin (httpd), per the runbook. httpd strips the leading /picsure/ before proxying to
+# the gateway (RewriteRule ^/picsure/(.*)$ http://gateway:8080/$1), so the raw paths PIC-SURE actually sees are
+# /query/sync (identity) and /v3/query/sync (decision-affecting v3 variant). The mapping's /picsure/* cosmetic rules
+# are not reachable through this ingress (the prefix never survives httpd) -- they remain in the mapping for
+# deployments whose ingress forwards the prefix verbatim.
+echo "== /query/ : allow + reject (identity + decision-affecting /v3 variants both canonicalize to /query/sync) =="
+post "$VALID_TOKEN"   "/picsure/query/sync"    "{\"resourceUUID\":\"$RESOURCE_ID\",\"query\":{\"fields\":[]}}"   # allow-shaped
+post "$VALID_TOKEN"   "/picsure/v3/query/sync" "{\"resourceUUID\":\"$RESOURCE_ID\",\"query\":{\"fields\":[]}}"   # allow-shaped (/v3 variant)
+post "$NOPRIV_TOKEN"  "/picsure/query/sync"    "{\"resourceUUID\":\"$RESOURCE_ID\",\"query\":{\"fields\":[]}}"   # reject-shaped
+post "$EXPIRED_TOKEN" "/picsure/query/sync"    "{\"resourceUUID\":\"$RESOURCE_ID\",\"query\":{\"fields\":[]}}"   # reject-shaped
+post "$NOPRIV_TOKEN"  "/picsure/v3/query/sync" "{\"resourceUUID\":\"$RESOURCE_ID\",\"query\":{\"fields\":[]}}"   # reject-shaped (/v3 variant)
 cover "/query/sync"
 
 echo "== /search/ : allow + reject =="
@@ -62,9 +70,17 @@ cover "/search/$RESOURCE_ID"
 # pre-existing resource/query id) must be declared here with skip_route "<canonical route>" "<reason>" rather than
 # omitted silently. As of this mapping, /query/ and /search/ are both auth-path exercisable, so none are skipped.
 
-echo "== open-access allow/deny (no token; canonicalizes to /query/sync, already covered) =="
-post "" "/picsure/query/sync" '{"query":{"fields":["allowed_concept"]}}'
-post "" "/picsure/query/sync" '{"query":{"fields":["restricted_concept"]}}'
+# Open-access posts only measure something when the deployment has open access ENABLED (gateway
+# GATEWAY_OPEN_ACCESS_ENABLED / WildFly openAccessEnabled). Against a deployment with it disabled, a token-less
+# request just 401s on the introspection path WITHOUT a WildFly open-access decision to pair -- producing UNPAIRED
+# noise that (correctly) fails the exit gate. So they are opt-in.
+if [ "${OPEN_ACCESS:-false}" = "true" ]; then
+  echo "== open-access allow/deny (no token; canonicalizes to /query/sync, already covered) =="
+  post "" "/picsure/query/sync" '{"query":{"fields":["allowed_concept"]}}'
+  post "" "/picsure/query/sync" '{"query":{"fields":["restricted_concept"]}}'
+else
+  echo "SKIPPED open-access posts - OPEN_ACCESS!=true (feature disabled in this deployment; nothing to pair)"
+fi
 
 echo
 echo "Canonical routes covered (pass to the reconciler as --routes $ROUTES_FILE):"

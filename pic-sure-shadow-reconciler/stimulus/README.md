@@ -97,3 +97,16 @@ Always read the printed report before trusting `EXIT GATE: PASS`:
   buffers POST bodies) so only path + decision could be compared. These still count toward
   coverage, but the count tells you how much of the evidence is path-only rather than a full
   query match — factor it into your sign-off.
+
+## Body shape for /query/* seeds (learned live, 2026-07-05)
+
+The `/query/*` (non-v3) request bodies MUST carry a **valid-UUID-shaped** `resourceUUID`: WildFly's
+`JWTFilter.prepareRequestMap()` runs `UUID.fromString()` on it *before* introspection, so a non-UUID
+placeholder 500s the WAR pre-introspection — no `SHADOW_WF` line is emitted and the request lands as
+`UNPAIRED` (which fails the gate). A valid-but-nonexistent UUID is fine (the resource lookup returns
+null and the queryFormat enrichment is skipped). The v3 path does not read `resourceUUID` at all.
+
+`GATEWAY_URL` is the ingress (httpd) origin: httpd strips the leading `/picsure/` before proxying to
+the gateway, so the v3 variant is addressed as `/picsure/v3/query/sync`. The open-access posts are
+opt-in via `OPEN_ACCESS=true` — against a deployment with open access disabled they cannot produce a
+pairable WildFly decision and would only add `UNPAIRED` noise.
