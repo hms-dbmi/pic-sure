@@ -260,7 +260,7 @@ class HpdsQueryControllerTest {
     // --- sync ---
 
     @Test
-    void v1QuerySyncReturnsOctetStreamWithMetadataHeader() throws Exception {
+    void v1QuerySyncReturnsJsonWithMetadataHeader() throws Exception {
         UUID picsureId = UUID.randomUUID();
         when(operationsClient.save(any())).thenReturn(picsureId);
         hpds.stubFor(
@@ -272,7 +272,7 @@ class HpdsQueryControllerTest {
             .perform(
                 post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"query\":\"q\"}")
-            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM))
+            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
             .andExpect(content().bytes("payload".getBytes()));
 
         verify(operationsClient).update(eq(picsureId), argThat(u -> "rr-sync".equals(u.resourceResultId())));

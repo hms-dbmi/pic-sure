@@ -106,7 +106,7 @@ class AggregateV3ControllerTest {
         mockMvc.perform(
             post("/hpds/auth/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM));
+        ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON));
 
         verifyNoInteractions(aggregateService);
         hpds.verify(WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync")));

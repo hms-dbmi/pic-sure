@@ -94,11 +94,13 @@ public class HpdsQueryV1Controller {
     }
 
     /**
-     * Re-emits the {@code queryMetadata} response header like the WAR's querySync, as octet-stream. Shared with
-     * {@link HpdsQueryV3Controller}.
+     * Re-emits the {@code queryMetadata} response header like the WAR's querySync, as application/json. Shared with
+     * {@link HpdsQueryV3Controller}. WAR fidelity: PicsureRS/PicsureRSv3 declare class-level {@code @Produces("application/json")} and
+     * querySync has NO method-level override — only {@code /query/{id}/result} is octet-stream. Labeling sync octet-stream breaks the
+     * frontend, whose api layer intentionally treats octet-stream responses as binary downloads (ArrayBuffer), swallowing count results.
      */
     static ResponseEntity<byte[]> syncResponse(QueryService.QuerySyncResponse r) {
-        ResponseEntity.BodyBuilder b = ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM);
+        ResponseEntity.BodyBuilder b = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
         if (r.queryMetadata() != null) {
             b.header("queryMetadata", r.queryMetadata());
         }

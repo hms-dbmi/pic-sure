@@ -110,7 +110,7 @@ class AggregateControllerTest {
         mockMvc.perform(
             post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM));
+        ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON));
 
         verifyNoInteractions(aggregateService); // the aggregate obfuscation controller was never invoked
         hpds.verify(WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/query/sync"))); // handled by the generic HpdsQueryV1Controller
