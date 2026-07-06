@@ -60,6 +60,24 @@ class PsamaClientTest {
     }
 
     @Test
+    void bindsUserIdFromPsamaUuidField() {
+        // The REAL PSAMA inspect response carries the user UUID as "uuid" (UserService/UserClaims) -- there is no
+        // "userId" field. X-User-Id propagation (and thus query/operations-service authn) depends on this binding.
+        psama.stubFor(
+            post(urlEqualTo("/token/introspect")).willReturn(
+                okJson(
+                    "{\"active\":true,\"uuid\":\"7c5e0618-0000-0000-0000-000000000000\",\"email\":\"a@b\","
+                        + "\"sub\":\"LONG_TERM_TOKEN|s-1\",\"roles\":\"ADMIN\",\"privileges\":[\"SUPER_ADMIN\"]}"
+                )
+            )
+        );
+
+        IntrospectionResponse resp = client().introspect("user-token", Map.of("Target Service", "/hpds/auth/query/sync"));
+        assertThat(resp.active()).isTrue();
+        assertThat(resp.userId()).isEqualTo("7c5e0618-0000-0000-0000-000000000000");
+    }
+
+    @Test
     void openValidateReturnsBareBoolean() {
         psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("true")));
         assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isTrue();
