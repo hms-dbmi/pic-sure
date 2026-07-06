@@ -19,9 +19,9 @@ import org.springframework.core.env.Environment;
  * check) — the gateway exposes NO {@code /info/resources} or {@code /resource} route. Those paths fall through to the WildFly catch-all
  * until decommission.
  *
- * <p>Phase-3 configured routes: {@code logging}, {@code dictionary}, {@code uploader} (Task 1) + {@code legacy-wildfly-catchall} (Phase 1).
- * Phase 4 (gateway integration) adds {@code hpds}, {@code configuration}, {@code dataset} — verbatim routes to the new query-service /
- * operations-service. The load-bearing assertion is that no registry id ever appears.
+ * <p>Phase-3 configured routes: {@code logging}, {@code dictionary}, {@code uploader}, {@code visualization} (Task 1 / Task 1b) +
+ * {@code legacy-wildfly-catchall} (Phase 1). Phase 4 (gateway integration) adds {@code hpds}, {@code configuration}, {@code dataset} —
+ * verbatim routes to the new query-service / operations-service. The load-bearing assertion is that no registry id ever appears.
  */
 @SpringBootTest
 class NoRegistryRouteTest {
@@ -41,7 +41,8 @@ class NoRegistryRouteTest {
     void exposesOnlyTheExpectedRouteIdsAndNoRegistryRoute() {
         Set<String> ids = configuredRouteIds();
         assertThat(ids)
-            .containsExactlyInAnyOrder("logging", "dictionary", "uploader", "hpds", "configuration", "dataset", "legacy-wildfly-catchall");
+            .containsExactlyInAnyOrder(
+                "logging", "dictionary", "uploader", "visualization", "hpds", "configuration", "dataset", "legacy-wildfly-catchall");
         assertThat(ids).noneMatch(id -> {
             String lower = id.toLowerCase();
             return lower.contains("resource") || lower.contains("info-resources");

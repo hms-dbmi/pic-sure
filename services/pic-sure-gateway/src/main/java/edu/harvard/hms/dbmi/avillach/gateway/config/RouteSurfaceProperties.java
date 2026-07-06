@@ -6,10 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Binds {@code picsure.gateway.security.owned-prefixes}: the list of gateway-owned route surfaces (the non-catch-all routes in
- * {@code application.yml}: {@code /logging}, {@code /dictionary}, {@code /uploader}, {@code /hpds}, {@code /configuration},
- * {@code /dataset}). These paths are served directly by the new backends and have NO WildFly counterpart, so in OBSERVE mode they must stay
- * fully enforced (a shadow window must never unprotect them, and no {@code SHADOW_GW} record is emitted for them because there is no
- * WildFly pair to reconcile against). Everything else is the legacy catch-all surface forwarded to WildFly.
+ * {@code application.yml}: {@code /logging}, {@code /dictionary}, {@code /uploader}, {@code /visualization}, {@code /hpds},
+ * {@code /configuration}, {@code /dataset}). These paths are served directly by the new backends and have NO WildFly counterpart, so in
+ * OBSERVE mode they must stay fully enforced (a shadow window must never unprotect them, and no {@code SHADOW_GW} record is emitted for
+ * them because there is no WildFly pair to reconcile against). Everything else is the legacy catch-all surface forwarded to WildFly.
  *
  * <p>Deliberately a small, separate {@code @ConfigurationProperties} record on the SAME prefix as {@link GatewaySecurityProperties} and
  * {@code GatewayAuthProperties} (Spring binds several properties classes to overlapping prefixes as long as the component names they claim
@@ -22,7 +22,7 @@ public record RouteSurfaceProperties(List<String> ownedPrefixes) {
 
     /** Default gateway-owned prefixes — must stay in lock-step with the non-catch-all routes in {@code application.yml}. */
     public static final List<String> DEFAULT_OWNED_PREFIXES =
-        List.of("/logging", "/dictionary", "/uploader", "/hpds", "/configuration", "/dataset");
+        List.of("/logging", "/dictionary", "/uploader", "/visualization", "/hpds", "/configuration", "/dataset");
 
     public RouteSurfaceProperties {
         ownedPrefixes = (ownedPrefixes == null || ownedPrefixes.isEmpty()) ? DEFAULT_OWNED_PREFIXES : List.copyOf(ownedPrefixes);

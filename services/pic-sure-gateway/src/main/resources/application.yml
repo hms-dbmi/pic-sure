@@ -12,12 +12,13 @@ spring:
             # because the logging service (Javalin) serves its API at root (/audit,
             # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
             # on the Phase-2 introspection allow-list, so it is not authenticated.
-            # /dictionary and /uploader are AUTHENTICATED (not on the allow-list): the
-            # introspection filter runs on the pre-strip public path (Target Service =
-            # /dictionary/x), which the Phase-3 PSAMA access-rule migration now authorizes
-            # (^/dictionary(/.*)?$ / ^/uploader(/.*)?$). Same StripPrefix=1 as /logging
-            # (dictionary-api + uploader serve their APIs at root). /hpds and /visualization
-            # remain out of scope (Phase 4 query-service ingress / dead WAR).
+            # /dictionary, /uploader, and /visualization are AUTHENTICATED (not on the
+            # allow-list): the introspection filter runs on the pre-strip public path
+            # (Target Service = /dictionary/x), which the Phase-3 PSAMA access-rule
+            # migrations now authorize (^/dictionary(/.*)?$ / ^/uploader(/.*)?$ /
+            # ^/visualization(/.*)?$). Same StripPrefix=1 as /logging (dictionary-api,
+            # uploader, and the visualization container all serve their APIs at root).
+            # /hpds remains out of scope (Phase 4 query-service ingress).
             - id: logging
               uri: ${LOGGING_URL:http://pic-sure-logging}
               order: 100
@@ -37,6 +38,13 @@ spring:
               order: 100
               predicates:
                 - Path=/uploader/**
+              filters:
+                - StripPrefix=1
+            - id: visualization
+              uri: ${VISUALIZATION_URL:http://visualization}
+              order: 100
+              predicates:
+                - Path=/visualization/**
               filters:
                 - StripPrefix=1
             # Phase 4 (gateway integration): query-service and operations-service ingress. Unlike the routes
