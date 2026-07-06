@@ -42,6 +42,11 @@ public class AuditLogService {
             putIfNotNull(fields, "action", event.action());
             putIfNotNull(fields, "client_type", event.clientType());
 
+            String caller = event.caller();
+            if (caller != null && !caller.isBlank()) {
+                fields.put("caller", truncate(caller));
+            }
+
             // 2b. Session ID: prefer top-level field, fall back to metadata for old clients
             String sessionId = event.sessionId();
             if ((sessionId == null || sessionId.isBlank()) && event.metadata() != null) {
