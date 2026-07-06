@@ -12,7 +12,6 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -25,7 +24,7 @@ class GatewayAuditLoggingFilterTest {
         when(client.isEnabled()).thenReturn(true);
         return new GatewayAuditLoggingFilter(
             client, mock(AuditRouteTable.class), new AuditContext(), List.of("/logging"),
-            new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$")), GatewayModeResolver.enforcing()
+            new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"))
         );
     }
 
@@ -56,25 +55,11 @@ class GatewayAuditLoggingFilterTest {
         when(client.isEnabled()).thenReturn(false);
         GatewayAuditLoggingFilter filter = new GatewayAuditLoggingFilter(
             client, mock(AuditRouteTable.class), new AuditContext(), List.of("/logging"),
-            new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$")), GatewayModeResolver.enforcing()
+            new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"))
         );
 
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getRequestURI()).thenReturn("/v3/query");
-        assertThat(filter.shouldNotFilter(req)).isTrue();
-    }
-
-    @Test
-    void observeCatchAllSkipsAuditSoWildFlyIsSoleAuditor() {
-        LoggingClient client = mock(LoggingClient.class);
-        when(client.isEnabled()).thenReturn(true);
-        GatewayAuditLoggingFilter filter = new GatewayAuditLoggingFilter(
-            client, mock(AuditRouteTable.class), new AuditContext(), List.of("/logging"),
-            new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$")), GatewayModeResolver.observing()
-        );
-
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/v3/query"); // catch-all: WildFly enforces + audits, gateway must not double-audit
         assertThat(filter.shouldNotFilter(req)).isTrue();
     }
 

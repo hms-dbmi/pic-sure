@@ -21,10 +21,6 @@ import jakarta.servlet.http.HttpServletResponse;
  * Buffers the request body (so downstream auth filters can read/mutate it), capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap → HTTP 413 with
  * the additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
  * body-too-large metric is emitted. Skips interim (result/signed-url) paths so they flow untouched to WildFly during the Phase 2↔4 interim.
- *
- * <p>In OBSERVE mode on the legacy catch-all surface ({@code !modeResolver.enforcesFor}) buffering is skipped entirely: that traffic must
- * be forwarded to WildFly byte-identical, so the body is never read into memory and never size-capped (no 413 on traffic WildFly would
- * otherwise receive untouched). Gateway-owned routes in OBSERVE, and every route in ENFORCE, buffer exactly as before.
  */
 public class BufferingFilter extends OncePerRequestFilter {
 
@@ -44,7 +40,7 @@ public class BufferingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        // Interim result/signed-url stay with WildFly; and in OBSERVE the catch-all forwards unbuffered (byte-identical to WildFly).
+        // Interim result/signed-url stay with WildFly.
         return scope.interimOwnedByWildFly(req.getRequestURI()) || !modeResolver.enforcesFor(req.getRequestURI());
     }
 

@@ -16,7 +16,6 @@
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
         <module>services/pic-sure-hpds-query-service</module>
-        <module>pic-sure-shadow-reconciler</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>

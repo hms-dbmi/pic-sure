@@ -12,15 +12,15 @@ import org.springframework.test.context.TestPropertySource;
  * as {@code GatewaySecurityProperties.authEnabled} (see that class) without touching it -- this is a purely additive property.
  */
 @SpringBootTest
-@TestPropertySource(properties = "picsure.gateway.security.mode=observe")
+@TestPropertySource(properties = "picsure.gateway.security.mode=enforce")
 class GatewayAuthPropertiesTest {
 
     @Autowired
     private GatewayAuthProperties props;
 
     @Test
-    void bindsObserveModeFromProperty() {
-        assertThat(props.getMode()).isEqualTo(GatewayAuthMode.OBSERVE);
+    void bindsEnforceModeFromProperty() {
+        assertThat(props.getMode()).isEqualTo(GatewayAuthMode.ENFORCE);
     }
 
     @Test

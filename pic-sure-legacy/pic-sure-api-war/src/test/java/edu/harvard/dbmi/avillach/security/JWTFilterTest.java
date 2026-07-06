@@ -11,8 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.logging.Handler;
-import java.util.logging.LogRecord;
 
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.NotAuthorizedException;
@@ -22,7 +20,6 @@ import javax.ws.rs.core.Request;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,10 +50,6 @@ public class JWTFilterTest {
 
     private JWTFilter filter;
 
-    private final List<LogRecord> shadowCaptured = new ArrayList<>();
-    private java.util.logging.Logger shadowJulLogger;
-    private Handler shadowCaptureHandler;
-
     @Before
     public void setup() {
         port = wireMockRule.port();
@@ -72,31 +65,6 @@ public class JWTFilterTest {
         filter.auditContext = new AuditContext();
         filter.uriInfo = mock(UriInfo.class);
         when(filter.uriInfo.getPath()).thenReturn("/test");
-
-        // Task 7/8: SHADOW_WF capture -- this module's SLF4J binding (slf4j-jdk14) routes straight through to
-        // java.util.logging, so we attach a JUL Handler to the "picsure.shadow" logger rather than a logback
-        // ListAppender.
-        shadowJulLogger = java.util.logging.Logger.getLogger("picsure.shadow");
-        shadowJulLogger.setLevel(java.util.logging.Level.ALL);
-        shadowCaptureHandler = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                shadowCaptured.add(record);
-            }
-
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() {}
-        };
-        shadowJulLogger.addHandler(shadowCaptureHandler);
-    }
-
-    @After
-    public void tearDownShadowLogging() {
-        shadowJulLogger.removeHandler(shadowCaptureHandler);
-        ShadowLog.setEnabledForTest(null);
     }
 
     private ContainerRequestContext createRequestContext() {
@@ -428,109 +396,6 @@ public class JWTFilterTest {
                 .withRequestBody(matchingJsonPath("$.request.['query']", notMatching("resourceCredentials")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
-    }
-
-    // ---- Task 7/8: flag-gated SHADOW_WF logging (throwaway parity-verification scaffolding) ----
-
-    @Test
-    public void testShadowLoggingEmitsWfIntrospectionLineWithCorrelationIdAndTokenHashWhenFlagEnabled() throws IOException {
-        ShadowLog.setEnabledForTest(true);
-        tokenIntrospectionStub();
-
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
-        InputStream entityStream = new ByteArrayInputStream("{\"query\":\"test\"}".getBytes());
-        when(ctx.getEntityStream()).thenReturn(entityStream);
-        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
-        when(ctx.getHeaderString("X-PICSURE-Shadow-Id")).thenReturn("cid-integration-1");
-
-        filter.filter(ctx);
-
-        assertEquals(1, shadowCaptured.size());
-        String line = shadowCaptured.get(0).getMessage();
-        assertTrue(line.contains("\"side\":\"WF\""));
-        assertTrue(line.contains("\"correlationId\":\"cid-integration-1\""));
-        assertTrue(line.contains("\"channel\":\"introspection\""));
-        assertTrue(line.contains("\"targetService\":\"/query/sync\""));
-        // Same SHA-256 algorithm as the gateway's ShadowSupport.tokenHash -- hashes for the same bearer token
-        // must match byte-for-byte so the reconciler can join the two sides.
-        assertTrue(line.contains("\"tokenHash\":\"" + ShadowLog.tokenHash("USER_TOKEN") + "\""));
-        assertTrue(line.contains("\"decision\":\"active\""));
-    }
-
-    @Test
-    public void testShadowLoggingEmitsInactiveDecisionEvenWhenIntrospectionRejectsTokenAndFlagEnabled() throws IOException {
-        ShadowLog.setEnabledForTest(true);
-        tokenIntrospectionStub(false);
-
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
-        InputStream entityStream = new ByteArrayInputStream("{}".getBytes());
-        when(ctx.getEntityStream()).thenReturn(entityStream);
-        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
-        when(ctx.getHeaderString("X-PICSURE-Shadow-Id")).thenReturn("cid-integration-2");
-
-        filter.filter(ctx);
-
-        // Existing reject behavior is unchanged -- the shadow log is observational only.
-        verify(ctx).abortWith(any(Response.class));
-
-        assertEquals(1, shadowCaptured.size());
-        String line = shadowCaptured.get(0).getMessage();
-        assertTrue(line.contains("\"correlationId\":\"cid-integration-2\""));
-        assertTrue(line.contains("\"decision\":\"inactive\""));
-    }
-
-    @Test
-    public void testShadowLoggingEmitsNothingWhenFlagDisabled() throws IOException {
-        ShadowLog.setEnabledForTest(false);
-        tokenIntrospectionStub();
-
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
-        InputStream entityStream = new ByteArrayInputStream("{\"query\":\"test\"}".getBytes());
-        when(ctx.getEntityStream()).thenReturn(entityStream);
-        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer USER_TOKEN");
-        when(ctx.getHeaderString("X-PICSURE-Shadow-Id")).thenReturn("cid-should-not-appear");
-
-        filter.filter(ctx);
-
-        // Flag off => zero behavior change: no shadow log lines, existing success path unaffected.
-        assertTrue(shadowCaptured.isEmpty());
-        verify(ctx).setProperty("username", "TEST_USER");
-    }
-
-    @Test
-    public void testShadowLoggingEmitsWfOpenAccessLineWhenFlagEnabled() throws IOException {
-        ShadowLog.setEnabledForTest(true);
-        when(picSureWarInit.isOpenAccessEnabled()).thenReturn(true);
-        when(picSureWarInit.getOpenAccessValidateUrl()).thenReturn("http://localhost:" + port + "/open_access_endpoint");
-        stubFor(
-            post(urlEqualTo("/open_access_endpoint"))
-                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("true"))
-        );
-
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
-        when(ctx.getUriInfo().getRequestUri()).thenReturn(java.net.URI.create("http://picsure.example.org/query/sync"));
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
-        InputStream entityStream = new ByteArrayInputStream("{\"query\":\"test\"}".getBytes());
-        when(ctx.getEntityStream()).thenReturn(entityStream);
-        when(ctx.getHeaderString("X-PICSURE-Shadow-Id")).thenReturn("cid-oa-1");
-
-        filter.filter(ctx);
-
-        assertEquals(1, shadowCaptured.size());
-        String line = shadowCaptured.get(0).getMessage();
-        assertTrue(line.contains("\"correlationId\":\"cid-oa-1\""));
-        assertTrue(line.contains("\"channel\":\"open-access\""));
-        assertTrue(line.contains("\"targetService\":\"/query/sync\""));
-        assertTrue(line.contains("\"tokenHash\":null"));
-        assertTrue(line.contains("\"ipAddress\":\"OPEN_ACCESS:picsure.example.org\""));
-        assertTrue(line.contains("\"decision\":\"allow\""));
     }
 
 }

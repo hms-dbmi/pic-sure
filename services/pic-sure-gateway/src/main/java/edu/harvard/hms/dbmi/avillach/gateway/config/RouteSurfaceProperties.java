@@ -7,9 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Binds {@code picsure.gateway.security.owned-prefixes}: the list of gateway-owned route surfaces (the non-catch-all routes in
  * {@code application.yml}: {@code /logging}, {@code /dictionary}, {@code /uploader}, {@code /visualization}, {@code /hpds},
- * {@code /configuration}, {@code /dataset}). These paths are served directly by the new backends and have NO WildFly counterpart, so in
- * OBSERVE mode they must stay fully enforced (a shadow window must never unprotect them, and no {@code SHADOW_GW} record is emitted for
- * them because there is no WildFly pair to reconcile against). Everything else is the legacy catch-all surface forwarded to WildFly.
+ * {@code /configuration}, {@code /dataset}). These paths are served directly by the new backends and have NO WildFly counterpart.
+ * Everything else is the legacy catch-all surface forwarded to WildFly.
  *
  * <p>Deliberately a small, separate {@code @ConfigurationProperties} record on the SAME prefix as {@link GatewaySecurityProperties} and
  * {@code GatewayAuthProperties} (Spring binds several properties classes to overlapping prefixes as long as the component names they claim

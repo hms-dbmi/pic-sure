@@ -60,8 +60,7 @@ public class AuditFilterConfig {
         // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
         // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
         GatewayAuditLoggingFilter filter = new GatewayAuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), scope,
-            modeResolver
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), scope
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(60); // outermost emitter on the way out

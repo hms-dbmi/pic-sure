@@ -4,9 +4,8 @@ import java.util.List;
 
 /**
  * Classifies a request path as a gateway-OWNED route surface (a direct route to a new backend with no WildFly counterpart) or the legacy
- * catch-all surface (forwarded to WildFly). Drives the per-request OBSERVE split in {@code GatewayModeResolver}: owned surfaces stay fully
- * enforced during an observe window; only the catch-all is observed (shadow-logged, forwarded unchanged) since WildFly still enforces
- * there.
+ * catch-all surface (forwarded to WildFly). Used by the route drift-guard test to assert every configured non-catch-all route is covered by
+ * the default owned prefixes.
  *
  * <p>Matching is SEGMENT-SAFE: a prefix matches only on an exact equal or a following {@code /} boundary ({@code equals(prefix)} or
  * {@code startsWith(prefix + "/")}) — never a bare {@code startsWith}. So {@code /logging} covers {@code /logging} and {@code /logging/x}

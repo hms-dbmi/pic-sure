@@ -131,16 +131,11 @@ picsure:
     security:
       # Effective auth mode is RESOLVED from (auth-enabled, mode) by GatewayModeResolver, the single source of truth:
       # an explicit mode wins; if mode is unset, auth-enabled drives it (true => ENFORCE, false => TRANSPARENT). So
-      # today's production topology (GATEWAY_OWNS_AUTH=true, mode unset) resolves to ENFORCE unchanged, and an observe
-      # window is entered purely by setting PICSURE_GATEWAY_SECURITY_MODE=observe (auth-enabled no longer needs touching).
-      #   transparent = pure pass-through, no auth filters; enforce = full gateway enforcement on every route;
-      #   observe = gateway-owned routes enforce, legacy catch-all is log-only shadow (WildFly enforces there).
+      # today's production topology (GATEWAY_OWNS_AUTH=true, mode unset) resolves to ENFORCE unchanged.
+      #   transparent = pure pass-through, no auth filters; enforce = full gateway enforcement on every route.
       # 'mode' is intentionally left UNSET here (no default) so absence is distinguishable from an explicit transparent;
       # set the PICSURE_GATEWAY_SECURITY_MODE env var (relaxed-bound to picsure.gateway.security.mode) to override.
       auth-enabled: ${GATEWAY_OWNS_AUTH:false}
-      # Gateway-owned route surfaces (no WildFly counterpart) that stay fully enforced during an observe window. Default
-      # (RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES) matches the non-catch-all routes above; a drift-guard test fails
-      # the build if a route is added without extending it. Override via picsure.gateway.security.owned-prefixes if needed.
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}

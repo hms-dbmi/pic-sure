@@ -11,12 +11,10 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
 
 /**
- * The resolver is the single source of truth for the effective mode and the per-request enforce/observe decision. Covers the full
- * {@code (auth-enabled, mode)} resolution matrix (including the two unusual tuples and the WARN they emit) and the OBSERVE per-request
- * split by route surface.
+ * The resolver is the single source of truth for the effective mode and the per-request enforce decision. Covers the full
+ * {@code (auth-enabled, mode)} resolution matrix, including the unusual tuple and the WARN it emits.
  */
 class GatewayModeResolverTest {
 
@@ -24,8 +22,6 @@ class GatewayModeResolverTest {
 
     @Test
     void explicitModeAlwaysWinsRegardlessOfAuthEnabled() {
-        assertThat(GatewayModeResolver.resolve(GatewayAuthMode.OBSERVE, true)).isEqualTo(GatewayAuthMode.OBSERVE);
-        assertThat(GatewayModeResolver.resolve(GatewayAuthMode.OBSERVE, false)).isEqualTo(GatewayAuthMode.OBSERVE);
         assertThat(GatewayModeResolver.resolve(GatewayAuthMode.ENFORCE, true)).isEqualTo(GatewayAuthMode.ENFORCE);
         assertThat(GatewayModeResolver.resolve(GatewayAuthMode.ENFORCE, false)).isEqualTo(GatewayAuthMode.ENFORCE);
         assertThat(GatewayModeResolver.resolve(GatewayAuthMode.TRANSPARENT, true)).isEqualTo(GatewayAuthMode.TRANSPARENT);
@@ -42,27 +38,14 @@ class GatewayModeResolverTest {
     // ---- unusual tuples ----
 
     @Test
-    void unusualTuplesAreExactlyEnforceWithoutAuthAndObserveWithAuth() {
-        assertThat(GatewayModeResolver.isUnusualTuple(GatewayAuthMode.OBSERVE, true)).isTrue();
+    void unusualTuplesAreExactlyEnforceWithoutAuth() {
         assertThat(GatewayModeResolver.isUnusualTuple(GatewayAuthMode.ENFORCE, false)).isTrue();
 
         // everything else is a normal tuple
-        assertThat(GatewayModeResolver.isUnusualTuple(GatewayAuthMode.OBSERVE, false)).isFalse();
         assertThat(GatewayModeResolver.isUnusualTuple(GatewayAuthMode.ENFORCE, true)).isFalse();
         assertThat(GatewayModeResolver.isUnusualTuple(GatewayAuthMode.TRANSPARENT, true)).isFalse();
         assertThat(GatewayModeResolver.isUnusualTuple(null, true)).isFalse();
         assertThat(GatewayModeResolver.isUnusualTuple(null, false)).isFalse();
-    }
-
-    @Test
-    void logsWarnForAuthEnabledWithObserve() {
-        List<ILoggingEvent> events =
-            captureLogsDuring(() -> GatewayModeResolver.logResolution(GatewayAuthMode.OBSERVE, true, GatewayAuthMode.OBSERVE));
-        assertThat(events).anySatisfy(e -> {
-            assertThat(e.getLevel()).isEqualTo(Level.WARN);
-            assertThat(e.getFormattedMessage()).contains("OBSERVE").contains("UNUSUAL").contains("auth-enabled=true")
-                .contains("mode=observe");
-        });
     }
 
     @Test
@@ -86,35 +69,20 @@ class GatewayModeResolverTest {
         });
     }
 
-    // ---- per-request split ----
+    // ---- per-request decision ----
 
     @Test
     void enforceModeEnforcesEveryRoute() {
-        GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.ENFORCE, RouteSurfaces.withDefaults());
+        GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.ENFORCE);
         assertThat(r.enforcesFor("/hpds/auth/v3/query/sync")).isTrue();
         assertThat(r.enforcesFor("/picsure/query/sync")).isTrue(); // catch-all still enforced in ENFORCE
-        assertThat(r.observesFor("/picsure/query/sync")).isFalse();
     }
 
     @Test
-    void observeModeEnforcesOwnedRoutesAndObservesCatchAll() {
-        GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.OBSERVE, RouteSurfaces.withDefaults());
-        // owned routes enforce
-        assertThat(r.enforcesFor("/hpds/auth/v3/query/sync")).isTrue();
-        assertThat(r.enforcesFor("/dictionary/concepts")).isTrue();
-        assertThat(r.observesFor("/hpds/auth/v3/query/sync")).isFalse();
-        // catch-all is observed
-        assertThat(r.observesFor("/picsure/query/sync")).isTrue();
+    void transparentModeNeverEnforces() {
+        GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.TRANSPARENT);
         assertThat(r.enforcesFor("/picsure/query/sync")).isFalse();
-    }
-
-    @Test
-    void transparentModeNeitherEnforcesNorObserves() {
-        GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.TRANSPARENT, RouteSurfaces.withDefaults());
-        assertThat(r.enforcesFor("/picsure/query/sync")).isFalse();
-        assertThat(r.observesFor("/picsure/query/sync")).isFalse();
         assertThat(r.enforcesFor("/hpds/x")).isFalse();
-        assertThat(r.observesFor("/hpds/x")).isFalse();
     }
 
     private static List<ILoggingEvent> captureLogsDuring(Runnable action) {

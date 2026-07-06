@@ -6,8 +6,8 @@ package edu.harvard.hms.dbmi.avillach.gateway.health;
  *
  * <p> Deliberately <em>not</em> a {@code @RestController}/{@code @GetMapping}: this monorepo's Phase-1 catch-all gateway route
  * ({@code Path=/**} in application.yml) is registered as a {@code RouterFunction} bean, and Spring wires {@code RouterFunctionMapping} at
- * order -1 -- ahead of {@code RequestMappingHandlerMapping} (order 0). An annotated controller mapping here would be silently shadowed and
- * proxied to WildFly instead of answering locally. See {@link edu.harvard.hms.dbmi.avillach.gateway.config.HealthConfig} for the
+ * order -1 -- ahead of {@code RequestMappingHandlerMapping} (order 0). An annotated controller mapping here would be silently overridden
+ * and proxied to WildFly instead of answering locally. See {@link edu.harvard.hms.dbmi.avillach.gateway.config.HealthConfig} for the
  * higher-precedence {@code RouterFunction} that actually exposes this at {@code GET /system/status}. (Actuator's own endpoints are
  * unaffected: {@code WebMvcEndpointHandlerMapping} is order -100, ahead of the gateway route.)
  */

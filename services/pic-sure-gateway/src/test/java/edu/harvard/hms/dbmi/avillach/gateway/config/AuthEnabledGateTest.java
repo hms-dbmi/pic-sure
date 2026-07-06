@@ -11,13 +11,10 @@ import org.springframework.test.context.TestPropertySource;
 
 /**
  * Pins the resolved-effective-mode registration gate. All seven auth/audit filter beans register together whenever the resolved effective
- * mode is not TRANSPARENT, and none register when it is; the enforce-vs-observe difference is a per-request decision inside the filters,
- * not a registration difference. Cases: <ul> <li>{@link DefaultAuthDisabled}: nothing set → TRANSPARENT → zero filters.
- * <li>{@link AuthEnabled}: {@code auth-enabled=true}, mode unset → ENFORCE → all seven (today's production topology).
- * <li>{@link ModeObserveAuthDisabled}: {@code mode=observe} → OBSERVE → all seven (the full chain registers so gateway-owned routes can
- * enforce; the catch-all observe branch lives inside the filters). <li>{@link ModeEnforceAuthDisabled}: {@code mode=enforce},
- * {@code auth-enabled=false} → ENFORCE → all seven (regression for the prior bug where a bare {@code mode=enforce} registered only two
- * filters, silently dropping buffering/consent-mutation/identity/audit). </ul>
+ * mode is not TRANSPARENT, and none register when it is. Cases: <ul> <li>{@link DefaultAuthDisabled}: nothing set → TRANSPARENT → zero
+ * filters. <li>{@link AuthEnabled}: {@code auth-enabled=true}, mode unset → ENFORCE → all seven (today's production topology).
+ * <li>{@link ModeEnforceAuthDisabled}: {@code mode=enforce}, {@code auth-enabled=false} → ENFORCE → all seven (regression for the prior bug
+ * where a bare {@code mode=enforce} registered only two filters, silently dropping buffering/consent-mutation/identity/audit). </ul>
  */
 class AuthEnabledGateTest {
 
@@ -76,29 +73,6 @@ class AuthEnabledGateTest {
 
         @Test
         void inboundIdentityHeaderSanitizingFilterIsAlsoPresentWhenAuthEnabled() {
-            assertThat(context.containsBean("inboundIdentityHeaderSanitizingFilter")).isTrue();
-        }
-    }
-
-    /**
-     * OBSERVE resolves to a non-TRANSPARENT effective mode, so the FULL chain registers -- gateway-owned routes must be able to enforce
-     * during an observe window; the log-only catch-all behavior is a per-request branch inside the auth filters, NOT a missing filter.
-     */
-    @Nested
-    @SpringBootTest
-    @TestPropertySource(properties = "picsure.gateway.security.mode=observe")
-    class ModeObserveAuthDisabled {
-
-        @Autowired
-        private ApplicationContext context;
-
-        @Test
-        void allSevenFiltersRegisterInObserveMode() {
-            assertAllSevenPresent(context);
-        }
-
-        @Test
-        void inboundIdentityHeaderSanitizingFilterIsStillPresent() {
             assertThat(context.containsBean("inboundIdentityHeaderSanitizingFilter")).isTrue();
         }
     }

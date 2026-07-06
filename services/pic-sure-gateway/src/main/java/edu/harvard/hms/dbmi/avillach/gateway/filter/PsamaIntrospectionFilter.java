@@ -22,13 +22,10 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
-import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowRecord;
-import edu.harvard.hms.dbmi.avillach.gateway.shadow.ShadowSupport;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,17 +48,6 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code active:false} denies with a 401 additive error body (decision 10). {@link QueryAuthFetcher}/introspection infrastructure failures
  * ({@link PicsureException}, or any introspection transport error) are fail-closed: the mapped status/error body is written and the request
  * is never forwarded.
- *
- * <p><b>OBSERVE mode</b> (the parity-verification shadow path): the observe branch is taken per request, and ONLY on the legacy catch-all
- * surface ({@link GatewayModeResolver#observesFor}) -- gateway-owned routes ({@code /hpds}, {@code /dictionary}, {@code /uploader},
- * {@code /configuration}, {@code /dataset}) have no WildFly counterpart, so they run the full enforce path below even in OBSERVE (a shadow
- * window must never unprotect them). For a catch-all request, the observe branch builds the exact same introspection request this filter
- * would otherwise send ({@link #buildIntrospectionRequest}), emits one {@code SHADOW_GW} record via {@link ShadowSupport}, and forwards the
- * request UNCHANGED -- no PSAMA call, no attribute mutation, no denial. This intentionally runs BEFORE the Authorization-header validation
- * below so a request that WildFly will itself reject for a missing/malformed token is still forwarded untouched (WildFly, not this filter,
- * is the sole enforcer for catch-all traffic in OBSERVE); {@link #bearerCredential} degrades to a {@code null} token hash in that case. Any
- * failure while building the shadow request (e.g. {@link QueryAuthFetcher} dispatch errors) is swallowed -- OBSERVE must never block or
- * alter real traffic. ENFORCE behavior (every route) and OBSERVE-on-owned-routes remain byte-identical to production enforce.
  */
 public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
@@ -81,11 +67,10 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     private final GatewayAuthScope scope;
     private final List<String> allowListPrefixes;
     private final String userIdClaim;
-    private final GatewayModeResolver modeResolver;
 
     public PsamaIntrospectionFilter(
         PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, GatewayAuthScope scope,
-        List<String> allowListPrefixes, String userIdClaim, GatewayModeResolver modeResolver
+        List<String> allowListPrefixes, String userIdClaim
     ) {
         this.psama = psama;
         this.audit = audit;
@@ -94,7 +79,6 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         this.scope = scope;
         this.allowListPrefixes = List.copyOf(allowListPrefixes);
         this.userIdClaim = userIdClaim;
-        this.modeResolver = modeResolver;
     }
 
     @Override
@@ -140,11 +124,6 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
                 chain.doFilter(req, resp);
                 return;
             }
-        }
-
-        if (modeResolver.observesFor(path)) {
-            observeAndForward(req, resp, chain, path);
-            return;
         }
 
         String authz = req.getHeader("Authorization");
@@ -222,43 +201,6 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         audit.put("auth_result", "failure");
         audit.put("auth_failure_reason", "dispatch_error");
         GatewayErrors.write(resp, e.getStatus(), e.getErrorType(), e.getMessage());
-    }
-
-    /**
-     * OBSERVE-mode shadow branch (parity verification): builds the introspection request via the same {@link #buildIntrospectionRequest}
-     * used by the real (ENFORCE) path, emits a {@code SHADOW_GW} record, and always forwards the request unchanged -- no PSAMA call, no
-     * attribute mutation, never a denial. Any failure while building the shadow request is swallowed (logged at debug) so OBSERVE can never
-     * block or alter real traffic; WildFly remains the sole enforcer while this mode is active.
-     */
-    private void observeAndForward(HttpServletRequest req, HttpServletResponse resp, FilterChain chain, String path)
-        throws IOException, ServletException {
-        try {
-            Map<String, Object> introspectRequest = buildIntrospectionRequest(req, path);
-            String tokenHash = ShadowSupport.tokenHash(bearerCredential(req));
-            ShadowSupport.emit(
-                ShadowRecord.gwIntrospection(
-                    correlationId(req), tokenHash, (String) introspectRequest.get("Target Service"), introspectRequest.get("query")
-                )
-            );
-        } catch (Exception e) {
-            log.debug("observe-mode shadow build failed; forwarding request unchanged", e);
-        }
-        chain.doFilter(req, resp);
-    }
-
-    /** Substring after {@code "Bearer "} in the {@code Authorization} header, or {@code null} if absent/not a Bearer credential. */
-    private static String bearerCredential(HttpServletRequest req) {
-        String authz = req.getHeader("Authorization");
-        if (authz == null || !authz.startsWith("Bearer ")) {
-            return null;
-        }
-        return authz.substring(7).trim();
-    }
-
-    /** The correlation id {@code CorrelationIdFilter} stashed on the request, or {@code "unknown"} if absent. */
-    private static String correlationId(HttpServletRequest req) {
-        Object attr = req.getAttribute(ShadowSupport.ATTR_CORRELATION_ID);
-        return attr != null ? attr.toString() : "unknown";
     }
 
     private Map<String, Object> buildIntrospectionRequest(HttpServletRequest req, String path) {

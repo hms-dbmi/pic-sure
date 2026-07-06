@@ -97,22 +97,4 @@ class BufferingFilterTest {
         when(req.getRequestURI()).thenReturn("/query/abc/result");
         assertThat(f.shouldNotFilter(req)).isTrue();
     }
-
-    @Test
-    void observeCatchAllSkipsBufferingSoBodyReachesWildFlyUnbuffered() throws Exception {
-        // In OBSERVE the legacy catch-all must forward byte-identical: no buffering, no 413 cap.
-        BufferingFilter f = new BufferingFilter(64 * 1024, SCOPE, new SimpleMeterRegistry(), GatewayModeResolver.observing());
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/picsure/query/sync"); // catch-all
-        assertThat(f.shouldNotFilter(req)).isTrue();
-    }
-
-    @Test
-    void observeOwnedRouteStillBuffers() throws Exception {
-        // Gateway-owned routes enforce even in OBSERVE, so they buffer exactly as ENFORCE.
-        BufferingFilter f = new BufferingFilter(64 * 1024, SCOPE, new SimpleMeterRegistry(), GatewayModeResolver.observing());
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/hpds/auth/v3/query/sync"); // owned
-        assertThat(f.shouldNotFilter(req)).isFalse();
-    }
 }

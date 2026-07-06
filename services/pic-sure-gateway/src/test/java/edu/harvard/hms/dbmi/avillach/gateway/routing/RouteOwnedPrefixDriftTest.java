@@ -20,7 +20,7 @@ import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
  * ({@code RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES}, via {@link RouteSurfaces#withDefaults()}). Binds
  * {@code spring.cloud.gateway.server.webmvc.routes} straight from the environment (same Binder technique as {@code NoRegistryRouteTest}) so
  * that adding a route to {@code application.yml} without extending the owned-prefixes default fails THIS test -- the owned-vs-catch-all
- * classification that drives the OBSERVE split can never silently drift out of sync with the route table.
+ * classification can never silently drift out of sync with the route table.
  */
 @SpringBootTest
 class RouteOwnedPrefixDriftTest {

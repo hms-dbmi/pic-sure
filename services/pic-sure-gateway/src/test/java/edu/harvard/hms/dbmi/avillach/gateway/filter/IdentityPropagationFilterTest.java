@@ -155,24 +155,6 @@ class IdentityPropagationFilterTest {
         );
     }
 
-    // ---- OBSERVE catch-all: pure pass-through, request reaches WildFly byte-identical ----
-
-    @Test
-    void observeCatchAllForwardsOriginalRequestUnwrappedWithNoHeadersAdded() throws Exception {
-        // In OBSERVE on the legacy catch-all surface, the filter must NOT wrap the request or add X-User-*/X-Request-Id;
-        // WildFly is the sole enforcer there and resolves identity itself.
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/picsure/query/sync"); // catch-all
-        when(req.getAttribute(GatewayUserResolver.HEADER_USER_ID)).thenReturn("u-should-not-propagate");
-
-        HttpServletResponse resp = mock(HttpServletResponse.class);
-        FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.observing()).doFilter(req, resp, chain);
-
-        // The exact same request instance is forwarded (no IdentityHeadersRequest wrapper).
-        verify(chain).doFilter(req, resp);
-    }
-
     // ---- FIX 3: request-id correlation must unify with the commons RequestIdFilter's MDC value ----
 
     @Test

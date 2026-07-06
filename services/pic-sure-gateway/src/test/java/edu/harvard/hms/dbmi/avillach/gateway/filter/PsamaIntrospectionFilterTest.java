@@ -26,7 +26,6 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
@@ -40,8 +39,7 @@ class PsamaIntrospectionFilterTest {
 
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext ctx, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
-            client, ctx, new ObjectMapper(), fetcher, SCOPE, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId",
-            GatewayModeResolver.enforcing()
+            client, ctx, new ObjectMapper(), fetcher, SCOPE, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
         );
     }
 

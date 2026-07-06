@@ -30,7 +30,6 @@ import edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.OpenAccessFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.PsamaIntrospectionFilter;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.TokenRefreshResponseFilter;
-import edu.harvard.hms.dbmi.avillach.gateway.shadow.CorrelationIdFilter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
@@ -42,16 +41,13 @@ import io.micrometer.core.instrument.MeterRegistry;
  * authentication machinery.
  *
  * <p><b>Resolved effective mode (single source of truth):</b> all SEVEN filters register under one gate, {@link GatewayAuthActiveCondition}
- * -- true whenever {@link GatewayModeResolver#resolve the resolved effective mode} is not {@link GatewayAuthMode#TRANSPARENT} (i.e. ENFORCE
- * or OBSERVE). So ENFORCE and OBSERVE both bring up the FULL chain; the enforce-vs-observe difference is a PER-REQUEST decision the filters
- * make via the injected {@link GatewayModeResolver} ({@code enforcesFor}/{@code observesFor}), keyed on whether the request is on a
- * gateway-owned route surface. In OBSERVE, gateway-owned routes enforce exactly as ENFORCE, while the legacy catch-all is observed --
- * built, shadow-logged, forwarded unchanged (no buffering, no mutation, no identity injection). The default (mode unset,
- * {@code auth-enabled=false} → TRANSPARENT) registers none of these filters, exactly as before this work; the deployed production topology
- * (mode unset, {@code auth-enabled=true} → ENFORCE) registers the full chain and enforces every route, unchanged.
+ * -- true whenever {@link GatewayModeResolver#resolve the resolved effective mode} is not {@link GatewayAuthMode#TRANSPARENT} (i.e.
+ * ENFORCE). The default (mode unset, {@code auth-enabled=false} → TRANSPARENT) registers none of these filters, exactly as before this
+ * work; the deployed production topology (mode unset, {@code auth-enabled=true} → ENFORCE) registers the full chain and enforces every
+ * route, unchanged.
  */
 @Configuration
-@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class, RouteSurfaceProperties.class})
+@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class})
 public class SecurityConfig {
 
     // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
@@ -93,19 +89,14 @@ public class SecurityConfig {
         return new GatewayAuthScope(props.gatewayOwnsQueryReadAuth(), props.queryReadPaths());
     }
 
-    @Bean
-    RouteSurfaces routeSurfaces(RouteSurfaceProperties props) {
-        return new RouteSurfaces(props.ownedPrefixes());
-    }
-
     /**
-     * The single source of truth for the effective auth mode and the per-request enforce/observe decision. Resolves the
+     * The single source of truth for the effective auth mode and the per-request enforce decision. Resolves the
      * {@code (auth-enabled, mode)} tuple once and logs it prominently at startup (WARN on an unusual tuple). Every mode-aware filter reads
      * this rather than the raw {@code mode} property.
      */
     @Bean
-    GatewayModeResolver gatewayModeResolver(GatewaySecurityProperties props, GatewayAuthProperties authProps, RouteSurfaces routeSurfaces) {
-        return GatewayModeResolver.create(authProps.mode(), props.authEnabled(), routeSurfaces);
+    GatewayModeResolver gatewayModeResolver(GatewaySecurityProperties props, GatewayAuthProperties authProps) {
+        return GatewayModeResolver.create(authProps.mode(), props.authEnabled());
     }
 
     @Bean
@@ -122,20 +113,6 @@ public class SecurityConfig {
         return new QueryAuthFetcher(
             timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()
         );
-    }
-
-    /**
-     * Shadow-correlation infra. Registered unconditionally at the lowest order in the chain (5 < {@code BufferingFilter}'s 10) so the
-     * correlation id exists before any auth filter runs, but it only mints/propagates the id for requests that will emit a
-     * {@code SHADOW_GW} record -- OBSERVE on the legacy catch-all surface. It is a no-op in ENFORCE and TRANSPARENT (so the production
-     * enforce path forwards no extra header), and on OBSERVE gateway-owned routes (which enforce, and have no WildFly pair to correlate).
-     */
-    @Bean
-    FilterRegistrationBean<CorrelationIdFilter> correlationIdFilter(GatewayModeResolver modeResolver) {
-        var r = new FilterRegistrationBean<>(new CorrelationIdFilter(modeResolver));
-        r.setOrder(5);
-        r.addUrlPatterns("/*");
-        return r;
     }
 
     @Bean
@@ -155,7 +132,7 @@ public class SecurityConfig {
         PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props,
         GatewayModeResolver modeResolver
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled(), modeResolver));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled()));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;
@@ -168,7 +145,7 @@ public class SecurityConfig {
         GatewaySecurityProperties props, GatewayModeResolver modeResolver
     ) {
         var r = new FilterRegistrationBean<>(
-            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim(), modeResolver)
+            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim())
         );
         r.setOrder(30);
         r.addUrlPatterns("/*");

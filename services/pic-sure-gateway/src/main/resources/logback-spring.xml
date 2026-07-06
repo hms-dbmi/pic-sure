@@ -1,22 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!--
-        Dedicated RAW appender for the parity-verification shadow logger (picsure.shadow). In EVERY profile the shadow
-        record is emitted as the WHOLE log line (bare %msg%n, no timestamp/level prefix, no structured-JSON envelope) so
-        the reconciler consumes `docker logs gateway | grep '"side":"GW"'` directly as JSONL. additivity="false" keeps
-        these lines OUT of the root appender (CONSOLE in local, the JsonEncoder envelope in every other profile) so they
-        are neither double-logged nor escaped inside a "message" field. Defined once, at the top level, so it applies to
-        every Spring profile including future ones.
-    -->
-    <appender name="SHADOW" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%msg%n</pattern>
-        </encoder>
-    </appender>
-    <logger name="picsure.shadow" level="INFO" additivity="false">
-        <appender-ref ref="SHADOW"/>
-    </logger>
-
     <!-- local profile: human-readable console with the request id -->
     <springProfile name="local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
