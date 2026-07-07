@@ -23,9 +23,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
  * first -- {@code GatewayExceptionAdvice}'s equivalent handler (if consulted first) produces the identical response.
  *
- * <p>Adds two mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 (decision 10 -- HPDS is upstream
- * infrastructure; the legacy WAR returned 500 for this case, which was never an honest status), and any other unmapped exception -&gt; 500,
- * both sharing the same commons error body shape.
+ * <p>Adds two mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 (HPDS is upstream infrastructure; the
+ * legacy WAR returned 500 for this case, which was never an honest status), and any other unmapped exception -&gt; 500, both sharing the
+ * same commons error body shape.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {

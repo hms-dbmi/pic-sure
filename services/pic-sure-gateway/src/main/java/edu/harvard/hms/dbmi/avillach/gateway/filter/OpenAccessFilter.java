@@ -88,7 +88,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     /** Builds the inner {@code { "Target Service", "query" }} request map sent to PSAMA's open-access validate endpoint. */
     private Map<String, Object> buildOpenAccessRequest(HttpServletRequest req) {
         Map<String, Object> queryMap = new HashMap<>();
-        queryMap.put("Target Service", req.getRequestURI()); // real path (decision 4)
+        queryMap.put("Target Service", req.getRequestURI()); // real path
         if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
             try {
                 JsonNode parsed = json.readTree(buffered.getBody());

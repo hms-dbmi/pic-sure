@@ -145,7 +145,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         try {
             requestMeta = buildIntrospectionRequest(req, path);
         } catch (PicsureException e) {
-            // QueryAuthFetcher fail-closed (decision 8/10): honest status + additive error body.
+            // QueryAuthFetcher fail-closed: honest status + additive error body.
             mapPicsureException(resp, e);
             return;
         }
@@ -175,7 +175,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         req.setAttribute(GatewayUserResolver.HEADER_USER_SUBJECT, intro.sub());
         req.setAttribute(GatewayUserResolver.HEADER_USER_EMAIL, intro.email());
         req.setAttribute(GatewayUserResolver.HEADER_USER_ROLES, intro.roles() == null ? "" : intro.roles());
-        // decision 7: privileges are the real @RolesAllowed signal — propagate them.
+        // privileges are the real @RolesAllowed signal — propagate them.
         req.setAttribute(
             GatewayUserResolver.HEADER_USER_PRIVILEGES, intro.privileges() == null ? "" : String.join(",", intro.privileges())
         );
@@ -228,7 +228,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             // entirely rather than risk leaking it to PSAMA. Never log body content here.
             log.debug("request body was not valid JSON; omitting query from introspection payload");
         }
-        // NO formattedQuery (decision 5): PSAMA uses it only for access-log strings, never for authorization.
+        // NO formattedQuery: PSAMA uses it only for access-log strings, never for authorization.
         return requestMeta;
     }
 

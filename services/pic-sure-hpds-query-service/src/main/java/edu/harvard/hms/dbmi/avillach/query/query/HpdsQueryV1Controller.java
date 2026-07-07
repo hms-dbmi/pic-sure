@@ -25,7 +25,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
  * {@code open} (validated downstream by {@link QueryService}, via {@code HpdsBackendSelector}). Only create ({@code /query}) and sync
  * ({@code /query/sync}) are version-specific; the read ops (status/result/signed-url/metadata) are byte-for-byte identical to
  * {@link HpdsQueryV3Controller}'s because they delegate to the version-agnostic {@link QueryService} methods that dispatch HPDS-side on the
- * STORED query's version, never the ingress path (decision 9).
+ * STORED query's version, never the ingress path.
  */
 @RestController
 @RequestMapping("/hpds/{backend}")

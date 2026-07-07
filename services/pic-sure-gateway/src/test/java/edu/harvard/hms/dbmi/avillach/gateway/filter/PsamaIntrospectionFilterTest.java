@@ -119,7 +119,7 @@ class PsamaIntrospectionFilterTest {
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         byte[] body = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":{\"a\":1}}".getBytes();
-        // real path is sent verbatim (decision 4): no /v3 rewriting, no canonical mapping
+        // real path is sent verbatim: no /v3 rewriting, no canonical mapping
         BufferedRequestWrapper req = wrap("Bearer user-token", body, "/v3/query");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));

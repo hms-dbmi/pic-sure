@@ -25,12 +25,12 @@ import jakarta.servlet.http.HttpServletResponse;
 /**
  * SCG MVC forwards via a {@code HandlerFunction}; request attributes don't become outbound headers automatically. This filter wraps the
  * request and adds the {@code X-User-*} headers from the attributes the introspection/open-access filters set — including
- * {@code X-User-Privileges} (decision 7) — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons
- * {@link RequestIdFilter}'s MDC value, or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for
- * {@code @RolesAllowed}-equivalent checks. <p> The five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID},
- * {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) are gateway-owned: the wrapper NEVER falls through to the raw
- * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
- * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges).
+ * {@code X-User-Privileges} — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons {@link RequestIdFilter}'s MDC value,
+ * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @RolesAllowed}-equivalent checks. <p> The
+ * five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
+ * {@code _PRIVILEGES}) are gateway-owned: the wrapper NEVER falls through to the raw client request for them. Whatever the gateway resolved
+ * (possibly nothing) is authoritative -- a client cannot spoof these by sending its own values, even where the gateway resolved an
+ * empty/null value (e.g. open-access requests, users with no privileges).
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 

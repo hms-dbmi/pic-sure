@@ -51,7 +51,7 @@ public class QueryAuthFetcher {
                 .header(INTERNAL_TOKEN_HEADER, internalToken).retrieve().body(DispatchResponse.class);
         } catch (RestClientResponseException e) {
             int status = e.getStatusCode().value();
-            // honest status (decision 10) + fail-closed (decision 8):
+            // honest status + fail-closed:
             if (status == 404) {
                 throw new PicsureException(HttpStatus.NOT_FOUND, "query_not_found", "No stored query for id " + picsureId);
             }

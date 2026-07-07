@@ -120,7 +120,7 @@ class HpdsQueryControllerTest {
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
     }
 
-    // --- read ops dispatch on the STORED version, regardless of which ingress path (v1 or v3) was used (decision 9) ---
+    // --- read ops dispatch on the STORED version, regardless of which ingress path (v1 or v3) was used ---
 
     @Test
     void resultDispatchesOnStoredVersionEvenViaV1Path() throws Exception {

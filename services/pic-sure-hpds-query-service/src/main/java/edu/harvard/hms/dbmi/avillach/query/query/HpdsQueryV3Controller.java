@@ -24,7 +24,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
  * Ports the legacy WAR's {@code PicsureRSv3} query lifecycle: {@code /hpds/{backend}/v3/query/**}. Only create and sync differ from
  * {@link HpdsQueryV1Controller} -- they stamp version {@code "3"} and dispatch to HPDS's {@code /v3} base. The read ops below are IDENTICAL
  * to v1's: both delegate to the same version-agnostic {@link QueryService} methods, which dispatch HPDS-side on the STORED query's version
- * (decision 9) rather than on which ingress path (v1 or v3) was used to reach them.
+ * rather than on which ingress path (v1 or v3) was used to reach them.
  */
 @RestController
 @RequestMapping("/hpds/{backend}/v3")
@@ -61,7 +61,7 @@ public class HpdsQueryV3Controller {
         return HpdsQueryV1Controller.syncResponse(service.querySync(backend, req, requestSource, true));
     }
 
-    // Read ops: identical to v1 -- stored-version dispatch makes the ingress version irrelevant (decision 9).
+    // Read ops: identical to v1 -- stored-version dispatch makes the ingress version irrelevant.
 
     @PostMapping("/query/{id}/status")
     public QueryStatus status(@PathVariable("backend") String backend, @PathVariable("id") UUID id, @RequestBody QueryRequest req) {
