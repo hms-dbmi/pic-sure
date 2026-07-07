@@ -148,6 +148,48 @@
                             </rules>
                         </configuration>
                     </execution>
+                    <!-- Duplicate-responsibility bans (consolidation Phase 4, spec §17.4).
+                         A ban activates only once the last consumer converges:
+                         org.apache.httpcomponents:httpclient (HC4) is NOT banned yet — HPDS etl
+                         still declares it directly; that ban activates with the HPDS HTTP
+                         rationalization follow-on (FO-1). -->
+                    <execution>
+                        <id>ban-duplicate-responsibility-libs</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>commons-httpclient:commons-httpclient</exclude>
+                                        <exclude>org.json:json</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ban-direct-duplicate-libs</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <!-- direct declarations only: JUnit4 arrives transitively via
+                                             Testcontainers, OkHttp via the auth0 SDK — both accepted
+                                             as transitives, banned as direct dependencies -->
+                                        <exclude>junit:junit</exclude>
+                                        <exclude>com.squareup.okhttp3:okhttp</exclude>
+                                    </excludes>
+                                    <searchTransitive>false</searchTransitive>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <!-- Resolves ${revision} into published/installed POMs (CI-friendly versions). -->
