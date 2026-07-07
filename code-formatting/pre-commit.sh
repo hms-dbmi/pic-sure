@@ -83,8 +83,22 @@ STAGED_JAVA_FILES_AS_REGEX=$(git diff --staged --name-only --diff-filter=ACMR | 
 FILES_TO_RESTAGE=$(git diff --staged --name-only --diff-filter=ACMR)
 if [ -n "$STAGED_JAVA_FILES_AS_REGEX" ]; then
    echo "Found the following staged java files to format: $STAGED_JAVA_FILES_AS_REGEX"
-   mvn spotless:apply -DspotlessFiles=^.*$STAGED_JAVA_FILES_AS_REGEX
-   git add $FILES_TO_RESTAGE
+   # Spotless must run in the Maven modules that own the staged files. Running `spotless:apply` at
+   # the aggregator root fails ("No plugin found for prefix 'spotless'" — the root only manages the
+   # plugin), and the fully-qualified goal errors on modules that don't configure Spotless (e.g. the
+   # BOM). So derive each staged file's owning module (nearest ancestor with a pom.xml) and pass them
+   # via -pl. -DspotlessFiles still restricts formatting to exactly the staged files within them.
+   SPOTLESS_MODULES=$(git diff --staged --name-only --diff-filter=ACMR | grep '.java$' | while read -r f; do
+       d=$(dirname "$f")
+       while [ "$d" != "." ] && [ ! -f "$d/pom.xml" ]; do d=$(dirname "$d"); done
+       [ -f "$d/pom.xml" ] && printf '%s\n' "$d"
+   done | sort -u | paste -sd',' -)
+   if [ -n "$SPOTLESS_MODULES" ]; then
+       mvn -pl "$SPOTLESS_MODULES" spotless:apply -DspotlessFiles=^.*$STAGED_JAVA_FILES_AS_REGEX
+       git add $FILES_TO_RESTAGE
+   else
+       echo '⚠ could not determine owning Maven module(s) for staged Java files — skipping Spotless.' 1>&2
+   fi
 fi
 
 cd $CWD
