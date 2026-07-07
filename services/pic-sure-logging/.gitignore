@@ -1,0 +1,15 @@
+target/
+*.class
+*.jar
+*.log
+logs/
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.DS_Store
+*.swp
+*.swo
+.env
+dependency-reduced-pom.xml
