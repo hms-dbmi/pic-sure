@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 @Configuration
 public class RestClientConfig {
@@ -59,9 +59,7 @@ public class RestClientConfig {
     }
 
     @Bean
-    public RestTemplate getRestTemplate(@Autowired HttpClient client) {
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
-        factory.setHttpClient(client);
-        return new RestTemplate(factory);
+    public RestClient restClient(@Autowired HttpClient client) {
+        return RestClient.builder().requestFactory(new HttpComponentsClientHttpRequestFactory(client)).build();
     }
 }
