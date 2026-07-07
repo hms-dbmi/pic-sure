@@ -202,7 +202,8 @@ public class JWTFilter implements ContainerRequestFilter {
                     requestContext.setProperty("username", userForLogging);
                     // TEMP DIAGNOSTIC (remove after root-causing @RolesAllowed): shows the roles string PSAMA
                     // introspection returned for this user, which is what @RolesAllowed is matched against.
-                    logger.info("Installing AuthSecurityContext for user '{}' with roles='{}'", userForLogging, authenticatedUser.getRoles());
+                    logger
+                        .info("Installing AuthSecurityContext for user '{}' with roles='{}'", userForLogging, authenticatedUser.getRoles());
                     requestContext.setSecurityContext(new AuthSecurityContext(authenticatedUser, uriInfo.getRequestUri().getScheme()));
                     logger.info("User - {} - has just passed all the authentication and authorization layers.", userForLogging);
                     auditContext.put("auth_result", "success");
@@ -296,15 +297,21 @@ public class JWTFilter implements ContainerRequestFilter {
             String sub = responseContent.get("sub") != null ? responseContent.get("sub").asText() : null;
             String email = responseContent.get("email") != null ? responseContent.get("email").asText() : null;
             String roles = responseContent.get("roles") != null ? responseContent.get("roles").asText() : null;
-            Set<String> privileges = responseContent.get("privileges") != null
-                    ? json.convertValue(responseContent.get("privileges"), new TypeReference<>() {})
+            Set<String> privileges =
+                responseContent.get("privileges") != null ? json.convertValue(responseContent.get("privileges"), new TypeReference<>() {})
                     : Collections.emptySet();
             AuthUser user = new AuthUser().setUserId(userId).setSubject(sub).setEmail(email).setRoles(roles).setPrivileges(privileges);
 
             // If there is a query in the response, PSAMA has updated the authorization filters and we must update the query
             if (responseContent.get("query") != null) {
                 QueryRequest queryObject = new ObjectMapper().readValue(requestContext.getEntityStream(), QueryRequest.class);
-                queryObject.setQuery(responseContent.get("query").asText());
+                JsonNode updatedQuery = responseContent.get("query");
+                // PSAMA sends the updated query as a JSON string; parse it back into an object instead of
+                // storing the raw text, otherwise it gets re-escaped as a string when the request is
+                // re-serialized below, and again when it's persisted, corrupting stored queries with extra slashes.
+                Object parsedQuery = updatedQuery.isTextual() ? json.readValue(updatedQuery.asText(), Object.class)
+                    : json.convertValue(updatedQuery, Object.class);
+                queryObject.setQuery(parsedQuery);
                 requestContext.setEntityStream(new ByteArrayInputStream(new ObjectMapper().writeValueAsBytes(queryObject)));
             }
             return user;
