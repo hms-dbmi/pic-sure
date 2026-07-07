@@ -23,19 +23,19 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 @Component
 public class HpdsClient {
 
     private static final Logger logger = LoggerFactory.getLogger(HpdsClient.class);
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final LoggingClient loggingClient;
     private final String hpdsBaseUrl;
 
-    public HpdsClient(RestTemplate restTemplate, LoggingClient loggingClient, @Value("${hpds.base-url}") String hpdsBaseUrl) {
-        this.restTemplate = restTemplate;
+    public HpdsClient(RestClient restClient, LoggingClient loggingClient, @Value("${hpds.base-url}") String hpdsBaseUrl) {
+        this.restClient = restClient;
         this.loggingClient = loggingClient;
         this.hpdsBaseUrl = hpdsBaseUrl;
     }
@@ -96,7 +96,8 @@ public class HpdsClient {
         );
 
         try {
-            ResponseEntity<Map<String, T>> response = restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), typeRef);
+            ResponseEntity<Map<String, T>> response =
+                restClient.post().uri(url).headers(h -> h.addAll(headers)).body(body).retrieve().toEntity(typeRef);
             logger.info(
                 "HPDS call completed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} responseSeriesCount={} responsePointCount={} responseSeriesKeys={}",
                 requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType,

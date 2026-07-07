@@ -5,35 +5,15 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.11</version>
-        <relativePath/>
+        <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+        <artifactId>pic-sure-api</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <groupId>edu.harvard.dbmi.avillach</groupId>
     <artifactId>pic-sure-visualization-service</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
     <name>PIC-SURE Visualization Service</name>
-
-    <properties>
-        <java.version>25</java.version>
-        <spotless.version>2.41.1</spotless.version>
-    </properties>
-
-    <repositories>
-        <repository>
-            <id>github</id>
-            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure-hpds</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-        <repository>
-            <id>github-logging</id>
-            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure-logging-client</url>
-        </repository>
-    </repositories>
 
     <dependencies>
         <!-- Spring Boot -->
@@ -50,48 +30,28 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- HPDS v3 query model -->
-
+        <!-- HPDS v3 query model (BOM-managed, 3.0.0 line) -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
 
-        <!-- PIC-SURE domain model (GeneralQueryRequest, QueryRequest) — only used for the gateway strategy -->
+        <!-- PIC-SURE domain model (GeneralQueryRequest, QueryFormat, ResourceInfo) -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-resource-api</artifactId>
-            <version>2.2.0-SNAPSHOT</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>httpcore</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>httpclient</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>commons-io</groupId>
-                    <artifactId>commons-io</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-jdk14</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-                    <artifactId>pic-sure-api-data</artifactId>
-                </exclusion>
-            </exclusions>
+            <artifactId>pic-sure-api-model</artifactId>
         </dependency>
 
-        <!-- Audit logging -->
+        <!-- Audit logging (BOM-managed, 3.0.0 line) -->
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
-            <version>1.0.0</version>
+        </dependency>
+
+        <!-- HTTP-client winner: RestClient over Apache HttpClient 5 -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
         </dependency>
 
         <!-- Binning statistics -->
@@ -114,19 +74,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>com.diffplug.spotless</groupId>
-                <artifactId>spotless-maven-plugin</artifactId>
-                <version>${spotless.version}</version>
-                <configuration>
-                    <java>
-                        <eclipse>
-                            <file>${project.basedir}/code-formatting/eclipse-formatter.xml</file>
-                            <version>4.26</version>
-                        </eclipse>
-                    </java>
-                </configuration>
             </plugin>
         </plugins>
     </build>
