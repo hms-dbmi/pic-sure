@@ -19,6 +19,7 @@
         <!-- Consolidation Phase 4: imported services adopted onto the reactor -->
         <module>services/pic-sure-visualization-service</module>
         <module>services/pic-sure-auth-microapp</module>
+        <module>services/pic-sure-logging</module>
         <module>services/pic-sure-services/info-service</module>
         <module>services/pic-sure-services/uploader</module>
         <module>services/picsure-dictionary</module>
