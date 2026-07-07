@@ -15,6 +15,19 @@
 	<properties>
 		<aws.version>2.30.24</aws.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- Converges every software.amazon.awssdk artifact (the s3-encryption-client
+			     drags an older s3) onto ${aws.version} — dependencyConvergence enforcement. -->
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

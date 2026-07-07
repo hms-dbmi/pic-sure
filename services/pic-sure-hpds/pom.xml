@@ -144,6 +144,18 @@
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
+			<!-- Convergence pins scoped to HPDS (htsjdk drags older commons lines);
+			     both match what etl already resolves today - no behavior change. -->
+			<dependency>
+				<groupId>commons-logging</groupId>
+				<artifactId>commons-logging</artifactId>
+				<version>1.2</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.commons</groupId>
+				<artifactId>commons-compress</artifactId>
+				<version>1.26.0</version>
+			</dependency>
 			<dependency>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-starter-tomcat</artifactId>

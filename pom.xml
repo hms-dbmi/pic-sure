@@ -167,6 +167,11 @@
                                     </excludes>
                                     <searchTransitive>true</searchTransitive>
                                 </bannedDependencies>
+                                <dependencyConvergence/>
+                                <!-- requireUpperBoundDeps deliberately omitted: it flags every
+                                     intentional BOM pin (e.g. the Spring BOM managing snakeyaml
+                                     below a transitive expectation) as an error; convergence +
+                                     BOM pins provide the single-version guarantee. -->
                             </rules>
                         </configuration>
                     </execution>
