@@ -14,7 +14,7 @@
     <properties>
         <!-- Duplicated from the root parent by design (standalone BOM cannot inherit).
              Bump these in lockstep with the root pom. -->
-        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-boot.version>3.5.16</spring-boot.version>
         <spring-cloud.version>2025.0.0</spring-cloud.version>
         <!-- Internal artifacts: the 3.0.0 Java 25 line published from this repo.
              Legacy stays pinned to the frozen Java 11 releases and never resolves these. -->
@@ -27,6 +27,10 @@
         <pic-sure-hpds-query-service.version>3.0.0</pic-sure-hpds-query-service.version>
         <!-- Shared third-party pins not governed by the Spring BOMs -->
         <wiremock.version>3.10.0</wiremock.version>
+        <!-- HTTP-client winner (consolidation Phase 4) — aligned with spring-boot-dependencies -->
+        <httpclient5.version>5.5.2</httpclient5.version>
+        <!-- Structured logging encoder (not governed by the Spring BOMs) -->
+        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -88,6 +92,18 @@
                 <groupId>org.wiremock</groupId>
                 <artifactId>wiremock-standalone</artifactId>
                 <version>${wiremock.version}</version>
+            </dependency>
+            <!-- HTTP-client winner: RestClient over Apache HttpClient 5 (Phase 4 convergence).
+                 Version explicit so external BOM consumers get the winner without the Spring BOM. -->
+            <dependency>
+                <groupId>org.apache.httpcomponents.client5</groupId>
+                <artifactId>httpclient5</artifactId>
+                <version>${httpclient5.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

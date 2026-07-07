@@ -24,7 +24,7 @@
         <java.version>25</java.version>
         <!-- Duplicated in platform/pom.xml (the standalone BOM cannot inherit these).
              Bump both files in lockstep. -->
-        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-boot.version>3.5.16</spring-boot.version>
         <spring-cloud.version>2025.0.0</spring-cloud.version>
         <spotless.version>2.46.1</spotless.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
