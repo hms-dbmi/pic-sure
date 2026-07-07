@@ -51,6 +51,27 @@ class HpdsClientTest {
     }
 
     @Test
+    void getAuthCrossCounts_withNullResourceUUID_stillQueriesHpds() throws Exception {
+        // Registry removal: the path-routed frontend sends no resource UUID and none may be configured; HPDS
+        // ignores the body field, so a null UUID must not be rejected client-side.
+        Map<String, Map<String, Integer>> expected = new LinkedHashMap<>();
+        expected.put("\\test\\", Map.of("a", 1));
+
+        mockServer.expect(requestTo("http://localhost:9999/mock-hpds/v3/query/sync")).andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("{\"resourceUUID\":null}"))
+            .andRespond(withSuccess(objectMapper.writeValueAsString(expected), MediaType.APPLICATION_JSON));
+
+        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
+        Map<String, Map<String, Integer>> result = client.getAuthCrossCounts(
+            query, ResultType.CATEGORICAL_CROSS_COUNT, null, "Bearer token", "request-1", AccessType.AUTHORIZED,
+            DistributionType.CATEGORICAL
+        );
+
+        assertEquals(expected, result);
+        mockServer.verify();
+    }
+
+    @Test
     void getAuthCrossCounts_postsHpdsQueryRequest() throws Exception {
         Map<String, Map<String, Integer>> expected = new LinkedHashMap<>();
         expected.put("\\test\\", Map.of("a", 1));
@@ -116,16 +137,6 @@ class HpdsClientTest {
     }
 
     @Test
-    void getAuthCrossCounts_withNoUUID_throwsVisualizationException() {
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
-
-        VisualizationException ex = assertThrows(
-            VisualizationException.class, () -> client.getAuthCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, null, "Bearer token")
-        );
-        assertTrue(ex.getMessage().contains("HPDS resource UUID is required"));
-    }
-
-    @Test
     void getOpenCrossCounts_postsHpdsQueryRequestWithoutAuthorizationHeader() throws Exception {
         Map<String, Map<String, ObfuscatedCount>> expected = new LinkedHashMap<>();
         expected.put("\\test\\", Map.of("a", new ObfuscatedCount(1, "1")));
@@ -143,15 +154,5 @@ class HpdsClientTest {
 
         assertEquals(expected, result);
         mockServer.verify();
-    }
-
-    @Test
-    void getOpenCrossCounts_withNoUUID_throwsVisualizationException() {
-        Query query = new Query(List.of(), List.of(), null, List.of(), null, null, null);
-
-        VisualizationException ex = assertThrows(
-            VisualizationException.class, () -> client.getOpenCrossCounts(query, ResultType.CATEGORICAL_CROSS_COUNT, null, null)
-        );
-        assertTrue(ex.getMessage().contains("HPDS resource UUID is required"));
     }
 }

@@ -4,7 +4,6 @@ import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
-import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
@@ -71,7 +70,6 @@ public class HpdsClient {
         Query query, ResultType resultType, UUID resourceUUID, String bearerToken, String requestId, AccessType accessType,
         DistributionType distributionKind, ParameterizedTypeReference<Map<String, T>> typeRef
     ) {
-        validateResourceUUID(resourceUUID);
         long startTime = System.currentTimeMillis();
 
         Query subQuery = new Query(
@@ -155,12 +153,6 @@ public class HpdsClient {
         request.setQuery(subQuery);
         request.setResourceCredentials(Map.of());
         return request;
-    }
-
-    private static void validateResourceUUID(UUID resourceUUID) {
-        if (resourceUUID == null) {
-            throw new BadVisualizationRequestException("HPDS resource UUID is required");
-        }
     }
 
     private String querySyncPath(AccessType accessType) {
