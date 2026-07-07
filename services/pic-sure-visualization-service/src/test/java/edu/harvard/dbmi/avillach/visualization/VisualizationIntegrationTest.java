@@ -8,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -21,6 +22,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// Production shape: no configured fallback UUIDs -- resourceUUID flows as null end-to-end (HpdsCallIntegrationTest
+// covers the configured-fallback shape via the test profile's properties).
+@TestPropertySource(properties = {"hpds.resource.authorized.uuid=", "hpds.resource.open.uuid="})
 class VisualizationIntegrationTest {
 
     private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -64,6 +68,17 @@ class VisualizationIntegrationTest {
         assertNotNull(response);
         assertTrue(response.categoricalData().isEmpty());
         assertTrue(response.continuousData().isEmpty());
+    }
+
+    @Test
+    void distributions_withNoConfiguredUUIDsAndNoBodyUUID_returnsOk() throws Exception {
+        // Production-shape config: AUTH/OPEN_HPDS_RESOURCE_UUID unset and the path-routed frontend sends no body UUID.
+        // resourceUUID is null end-to-end (HPDS ignores the field; audit metadata must tolerate it).
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
+
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body)
+        ).andExpect(status().isOk());
     }
 
     @Test

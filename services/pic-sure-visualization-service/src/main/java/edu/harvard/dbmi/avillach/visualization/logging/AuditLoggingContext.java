@@ -38,7 +38,7 @@ public final class AuditLoggingContext {
         HttpServletRequest request, UUID resourceUUID, String accessType, Query query, int subQueryCount
     ) {
         addMetadata(request, "route", "distributions");
-        addMetadata(request, "resource_uuid", resourceUUID.toString());
+        addMetadata(request, "resource_uuid", resourceUUID == null ? null : resourceUUID.toString());
         addMetadata(request, "access_type", accessType);
         List<String> selectedConceptPaths = selectedConceptPaths(query);
         addMetadata(request, "selected_concept_paths", selectedConceptPaths);
