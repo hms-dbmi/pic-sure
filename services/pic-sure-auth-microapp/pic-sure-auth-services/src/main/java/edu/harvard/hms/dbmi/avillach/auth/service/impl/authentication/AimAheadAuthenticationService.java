@@ -1,0 +1,230 @@
+package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.entity.User;
+import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
+import edu.harvard.hms.dbmi.avillach.auth.service.AuthenticationService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CacheEvictionService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.RestClientUtil;
+import jakarta.persistence.NoResultException;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME;
+import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME;
+
+@Service
+public class AimAheadAuthenticationService extends OktaAuthenticationService implements AuthenticationService  {
+
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+    private final UserService userService;
+    private final RoleService roleService;
+
+    private final String connectionId;
+    private final boolean isOktaEnabled;
+
+    private final CacheEvictionService cacheEvictionService;
+
+    /**
+     * Constructor for the OktaOAuthAuthenticationService
+     * @param userService The user service
+     * @param roleService The role service
+     * @param idp_provider_uri The IDP provider URI
+     * @param connectionId The connection ID
+     * @param clientId The client ID
+     * @param spClientSecret The client secret
+     */
+    @Autowired
+    public AimAheadAuthenticationService(UserService userService,
+                                         RoleService roleService,
+                                         RestClientUtil restClientUtil,
+                                         @Value("${a4.okta.idp.provider.is.enabled}") boolean isOktaEnabled,
+                                         @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
+                                         @Value("${a4.okta.connection.id}") String connectionId,
+                                         @Value("${a4.okta.client.id}") String clientId,
+                                         @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService) {
+        super(idp_provider_uri, clientId, spClientSecret, restClientUtil);
+
+        this.userService = userService;
+        this.roleService = roleService;
+        this.connectionId = connectionId;
+        this.isOktaEnabled = isOktaEnabled;
+        this.cacheEvictionService = cacheEvictionService;
+
+        logger.info("OktaOAuthAuthenticationService is enabled: {}", isOktaEnabled);
+        logger.info("OktaOAuthAuthenticationService initialized");
+        logger.info("idp_provider_uri: {}", idp_provider_uri);
+        logger.info("connectionId: {}", connectionId);
+    }
+
+    /**
+     * Authenticate the user using the code provided by the IDP. This code is exchanged for an access token.
+     * The access token is then used to introspect the user. The user is then loaded from the database.
+     * If the user does not exist, we will reject their login attempt.
+     *
+     * @param host       The host of the request
+     * @param authRequest The request body
+     * @return The response from the authentication attempt
+     */
+    @Override
+    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
+        logger.info("OKTA LOGIN ATTEMPT ___ {} ___", authRequest.get("code"));
+
+        String code = authRequest.get("code");
+        if (StringUtils.isNotBlank(code)) {
+            JsonNode userToken = super.handleCodeTokenExchange(host, code);
+JsonNode introspectResponse = super.introspectToken(userToken);
+            User user = initializeUser(introspectResponse);
+
+            if (user == null) {
+                return null;
+            }
+
+            HashMap<String, String> responseMap = createUserClaims(user);
+            if (responseMap != null) {
+                logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
+                responseMap.put("oktaIdToken", userToken.get("id_token").asText());
+            }
+
+            return responseMap;
+        }
+
+        logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___");
+        return null;
+    }
+
+    @Override
+    public String getProvider() {
+        return "aimAheadOkta";
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return this.isOktaEnabled;
+    }
+
+    private User initializeUser(JsonNode introspectResponse) {
+        if (introspectResponse == null) {
+            logger.info("FAILED TO INTROSPECT TOKEN ___ ");
+            return null;
+        }
+
+        boolean isActive = introspectResponse.get("active").asBoolean();
+        if (!isActive) {
+            logger.info("LOGIN FAILED ___ USER IS NOT ACTIVE ___ ");
+            return null;
+        }
+
+        User user = loadUser(introspectResponse);
+        if (user == null) {
+            return null;
+        }
+
+        cacheEvictionService.evictCache(user);
+        return user;
+    }
+
+    /**
+     * Create user claims to return to the client
+     *
+     * @param user The user
+     * @return The user claims as a HashMap
+     */
+    private HashMap<String, String> createUserClaims(User user) {
+        UserClaims userClaims = new UserClaims();
+        userClaims.setUuid(user.getUuid().toString());
+        userClaims.setSub(user.getSubject());
+        userClaims.setEmail(user.getEmail());
+        userClaims.setName(user.getName());
+        userClaims.setIdp(this.connectionId);
+        userClaims.setRoles(userService.addRoleClaims(user));
+        return userService.getUserProfileResponse(userClaims);
+    }
+
+    /**
+     * Using the introspection token response, load the user from the database. If the user does not exist, we
+     * will reject their login attempt.
+     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#response-example-success-access-token">response-example-success-access-token</a>
+     *
+     * @param introspectResponse The response from the introspect endpoint
+     * @return The user
+     */
+    private User loadUser(JsonNode introspectResponse) {
+        String userEmail = introspectResponse.get("sub").asText();
+        try {
+            // connection id = okta
+            User user = userService.findByEmailAndConnection(userEmail, this.connectionId).orElse(null);
+            if (user == null) {
+                return null;
+            }
+
+            // If the user does not yet have a subject, set it to the subject from the introspect response
+            if (user.getSubject() == null) {
+                user.setSubject("okta|" + introspectResponse.get("uid").asText());
+            }
+
+            Role authAccessRole = this.roleService.getRoleByName(MANAGED_AUTH_ACCESS_ROLE_NAME);
+            if (authAccessRole != null) {
+                logger.info("Adding auth access role to user: {}", user.getUuid());
+                Set<Role> roles = user.getRoles();
+                roles.add(authAccessRole);
+                user = userService.changeRole(user, roles);
+                userService.updateUserConsents(user, Set.of());
+            } else {
+                logger.info("{} has not be created for this environment. Please create the role and its permissions before attempting to use auth access.", MANAGED_AUTH_ACCESS_ROLE_NAME);
+            }
+
+            // All users that login through OKTA should have the fence_open_access role, or they will not be able to interact with the UI
+            Role openAccessRole = roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
+            if (!user.getRoles().contains(openAccessRole)) {
+                logger.info("Adding fence_open_access role to user: {}", user.getUuid());
+                Set<Role> roles = user.getRoles();
+                roles.add(openAccessRole);
+                user = userService.changeRole(user, roles);
+            }
+
+            user.setGeneralMetadata(generateUserMetadata(introspectResponse, user).toString());
+
+            userService.save(user);
+            logger.info("LOGIN SUCCESS ___ USER DATA: {}", user);
+            return user;
+        } catch (NoResultException ex) {
+            logger.info("LOGIN FAILED ___ USER NOT FOUND ___ {} ___", userEmail);
+            return null;
+        }
+    }
+
+    /**
+     * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's
+     * role and other information.
+     *
+     * @param introspectResponse The response from the introspect endpoint
+     * @param user               The user
+     * @return The user metadata as an ObjectNode
+     */
+    protected ObjectNode generateUserMetadata(JsonNode introspectResponse, User user) {
+        // JsonNode is immutable, so we need to convert it to an ObjectNode
+        ObjectNode objectNode = new ObjectMapper().createObjectNode();
+
+        objectNode.put("role", "user");
+        objectNode.put("sub", introspectResponse.get("sub").asText());
+        objectNode.put("user_id", user.getUuid().toString());
+        objectNode.put("username", user.getEmail());
+        objectNode.put("email", user.getEmail());
+
+        return objectNode;
+    }
+
+}

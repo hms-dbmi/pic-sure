@@ -1,0 +1,52 @@
+version: '3.8'
+services:
+  pic-sure-auth-service:
+    build:
+        context: .
+        dockerfile: ./pic-sure-auth-services/dev.Dockerfile
+    environment:
+      JAVA_OPTS: "-Xmx1024m -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      # Note: To use this you will need to set ENVIRONMENT variables for the application.properties
+    ports:
+      - "8090:8090" # Application port
+      - "5005:5005" # Debug port
+    depends_on:
+      auth-flyway:
+        condition: service_started
+
+  picsure-db:
+    build:
+      context: ./pic-sure-auth-db/
+      dockerfile: Dockerfile
+    environment:
+        MYSQL_DATABASE: auth
+        MYSQL_ROOT_PASSWORD: password
+    ports:
+        - "3306:3306" # MySQL port
+    command:
+      - --default-authentication-plugin=mysql_native_password # Required for MySQL 8.0
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-flyway:
+    image: flyway/flyway:latest
+    volumes:
+      - ./pic-sure-auth-db/db/sql:/flyway/sql
+    # linux/amd64
+    platform: linux/amd64
+    environment:
+        - FLYWAY_URL=jdbc:mysql://picsure-db:3306/auth?useSSL=false
+        - FLYWAY_USER=root
+        - FLYWAY_PASSWORD=password
+        - FLYWAY_SCHEMAS=auth
+        - FLYWAY_LOCATIONS=filesystem:/flyway/sql
+        - FLYWAY_IGNORE_MISSING_MIGRATIONS=true
+        - FLYWAY_BASELINE_ON_MIGRATE=true
+    command:
+      - migrate
+    depends_on:
+      picsure-db:
+        condition: service_healthy
