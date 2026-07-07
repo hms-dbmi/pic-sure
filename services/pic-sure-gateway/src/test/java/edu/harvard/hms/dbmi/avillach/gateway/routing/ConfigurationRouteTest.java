@@ -25,8 +25,8 @@ import org.springframework.test.context.TestPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Phase 4 (gateway integration): the explicit {@code /configuration/**} route forwards VERBATIM (no prefix strip) to operations-service.
- * Runs with {@code auth-enabled=true} (the real Phase-4 posture) specifically to prove the public config-GET bypass
+ * The explicit {@code /configuration/**} route forwards VERBATIM (no prefix strip) to operations-service. Runs with
+ * {@code auth-enabled=true} (the real production posture) specifically to prove the public config-GET bypass
  * ({@code PsamaIntrospectionFilter#isPublicConfigurationRead}): {@code GET /configuration/} and {@code GET /configuration/{id}/} must reach
  * operations-service WITHOUT a Bearer token and WITHOUT ever calling PSAMA — the introspection stub is wired to fail loudly (500) so any
  * accidental introspection call surfaces as a test failure rather than a silent pass.

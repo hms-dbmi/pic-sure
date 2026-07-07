@@ -30,11 +30,10 @@ import org.springframework.test.context.TestPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Phase 4 (gateway integration): the internal query dispatch that {@code QueryAuthFetcher} fetches (for PSAMA introspection of
- * {@code result}/{@code signed-url} paths) now lives on operations-service (the sole DB owner), NOT the query-service. Proves the wiring
- * end-to-end through the real filter chain: a {@code GET /query/{id}/result} request must fetch the dispatch from
- * {@code OPERATIONS_SERVICE_URL}. The query-service stub is wired to fail loudly (500) so an accidental dispatch call there surfaces as a
- * test failure rather than a silent pass.
+ * The internal query dispatch that {@code QueryAuthFetcher} fetches (for PSAMA introspection of {@code result}/{@code signed-url} paths)
+ * lives on operations-service (the sole DB owner), NOT the query-service. Proves the wiring end-to-end through the real filter chain: a
+ * {@code GET /query/{id}/result} request must fetch the dispatch from {@code OPERATIONS_SERVICE_URL}. The query-service stub is wired to
+ * fail loudly (500) so an accidental dispatch call there surfaces as a test failure rather than a silent pass.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(
@@ -64,7 +63,7 @@ class QueryAuthFetcherDispatchWiringTest {
         psamaStub.start();
         registry.add("TOKEN_INTROSPECTION_URL", () -> psamaStub.baseUrl() + "/auth/token/inspect");
 
-        // /query/{id}/result isn't one of the Phase-4 routes, so it falls through to the WildFly catch-all. Stub
+        // /query/{id}/result isn't one of the explicitly configured routes, so it falls through to the WildFly catch-all. Stub
         // it so the test exercises a clean 200 round trip rather than an unresolved-host connection failure.
         wildflyStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
         wildflyStub.start();

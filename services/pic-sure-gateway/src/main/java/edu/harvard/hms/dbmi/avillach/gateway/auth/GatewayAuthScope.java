@@ -4,10 +4,9 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Path-aware Phase 2↔4 interim (decision 11, P-M2), mapped to the spec's Option-A flags. The query-read paths (result/signed-url) are owned
- * by WildFly while GATEWAY_OWNS_QUERY_READ_AUTH is false (Phase 2) and by the gateway once it flips to true (Phase 4 — QueryAuthFetcher
- * goes live). Replaces the all-or-nothing single flag. The overall GATEWAY_OWNS_AUTH gate lives on the WildFly side (GatewayAuthDelegation,
- * Task 17).
+ * Path-aware split of auth ownership between WildFly and the gateway. The query-read paths (result/signed-url) are owned by WildFly while
+ * GATEWAY_OWNS_QUERY_READ_AUTH is false and by the gateway once it flips to true (at which point QueryAuthFetcher goes live). Replaces the
+ * all-or-nothing single flag. The overall GATEWAY_OWNS_AUTH gate lives on the WildFly side (GatewayAuthDelegation).
  */
 public class GatewayAuthScope {
 

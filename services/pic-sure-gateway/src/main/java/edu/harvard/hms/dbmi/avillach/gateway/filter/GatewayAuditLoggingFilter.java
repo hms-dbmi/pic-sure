@@ -10,8 +10,9 @@ import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Commons audit base + scope-aware skip: during the Phase 2&harr;4 interim, result/signed-url are audited by WildFly, so the gateway must
- * NOT emit for them (avoids double events). Phase 4 empties the scope, at which point the gateway audits them too.
+ * Commons audit base + scope-aware skip: while WildFly still owns query-read auth, result/signed-url are audited by WildFly, so the gateway
+ * must NOT emit for them (avoids double events). Once the gateway owns query-read auth the scope empties, at which point the gateway audits
+ * them too.
  */
 public class GatewayAuditLoggingFilter extends AuditLoggingFilter {
 

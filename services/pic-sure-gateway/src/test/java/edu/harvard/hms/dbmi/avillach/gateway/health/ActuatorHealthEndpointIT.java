@@ -26,7 +26,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 /**
  * End-to-end: hits the real {@code GET /actuator/health} HTTP endpoint (not just the {@link DownstreamHealthContributor} bean directly, as
  * {@link ActuatorHealthIT} does) and asserts the JSON composite shows the "hpds" component DOWN. {@code show-details} is forced to
- * {@code always} for this test context only -- production defaults to {@code when_authorized} (Phase 6 gates detail by app token; see
+ * {@code always} for this test context only -- production defaults to {@code when_authorized} (detail is gated by the app token; see
  * application.yml).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)

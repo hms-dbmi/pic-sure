@@ -22,14 +22,14 @@ import edu.harvard.hms.dbmi.avillach.data.repository.NamedDatasetRepository;
 import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
- * Note: the plan brief this task was ported from assumed a {@code PicsureNotFoundException} subclass. Neither exists in the actual
+ * Note: a dedicated {@code PicsureNotFoundException} subclass might be expected here, but none exists in the actual
  * {@code pic-sure-spring-commons} built for this monorepo (it ships only the single public {@link PicsureException}, carrying status via
  * {@code getStatus()}) -- so every not-found case here asserts {@code PicsureException} with {@code HttpStatus.NOT_FOUND}, consistent with
  * how {@code ConfigurationService} already expresses its not-found cases.
  *
- * <p>Cross-user access (§ email-scoping): {@code findByUuidAndUser} scopes the lookup at the SQL layer, so a caller reading/mutating
- * another user's dataset gets exactly the same {@code PicsureException(NOT_FOUND)} as a genuinely-missing uuid -- there is no separate 403
- * branch, and existence is never leaked to a non-owning caller.
+ * <p>Cross-user access: {@code findByUuidAndUser} scopes the lookup at the SQL layer, so a caller reading/mutating another user's dataset
+ * gets exactly the same {@code PicsureException(NOT_FOUND)} as a genuinely-missing uuid -- there is no separate 403 branch, and existence
+ * is never leaked to a non-owning caller.
  */
 class NamedDatasetServiceTest {
 

@@ -13,8 +13,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * The v1 aggregate/obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. Direct port of
- * {@code AggregateDataSharingResourceRS}'s {@code querySync}/{@code query} entry points (no inline audit -- Task 9: the gateway audits this
- * path, see {@code AuditRouteTable}). Open-access: no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here --
+ * {@code AggregateDataSharingResourceRS}'s {@code querySync}/{@code query} entry points (no inline audit -- the gateway audits this path,
+ * see {@code AuditRouteTable}). Open-access: no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here --
  * {@code WebSecurityConfig} already requires an authenticated caller for all of {@code /hpds/**} (the "open"/"auth" distinction is about
  * which HPDS backend answers the query and whether its data is public, not about API-level authentication).
  *

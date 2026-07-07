@@ -20,8 +20,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Phase 4 (gateway integration): the explicit {@code /dataset/**} route forwards VERBATIM (no prefix strip) to operations-service, the sole
- * DB owner. Proves the higher-priority route (order 100) wins over the WildFly catch-all.
+ * The explicit {@code /dataset/**} route forwards VERBATIM (no prefix strip) to operations-service, the sole DB owner. Proves the
+ * higher-priority route (order 100) wins over the WildFly catch-all.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DatasetRouteTest {

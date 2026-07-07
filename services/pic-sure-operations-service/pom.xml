@@ -36,7 +36,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- Phase 6: registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
+        <!-- Registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>

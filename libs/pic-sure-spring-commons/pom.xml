@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>PIC-SURE Spring Commons</name>
-    <description>DB-free shared library for gateway/WAR Phase-2 auth and audit: PicsureException, audit filter base, GatewayUser identity, RequestIdFilter</description>
+    <description>DB-free shared library for gateway/WAR auth and audit: PicsureException, audit filter base, GatewayUser identity, RequestIdFilter</description>
 
     <dependencies>
         <dependency>

@@ -11,10 +11,10 @@ import edu.harvard.hms.dbmi.avillach.commons.security.ActuatorSecurityHelper;
 import edu.harvard.hms.dbmi.avillach.commons.security.ActuatorTokenProperties;
 
 /**
- * Phase 6: gates {@code /actuator/**} (all three services) behind {@code X-Application-Token} via the shared
- * {@link ActuatorSecurityHelper}. Registered at {@code @Order(0)} so it wins over the gateway's Phase-2 permit-all main chain
- * ({@link SecurityConfig}, tagged {@code @Order(10)}) for actuator paths -- the two chains never compete because
- * {@code EndpointRequest.toAnyEndpoint()} scopes this chain to {@code /actuator/**} only.
+ * Gates {@code /actuator/**} (all three services) behind {@code X-Application-Token} via the shared {@link ActuatorSecurityHelper}.
+ * Registered at {@code @Order(0)} so it wins over the gateway's permit-all main chain ({@link SecurityConfig}, tagged {@code @Order(10)})
+ * for actuator paths -- the two chains never compete because {@code EndpointRequest.toAnyEndpoint()} scopes this chain to
+ * {@code /actuator/**} only.
  */
 @Configuration
 @EnableConfigurationProperties(ActuatorTokenProperties.class)

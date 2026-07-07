@@ -9,8 +9,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Pins the AIO profile override (Part C of Task 14): under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names
- * rather than the empty base defaults.
+ * Pins the AIO profile override: under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names rather than the
+ * empty base defaults.
  */
 @SpringBootTest
 @ActiveProfiles("aio")
@@ -32,7 +32,7 @@ class GatewaySecurityPropertiesAioBindingTest {
 
     @Test
     void gatewayOwnsQueryReadAuthDefaultsTrueUnderAioProfile() {
-        // Phase 4: the aio profile flips the master query-read-auth flag to true (the gateway now owns
+        // The aio profile flips the master query-read-auth flag to true (the gateway owns
         // result/signed-url auth), while the base application.yml default stays false.
         assertThat(props.gatewayOwnsQueryReadAuth()).isTrue();
     }

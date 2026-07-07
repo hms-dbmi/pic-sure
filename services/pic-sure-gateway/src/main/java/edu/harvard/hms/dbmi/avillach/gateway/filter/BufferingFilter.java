@@ -20,7 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
 /**
  * Buffers the request body (so downstream auth filters can read/mutate it), capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap → HTTP 413 with
  * the additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
- * body-too-large metric is emitted. Skips interim (result/signed-url) paths so they flow untouched to WildFly during the Phase 2↔4 interim.
+ * body-too-large metric is emitted. Skips result/signed-url paths so they flow untouched to WildFly while it still owns query-read auth.
  */
 public class BufferingFilter extends OncePerRequestFilter {
 

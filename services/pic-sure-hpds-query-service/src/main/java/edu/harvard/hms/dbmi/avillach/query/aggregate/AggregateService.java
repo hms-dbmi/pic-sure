@@ -34,7 +34,7 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
  * obfuscation dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression
  * rule. Stores no {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS
  * dispatch to {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader}
- * (dead code in the WAR -- dropped) or perform inline audit logging (gateway-only, Task 10 elsewhere).
+ * (dead code in the WAR -- dropped) or perform inline audit logging (handled in the gateway).
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the exact 10-type allow-list from the WAR; a type not on it is rejected with
  * a 400 rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold/variance

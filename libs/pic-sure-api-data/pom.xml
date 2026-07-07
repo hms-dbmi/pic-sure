@@ -15,7 +15,7 @@
     <packaging>jar</packaging>
 
     <name>PIC-SURE API Data</name>
-    <description>Jakarta + Spring-Data JPA entities and repositories (Query/Configuration/NamedDataset/Site) shared by the Phase-4 services</description>
+    <description>Jakarta + Spring-Data JPA entities and repositories (Query/Configuration/NamedDataset/Site) shared by the platform services</description>
 
     <dependencies>
         <dependency>

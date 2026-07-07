@@ -63,7 +63,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(10) // Phase 6: yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
+    @Order(10) // Yields /actuator/** to ActuatorSecurityConfig's @Order(0) chain.
     SecurityFilterChain http(HttpSecurity http) throws Exception {
         // Gateway permits all at the Security layer; the introspection filter is the real auth boundary.
         return http.csrf(csrf -> csrf.disable()).authorizeHttpRequests(a -> a.anyRequest().permitAll()).build();
@@ -108,7 +108,7 @@ public class SecurityConfig {
 
     @Bean
     QueryAuthFetcher queryAuthFetcher(GatewaySecurityProperties props) {
-        // Phase 4: the dispatch endpoint (/internal/queries/{id}/dispatch) now lives on operations-service, the
+        // The dispatch endpoint (/internal/queries/{id}/dispatch) lives on operations-service, the
         // sole DB owner -- not the DB-free query-service.
         return new QueryAuthFetcher(
             timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()

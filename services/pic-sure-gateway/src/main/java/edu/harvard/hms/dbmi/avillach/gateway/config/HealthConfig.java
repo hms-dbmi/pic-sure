@@ -17,8 +17,8 @@ import edu.harvard.hms.dbmi.avillach.gateway.health.SystemHealthService;
 import edu.harvard.hms.dbmi.avillach.gateway.health.SystemStatusController;
 
 /**
- * Registers the Task-9 deep-health pieces as Spring beans so the {@code /system/status} legacy text controller (Task 10) and the
- * {@code /actuator/health} composite (Task 12) can consume them.
+ * Registers the deep-health pieces as Spring beans so the {@code /system/status} legacy text controller and the {@code /actuator/health}
+ * composite can consume them.
  */
 @Configuration
 @EnableConfigurationProperties(DownstreamHealthProperties.class)
@@ -37,10 +37,10 @@ public class HealthConfig {
     }
 
     /**
-     * Exposes {@code GET /system/status} ahead of the Phase-1 catch-all gateway route. The gateway's own composite {@code RouterFunction}
-     * bean carries no explicit {@code @Order} (so it defaults to {@code Ordered.LOWEST_PRECEDENCE}); ordering this bean at
-     * {@code HIGHEST_PRECEDENCE} guarantees it is tried first within {@code RouterFunctionMapping}, so the request never reaches the
-     * WildFly catch-all. See {@link SystemStatusController}'s class Javadoc for the full precedence chain.
+     * Exposes {@code GET /system/status} ahead of the low-priority catch-all gateway route. The gateway's own composite
+     * {@code RouterFunction} bean carries no explicit {@code @Order} (so it defaults to {@code Ordered.LOWEST_PRECEDENCE}); ordering this
+     * bean at {@code HIGHEST_PRECEDENCE} guarantees it is tried first within {@code RouterFunctionMapping}, so the request never reaches
+     * the WildFly catch-all. See {@link SystemStatusController}'s class Javadoc for the full precedence chain.
      */
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)

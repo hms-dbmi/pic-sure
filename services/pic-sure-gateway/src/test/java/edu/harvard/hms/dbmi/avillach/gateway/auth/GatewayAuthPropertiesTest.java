@@ -8,8 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Task 2: {@code picsure.gateway.security.mode} binds into {@link GatewayAuthProperties#getMode()}. Deliberately bound on the SAME prefix
- * as {@code GatewaySecurityProperties.authEnabled} (see that class) without touching it -- this is a purely additive property.
+ * {@code picsure.gateway.security.mode} binds into {@link GatewayAuthProperties#getMode()}. Deliberately bound on the SAME prefix as
+ * {@code GatewaySecurityProperties.authEnabled} (see that class) without touching it -- this is a purely additive property.
  */
 @SpringBootTest
 @TestPropertySource(properties = "picsure.gateway.security.mode=enforce")

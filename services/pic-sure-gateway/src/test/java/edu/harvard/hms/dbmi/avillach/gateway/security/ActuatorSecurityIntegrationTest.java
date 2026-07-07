@@ -21,8 +21,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Task 7: full-context proof that the Phase-6 actuator chain (order 0) and the gateway's Phase-2 permit-all main chain (order 10) coexist
- * end-to-end -- health stays open (never 401) and shallow without a token, component detail and {@code /actuator/prometheus} are gated by
+ * Full-context proof that the token-gated actuator chain (order 0) and the gateway's permit-all main chain (order 10) coexist end-to-end --
+ * health stays open (never 401) and shallow without a token, component detail and {@code /actuator/prometheus} are gated by
  * {@code X-Application-Token}. Deep health indicators may report UP or DOWN in this isolated context (no live PSAMA/downstreams are
  * configured on the {@code local} profile) -- what matters is that the status code is never 401 and detail visibility tracks the token.
  */

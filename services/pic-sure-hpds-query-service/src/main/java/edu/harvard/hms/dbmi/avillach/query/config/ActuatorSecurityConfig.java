@@ -11,7 +11,7 @@ import edu.harvard.hms.dbmi.avillach.commons.security.ActuatorSecurityHelper;
 import edu.harvard.hms.dbmi.avillach.commons.security.ActuatorTokenProperties;
 
 /**
- * Phase 6: gates {@code /actuator/**} behind {@code X-Application-Token} via the shared {@link ActuatorSecurityHelper}. Registered at
+ * Gates {@code /actuator/**} behind {@code X-Application-Token} via the shared {@link ActuatorSecurityHelper}. Registered at
  * {@code @Order(0)} so it wins over {@link WebSecurityConfig}'s gateway-header-trust main chain ({@code @Order(10)}) for actuator paths --
  * the two chains never compete because {@code EndpointRequest.toAnyEndpoint()} scopes this chain to {@code /actuator/**} only, leaving
  * {@code /hpds/**}, {@code /query/**}, {@code /search/**} governed exactly as {@link WebSecurityConfig} defines.

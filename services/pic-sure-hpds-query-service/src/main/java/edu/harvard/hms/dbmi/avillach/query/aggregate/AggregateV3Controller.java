@@ -14,8 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 /**
  * The v3 aggregate/obfuscation ingress: {@code POST /hpds/open/v3/query/sync} and {@code POST /hpds/open/v3/query}. Same delegation as
  * {@link AggregateController} except it passes {@link AggregateVariant#V3} to {@link AggregateService}, which yields the {@code select}
- * consents field (not {@code crossCountFields}) and the {@code /v3} downstream HPDS prefix. No inline audit here either -- Task 9: the
- * gateway audits both variants identically, closing the WAR's v3 missing-audit gap. Both v3 aggregate resources
+ * consents field (not {@code crossCountFields}) and the {@code /v3} downstream HPDS prefix. No inline audit here either -- the gateway
+ * audits both variants identically, closing the WAR's v3 missing-audit gap. Both v3 aggregate resources
  * ({@code AggregateDataSharingResourceRSV3}) supported the async {@code query} submit, so it is mirrored here.
  *
  * <p><b>Coexistence with {@code HpdsQueryV3Controller}:</b> that controller maps the generic, path-variable

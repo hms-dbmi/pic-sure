@@ -37,15 +37,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * ({@link GatewayAuthScope}). Allow-lists {@code GET /system/status} (audited as {@code SYSTEM_MONITOR}), any path ending in
  * {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real {@code Bearer} token
  * (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL request path as the
- * root-level {@code "Target Service"} (decision 4 — no canonical-mapping table) and the buffered body (or, for interim paths once they go
- * live in Phase 4, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with {@code resourceCredentials} stripped and NEVER a
- * {@code formattedQuery} field (decision 5 — PSAMA only ever uses it for logging, never authorization). If the body is not valid JSON,
+ * root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the result/signed-url paths once the
+ * gateway owns query-read auth, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with {@code resourceCredentials} stripped
+ * and NEVER a {@code formattedQuery} field (PSAMA only ever uses it for logging, never authorization). If the body is not valid JSON,
  * {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still textually contain
- * {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including privileges (decision 7), the
- * real {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on {@code tokenRefreshed} it
- * stashes {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it stashes
+ * {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including privileges, the real
+ * {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on {@code tokenRefreshed} it stashes
+ * {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it stashes
  * {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply — this filter does NOT mutate the body itself.
- * {@code active:false} denies with a 401 additive error body (decision 10). {@link QueryAuthFetcher}/introspection infrastructure failures
+ * {@code active:false} denies with a 401 additive error body. {@link QueryAuthFetcher}/introspection infrastructure failures
  * ({@link PicsureException}, or any introspection transport error) are fail-closed: the mapped status/error body is written and the request
  * is never forwarded.
  */
@@ -55,7 +55,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
     public static final String ATTR_REFRESHED_TOKEN = "refreshedToken";
 
-    // Phase 4: mirrors operations-service's own public-GET security rule — the configuration list (root) and a
+    // Mirrors operations-service's own public-GET security rule — the configuration list (root) and a
     // single {id} read are public, EXCEPT anything under /configuration/admin/**. Matches at most one path segment
     // after /configuration/, with an optional trailing slash: /configuration/{id} or /configuration/{id}/.
     private static final Pattern CONFIGURATION_ID_READ = Pattern.compile("^/configuration/([^/]+)/?$");
@@ -87,7 +87,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Phase-4 leftover from the operations-service split (§ config-GET bypass): {@code GET /configuration/} (the list) and {@code GET
+     * Config-GET bypass carried over from the operations-service split: {@code GET /configuration/} (the list) and {@code GET
      * /configuration/{id}(/)?} (a single read) are public reads on operations-service itself, so the gateway must not demand a Bearer token
      * for them either. Method-AND-path precise: any other method, and all of {@code /configuration/admin/**} (including bare
      * {@code /configuration/admin}), stay introspected.
@@ -205,11 +205,12 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
 
     private Map<String, Object> buildIntrospectionRequest(HttpServletRequest req, String path) {
         Map<String, Object> requestMeta = new HashMap<>();
-        // decision 4: send the REAL request path verbatim, root-level. No canonical-mapping table.
+        // Send the REAL request path verbatim, root-level. No canonical-mapping table.
         requestMeta.put("Target Service", path);
 
-        // result/signed-url: fetch the stored query over HTTP (DB-free). Dormant in Phase 2 (shouldNotFilter
-        // skips these paths); live at the Phase 4 cutover when GatewayAuthScope no longer marks them interim.
+        // result/signed-url: fetch the stored query over HTTP (DB-free). Dormant while WildFly still owns
+        // query-read auth (shouldNotFilter skips these paths); live once GatewayAuthScope no longer marks
+        // them as WildFly-owned.
         Optional<String> storedQuery = queryAuthFetcher.queryJsonForPath(path); // may throw PicsureException (fail-closed)
         try {
             if (storedQuery.isPresent()) {

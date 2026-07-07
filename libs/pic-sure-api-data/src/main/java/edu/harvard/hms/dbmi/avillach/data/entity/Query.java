@@ -22,8 +22,8 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 /**
  * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.Query} (javax/CDI). The {@code resourceId} FK /
  * {@code @ManyToOne Resource resource} association is intentionally dropped: the {@code resource} registry table/entity is being removed in
- * this migration, the {@code query.resourceId} column is nullable (see legacy V1__CREATE_PICSURE_INITIAL.sql), and the Phase-4 services do
- * not read or write it (new rows simply leave it NULL until it is dropped in a later phase).
+ * this migration, the {@code query.resourceId} column is nullable (see legacy V1__CREATE_PICSURE_INITIAL.sql), and the platform services do
+ * not read or write it (new rows simply leave it NULL until the column itself is dropped).
  */
 @Entity(name = "query")
 public class Query extends BaseEntity {

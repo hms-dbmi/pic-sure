@@ -25,8 +25,8 @@ import com.github.tomakehurst.wiremock.WireMockServer;
  * Proves the transparent catch-all: any inbound path is forwarded to ${WILDFLY_URL} re-prefixed with /pic-sure-api-2/PICSURE/, and the
  * upstream response flows back unchanged. Also implicitly verifies the SC 2025.0.x property prefix
  * (spring.cloud.gateway.server.webmvc.routes) actually binds — if it did not, no route would match and this test would 404. <p> The DB-free
- * auth filter chain (Task 12) now runs in front of every request. This test exercises the catch-all's forwarding behavior in isolation from
- * PSAMA auth: {@code /query} is allow-listed here so {@code PsamaIntrospectionFilter} passes the no-bearer request straight through without
+ * auth filter chain now runs in front of every request. This test exercises the catch-all's forwarding behavior in isolation from PSAMA
+ * auth: {@code /query} is allow-listed here so {@code PsamaIntrospectionFilter} passes the no-bearer request straight through without
  * calling PSAMA, leaving the route-forwarding assertion below exactly as it was before the auth chain existed. Production config carries no
  * such allow-list.
  */

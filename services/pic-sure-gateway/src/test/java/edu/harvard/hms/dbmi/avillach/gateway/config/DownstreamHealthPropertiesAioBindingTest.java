@@ -13,9 +13,9 @@ import edu.harvard.hms.dbmi.avillach.gateway.health.DownstreamHealthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.health.MonitoredDownstream;
 
 /**
- * Phase 4 (gateway integration): under the {@code aio} profile, the deep-health downstream list must aggregate the two new services --
- * operations-service (the sole DB owner) and query-service (DB-free {@code /hpds/**}) -- alongside the existing entries, mirroring their
- * shape (Actuator health, {@code require-status-up: true}).
+ * Under the {@code aio} profile, the deep-health downstream list must aggregate the two new services -- operations-service (the sole DB
+ * owner) and query-service (DB-free {@code /hpds/**}) -- alongside the existing entries, mirroring their shape (Actuator health,
+ * {@code require-status-up: true}).
  */
 @SpringBootTest
 @ActiveProfiles("aio")

@@ -63,7 +63,7 @@ public class QueryService {
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
     }
 
-    // --- create / sync (Task 9) ---
+    // --- create / sync ---
 
     public QueryStatus query(String backend, QueryRequest req) {
         return create(backend, req, false);
@@ -166,7 +166,7 @@ public class QueryService {
         return status == null ? null : status.name();
     }
 
-    // --- read ops with uniform stored-version dispatch (Task 10 / decision 9 fix) ---
+    // --- read ops with uniform stored-version dispatch ---
 
     public QueryStatus queryStatus(String backend, UUID picsureId, QueryRequest req) {
         StoredQuery stored = load(picsureId);
@@ -216,7 +216,7 @@ public class QueryService {
         }
     }
 
-    // --- metadata (Task 11, DB-only, no HPDS) ---
+    // --- metadata (DB-only, no HPDS) ---
 
     public QueryStatus queryMetadata(UUID id) {
         if (id == null) {

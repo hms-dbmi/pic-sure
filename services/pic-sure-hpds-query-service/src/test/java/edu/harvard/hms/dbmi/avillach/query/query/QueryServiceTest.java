@@ -61,7 +61,7 @@ class QueryServiceTest {
         return s;
     }
 
-    // --- create (Task 9) ---
+    // --- create ---
 
     @Test
     void createPersistsViaOperationsClientAndTranslatesIds() {
@@ -131,7 +131,7 @@ class QueryServiceTest {
         verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.metadata() != null));
     }
 
-    // --- sync (Task 9) ---
+    // --- sync ---
 
     @Test
     void syncFallsBackToPicsureIdWhenNoMetadataHeader() {
@@ -160,7 +160,7 @@ class QueryServiceTest {
         verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
     }
 
-    // --- read ops (Task 10) ---
+    // --- read ops ---
 
     @Test
     void unknownQueryIdThrowsNotFound() {
@@ -233,7 +233,7 @@ class QueryServiceTest {
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
     }
 
-    // --- metadata (Task 11) ---
+    // --- metadata ---
 
     @Test
     void metadataBuildsResultMetadataShapeWithoutCallingHpds() {
