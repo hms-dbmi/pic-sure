@@ -6,19 +6,19 @@ spring:
       server:
         webmvc:
           routes:
-            # Phase 3 (Task 1): explicit clean-prefix route for the logging service,
-            # replacing the legacy /proxy/pic-sure-logging relay. order 100 < 1000 so it
+            # Explicit clean-prefix route for the logging service, replacing the
+            # legacy /proxy/pic-sure-logging relay. order 100 < 1000 so it
             # wins over the catch-all. StripPrefix=1 drops the leading /logging segment
             # because the logging service (Javalin) serves its API at root (/audit,
             # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
-            # on the Phase-2 introspection allow-list, so it is not authenticated.
+            # on the introspection allow-list, so it is not authenticated.
             # /dictionary, /uploader, and /visualization are AUTHENTICATED (not on the
             # allow-list): the introspection filter runs on the pre-strip public path
-            # (Target Service = /dictionary/x), which the Phase-3 PSAMA access-rule
+            # (Target Service = /dictionary/x), which the PSAMA access-rule
             # migrations now authorize (^/dictionary(/.*)?$ / ^/uploader(/.*)?$ /
             # ^/visualization(/.*)?$). Same StripPrefix=1 as /logging (dictionary-api,
             # uploader, and the visualization container all serve their APIs at root).
-            # /hpds remains out of scope (Phase 4 query-service ingress).
+            # /hpds is handled separately below (query-service ingress).
             - id: logging
               uri: ${LOGGING_URL:http://pic-sure-logging}
               order: 100
@@ -47,7 +47,7 @@ spring:
                 - Path=/visualization/**
               filters:
                 - StripPrefix=1
-            # Phase 4 (gateway integration): query-service and operations-service ingress. Unlike the routes
+            # Query-service and operations-service ingress. Unlike the routes
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
             # /configuration/** and /dataset/** are served by operations-service, the sole DB owner (also home to
@@ -70,7 +70,7 @@ spring:
               order: 100
               predicates:
                 - Path=/dataset/**
-            # Phase 1: single low-priority catch-all — everything forwards to WildFly
+            # Single low-priority catch-all — everything forwards to WildFly
             # with the legacy context path re-prefixed. Public URLs are unchanged.
             - id: legacy-wildfly-catchall
               uri: ${WILDFLY_URL:http://wildfly:8080}
@@ -84,10 +84,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        # OFF BY DEFAULT: the default 'none' is a sentinel that matches no endpoint, so nothing under /actuator/**
+        # is reachable (404). (An EMPTY include is NOT off -- Spring Boot then falls back to its built-in default of
+        # exposing health.) AIO's gateway.env sets PICSURE_ACTUATOR_EXPOSURE=health,info to turn it on; the public
+        # /system/status check (a RouterFunction, not an actuator endpoint) stays available regardless.
+        # prometheus/metrics are added via this same env var when the monitoring (M2) rollout lands -- no code change.
+        include: ${PICSURE_ACTUATOR_EXPOSURE:none}
   endpoint:
     health:
-      show-details: when_authorized # detail gated; Phase 6 supplies the app token
+      show-details: ${PICSURE_ACTUATOR_DETAILS:never} # default never; when_authorized (set in AIO) gates detail behind the X-Application-Token
       probes:
         enabled: true # /actuator/health/liveness stays shallow-open
       group:
@@ -100,7 +105,7 @@ management:
       enabled: true
   metrics:
     distribution:
-      # Publish client-observable latency percentiles per route for the Phase-1
+      # Publish client-observable latency percentiles per route for the pass-through
       # baseline and ongoing comparison (visible at /actuator/prometheus and
       # /actuator/metrics/http.server.requests).
       percentiles:
@@ -115,11 +120,11 @@ management:
 server:
   port: 8080
 
-# DB-free auth/audit chain (Phase 2). auth-enabled is the master switch: false
+# DB-free auth/audit chain. auth-enabled is the master switch: false
 # (default) => no auth/audit filters register, gateway is a pure pass-through.
 # Secrets come from the environment (gateway.env); non-secret defaults are here.
 picsure:
-  # Phase 6: the shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
+  # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
   # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons). Distinct from
   # picsure.gateway.health.application-token below, which is the Bearer token the gateway sends OUTBOUND when
   # probing downstreams' deep health -- same env-driven pattern, deliberately separate secrets/purposes.

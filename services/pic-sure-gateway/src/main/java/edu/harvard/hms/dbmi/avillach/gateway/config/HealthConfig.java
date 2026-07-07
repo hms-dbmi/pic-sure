@@ -50,4 +50,20 @@ public class HealthConfig {
             request -> ServerResponse.ok().contentType(MediaType.TEXT_PLAIN).body(controller.status())
         );
     }
+
+    /**
+     * Guards {@code /actuator/**} against the low-priority WildFly catch-all when actuator is disabled (the default: no
+     * {@code PICSURE_ACTUATOR_EXPOSURE} set). Actuator endpoints are served by {@code WebMvcEndpointHandlerMapping} (order -100, ahead of
+     * {@code RouterFunctionMapping}), so whenever an endpoint IS exposed this route is never consulted for it; but an UNexposed
+     * {@code /actuator/*} path would otherwise fall through to the catch-all and be proxied to the legacy backend. Ordering at
+     * {@code HIGHEST_PRECEDENCE} makes it win over that catch-all, returning a clean 404 instead -- so the gateway never proxies, and never
+     * exposes, actuator endpoints unless they are explicitly enabled.
+     */
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public RouterFunction<ServerResponse> actuatorCatchAllGuard() {
+        return RouterFunctions.route(
+            RequestPredicates.path("/actuator").or(RequestPredicates.path("/actuator/**")), request -> ServerResponse.notFound().build()
+        );
+    }
 }
