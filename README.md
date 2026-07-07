@@ -41,18 +41,19 @@ Modernization onto the root parent + BOM happens per service in consolidation Ph
 | services/pic-sure-gateway | reactor | 25 | PIC-SURE Gateway Build and Deploy / — | done |
 | services/pic-sure-operations-service | reactor | 25 | — | done |
 | services/pic-sure-hpds-query-service | reactor | 25 | — | done |
-| services/pic-sure-hpds | quarantined | 25 (SB 3.5.3) | PIC-SURE-HPDS Build / PIC-SURE HPDS Build | Phase 4 |
-| services/pic-sure-auth-microapp | quarantined | 25 (SB 3.5.9) | PIC-SURE Auth Micro-App Build - Jenkinsfile / PIC-SURE Auth Micro App Build | Phase 4 |
-| services/pic-sure-logging | quarantined | 21 (Javalin) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | Phase 4 |
-| services/picsure-dictionary | quarantined | 21 + 25 (SB 3.2.4 / 3.4.5) | PIC-SURE Dictionary API Build and Deploy (+3 DB jobs) / PIC-SURE Dictionary Build | Phase 4 |
-| services/pic-sure-services | quarantined | 21 | PIC-SURE Build and Deploy Uploader / — | Phase 4 |
-| services/pic-sure-visualization-service | quarantined | 25 (SB 3.5.11) | PIC-SURE Visualization Build and Deploy / PIC-SURE Visualization Build | Phase 4 |
+| services/pic-sure-hpds | reactor | 25 | PIC-SURE-HPDS Build / PIC-SURE HPDS Build | done (HTTP rationalization deferred, FO-1) |
+| services/pic-sure-auth-microapp | reactor | 25 | PIC-SURE Auth Micro-App Build - Jenkinsfile / PIC-SURE Auth Micro App Build | done |
+| services/pic-sure-logging | reactor | 25 (Javalin) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | done |
+| services/picsure-dictionary | reactor | 25 | PIC-SURE Dictionary API Build and Deploy (+3 DB jobs) / PIC-SURE Dictionary Build | done |
+| services/pic-sure-services | reactor | 25 | PIC-SURE Build and Deploy Uploader / — | done |
+| services/pic-sure-visualization-service | reactor | 25 | PIC-SURE Visualization Build and Deploy / PIC-SURE Visualization Build | done |
 | pic-sure-legacy/ | quarantined | 11 | PIC-SURE-API Build / PIC-SURE API Build | decommission (rewrite Phase 7) |
 
-Frozen shared libs: `hms-dbmi/pic-sure-common` and `hms-dbmi/PIC-SURE-Logging-Client` branch
-`frozen/legacy-java11` pins the `1.0.0[-SNAPSHOT]` line consumed by the quarantined services
-(common @ its `main`; logging-client @ the pre-`1.1.0` commit). DO NOT push to those branches
-or publish those coordinates. Removal condition: all consumers on the `3.0.0` line (Phase 4).
+Frozen shared libs: RETIRED (consolidation Phase 4 complete) — every service resolves the
+`3.0.0` reactor line; the Jenkins install jobs are deleted. The local `frozen/legacy-java11`
+branches in pic-sure-common / PIC-SURE-Logging-Client remain unpushed history only; the
+sibling lib repos get archived at push day. pic-sure-legacy still pins the released
+`1.0.0` artifacts from GitHub Packages (unaffected).
 
 ## Version strategy
 
