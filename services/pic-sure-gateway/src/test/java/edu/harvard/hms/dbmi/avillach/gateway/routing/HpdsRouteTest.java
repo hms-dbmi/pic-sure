@@ -22,7 +22,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 /**
  * Phase 4 (gateway integration): the explicit {@code /hpds/**} route forwards VERBATIM (no prefix strip) to the DB-free query-service — the
  * query-service itself selects auth vs. open (and v3 vs. legacy) from the path, so the gateway must not rewrite it. Proves the
- * higher-priority route (order 100) wins over the WildFly catch-all, and that the backend sees the exact inbound path.
+ * backend sees the exact inbound path (verbatim, no prefix strip).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class HpdsRouteTest {

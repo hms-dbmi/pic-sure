@@ -38,21 +38,17 @@ class RouteOwnedPrefixDriftTest {
     }
 
     @Test
-    void everyNonCatchAllRouteIsCoveredByDefaultOwnedPrefixes() {
+    void everyRouteIsCoveredByDefaultOwnedPrefixes() {
         List<Map<String, Object>> routes = configuredRoutes();
         assertThat(routes).as("routes must be bound from application.yml").isNotEmpty();
 
-        boolean sawCatchAll = false;
         for (Map<String, Object> route : routes) {
             String base = ownedBaseOf(route);
-            if (base.isEmpty()) {
-                sawCatchAll = true; // the /** legacy WildFly catch-all -- the one route that is NOT owned
-                continue;
-            }
+            // The legacy /** WildFly catch-all is gone (Phase 7): every configured route must be gateway-owned.
+            assertThat(base).as("route %s must not be a catch-all (Path=/**)", route.get("id")).isNotEmpty();
             assertThat(surfaces.isOwned(base)).as("owned prefix covers route path %s (id=%s)", base, route.get("id")).isTrue();
             assertThat(surfaces.isOwned(base + "/sub/path")).as("owned prefix covers under %s (id=%s)", base, route.get("id")).isTrue();
         }
-        assertThat(sawCatchAll).as("expected exactly the /** catch-all to be the sole non-owned route").isTrue();
     }
 
     /** The route's Path predicate stripped of its trailing {@code /**} (or {@code /*}); empty string for the {@code /**} catch-all. */

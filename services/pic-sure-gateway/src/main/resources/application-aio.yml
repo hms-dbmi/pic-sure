@@ -1,9 +1,7 @@
-# AIO profile: WildFly is reachable by Docker DNS on the shared `picsure` network.
-# WILDFLY_URL may still override (defaults to http://wildfly:8080 in application.yml).
+# AIO profile: services are reachable by Docker DNS on the shared `picsure` network.
 
-# PSAMA is reachable by Docker DNS on the `picsure` network. These match WildFly's
-# java:global/token_introspection_url and openAccessValidateUrl in standalone.xml.
-# Env vars still override (BDC sets its own). The service token stays env-only.
+# PSAMA introspection endpoints. Env vars still override (BDC sets its own). The
+# service token stays env-only.
 picsure:
   gateway:
     security:

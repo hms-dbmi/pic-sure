@@ -70,15 +70,6 @@ spring:
               order: 100
               predicates:
                 - Path=/dataset/**
-            # Phase 1: single low-priority catch-all — everything forwards to WildFly
-            # with the legacy context path re-prefixed. Public URLs are unchanged.
-            - id: legacy-wildfly-catchall
-              uri: ${WILDFLY_URL:http://wildfly:8080}
-              order: 1000
-              predicates:
-                - Path=/**
-              filters:
-                - RewritePath=/(?<segment>.*), /pic-sure-api-2/PICSURE/$\{segment}
 
 management:
   endpoints:
