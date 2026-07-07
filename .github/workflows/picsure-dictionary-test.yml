@@ -1,0 +1,54 @@
+name: picsure-dictionary tests
+on:
+  pull_request:
+    paths: ['services/picsure-dictionary/**']
+  push:
+    branches: [pic_sure_api_mono_repo, pic_sure_api_rewrite, main]
+    paths: ['services/picsure-dictionary/**']
+defaults:
+  run:
+    working-directory: services/picsure-dictionary
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build with Maven
+        run: mvn -B package --file pom.xml
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+  build-aggregate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/picsure-dictionary/aggregate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build with Maven
+        run: mvn -B package --file pom.xml
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name: Lint Project
+        run: mvn spotless:check && cd aggregate && mvn spotless:check
