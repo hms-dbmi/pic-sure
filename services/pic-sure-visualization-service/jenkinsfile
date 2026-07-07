@@ -44,11 +44,11 @@ pipeline {
           docker run --rm \
             -v "$MOUNT_PATH/:/app:Z" \
             -v maven_m2_cache:/root/.m2 \
-            -w /app \
+            -w /app/services/pic-sure-visualization-service \
             maven:3.9-amazoncorretto-25 \
             sh -lc "mvn clean install -B -T 1C -DskipTests -Dmaven.test.skip=true"
 
-          ls -lah target || true
+          ls -lah services/pic-sure-visualization-service/target || true
         '''
       }
     }
@@ -66,7 +66,7 @@ pipeline {
             PROXY_ARGS="$PROXY_ARGS --build-arg no_proxy=$no_proxy --build-arg NO_PROXY=$no_proxy"
           fi
 
-          docker build --load $PROXY_ARGS -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker build --load $PROXY_ARGS -t "${IMAGE_NAME}:${IMAGE_TAG}" services/pic-sure-visualization-service
           docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
         '''
       }
