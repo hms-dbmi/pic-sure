@@ -18,6 +18,7 @@
         <module>services/pic-sure-hpds-query-service</module>
         <!-- Consolidation Phase 4: imported services adopted onto the reactor -->
         <module>services/pic-sure-services/info-service</module>
+        <module>services/pic-sure-services/uploader</module>
         <module>services/picsure-dictionary</module>
         <module>services/picsure-dictionary/aggregate</module>
         <module>services/picsure-dictionary/dictionaryweights</module>

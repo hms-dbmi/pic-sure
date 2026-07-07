@@ -1,19 +1,16 @@
 package edu.harvard.dbmi.avillach.dataupload.hpds;
 
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.CredentialsProvider;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.protocol.HttpClientContext;
-import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
@@ -29,20 +26,18 @@ public class HttpClientConfig {
     private String proxyPassword;
 
     @Bean
-    public HttpClient getHttpClient() {
+    public RestClient restClient(RestClient.Builder builder) {
+        CloseableHttpClient httpClient;
         if (!StringUtils.hasLength(proxyUser)) {
-            return HttpClients.createDefault();
+            httpClient = HttpClients.createDefault();
+        } else {
+            LOG.info("Found proxy user {}, will configure proxy from system properties", proxyUser);
+            httpClient =
+                HttpClients.custom().setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create().setMaxConnTotal(100).build())
+                    .useSystemProperties().build();
         }
-        LOG.info("Found proxy user {}, will configure proxy", proxyUser);
-        PoolingHttpClientConnectionManager manager = new PoolingHttpClientConnectionManager();
-        manager.setMaxTotal(100);
-        return HttpClients
-            .custom()
-            .setConnectionManager(new PoolingHttpClientConnectionManager())
-            .useSystemProperties()
-            .build();
+        return builder.requestFactory(new HttpComponentsClientHttpRequestFactory(httpClient)).build();
     }
-
 
     @Bean
     public SdkHttpClient getSdkClient() {
@@ -50,26 +45,8 @@ public class HttpClientConfig {
             return null;
         }
         LOG.info("Found proxy user {}, will configure sdk proxy", proxyUser);
-        ProxyConfiguration proxy = ProxyConfiguration.builder()
-            .useSystemPropertyValues(true)
-            .username(proxyUser)
-            .password(proxyPassword)
-            .build();
-        return ApacheHttpClient.builder()
-            .proxyConfiguration(proxy)
-            .build();
-    }
-
-    @Bean
-    public HttpClientContext getClientConfig() {
-        if (StringUtils.hasLength(proxyUser) && StringUtils.hasLength(proxyPassword)) {
-            HttpClientContext httpClientContext = HttpClientContext.create();
-            CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-            credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(proxyUser, proxyPassword));
-            httpClientContext.setCredentialsProvider(credentialsProvider);
-
-            return httpClientContext;
-        }
-        return HttpClientContext.create();
+        ProxyConfiguration proxy =
+            ProxyConfiguration.builder().useSystemPropertyValues(true).username(proxyUser).password(proxyPassword).build();
+        return ApacheHttpClient.builder().proxyConfiguration(proxy).build();
     }
 }
