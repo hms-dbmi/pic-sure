@@ -79,16 +79,15 @@ class HpdsSearchControllerTest {
 
     @Test
     void searchOnAuthBackendMapsToSameDownstreamUrlForV1AndV3() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
-            post("/hpds/auth/search/{resourceId}", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(status().isOk());
 
         mockMvc.perform(
-            post("/hpds/auth/v3/search/{resourceId}", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(status().isOk());
 
@@ -97,11 +96,10 @@ class HpdsSearchControllerTest {
 
     @Test
     void searchOnOpenBackendResolvesToOpenUrl() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         hpds.stubFor(WireMock.post(urlEqualTo("/OPEN/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
-            post("/hpds/open/search/{resourceId}", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            post("/hpds/open/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(status().isOk());
 
@@ -110,11 +108,10 @@ class HpdsSearchControllerTest {
 
     @Test
     void searchViaV3PathNeverHitsAVersionedDownstreamUrl() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
-            post("/hpds/auth/v3/search/{resourceId}", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(status().isOk());
 
@@ -123,19 +120,18 @@ class HpdsSearchControllerTest {
 
     @Test
     void valuesEndpointMapsForBothV1AndV3OnAuthBackend() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         hpds.stubFor(
             WireMock.get(urlPathEqualTo("/AUTH/search/values/")).withQueryParam("genomicConceptPath", equalTo("\\gene\\"))
                 .withQueryParam("query", equalTo("BRCA")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
         );
 
         mockMvc.perform(
-            get("/hpds/auth/search/{resourceId}/values/", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            get("/hpds/auth/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .param("genomicConceptPath", "\\gene\\").param("query", "BRCA")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
 
         mockMvc.perform(
-            get("/hpds/auth/v3/search/{resourceId}/values/", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            get("/hpds/auth/v3/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .param("genomicConceptPath", "\\gene\\").param("query", "BRCA")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
 
@@ -144,20 +140,18 @@ class HpdsSearchControllerTest {
 
     @Test
     void hpdsFailureOnSearchSurfacesAs502() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(aResponse().withStatus(500)));
 
         mockMvc.perform(
-            post("/hpds/auth/search/{resourceId}", resourceId).header(GatewayUserResolver.HEADER_USER_ID, USER)
+            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(status().isBadGateway());
     }
 
     @Test
     void searchWithoutGatewayIdentityIsRejected() throws Exception {
-        UUID resourceId = UUID.randomUUID();
         mockMvc.perform(
-            post("/hpds/auth/search/{resourceId}", resourceId).contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
+            post("/hpds/auth/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
         ).andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 }
