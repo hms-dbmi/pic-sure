@@ -16,6 +16,8 @@
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
         <module>services/pic-sure-hpds-query-service</module>
+        <!-- Consolidation Phase 4: imported services adopted onto the reactor -->
+        <module>services/pic-sure-services/info-service</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>
