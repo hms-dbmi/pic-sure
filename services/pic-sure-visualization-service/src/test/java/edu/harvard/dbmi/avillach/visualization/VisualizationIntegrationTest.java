@@ -38,11 +38,13 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withAuthorizedHpdsUUID_returnsOk() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", AUTHORIZED_UUID, "query", Map.of()));
+    void distributions_withGatewayIdentity_returnsOk() throws Exception {
+        // Access type comes from the gateway-owned X-User-Id header; no hpdsResourceUUID needed (path-routed frontend omits it).
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token").content(body)
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
+                .header("X-User-Id", "test-user").content(body)
         ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
@@ -52,8 +54,8 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withOpenHpdsUUID_returnsOk() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", OPEN_UUID, "query", Map.of()));
+    void distributions_withoutGatewayIdentity_isOpenAndReturnsOk() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isOk()).andReturn();
@@ -65,24 +67,14 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_missingHpdsResourceUUID_returns400() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest()).andReturn();
-
-        assertTrue(result.getResponse().getContentAsString().contains("hpdsResourceUUID"));
-    }
-
-    @Test
-    void distributions_unknownHpdsResourceUUID_returns400() throws Exception {
+    void distributions_legacyHpdsResourceUUID_isAcceptedAndIgnoredForAccessSelection() throws Exception {
+        // Legacy clients still send a body UUID; it no longer drives AUTHORIZED-vs-OPEN and unknown values are not rejected.
         String body =
             objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest()).andReturn();
-
-        assertTrue(result.getResponse().getContentAsString().contains("Unsupported HPDS resource UUID"));
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body)
+        ).andExpect(status().isOk());
     }
 
     @Test

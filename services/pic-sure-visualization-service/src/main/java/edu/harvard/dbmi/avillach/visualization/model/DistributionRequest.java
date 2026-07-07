@@ -6,7 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record DistributionRequest(
-    @NotNull(message = "Request must contain an 'hpdsResourceUUID' field") UUID hpdsResourceUUID,
-    @NotNull(message = "Request must contain a 'query' field") Query query
+    // Optional legacy field: the removed resource registry's backend selector. Passed through to HPDS bodies; access
+    // type now comes from the gateway's X-User-Id header (see HpdsAccessResolver).
+    UUID hpdsResourceUUID, @NotNull(message = "Request must contain a 'query' field") Query query
 ) {
 }

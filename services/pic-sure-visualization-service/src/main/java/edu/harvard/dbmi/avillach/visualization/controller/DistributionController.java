@@ -28,9 +28,9 @@ public class DistributionController {
     @PostMapping("/distributions")
     public ResponseEntity<VisualizationResponse> distributions(
         @Valid @RequestBody DistributionRequest request, @RequestHeader(value = "Authorization", required = false) String authorization,
-        HttpServletRequest servletRequest
+        @RequestHeader(value = "X-User-Id", required = false) String gatewayUserId, HttpServletRequest servletRequest
     ) {
-        HpdsAccessContext accessContext = hpdsAccessResolver.resolve(request.hpdsResourceUUID());
+        HpdsAccessContext accessContext = hpdsAccessResolver.resolve(gatewayUserId, request.hpdsResourceUUID());
         AuditLoggingContext.addDistributionRequestMetadata(
             servletRequest, accessContext.resourceUUID(), accessContext.accessType().getValue(), request.query(),
             visualizationService.subQueryCount(request.query())

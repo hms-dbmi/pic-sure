@@ -1,7 +1,5 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
-import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
-import edu.harvard.dbmi.avillach.visualization.error.VisualizationConfigurationException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +7,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+/**
+ * Decides AUTHORIZED vs OPEN treatment for a distributions request. The access type comes from the gateway's identity propagation, NOT
+ * from the request body: the {@code X-User-Id} header is gateway-owned (the gateway strips any client-supplied value and only injects it
+ * after successful PSAMA introspection), so its presence proves an authenticated caller and its absence means the request passed
+ * open-access validation instead. Clients cannot spoof it, unlike the legacy {@code hpdsResourceUUID} body field, which was the removed
+ * resource registry's backend selector.
+ *
+ * <p>{@code hpdsResourceUUID} is still accepted for compatibility and passed through into HPDS request bodies (HPDS ignores the field);
+ * when the body omits it, the optionally-configured per-access-type UUID is used, and {@code null} is fine too.
+ */
 @Component
 public class HpdsAccessResolver {
 
@@ -18,31 +26,14 @@ public class HpdsAccessResolver {
     public HpdsAccessResolver(
         @Value("${hpds.resource.authorized.uuid:}") String authorizedUUID, @Value("${hpds.resource.open.uuid:}") String openUUID
     ) {
-        this.authorizedResourceUUID = parseRequiredUUID(authorizedUUID, "hpds.resource.authorized.uuid");
+        this.authorizedResourceUUID = parseConfiguredUUID(authorizedUUID);
         this.openResourceUUID = parseConfiguredUUID(openUUID);
     }
 
-    public HpdsAccessContext resolve(UUID hpdsResourceUUID) {
-        if (hpdsResourceUUID == null) {
-            throw new BadVisualizationRequestException("Request must contain an 'hpdsResourceUUID' field");
-        }
-        if (hpdsResourceUUID.equals(authorizedResourceUUID)) {
-            return new HpdsAccessContext(hpdsResourceUUID, AccessType.AUTHORIZED);
-        }
-        if (hpdsResourceUUID.equals(openResourceUUID)) {
-            return new HpdsAccessContext(hpdsResourceUUID, AccessType.OPEN);
-        }
-        if (openResourceUUID == null) {
-            throw new VisualizationConfigurationException("Open HPDS resource UUID (hpds.resource.open.uuid) is not configured");
-        }
-        throw new BadVisualizationRequestException("Unsupported HPDS resource UUID: " + hpdsResourceUUID);
-    }
-
-    private static UUID parseRequiredUUID(String value, String propertyName) {
-        if (value == null || value.isBlank()) {
-            throw new VisualizationConfigurationException("Required HPDS resource UUID (" + propertyName + ") is not configured");
-        }
-        return UUID.fromString(value);
+    public HpdsAccessContext resolve(String gatewayUserId, UUID hpdsResourceUUID) {
+        boolean authorized = gatewayUserId != null && !gatewayUserId.isBlank();
+        UUID resourceUUID = hpdsResourceUUID != null ? hpdsResourceUUID : (authorized ? authorizedResourceUUID : openResourceUUID);
+        return new HpdsAccessContext(resourceUUID, authorized ? AccessType.AUTHORIZED : AccessType.OPEN);
     }
 
     private static UUID parseConfiguredUUID(String value) {
