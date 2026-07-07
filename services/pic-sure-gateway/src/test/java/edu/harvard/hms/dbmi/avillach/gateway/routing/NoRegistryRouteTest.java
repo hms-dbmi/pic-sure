@@ -20,7 +20,7 @@ import org.springframework.core.env.Environment;
  * until decommission.
  *
  * <p>Phase-3 configured routes: {@code logging}, {@code dictionary}, {@code uploader}, {@code visualization} (Task 1 / Task 1b) +
- * {@code legacy-wildfly-catchall} (Phase 1). Phase 4 (gateway integration) adds {@code hpds}, {@code configuration}, {@code dataset} —
+ * Phase 4 (gateway integration) adds {@code hpds}, {@code configuration}, {@code dataset}; the Phase-1 WildFly catch-all was removed in Phase 7 —
  * verbatim routes to the new query-service / operations-service. The load-bearing assertion is that no registry id ever appears.
  */
 @SpringBootTest

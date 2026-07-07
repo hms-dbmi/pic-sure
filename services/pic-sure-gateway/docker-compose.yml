@@ -3,7 +3,6 @@ services:
     build: .
     image: pic-sure-gateway:local
     environment:
-      - WILDFLY_URL=${WILDFLY_URL:-http://wildfly:8080}
       - SPRING_PROFILE=${SPRING_PROFILE:-aio}
     ports:
       - "8090:8080"
