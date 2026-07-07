@@ -14,10 +14,45 @@ pic-sure/                       root pom — PARENT + aggregator
 │   │   └── pic-sure-hpds-model/    HPDS query model (groupId …avillach.hpds — frozen)
 │   └── pic-sure-logging-client/ audit/logging client (groupId edu.harvard.dbmi.avillach — frozen)
 ├── services/
-│   └── pic-sure-gateway/       Spring Cloud Gateway MVC front door (Phase 1: transparent)
+│   ├── pic-sure-gateway/       Spring Cloud Gateway MVC front door
+│   ├── pic-sure-operations-service/    reactor module
+│   ├── pic-sure-hpds-query-service/    reactor module
+│   ├── pic-sure-hpds/                  QUARANTINED import (hms-dbmi/pic-sure-hpds)
+│   ├── pic-sure-auth-microapp/         QUARANTINED import (hms-dbmi/pic-sure-auth-microapp)
+│   ├── pic-sure-logging/               QUARANTINED import (hms-dbmi/PIC-SURE-Logging)
+│   ├── picsure-dictionary/             QUARANTINED import (hms-dbmi/picsure-dictionary)
+│   ├── pic-sure-services/              QUARANTINED import (hms-dbmi/pic-sure-services)
+│   └── pic-sure-visualization-service/ QUARANTINED import (hms-dbmi/PIC-SURE-Visualization)
+├── pic-sure-shadow-reconciler/ reactor module (parity verification tooling)
 └── pic-sure-legacy/            QUARANTINED — WildFly WAR, Java 11/javax, own parent pom,
                                 NOT aggregated; builds independently
 ```
+
+QUARANTINED = imported as-is with full history (`git filter-repo` merge), keeps its own
+parent POM/JDK, builds independently from its subdirectory, NOT in the root reactor.
+Modernization onto the root parent + BOM happens per service in consolidation Phase 4.
+
+## Modules
+
+| Path | Status | Java | Jenkins jobs (AIO / FISMA) | Modernization |
+|---|---|---|---|---|
+| platform/ | reactor (BOM) | 25 | — | n/a |
+| libs/* | reactor | 25 | Common Install / Common Build (frozen-branch libs, see below) | done |
+| services/pic-sure-gateway | reactor | 25 | PIC-SURE Gateway Build and Deploy / — | done |
+| services/pic-sure-operations-service | reactor | 25 | — | done |
+| services/pic-sure-hpds-query-service | reactor | 25 | — | done |
+| services/pic-sure-hpds | quarantined | 25 (SB 3.5.3) | PIC-SURE-HPDS Build / PIC-SURE HPDS Build | Phase 4 |
+| services/pic-sure-auth-microapp | quarantined | 25 (SB 3.5.9) | PIC-SURE Auth Micro-App Build - Jenkinsfile / PIC-SURE Auth Micro App Build | Phase 4 |
+| services/pic-sure-logging | quarantined | 21 (Javalin) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | Phase 4 |
+| services/picsure-dictionary | quarantined | 21 + 25 (SB 3.2.4 / 3.4.5) | PIC-SURE Dictionary API Build and Deploy (+3 DB jobs) / PIC-SURE Dictionary Build | Phase 4 |
+| services/pic-sure-services | quarantined | 21 | PIC-SURE Build and Deploy Uploader / — | Phase 4 |
+| services/pic-sure-visualization-service | quarantined | 25 (SB 3.5.11) | PIC-SURE Visualization Build and Deploy / PIC-SURE Visualization Build | Phase 4 |
+| pic-sure-legacy/ | quarantined | 11 | PIC-SURE-API Build / PIC-SURE API Build | decommission (rewrite Phase 7) |
+
+Frozen shared libs: `hms-dbmi/pic-sure-common` and `hms-dbmi/PIC-SURE-Logging-Client` branch
+`frozen/legacy-java11` pins the `1.0.0[-SNAPSHOT]` line consumed by the quarantined services
+(common @ its `main`; logging-client @ the pre-`1.1.0` commit). DO NOT push to those branches
+or publish those coordinates. Removal condition: all consumers on the `3.0.0` line (Phase 4).
 
 ## Version strategy
 
