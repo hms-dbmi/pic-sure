@@ -17,27 +17,27 @@ pic-sure/                       root pom — PARENT + aggregator
 │   ├── pic-sure-gateway/       Spring Cloud Gateway MVC front door
 │   ├── pic-sure-operations-service/    reactor module
 │   ├── pic-sure-hpds-query-service/    reactor module
-│   ├── pic-sure-hpds/                  QUARANTINED import (hms-dbmi/pic-sure-hpds)
-│   ├── pic-sure-auth-microapp/         QUARANTINED import (hms-dbmi/pic-sure-auth-microapp)
-│   ├── pic-sure-logging/               QUARANTINED import (hms-dbmi/PIC-SURE-Logging)
-│   ├── picsure-dictionary/             QUARANTINED import (hms-dbmi/picsure-dictionary)
-│   ├── pic-sure-services/              QUARANTINED import (hms-dbmi/pic-sure-services)
-│   └── pic-sure-visualization-service/ QUARANTINED import (hms-dbmi/PIC-SURE-Visualization)
+│   ├── pic-sure-hpds/                  reactor module (imported from hms-dbmi/pic-sure-hpds)
+│   ├── pic-sure-auth-microapp/         reactor module (imported from hms-dbmi/pic-sure-auth-microapp)
+│   ├── pic-sure-logging/               reactor module (imported from hms-dbmi/PIC-SURE-Logging)
+│   ├── picsure-dictionary/             reactor module (imported from hms-dbmi/picsure-dictionary)
+│   ├── pic-sure-services/              reactor modules (info-service + uploader)
+│   └── pic-sure-visualization-service/ reactor module (imported from hms-dbmi/PIC-SURE-Visualization)
 ├── pic-sure-shadow-reconciler/ reactor module (parity verification tooling)
 └── pic-sure-legacy/            QUARANTINED — WildFly WAR, Java 11/javax, own parent pom,
                                 NOT aggregated; builds independently
 ```
 
-QUARANTINED = imported as-is with full history (`git filter-repo` merge), keeps its own
-parent POM/JDK, builds independently from its subdirectory, NOT in the root reactor.
-Modernization onto the root parent + BOM happens per service in consolidation Phase 4.
+The imported services arrived as-is with full history (`git filter-repo` merge, consolidation
+Phase 1) and were adopted onto the root parent + BOM + Java 25 in Phase 4. Only
+pic-sure-legacy remains QUARANTINED: own parent POM/JDK, builds independently, not aggregated.
 
 ## Modules
 
 | Path | Status | Java | Jenkins jobs (AIO / FISMA) | Modernization |
 |---|---|---|---|---|
 | platform/ | reactor (BOM) | 25 | — | n/a |
-| libs/* | reactor | 25 | Common Install / Common Build (frozen-branch libs, see below) | done |
+| libs/* | reactor | 25 | (consumed in-reactor; install jobs retired) | done |
 | services/pic-sure-gateway | reactor | 25 | PIC-SURE Gateway Build and Deploy / — | done |
 | services/pic-sure-operations-service | reactor | 25 | — | done |
 | services/pic-sure-hpds-query-service | reactor | 25 | — | done |
