@@ -1,0 +1,58 @@
+package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
+
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+
+@Component
+public class QueryValidator {
+
+    private static final Logger log = LoggerFactory.getLogger(QueryValidator.class);
+
+    private final PhenotypicQueryExecutor phenotypicQueryExecutor;
+
+    private final PhenotypicFilterValidator phenotypicFilterValidator;
+
+    private final boolean requireAuthorizationFilter;
+
+    @Autowired
+    public QueryValidator(
+        PhenotypicQueryExecutor phenotypicQueryExecutor, PhenotypicFilterValidator phenotypicFilterValidator,
+        @Value("${hpds.requireAuthorizationFilter:true}") boolean requireAuthorizationFilter
+    ) {
+        this.phenotypicQueryExecutor = phenotypicQueryExecutor;
+        this.phenotypicFilterValidator = phenotypicFilterValidator;
+        this.requireAuthorizationFilter = requireAuthorizationFilter;
+    }
+
+    public void validate(Query query) {
+        Map<String, ColumnMeta> metaStore = phenotypicQueryExecutor.getMetaStore();
+
+        if (requireAuthorizationFilter) {
+            if (query.authorizationFilters().isEmpty()) {
+                log.warn(
+                    "Authorization filter is required for this query. To disable this requirement, set hpds.requireAuthorizationFilter=false"
+                );
+                throw new IllegalArgumentException("Authorization filter is required for this query");
+            }
+        }
+
+        query.allFilters().forEach(phenotypicFilter -> phenotypicFilterValidator.validate(phenotypicFilter, metaStore));
+
+        query.authorizationFilters().forEach(authorizationFilter -> {
+            phenotypicFilterValidator.validate(authorizationFilter, metaStore);
+        });
+
+        query.select().forEach(select -> {
+            if (!metaStore.containsKey(select)) {
+                log.debug(select + " is not a valid concept path");
+            }
+        });
+    }
+}
