@@ -3,32 +3,15 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.2</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
+		<version>${revision}</version>
+		<relativePath>../../../pom.xml</relativePath>
 	</parent>
 	<groupId>edu.harvard.dbmi.avillach</groupId>
 	<artifactId>dictionaryweights</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
 	<name>dictionaryweights</name>
 	<description>Creates weights</description>
-	<url/>
-	<licenses>
-		<license/>
-	</licenses>
-	<developers>
-		<developer/>
-	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
-	<properties>
-		<java.version>21</java.version>
-	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
