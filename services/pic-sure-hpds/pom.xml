@@ -4,14 +4,13 @@
 		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.5.3</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
+		<version>${revision}</version>
+		<relativePath>../../pom.xml</relativePath>
 	</parent>
 	<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 	<artifactId>pic-sure-hpds</artifactId>
-	<version>3.0.0-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<name>pic-sure-hpds</name>
 	<modules>
@@ -157,11 +156,6 @@
 			</dependency>
 			<dependency>
 				<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
-				<artifactId>pic-sure-hpds-model</artifactId>
-				<version>1.0.0-SNAPSHOT</version>
-			</dependency>
-			<dependency>
-				<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 				<artifactId>service</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -179,11 +173,6 @@
 				<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 				<artifactId>data</artifactId>
 				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-				<artifactId>pic-sure-api-model</artifactId>
-				<version>1.0.0-SNAPSHOT</version>
 			</dependency>
 			<dependency>
 				<groupId>com.google.guava</groupId>
@@ -231,25 +220,9 @@
 				<version>1.1.1</version>
 			</dependency>
 			<dependency>
-				<groupId>org.mockito</groupId>
-				<artifactId>mockito-core</artifactId>
-				<version>5.18.0</version>
-				<scope>test</scope>
-			</dependency>
-			<dependency>
 				<groupId>com.oracle.database.jdbc</groupId>
 				<artifactId>ojdbc10</artifactId>
 				<version>19.17.0.0</version>
-			</dependency>
-			<dependency>
-				<groupId>io.projectreactor.netty</groupId>
-				<artifactId>reactor-netty</artifactId>
-				<version>1.2.8</version>
-			</dependency>
-			<dependency>
-				<groupId>com.fasterxml.jackson.core</groupId>
-				<artifactId>jackson-databind</artifactId>
-				<version>2.15.3</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.avro</groupId>
@@ -277,11 +250,6 @@
 				<groupId>io.swagger.core.v3</groupId>
 				<artifactId>swagger-annotations</artifactId>
 				<version>2.2.40</version>
-			</dependency>
-			<dependency>
-				<groupId>edu.harvard.dbmi.avillach</groupId>
-				<artifactId>pic-sure-logging-client</artifactId>
-				<version>1.0.0</version>
 			</dependency>
     </dependencies>
   </dependencyManagement>
