@@ -121,7 +121,7 @@ public class SecurityConfig {
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, GatewaySecurityProperties props, GatewayModeResolver modeResolver
+        PsamaClient client, AuditContext audit, ObjectMapper json, GatewaySecurityProperties props
     ) {
         var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, props.openAccessEnabled()));
         r.setOrder(20);
@@ -132,8 +132,7 @@ public class SecurityConfig {
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewaySecurityProperties props,
-        GatewayModeResolver modeResolver
+        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewaySecurityProperties props
     ) {
         var r = new FilterRegistrationBean<>(
             new PsamaIntrospectionFilter(client, audit, json, fetcher, props.allowListPrefixes(), props.userIdClaim())

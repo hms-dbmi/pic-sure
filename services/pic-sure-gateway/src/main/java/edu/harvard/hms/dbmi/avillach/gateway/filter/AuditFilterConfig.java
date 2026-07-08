@@ -12,7 +12,6 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.config.GatewayAuthActiveCondition;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
@@ -53,9 +52,7 @@ public class AuditFilterConfig {
 
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
-    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(
-        LoggingClient client, AuditRouteTable routes, AuditContext audit, GatewayModeResolver modeResolver
-    ) {
+    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
         // VERIFIED skip-list (AuditLoggingFilter.java:122-127): ends-with /system/status, /openapi.json (base
         // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
         // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
