@@ -111,10 +111,8 @@ public class SecurityConfig {
 
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
-    FilterRegistrationBean<BufferingFilter> bufferingFilter(
-        GatewaySecurityProperties props, MeterRegistry meterRegistry, GatewayModeResolver modeResolver
-    ) {
-        var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), meterRegistry, modeResolver));
+    FilterRegistrationBean<BufferingFilter> bufferingFilter(GatewaySecurityProperties props, MeterRegistry meterRegistry) {
+        var r = new FilterRegistrationBean<>(new BufferingFilter(props.maxBodyBytes(), meterRegistry));
         r.setOrder(10);
         r.addUrlPatterns("/*");
         return r;

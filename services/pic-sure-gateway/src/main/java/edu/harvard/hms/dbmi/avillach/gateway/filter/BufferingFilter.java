@@ -8,7 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
@@ -27,17 +26,10 @@ public class BufferingFilter extends OncePerRequestFilter {
 
     private final int maxBytes;
     private final MeterRegistry meterRegistry;
-    private final GatewayModeResolver modeResolver;
 
-    public BufferingFilter(int maxBytes, MeterRegistry meterRegistry, GatewayModeResolver modeResolver) {
+    public BufferingFilter(int maxBytes, MeterRegistry meterRegistry) {
         this.maxBytes = maxBytes;
         this.meterRegistry = meterRegistry;
-        this.modeResolver = modeResolver;
-    }
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest req) {
-        return !modeResolver.enforcesFor(req.getRequestURI());
     }
 
     @Override
