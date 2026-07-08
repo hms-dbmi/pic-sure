@@ -21,7 +21,6 @@ import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
@@ -33,19 +32,18 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Ports the bulk of the WAR's {@code JWTFilter}: per-request PSAMA token introspection. Runs after {@code OpenAccessFilter} (no-bearer
- * short-circuit) and {@code BufferingFilter} (body buffering). Skips interim result/signed-url paths still owned by WildFly
- * ({@link GatewayAuthScope}). Allow-lists {@code GET /system/status} (audited as {@code SYSTEM_MONITOR}), any path ending in
- * {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real {@code Bearer} token
- * (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL request path as the
- * root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the result/signed-url paths once the
- * gateway owns query-read auth, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with {@code resourceCredentials} stripped
- * and NEVER a {@code formattedQuery} field (PSAMA only ever uses it for logging, never authorization). If the body is not valid JSON,
- * {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still textually contain
- * {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including privileges, the real
- * {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on {@code tokenRefreshed} it stashes
- * {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it stashes
- * {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply — this filter does NOT mutate the body itself.
- * {@code active:false} denies with a 401 additive error body. {@link QueryAuthFetcher}/introspection infrastructure failures
+ * short-circuit) and {@code BufferingFilter} (body buffering). Allow-lists {@code GET /system/status} (audited as {@code SYSTEM_MONITOR}),
+ * any path ending in {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real
+ * {@code Bearer} token (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL
+ * request path as the root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the result/signed-url
+ * paths once the gateway owns query-read auth, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with
+ * {@code resourceCredentials} stripped and NEVER a {@code formattedQuery} field (PSAMA only ever uses it for logging, never authorization).
+ * If the body is not valid JSON, {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still
+ * textually contain {@code resourceCredentials}). On success this filter stashes {@code X-User-*} request attributes — including
+ * privileges, the real {@code @RolesAllowed} signal — for {@code IdentityPropagationFilter} to turn into outbound headers; on
+ * {@code tokenRefreshed} it stashes {@link #ATTR_REFRESHED_TOKEN} for {@code TokenRefreshResponseFilter}; on a returned {@code query} it
+ * stashes {@code BodyMutationFilter.ATTR_MUTATED_QUERY} for {@code BodyMutationFilter} to apply — this filter does NOT mutate the body
+ * itself. {@code active:false} denies with a 401 additive error body. {@link QueryAuthFetcher}/introspection infrastructure failures
  * ({@link PicsureException}, or any introspection transport error) are fail-closed: the mapped status/error body is written and the request
  * is never forwarded.
  */
@@ -64,26 +62,24 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     private final AuditContext audit;
     private final ObjectMapper json;
     private final QueryAuthFetcher queryAuthFetcher;
-    private final GatewayAuthScope scope;
     private final List<String> allowListPrefixes;
     private final String userIdClaim;
 
     public PsamaIntrospectionFilter(
-        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, GatewayAuthScope scope,
-        List<String> allowListPrefixes, String userIdClaim
+        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, List<String> allowListPrefixes,
+        String userIdClaim
     ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.queryAuthFetcher = queryAuthFetcher;
-        this.scope = scope;
         this.allowListPrefixes = List.copyOf(allowListPrefixes);
         this.userIdClaim = userIdClaim;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        return scope.interimOwnedByWildFly(req.getRequestURI()) || isPublicConfigurationRead(req.getMethod(), req.getRequestURI());
+        return isPublicConfigurationRead(req.getMethod(), req.getRequestURI());
     }
 
     /**
@@ -208,9 +204,8 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         // Send the REAL request path verbatim, root-level. No canonical-mapping table.
         requestMeta.put("Target Service", path);
 
-        // result/signed-url: fetch the stored query over HTTP (DB-free). Dormant while WildFly still owns
-        // query-read auth (shouldNotFilter skips these paths); live once GatewayAuthScope no longer marks
-        // them as WildFly-owned.
+        // result/signed-url: fetch the stored query over HTTP (DB-free) so PSAMA can authorize these
+        // bodyless reads using the original query shape.
         Optional<String> storedQuery = queryAuthFetcher.queryJsonForPath(path); // may throw PicsureException (fail-closed)
         try {
             if (storedQuery.isPresent()) {

@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
@@ -35,11 +34,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 class PsamaIntrospectionFilterTest {
 
-    private static final GatewayAuthScope SCOPE = new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"));
-
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext ctx, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
-            client, ctx, new ObjectMapper(), fetcher, SCOPE, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
+            client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
         );
     }
 
@@ -190,14 +187,6 @@ class PsamaIntrospectionFilterTest {
 
         assertThat(req.getAttribute(PsamaIntrospectionFilter.ATTR_REFRESHED_TOKEN)).isEqualTo("new-token");
         assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isEqualTo("{\"new\":1}");
-    }
-
-    @Test
-    void skipsInterimResultPath() throws Exception {
-        PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/query/abc/result");
-        assertThat(f.shouldNotFilter(req)).isTrue();
     }
 
     @Test

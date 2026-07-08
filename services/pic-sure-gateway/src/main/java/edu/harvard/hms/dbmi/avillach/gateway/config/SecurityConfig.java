@@ -140,11 +140,11 @@ public class SecurityConfig {
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<PsamaIntrospectionFilter> introspectionFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewayAuthScope scope,
-        GatewaySecurityProperties props, GatewayModeResolver modeResolver
+        PsamaClient client, AuditContext audit, ObjectMapper json, QueryAuthFetcher fetcher, GatewaySecurityProperties props,
+        GatewayModeResolver modeResolver
     ) {
         var r = new FilterRegistrationBean<>(
-            new PsamaIntrospectionFilter(client, audit, json, fetcher, scope, props.allowListPrefixes(), props.userIdClaim())
+            new PsamaIntrospectionFilter(client, audit, json, fetcher, props.allowListPrefixes(), props.userIdClaim())
         );
         r.setOrder(30);
         r.addUrlPatterns("/*");
