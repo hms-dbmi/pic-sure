@@ -36,8 +36,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(
-    properties = {"picsure.gateway.security.auth-enabled=true", "picsure.gateway.security.gateway-owns-query-read-auth=true",
-        "picsure.gateway.security.query-service-internal-token=internal-secret"}
+    properties = {"picsure.gateway.security.auth-enabled=true", "picsure.gateway.security.query-service-internal-token=internal-secret"}
 )
 class QueryAuthFetcherDispatchWiringTest {
 
