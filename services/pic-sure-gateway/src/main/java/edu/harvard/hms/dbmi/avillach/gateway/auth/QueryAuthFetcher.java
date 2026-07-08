@@ -13,9 +13,10 @@ import org.springframework.web.client.RestClientResponseException;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from the query service's gateway-only dispatch endpoint,
- * purely as the PSAMA introspection payload — NO database access. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN).
- * Fail-closed: ANY error (incl. 403) denies the request. Dormant while WildFly still owns query-read auth.
+ * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from operations-service's gateway-only
+ * {@code /internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape — NO
+ * database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY error
+ * (incl. 403) denies the request.
  */
 public class QueryAuthFetcher {
 
