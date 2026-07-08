@@ -1,5 +1,6 @@
-# AIO profile: WildFly is reachable by Docker DNS on the shared `picsure` network.
-# WILDFLY_URL may still override (defaults to http://wildfly:8080 in application.yml).
+# AIO profile: query-service, operations-service, and PSAMA are reachable by Docker DNS
+# on the shared `picsure` network. HPDS_QUERY_SERVICE_URL and OPERATIONS_SERVICE_URL may
+# still override (see application.yml for defaults).
 
 # PSAMA is reachable by Docker DNS on the `picsure` network. These match WildFly's
 # java:global/token_introspection_url and openAccessValidateUrl in standalone.xml.

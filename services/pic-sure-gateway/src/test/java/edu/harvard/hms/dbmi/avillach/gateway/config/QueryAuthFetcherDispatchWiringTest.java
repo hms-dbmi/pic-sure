@@ -1,6 +1,5 @@
 package edu.harvard.hms.dbmi.avillach.gateway.config;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -8,7 +7,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,8 +30,9 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 /**
  * The internal query dispatch that {@code QueryAuthFetcher} fetches (for PSAMA introspection of {@code result}/{@code signed-url} paths)
  * lives on operations-service (the sole DB owner), NOT the query-service. Proves the wiring end-to-end through the real filter chain: a
- * {@code GET /query/{id}/result} request must fetch the dispatch from {@code OPERATIONS_SERVICE_URL}. The query-service stub is wired to
- * fail loudly (500) so an accidental dispatch call there surfaces as a test failure rather than a silent pass.
+ * {@code GET /query/{id}/result} request must fetch the dispatch from {@code OPERATIONS_SERVICE_URL}, then 404 (no route owns
+ * {@code /query/**} — there is no catch-all to forward to). The query-service stub is wired to fail loudly (500) so an accidental dispatch
+ * call there surfaces as a test failure rather than a silent pass.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(
@@ -45,7 +44,6 @@ class QueryAuthFetcherDispatchWiringTest {
     static WireMockServer operationsStub;
     static WireMockServer queryServiceStub;
     static WireMockServer psamaStub;
-    static WireMockServer wildflyStub;
 
     @DynamicPropertySource
     static void urls(DynamicPropertyRegistry registry) {
@@ -62,12 +60,6 @@ class QueryAuthFetcherDispatchWiringTest {
         psamaStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
         psamaStub.start();
         registry.add("TOKEN_INTROSPECTION_URL", () -> psamaStub.baseUrl() + "/auth/token/inspect");
-
-        // /query/{id}/result isn't one of the explicitly configured routes, so it falls through to the WildFly catch-all. Stub
-        // it so the test exercises a clean 200 round trip rather than an unresolved-host connection failure.
-        wildflyStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
-        wildflyStub.start();
-        registry.add("WILDFLY_URL", wildflyStub::baseUrl);
     }
 
     @AfterAll
@@ -75,7 +67,6 @@ class QueryAuthFetcherDispatchWiringTest {
         operationsStub.stop();
         queryServiceStub.stop();
         psamaStub.stop();
-        wildflyStub.stop();
     }
 
     @BeforeEach
@@ -93,10 +84,6 @@ class QueryAuthFetcherDispatchWiringTest {
             post(urlEqualTo("/auth/token/inspect"))
                 .willReturn(okJson("{\"active\":true,\"userId\":\"u-1\",\"sub\":\"s-1\",\"email\":\"a@b\",\"role\":\"USER\"}"))
         );
-
-        wildflyStub.resetAll();
-        wildflyStub
-            .stubFor(get(urlPathMatching("/pic-sure-api-2/PICSURE/.*")).willReturn(aResponse().withStatus(200).withBody("legacy-ok")));
     }
 
     @Autowired
@@ -108,10 +95,9 @@ class QueryAuthFetcherDispatchWiringTest {
         headers.set("Authorization", "Bearer user-token");
         ResponseEntity<String> response = rest.exchange("/query/abc-123/result", HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
-        // The dispatch succeeded via operations-service, so PSAMA introspection ran (active:true) and the request
-        // was forwarded all the way to the (stubbed) legacy backend.
-        assertThat(response.getStatusCode().value()).isEqualTo(200);
-        assertThat(response.getBody()).isEqualTo("legacy-ok");
+        // The dispatch succeeded via operations-service, so PSAMA introspection ran (active:true). No route owns
+        // /query/**, so the request 404s -- there is no catch-all left to forward it to.
+        assertThat(response.getStatusCode().value()).isEqualTo(404);
         operationsStub.verify(1, getRequestedFor(urlEqualTo("/internal/queries/abc-123/dispatch")));
         queryServiceStub.verify(0, anyRequestedFor(anyUrl()));
     }

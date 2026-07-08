@@ -16,11 +16,11 @@ import org.springframework.core.env.Environment;
 import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
 
 /**
- * Drift guard: every configured NON-catch-all route must be covered by the default gateway-owned prefixes
- * ({@code RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES}, via {@link RouteSurfaces#withDefaults()}). Binds
- * {@code spring.cloud.gateway.server.webmvc.routes} straight from the environment (same Binder technique as {@code NoRegistryRouteTest}) so
- * that adding a route to {@code application.yml} without extending the owned-prefixes default fails THIS test -- the owned-vs-catch-all
- * classification can never silently drift out of sync with the route table.
+ * Drift guard: every configured route must be covered by the default gateway-owned prefixes
+ * ({@code RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES}, via {@link RouteSurfaces#withDefaults()}), and no route may declare an unowned
+ * {@code Path=/**} catch-all. Binds {@code spring.cloud.gateway.server.webmvc.routes} straight from the environment (same Binder technique
+ * as {@code NoRegistryRouteTest}) so that adding a route to {@code application.yml} without extending the owned-prefixes default fails THIS
+ * test -- the route table can never silently drift out of sync with what the gateway owns.
  */
 @SpringBootTest
 class RouteOwnedPrefixDriftTest {
@@ -38,24 +38,19 @@ class RouteOwnedPrefixDriftTest {
     }
 
     @Test
-    void everyNonCatchAllRouteIsCoveredByDefaultOwnedPrefixes() {
+    void everyRouteIsCoveredByDefaultOwnedPrefixes() {
         List<Map<String, Object>> routes = configuredRoutes();
         assertThat(routes).as("routes must be bound from application.yml").isNotEmpty();
 
-        boolean sawCatchAll = false;
         for (Map<String, Object> route : routes) {
             String base = ownedBaseOf(route);
-            if (base.isEmpty()) {
-                sawCatchAll = true; // the /** legacy WildFly catch-all -- the one route that is NOT owned
-                continue;
-            }
+            assertThat(base).as("no route may declare an unowned Path=/** catch-all (id=%s)", route.get("id")).isNotEmpty();
             assertThat(surfaces.isOwned(base)).as("owned prefix covers route path %s (id=%s)", base, route.get("id")).isTrue();
             assertThat(surfaces.isOwned(base + "/sub/path")).as("owned prefix covers under %s (id=%s)", base, route.get("id")).isTrue();
         }
-        assertThat(sawCatchAll).as("expected exactly the /** catch-all to be the sole non-owned route").isTrue();
     }
 
-    /** The route's Path predicate stripped of its trailing {@code /**} (or {@code /*}); empty string for the {@code /**} catch-all. */
+    /** The route's Path predicate stripped of its trailing {@code /**} (or {@code /*}); empty string for a {@code /**} catch-all. */
     private static String ownedBaseOf(Map<String, Object> route) {
         String path = pathPredicate(route);
         assertThat(path).as("route %s must declare a Path predicate", route.get("id")).isNotNull();

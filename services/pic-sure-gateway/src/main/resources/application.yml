@@ -7,8 +7,7 @@ spring:
         webmvc:
           routes:
             # Explicit clean-prefix route for the logging service, replacing the
-            # legacy /proxy/pic-sure-logging relay. order 100 < 1000 so it
-            # wins over the catch-all. StripPrefix=1 drops the leading /logging segment
+            # legacy /proxy/pic-sure-logging relay. StripPrefix=1 drops the leading /logging segment
             # because the logging service (Javalin) serves its API at root (/audit,
             # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
             # on the introspection allow-list, so it is not authenticated.
@@ -70,15 +69,6 @@ spring:
               order: 100
               predicates:
                 - Path=/dataset/**
-            # Single low-priority catch-all — everything forwards to WildFly
-            # with the legacy context path re-prefixed. Public URLs are unchanged.
-            - id: legacy-wildfly-catchall
-              uri: ${WILDFLY_URL:http://wildfly:8080}
-              order: 1000
-              predicates:
-                - Path=/**
-              filters:
-                - RewritePath=/(?<segment>.*), /pic-sure-api-2/PICSURE/$\{segment}
 
 management:
   endpoints:
