@@ -30,7 +30,8 @@ import com.github.tomakehurst.wiremock.WireMockServer;
  * application.yml).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = "management.endpoint.health.show-details=always")
+// Actuator is OFF BY DEFAULT (exposure defaults to 'none'); expose health and force show-details=always for this context.
+@TestPropertySource(properties = {"management.endpoints.web.exposure.include=health", "management.endpoint.health.show-details=always"})
 class ActuatorHealthEndpointIT {
 
     static WireMockServer hpds;

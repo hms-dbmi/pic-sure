@@ -29,7 +29,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureObservability // prometheus export is disabled by default in @SpringBootTest contexts
 @ActiveProfiles("local")
-@TestPropertySource(properties = {"picsure.actuator.require-token=true", "picsure.actuator.token=secret-xyz"})
+// Actuator is OFF BY DEFAULT (exposure defaults to the no-match sentinel 'none' in application.yml); this test
+// exercises the security gating, so it explicitly enables the endpoints and the when_authorized detail behavior AIO turns on.
+@TestPropertySource(
+    properties = {"management.endpoints.web.exposure.include=health,info,prometheus,metrics",
+        "management.endpoint.health.show-details=when_authorized", "picsure.actuator.require-token=true",
+        "picsure.actuator.token=secret-xyz"}
+)
 class ActuatorSecurityIntegrationTest {
 
     @LocalServerPort

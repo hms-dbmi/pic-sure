@@ -41,10 +41,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        # OFF BY DEFAULT: 'none' is a sentinel that matches no endpoint, so /actuator/** is 404. (An EMPTY include is
+        # NOT off -- Spring Boot then falls back to exposing health.) AIO enables it via PICSURE_ACTUATOR_EXPOSURE;
+        # prometheus/metrics are added via the same var in the monitoring (M2) rollout.
+        include: ${PICSURE_ACTUATOR_EXPOSURE:none}
   endpoint:
     health:
-      show-details: when_authorized # was: always -- Phase 6 gates detail behind picsure.actuator.token
+      show-details: ${PICSURE_ACTUATOR_DETAILS:never} # default never; when_authorized (AIO) gates detail behind picsure.actuator.token
       probes:
         enabled: true # /actuator/health/liveness stays shallow-open
       group:
