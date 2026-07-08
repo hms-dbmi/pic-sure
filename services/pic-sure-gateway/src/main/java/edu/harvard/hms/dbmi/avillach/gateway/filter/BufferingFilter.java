@@ -8,7 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -20,28 +19,25 @@ import jakarta.servlet.http.HttpServletResponse;
 /**
  * Buffers the request body (so downstream auth filters can read/mutate it), capped at GATEWAY_AUTH_MAX_BODY_BYTES. Over-cap → HTTP 413 with
  * the additive error body {errorType:REQUEST_BODY_TOO_LARGE,...} returned BEFORE PSAMA is ever called; body content is NEVER logged; a
- * body-too-large metric is emitted. Skips result/signed-url paths so they flow untouched to WildFly while it still owns query-read auth.
+ * body-too-large metric is emitted.
  */
 public class BufferingFilter extends OncePerRequestFilter {
 
     static final String BODY_TOO_LARGE_METRIC = "gateway.auth.body_too_large";
 
     private final int maxBytes;
-    private final GatewayAuthScope scope;
     private final MeterRegistry meterRegistry;
     private final GatewayModeResolver modeResolver;
 
-    public BufferingFilter(int maxBytes, GatewayAuthScope scope, MeterRegistry meterRegistry, GatewayModeResolver modeResolver) {
+    public BufferingFilter(int maxBytes, MeterRegistry meterRegistry, GatewayModeResolver modeResolver) {
         this.maxBytes = maxBytes;
-        this.scope = scope;
         this.meterRegistry = meterRegistry;
         this.modeResolver = modeResolver;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        // Interim result/signed-url stay with WildFly.
-        return scope.interimOwnedByWildFly(req.getRequestURI()) || !modeResolver.enforcesFor(req.getRequestURI());
+        return !modeResolver.enforcesFor(req.getRequestURI());
     }
 
     @Override

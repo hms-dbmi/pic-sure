@@ -9,14 +9,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.FilterChain;
@@ -27,8 +25,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 class BufferingFilterTest {
-
-    private static final GatewayAuthScope SCOPE = new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"));
 
     private static ServletInputStream stream(String s) {
         ByteArrayInputStream bais = new ByteArrayInputStream(s.getBytes());
@@ -62,7 +58,7 @@ class BufferingFilterTest {
         when(req.getInputStream()).thenReturn(stream("hello"));
         when(req.getContentLengthLong()).thenReturn(5L);
 
-        new BufferingFilter(64 * 1024, SCOPE, new SimpleMeterRegistry(), GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new BufferingFilter(64 * 1024, new SimpleMeterRegistry(), GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> captor = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(captor.capture(), eq(resp));
@@ -73,7 +69,7 @@ class BufferingFilterTest {
     @Test
     void overCapReturns413WithErrorBodyBeforeChainAndIncrementsMetric() throws Exception {
         SimpleMeterRegistry metrics = new SimpleMeterRegistry();
-        BufferingFilter f = new BufferingFilter(8, SCOPE, metrics, GatewayModeResolver.enforcing()); // tiny cap
+        BufferingFilter f = new BufferingFilter(8, metrics, GatewayModeResolver.enforcing()); // tiny cap
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getRequestURI()).thenReturn("/query");
         when(req.getContentLengthLong()).thenReturn(100L);
@@ -88,13 +84,5 @@ class BufferingFilterTest {
             .contains("Request body exceeds the maximum size allowed for authorization processing.");
         verify(chain, never()).doFilter(any(), any()); // PSAMA never reached
         assertThat(metrics.counter("gateway.auth.body_too_large").count()).isEqualTo(1.0);
-    }
-
-    @Test
-    void skipsInterimResultPath() throws Exception {
-        BufferingFilter f = new BufferingFilter(64 * 1024, SCOPE, new SimpleMeterRegistry(), GatewayModeResolver.enforcing());
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/query/abc/result");
-        assertThat(f.shouldNotFilter(req)).isTrue();
     }
 }
