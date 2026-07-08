@@ -28,9 +28,9 @@ public class ObservabilityConfig {
     }
 
     /**
-     * Registered UNCONDITIONALLY (unlike the DB-free auth chain in {@code SecurityConfig}, which only registers when the resolved effective
-     * mode is not TRANSPARENT): a client must never be able to inject the gateway-owned {@code X-User-*} identity headers, regardless of
-     * whether the auth chain is on. See {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for the trust-boundary rationale.
+     * Registered UNCONDITIONALLY, as an independent trust boundary alongside the always-on DB-free auth chain in {@code SecurityConfig}: a
+     * client must never be able to inject the gateway-owned {@code X-User-*} identity headers. See
+     * {@link InboundIdentityHeaderSanitizingFilter}'s Javadoc for the trust-boundary rationale.
      */
     @Bean
     public FilterRegistrationBean<InboundIdentityHeaderSanitizingFilter> inboundIdentityHeaderSanitizingFilter() {
