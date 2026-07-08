@@ -15,7 +15,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,19 +35,11 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     static final String HEADER_REQUEST_ID = "X-Request-Id"; // commons RequestIdFilter owns generation
 
-    private final GatewayModeResolver modeResolver;
-
-    public IdentityPropagationFilter(GatewayModeResolver modeResolver) {
-        this.modeResolver = modeResolver;
-    }
+    public IdentityPropagationFilter() {}
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        if (!modeResolver.enforcesFor(req.getRequestURI())) {
-            chain.doFilter(req, resp);
-            return;
-        }
         chain.doFilter(new IdentityHeadersRequest(req), resp);
     }
 

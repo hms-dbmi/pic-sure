@@ -163,8 +163,8 @@ public class SecurityConfig {
 
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
-    FilterRegistrationBean<IdentityPropagationFilter> identityFilter(GatewayModeResolver modeResolver) {
-        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter(modeResolver));
+    FilterRegistrationBean<IdentityPropagationFilter> identityFilter() {
+        var r = new FilterRegistrationBean<>(new IdentityPropagationFilter());
         r.setOrder(50);
         r.addUrlPatterns("/*");
         return r;
