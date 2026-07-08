@@ -17,10 +17,10 @@ import edu.harvard.hms.dbmi.avillach.gateway.config.RouteSurfaces;
 
 /**
  * Drift guard: every configured route must be covered by the default gateway-owned prefixes
- * ({@code RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES}, via {@link RouteSurfaces#withDefaults()}), and no route may declare an unowned
- * {@code Path=/**} catch-all. Binds {@code spring.cloud.gateway.server.webmvc.routes} straight from the environment (same Binder technique
- * as {@code NoRegistryRouteTest}) so that adding a route to {@code application.yml} without extending the owned-prefixes default fails THIS
- * test -- the route table can never silently drift out of sync with what the gateway owns.
+ * ({@code RouteSurfaceProperties.DEFAULT_OWNED_PREFIXES}, via {@link RouteSurfaces#withDefaults()}), and no route may declare an unowned,
+ * bare wildcard (catch-all) predicate. Binds {@code spring.cloud.gateway.server.webmvc.routes} straight from the environment (same Binder
+ * technique as {@code NoRegistryRouteTest}) so that adding a route to {@code application.yml} without extending the owned-prefixes default
+ * fails THIS test -- the route table can never silently drift out of sync with what the gateway owns.
  */
 @SpringBootTest
 class RouteOwnedPrefixDriftTest {
@@ -44,7 +44,7 @@ class RouteOwnedPrefixDriftTest {
 
         for (Map<String, Object> route : routes) {
             String base = ownedBaseOf(route);
-            assertThat(base).as("no route may declare an unowned Path=/** catch-all (id=%s)", route.get("id")).isNotEmpty();
+            assertThat(base).as("no route may declare an unowned, bare wildcard catch-all (id=%s)", route.get("id")).isNotEmpty();
             assertThat(surfaces.isOwned(base)).as("owned prefix covers route path %s (id=%s)", base, route.get("id")).isTrue();
             assertThat(surfaces.isOwned(base + "/sub/path")).as("owned prefix covers under %s (id=%s)", base, route.get("id")).isTrue();
         }
