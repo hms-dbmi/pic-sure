@@ -34,7 +34,7 @@ class RouteSurfacesTest {
     }
 
     @Test
-    void catchAllIsEverythingNotOwned() {
+    void unownedIsEverythingNotOwned() {
         assertThat(surfaces.isCatchAll("/picsure/query/sync")).isTrue();
         assertThat(surfaces.isCatchAll("/v3/search/abc")).isTrue();
         assertThat(surfaces.isCatchAll("/hpds/auth/v3/query/sync")).isFalse();
