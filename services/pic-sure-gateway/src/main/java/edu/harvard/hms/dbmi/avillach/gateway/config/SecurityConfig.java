@@ -129,10 +129,9 @@ public class SecurityConfig {
     @Bean
     @Conditional(GatewayAuthActiveCondition.class)
     FilterRegistrationBean<OpenAccessFilter> openAccessFilter(
-        PsamaClient client, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, GatewaySecurityProperties props,
-        GatewayModeResolver modeResolver
+        PsamaClient client, AuditContext audit, ObjectMapper json, GatewaySecurityProperties props, GatewayModeResolver modeResolver
     ) {
-        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, scope, props.openAccessEnabled()));
+        var r = new FilterRegistrationBean<>(new OpenAccessFilter(client, audit, json, props.openAccessEnabled()));
         r.setOrder(20);
         r.addUrlPatterns("/*");
         return r;

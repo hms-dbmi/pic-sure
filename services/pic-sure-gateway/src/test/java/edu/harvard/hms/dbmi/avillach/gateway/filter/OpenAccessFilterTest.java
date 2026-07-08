@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,10 +30,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 class OpenAccessFilterTest {
 
-    private static final GatewayAuthScope SCOPE = new GatewayAuthScope(false, List.of(".*/query/[^/]+/(?:result|signed-url)/?$"));
-
     private OpenAccessFilter filter(PsamaClient client, AuditContext ctx, boolean enabled) {
-        return new OpenAccessFilter(client, ctx, new ObjectMapper(), SCOPE, enabled);
+        return new OpenAccessFilter(client, ctx, new ObjectMapper(), enabled);
     }
 
     @Test
