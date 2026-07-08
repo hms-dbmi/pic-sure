@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 
 /**
  * Pins the AIO profile override: under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names rather than the
@@ -14,7 +13,6 @@ import org.springframework.test.context.TestPropertySource;
  */
 @SpringBootTest
 @ActiveProfiles("aio")
-@TestPropertySource(properties = "picsure.gateway.security.auth-enabled=true")
 class GatewaySecurityPropertiesAioBindingTest {
 
     @Autowired

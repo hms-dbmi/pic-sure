@@ -10,11 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "picsure.gateway.security")
 public record GatewaySecurityProperties(
-    // GATEWAY_OWNS_AUTH -- master switch (same env var name the WAR side reads). false (default) => no auth/audit filters
-    // register, gateway is a pure pass-through. Flip true ONLY during the coordinated cutover, and only once WildFly is
-    // also configured with GATEWAY_OWNS_AUTH -- the two services must agree, or requests get double-authenticated or
-    // the WAR ends up trusting gateway headers the gateway never validated.
-    boolean authEnabled, List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
+    List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
     // HPDS_QUERY_SERVICE_URL -- no longer read by QueryAuthFetcher (dispatch now points at operationsServiceUrl

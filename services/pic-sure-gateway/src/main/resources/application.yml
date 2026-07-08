@@ -53,7 +53,7 @@ spring:
             # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
             # auth). /configuration/** carries a public-GET carve-out for the introspection filter itself (see
             # PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
-            # /configuration/admin/**, and all of /dataset/**) is introspected as usual once auth-enabled is true.
+            # /configuration/admin/**, and all of /dataset/**) is introspected as usual by the always-on auth chain.
             - id: hpds
               uri: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
               order: 100
@@ -110,8 +110,7 @@ management:
 server:
   port: 8080
 
-# DB-free auth/audit chain. auth-enabled is the master switch: false
-# (default) => no auth/audit filters register, gateway is a pure pass-through.
+# DB-free auth/audit chain -- always enforced; every request goes through PSAMA introspection.
 # Secrets come from the environment (gateway.env); non-secret defaults are here.
 picsure:
   # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
@@ -124,13 +123,6 @@ picsure:
     header-name: X-Application-Token
   gateway:
     security:
-      # Effective auth mode is RESOLVED from (auth-enabled, mode) by GatewayModeResolver, the single source of truth:
-      # an explicit mode wins; if mode is unset, auth-enabled drives it (true => ENFORCE, false => TRANSPARENT). So
-      # today's production topology (GATEWAY_OWNS_AUTH=true, mode unset) resolves to ENFORCE unchanged.
-      #   transparent = pure pass-through, no auth filters; enforce = full gateway enforcement on every route.
-      # 'mode' is intentionally left UNSET here (no default) so absence is distinguishable from an explicit transparent;
-      # set the PICSURE_GATEWAY_SECURITY_MODE env var (relaxed-bound to picsure.gateway.security.mode) to override.
-      auth-enabled: ${GATEWAY_OWNS_AUTH:false}
       open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
       user-id-claim: sub
       max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
