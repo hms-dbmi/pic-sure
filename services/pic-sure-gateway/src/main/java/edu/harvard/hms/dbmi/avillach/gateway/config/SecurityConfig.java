@@ -17,7 +17,6 @@ import org.springframework.web.context.annotation.RequestScope;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import edu.harvard.hms.dbmi.avillach.gateway.filter.BodyMutationFilter;
@@ -40,7 +39,7 @@ import io.micrometer.core.instrument.MeterRegistry;
  * pass-through/transparent path.
  */
 @Configuration
-@EnableConfigurationProperties({GatewaySecurityProperties.class, GatewayAuthProperties.class})
+@EnableConfigurationProperties(GatewaySecurityProperties.class)
 public class SecurityConfig {
 
     // Auth-boundary HTTP clients (PSAMA introspection, query-service dispatch) run synchronously inside the request path; a
