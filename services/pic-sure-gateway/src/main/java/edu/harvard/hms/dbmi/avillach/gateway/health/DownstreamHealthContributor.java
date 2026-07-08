@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Surfaces each monitored downstream as a component under {@code /actuator/health}. One aggregate probe per scrape (the
- * {@code /system/status} throttle does not apply here; Actuator's scrape interval governs frequency). Unaffected by the low-priority
- * catch-all gateway route: Actuator's own {@code WebMvcEndpointHandlerMapping} is order -100, ahead of the gateway's
+ * {@code /system/status} throttle does not apply here; Actuator's scrape interval governs frequency). Unaffected by the gateway's
+ * route-backed {@code RouterFunction} beans: Actuator's own {@code WebMvcEndpointHandlerMapping} is order -100, ahead of
  * {@code RouterFunctionMapping} (order -1).
  */
 @Component("downstreams")

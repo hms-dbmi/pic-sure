@@ -11,7 +11,7 @@
     <artifactId>pic-sure-gateway</artifactId>
     <packaging>jar</packaging>
     <name>pic-sure-gateway</name>
-    <description>Spring Cloud Gateway MVC front door for PIC-SURE (transparent pass-through to WildFly)</description>
+    <description>Spring Cloud Gateway MVC front door for PIC-SURE</description>
 
     <dependencies>
         <!-- SC 2025.0.x rename of spring-cloud-starter-gateway-mvc -->
