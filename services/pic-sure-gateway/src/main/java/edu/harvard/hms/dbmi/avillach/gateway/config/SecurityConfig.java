@@ -20,7 +20,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthMode;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthProperties;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
@@ -82,11 +81,6 @@ public class SecurityConfig {
     @RequestScope
     AuditContext auditContext() {
         return new AuditContext();
-    }
-
-    @Bean
-    GatewayAuthScope gatewayAuthScope(GatewaySecurityProperties props) {
-        return new GatewayAuthScope(props.gatewayOwnsQueryReadAuth(), props.queryReadPaths());
     }
 
     /**
