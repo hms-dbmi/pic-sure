@@ -35,9 +35,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
  * call there surfaces as a test failure rather than a silent pass.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(
-    properties = {"picsure.gateway.security.auth-enabled=true", "picsure.gateway.security.query-service-internal-token=internal-secret"}
-)
+@TestPropertySource(properties = {"picsure.gateway.security.query-service-internal-token=internal-secret"})
 class QueryAuthFetcherDispatchWiringTest {
 
     static WireMockServer operationsStub;

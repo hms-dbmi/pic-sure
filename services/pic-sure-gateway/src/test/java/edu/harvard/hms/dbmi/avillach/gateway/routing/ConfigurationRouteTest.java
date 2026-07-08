@@ -20,19 +20,17 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.TestPropertySource;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * The explicit {@code /configuration/**} route forwards VERBATIM (no prefix strip) to operations-service. Runs with
- * {@code auth-enabled=true} (the real production posture) specifically to prove the public config-GET bypass
- * ({@code PsamaIntrospectionFilter#isPublicConfigurationRead}): {@code GET /configuration/} and {@code GET /configuration/{id}/} must reach
- * operations-service WITHOUT a Bearer token and WITHOUT ever calling PSAMA — the introspection stub is wired to fail loudly (500) so any
- * accidental introspection call surfaces as a test failure rather than a silent pass.
+ * The explicit {@code /configuration/**} route forwards VERBATIM (no prefix strip) to operations-service. The auth/audit chain always
+ * enforces, specifically proving the public config-GET bypass ({@code PsamaIntrospectionFilter#isPublicConfigurationRead}):
+ * {@code GET /configuration/} and {@code GET /configuration/{id}/} must reach operations-service WITHOUT a Bearer token and WITHOUT ever
+ * calling PSAMA — the introspection stub is wired to fail loudly (500) so any accidental introspection call surfaces as a test failure
+ * rather than a silent pass.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = "picsure.gateway.security.auth-enabled=true")
 class ConfigurationRouteTest {
 
     static WireMockServer operationsStub;
