@@ -24,15 +24,10 @@ public record GatewaySecurityProperties(
     // the sole DB owner)
     String operationsServiceUrl,
     // QUERY_SERVICE_INTERNAL_TOKEN -- X-PIC-SURE-INTERNAL-TOKEN, same value sent to operations-service now
-    String queryServiceInternalToken,
-    // GATEWAY_OWNS_QUERY_READ_AUTH -- false while WildFly still owns query-read auth, true once the gateway owns it
-    boolean gatewayOwnsQueryReadAuth,
-    // GatewayAuthScope regex; default result/signed-url
-    List<String> queryReadPaths
+    String queryServiceInternalToken
 ) {
     public GatewaySecurityProperties {
         allowListPrefixes = allowListPrefixes == null ? List.of() : List.copyOf(allowListPrefixes);
-        queryReadPaths = queryReadPaths == null ? List.of() : List.copyOf(queryReadPaths);
         if (userIdClaim == null) {
             userIdClaim = "userId";
         }
