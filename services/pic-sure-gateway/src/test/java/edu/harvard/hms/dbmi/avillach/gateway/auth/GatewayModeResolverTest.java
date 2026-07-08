@@ -75,7 +75,7 @@ class GatewayModeResolverTest {
     void enforceModeEnforcesEveryRoute() {
         GatewayModeResolver r = new GatewayModeResolver(GatewayAuthMode.ENFORCE);
         assertThat(r.enforcesFor("/hpds/auth/v3/query/sync")).isTrue();
-        assertThat(r.enforcesFor("/picsure/query/sync")).isTrue(); // catch-all still enforced in ENFORCE
+        assertThat(r.enforcesFor("/picsure/query/sync")).isTrue(); // any path is enforced in ENFORCE mode
     }
 
     @Test

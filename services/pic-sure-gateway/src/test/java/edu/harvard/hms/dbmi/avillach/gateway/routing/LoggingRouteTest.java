@@ -23,7 +23,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 /**
  * The explicit {@code /logging/**} route forwards to the logging service with the leading {@code /logging} segment stripped (the logging
  * service serves its API at root — {@code /audit}, {@code /health}). This replaces the legacy {@code /proxy/pic-sure-logging} relay. The
- * request must reach the logging stub, NOT the WildFly catch-all — proving the higher-priority route (order 100) wins.
+ * request must reach the logging stub via the explicit route (order 100); there is no catch-all fallback.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class LoggingRouteTest {
