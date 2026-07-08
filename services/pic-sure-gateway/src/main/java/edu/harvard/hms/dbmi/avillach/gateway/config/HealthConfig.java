@@ -37,10 +37,10 @@ public class HealthConfig {
     }
 
     /**
-     * Exposes {@code GET /system/status} ahead of the low-priority catch-all gateway route. The gateway's own composite
-     * {@code RouterFunction} bean carries no explicit {@code @Order} (so it defaults to {@code Ordered.LOWEST_PRECEDENCE}); ordering this
-     * bean at {@code HIGHEST_PRECEDENCE} guarantees it is tried first within {@code RouterFunctionMapping}, so the request never reaches
-     * the WildFly catch-all. See {@link SystemStatusController}'s class Javadoc for the full precedence chain.
+     * Exposes {@code GET /system/status} at highest precedence. The gateway's own composite {@code RouterFunction} bean carries no explicit
+     * {@code @Order} (so it defaults to {@code Ordered.LOWEST_PRECEDENCE}); ordering this bean at {@code HIGHEST_PRECEDENCE} guarantees it
+     * is tried first within {@code RouterFunctionMapping}. See {@link SystemStatusController}'s class Javadoc for the full precedence
+     * chain.
      */
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -52,12 +52,11 @@ public class HealthConfig {
     }
 
     /**
-     * Guards {@code /actuator/**} against the low-priority WildFly catch-all when actuator is disabled (the default: no
-     * {@code PICSURE_ACTUATOR_EXPOSURE} set). Actuator endpoints are served by {@code WebMvcEndpointHandlerMapping} (order -100, ahead of
-     * {@code RouterFunctionMapping}), so whenever an endpoint IS exposed this route is never consulted for it; but an UNexposed
-     * {@code /actuator/*} path would otherwise fall through to the catch-all and be proxied to the legacy backend. Ordering at
-     * {@code HIGHEST_PRECEDENCE} makes it win over that catch-all, returning a clean 404 instead -- so the gateway never proxies, and never
-     * exposes, actuator endpoints unless they are explicitly enabled.
+     * Returns a clean 404 for {@code /actuator/**} when actuator is disabled (the default: no {@code PICSURE_ACTUATOR_EXPOSURE} set).
+     * Actuator endpoints are served by {@code WebMvcEndpointHandlerMapping} (order -100, ahead of {@code RouterFunctionMapping}), so
+     * whenever an endpoint IS exposed this route is never consulted for it; but an UNexposed {@code /actuator/*} path would otherwise fall
+     * through unhandled. Ordering at {@code HIGHEST_PRECEDENCE} ensures this guard is reached first, so unexposed actuator endpoints are
+     * never reachable unless explicitly enabled.
      */
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
