@@ -14,11 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
 /**
  * Ports the legacy WAR's {@code PicsureRS} (v1) query lifecycle: {@code /hpds/{backend}/query/**}. {@code {backend}} is {@code auth} or
@@ -40,17 +38,9 @@ public class HpdsQueryV1Controller {
     @PostMapping("/query")
     public QueryStatus query(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
-        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute, GatewayUser user
+        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute
     ) {
-        if (Boolean.TRUE.equals(isInstitute)) {
-            if (!(req instanceof FederatedQueryRequest federatedReq)) {
-                throw new PicsureException(
-                    HttpStatus.BAD_REQUEST, "invalid_request",
-                    "An institutional (isInstitute=true) query requires a federated query request body"
-                );
-            }
-            return service.institutionalQuery(backend, federatedReq, requireEmail(user), false);
-        }
+        rejectInstitutionalQuery(isInstitute);
         return service.query(backend, req);
     }
 
@@ -86,11 +76,16 @@ public class HpdsQueryV1Controller {
         return service.queryMetadata(id); // DB-only, backend irrelevant
     }
 
-    private static String requireEmail(GatewayUser user) {
-        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
-            throw new PicsureException(HttpStatus.UNAUTHORIZED, "unauthorized", "An institutional query requires a caller email");
+    /**
+     * Federated/GIC queries were removed (see docs/superpowers/specs/2026-07-09-federated-gic-removal-design.md). The parameter stays bound
+     * on purpose: {@code QueryRequest}'s {@code defaultImpl} silently reinterprets a {@code "@type":"FederatedQueryRequest"} body as a
+     * {@code GeneralQueryRequest}, so this flag is the only surviving signal of federated intent. Accepting it would return 200 for a query
+     * whose federation had been quietly discarded.
+     */
+    static void rejectInstitutionalQuery(Boolean isInstitute) {
+        if (Boolean.TRUE.equals(isInstitute)) {
+            throw new PicsureException(HttpStatus.GONE, "gone", "Institutional (federated) queries are no longer supported");
         }
-        return user.getEmail();
     }
 
     /**

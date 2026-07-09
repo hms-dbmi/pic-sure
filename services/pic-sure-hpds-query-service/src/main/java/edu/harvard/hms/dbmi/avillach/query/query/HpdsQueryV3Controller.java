@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.query.query;
 
 import java.util.UUID;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,11 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
-import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 
 /**
  * Ports the legacy WAR's {@code PicsureRSv3} query lifecycle: {@code /hpds/{backend}/v3/query/**}. Only create and sync differ from
@@ -39,17 +35,9 @@ public class HpdsQueryV3Controller {
     @PostMapping("/query")
     public QueryStatus query(
         @PathVariable("backend") String backend, @RequestBody QueryRequest req,
-        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute, GatewayUser user
+        @RequestParam(name = "isInstitute", required = false) Boolean isInstitute
     ) {
-        if (Boolean.TRUE.equals(isInstitute)) {
-            if (!(req instanceof FederatedQueryRequest federatedReq)) {
-                throw new PicsureException(
-                    HttpStatus.BAD_REQUEST, "invalid_request",
-                    "An institutional (isInstitute=true) query requires a federated query request body"
-                );
-            }
-            return service.institutionalQuery(backend, federatedReq, requireEmail(user), true);
-        }
+        HpdsQueryV1Controller.rejectInstitutionalQuery(isInstitute);
         return service.queryV3(backend, req);
     }
 
@@ -85,12 +73,5 @@ public class HpdsQueryV3Controller {
     @GetMapping("/query/{id}/metadata")
     public QueryStatus metadata(@PathVariable("backend") String backend, @PathVariable("id") UUID id) {
         return service.queryMetadata(id);
-    }
-
-    private static String requireEmail(GatewayUser user) {
-        if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
-            throw new PicsureException(HttpStatus.UNAUTHORIZED, "unauthorized", "An institutional query requires a caller email");
-        }
-        return user.getEmail();
     }
 }
