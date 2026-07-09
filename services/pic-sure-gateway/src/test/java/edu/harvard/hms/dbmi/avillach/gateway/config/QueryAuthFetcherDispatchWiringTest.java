@@ -70,7 +70,8 @@ class QueryAuthFetcherDispatchWiringTest {
     void resetStubs() {
         operationsStub.resetAll();
         operationsStub.stubFor(
-            get(urlEqualTo("/internal/queries/abc-123/dispatch")).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("internal-secret"))
+            get(urlEqualTo("/operations/internal/queries/abc-123/dispatch"))
+                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("internal-secret"))
                 .willReturn(okJson("{\"queryJson\":\"{\\\"stored\\\":true}\"}"))
         );
 
@@ -95,7 +96,7 @@ class QueryAuthFetcherDispatchWiringTest {
         // The dispatch succeeded via operations-service, so PSAMA introspection ran (active:true). No route owns
         // /query/**, so the request 404s -- there is no catch-all left to forward it to.
         assertThat(response.getStatusCode().value()).isEqualTo(404);
-        operationsStub.verify(1, getRequestedFor(urlEqualTo("/internal/queries/abc-123/dispatch")));
+        operationsStub.verify(1, getRequestedFor(urlEqualTo("/operations/internal/queries/abc-123/dispatch")));
         queryServiceStub.verify(0, anyRequestedFor(anyUrl()));
     }
 }

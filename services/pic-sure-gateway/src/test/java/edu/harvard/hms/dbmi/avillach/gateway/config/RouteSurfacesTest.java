@@ -29,7 +29,7 @@ class RouteSurfacesTest {
         // /loggingAdmin must NOT match owned prefix /logging
         assertThat(surfaces.isOwned("/loggingAdmin")).isFalse();
         assertThat(surfaces.isOwned("/loggingAdmin/x")).isFalse();
-        assertThat(surfaces.isOwned("/datasets")).isFalse(); // vs /dataset
+        assertThat(surfaces.isOwned("/operationsx")).isFalse(); // vs /operations
         assertThat(surfaces.isOwned("/hpdsx")).isFalse(); // vs /hpds
     }
 

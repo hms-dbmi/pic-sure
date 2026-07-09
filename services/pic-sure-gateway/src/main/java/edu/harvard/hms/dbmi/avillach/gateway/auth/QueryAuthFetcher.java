@@ -14,9 +14,9 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
  * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from operations-service's gateway-only
- * {@code /internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape — NO
- * database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY error
- * (incl. 403) denies the request.
+ * {@code /operations/internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape —
+ * NO database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY
+ * error (incl. 403) denies the request.
  */
 public class QueryAuthFetcher {
 
@@ -48,7 +48,7 @@ public class QueryAuthFetcher {
     private String fetchDispatch(String picsureId) {
         DispatchResponse resp;
         try {
-            resp = http.get().uri(queryServiceBaseUrl + "/internal/queries/{id}/dispatch", picsureId)
+            resp = http.get().uri(queryServiceBaseUrl + "/operations/internal/queries/{id}/dispatch", picsureId)
                 .header(INTERNAL_TOKEN_HEADER, internalToken).retrieve().body(DispatchResponse.class);
         } catch (RestClientResponseException e) {
             int status = e.getStatusCode().value();

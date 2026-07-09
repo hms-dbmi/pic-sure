@@ -54,9 +54,10 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     public static final String ATTR_REFRESHED_TOKEN = "refreshedToken";
 
     // Mirrors operations-service's own public-GET security rule — the configuration list (root) and a
-    // single {id} read are public, EXCEPT anything under /configuration/admin/**. Matches at most one path segment
-    // after /configuration/, with an optional trailing slash: /configuration/{id} or /configuration/{id}/.
-    private static final Pattern CONFIGURATION_ID_READ = Pattern.compile("^/configuration/([^/]+)/?$");
+    // single {id} read are public, EXCEPT anything under /operations/configuration/admin/**. Matches at most one path
+    // segment after /operations/configuration/, with an optional trailing slash: /operations/configuration/{id} or
+    // /operations/configuration/{id}/.
+    private static final Pattern CONFIGURATION_ID_READ = Pattern.compile("^/operations/configuration/([^/]+)/?$");
 
     private final PsamaClient psama;
     private final AuditContext audit;
@@ -83,16 +84,16 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Config-GET bypass carried over from the operations-service split: {@code GET /configuration/} (the list) and {@code GET
-     * /configuration/{id}(/)?} (a single read) are public reads on operations-service itself, so the gateway must not demand a Bearer token
-     * for them either. Method-AND-path precise: any other method, and all of {@code /configuration/admin/**} (including bare
-     * {@code /configuration/admin}), stay introspected.
+     * Config-GET bypass carried over from the operations-service split: {@code GET /operations/configuration/} (the list) and {@code GET
+     * /operations/configuration/{id}(/)?} (a single read) are public reads on operations-service itself, so the gateway must not demand a
+     * Bearer token for them either. Method-AND-path precise: any other method, and all of {@code /operations/configuration/admin/**}
+     * (including bare {@code /operations/configuration/admin}), stay introspected.
      */
     private boolean isPublicConfigurationRead(String method, String path) {
         if (!"GET".equals(method) || path == null) {
             return false;
         }
-        if (path.equals("/configuration/")) {
+        if (path.equals("/operations/configuration/")) {
             return true;
         }
         Matcher m = CONFIGURATION_ID_READ.matcher(path);

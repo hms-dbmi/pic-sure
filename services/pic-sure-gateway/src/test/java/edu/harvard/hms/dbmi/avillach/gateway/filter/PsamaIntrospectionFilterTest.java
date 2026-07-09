@@ -256,7 +256,7 @@ class PsamaIntrospectionFilterTest {
     void publicConfigurationRootGetIsNotIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/");
         when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isTrue();
     }
@@ -265,7 +265,7 @@ class PsamaIntrospectionFilterTest {
     void publicConfigurationIdReadGetIsNotIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/3f2c8e1a-uuid/");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/3f2c8e1a-uuid/");
         when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isTrue();
     }
@@ -274,7 +274,7 @@ class PsamaIntrospectionFilterTest {
     void publicConfigurationIdReadGetWithoutTrailingSlashIsNotIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/3f2c8e1a-uuid");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/3f2c8e1a-uuid");
         when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isTrue();
     }
@@ -283,7 +283,7 @@ class PsamaIntrospectionFilterTest {
     void configurationAdminGetIsIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/admin/x");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/admin/x");
         when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
@@ -292,7 +292,7 @@ class PsamaIntrospectionFilterTest {
     void configurationAdminRootGetIsIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/admin");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/admin");
         when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
@@ -301,7 +301,7 @@ class PsamaIntrospectionFilterTest {
     void configurationAdminPostIsIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/admin/x");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/admin/x");
         when(req.getMethod()).thenReturn("POST");
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
@@ -310,7 +310,7 @@ class PsamaIntrospectionFilterTest {
     void configurationRootPostIsIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/");
         when(req.getMethod()).thenReturn("POST");
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
@@ -319,8 +319,17 @@ class PsamaIntrospectionFilterTest {
     void configurationIdReadPostIsIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getRequestURI()).thenReturn("/configuration/abc-123/");
+        when(req.getRequestURI()).thenReturn("/operations/configuration/abc-123/");
         when(req.getMethod()).thenReturn("POST");
+        assertThat(f.shouldNotFilter(req)).isFalse();
+    }
+
+    @Test
+    void datasetPathIsIntrospected() throws Exception {
+        PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestURI()).thenReturn("/operations/dataset/named/abc-123");
+        when(req.getMethod()).thenReturn("GET");
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
 

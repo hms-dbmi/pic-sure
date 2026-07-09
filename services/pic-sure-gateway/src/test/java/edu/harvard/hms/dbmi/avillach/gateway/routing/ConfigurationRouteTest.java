@@ -24,11 +24,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * The explicit {@code /configuration/**} route forwards VERBATIM (no prefix strip) to operations-service. The auth/audit chain always
- * enforces, specifically proving the public config-GET bypass ({@code PsamaIntrospectionFilter#isPublicConfigurationRead}):
- * {@code GET /configuration/} and {@code GET /configuration/{id}/} must reach operations-service WITHOUT a Bearer token and WITHOUT ever
- * calling PSAMA — the introspection stub is wired to fail loudly (500) so any accidental introspection call surfaces as a test failure
- * rather than a silent pass.
+ * The single {@code /operations/**} route forwards VERBATIM (no prefix strip) to operations-service. The auth/audit chain always enforces,
+ * specifically proving the public config-GET bypass ({@code PsamaIntrospectionFilter#isPublicConfigurationRead}):
+ * {@code GET /operations/configuration/} and {@code GET /operations/configuration/{id}/} must reach operations-service WITHOUT a Bearer
+ * token and WITHOUT ever calling PSAMA — the introspection stub is wired to fail loudly (500) so any accidental introspection call surfaces
+ * as a test failure rather than a silent pass.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ConfigurationRouteTest {
@@ -56,9 +56,11 @@ class ConfigurationRouteTest {
     @BeforeEach
     void resetStubs() {
         operationsStub.resetAll();
-        operationsStub.stubFor(get(urlEqualTo("/configuration/")).willReturn(aResponse().withStatus(200).withBody("config-list-ok")));
         operationsStub
-            .stubFor(get(urlEqualTo("/configuration/abc-123/")).willReturn(aResponse().withStatus(200).withBody("config-read-ok")));
+            .stubFor(get(urlEqualTo("/operations/configuration/")).willReturn(aResponse().withStatus(200).withBody("config-list-ok")));
+        operationsStub.stubFor(
+            get(urlEqualTo("/operations/configuration/abc-123/")).willReturn(aResponse().withStatus(200).withBody("config-read-ok"))
+        );
 
         psamaStub.resetAll();
         // If the bypass ever regressed and introspection were called for these paths, fail loudly (500) instead of
@@ -71,22 +73,22 @@ class ConfigurationRouteTest {
 
     @Test
     void forwardsConfigurationRootGetWithoutBearerTokenAndSkipsIntrospection() {
-        ResponseEntity<String> response = rest.getForEntity("/configuration/", String.class);
+        ResponseEntity<String> response = rest.getForEntity("/operations/configuration/", String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("config-list-ok");
-        // No prefix strip: operations-service saw the exact inbound path, /configuration/.
-        operationsStub.verify(getRequestedFor(urlEqualTo("/configuration/")));
+        // No prefix strip: operations-service saw the exact inbound path, /operations/configuration/.
+        operationsStub.verify(getRequestedFor(urlEqualTo("/operations/configuration/")));
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
     }
 
     @Test
     void forwardsConfigurationIdReadGetWithoutBearerTokenAndSkipsIntrospection() {
-        ResponseEntity<String> response = rest.getForEntity("/configuration/abc-123/", String.class);
+        ResponseEntity<String> response = rest.getForEntity("/operations/configuration/abc-123/", String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("config-read-ok");
-        operationsStub.verify(getRequestedFor(urlEqualTo("/configuration/abc-123/")));
+        operationsStub.verify(getRequestedFor(urlEqualTo("/operations/configuration/abc-123/")));
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
     }
 }

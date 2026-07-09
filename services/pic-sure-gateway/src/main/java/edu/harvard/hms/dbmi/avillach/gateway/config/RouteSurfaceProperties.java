@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Binds {@code picsure.gateway.security.owned-prefixes}: the list of gateway-owned route surfaces (the routes in {@code application.yml}:
- * {@code /logging}, {@code /dictionary}, {@code /uploader}, {@code /visualization}, {@code /hpds}, {@code /configuration},
- * {@code /dataset}). These paths are served directly by their backends. Everything else is unowned -- unmatched, and so 404s.
+ * {@code /logging}, {@code /dictionary}, {@code /uploader}, {@code /visualization}, {@code /hpds}, {@code /operations}). These paths are
+ * served directly by their backends. Everything else is unowned -- unmatched, and so 404s.
  *
  * <p>Deliberately a small, separate {@code @ConfigurationProperties} record on the SAME prefix as {@link GatewaySecurityProperties} (Spring
  * binds several properties classes to overlapping prefixes as long as the component names they claim don't collide, and
@@ -20,7 +20,7 @@ public record RouteSurfaceProperties(List<String> ownedPrefixes) {
 
     /** Default gateway-owned prefixes — must stay in lock-step with the routes in {@code application.yml}. */
     public static final List<String> DEFAULT_OWNED_PREFIXES =
-        List.of("/logging", "/dictionary", "/uploader", "/visualization", "/hpds", "/configuration", "/dataset");
+        List.of("/logging", "/dictionary", "/uploader", "/visualization", "/hpds", "/operations");
 
     public RouteSurfaceProperties {
         ownedPrefixes = (ownedPrefixes == null || ownedPrefixes.isEmpty()) ? DEFAULT_OWNED_PREFIXES : List.copyOf(ownedPrefixes);

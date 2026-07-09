@@ -25,9 +25,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * The explicit {@code /dataset/**} route forwards VERBATIM (no prefix strip) to operations-service, the sole DB owner. Proves the
- * higher-priority route (order 100) matches; there is no catch-all fallback. {@code /dataset} is not allow-listed, so under the always-on
- * auth/audit chain the request needs a valid bearer plus an active PSAMA introspection stub.
+ * The single {@code /operations/**} route forwards VERBATIM (no prefix strip) to operations-service, the sole DB owner, for the
+ * {@code /operations/dataset/**} sub-path too. Proves the higher-priority route (order 100) matches; there is no catch-all fallback.
+ * {@code /operations} is not allow-listed, so under the always-on auth/audit chain the request needs a valid bearer plus an active PSAMA
+ * introspection stub.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DatasetRouteTest {
@@ -55,7 +56,8 @@ class DatasetRouteTest {
     @BeforeEach
     void resetStubs() {
         operationsStub.resetAll();
-        operationsStub.stubFor(get(urlEqualTo("/dataset/abc-123")).willReturn(aResponse().withStatus(200).withBody("dataset-ok")));
+        operationsStub
+            .stubFor(get(urlEqualTo("/operations/dataset/named/abc-123")).willReturn(aResponse().withStatus(200).withBody("dataset-ok")));
 
         psamaStub.resetAll();
         psamaStub.stubFor(
@@ -71,11 +73,12 @@ class DatasetRouteTest {
     void forwardsDatasetPathToOperationsServiceVerbatim() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer user-token");
-        ResponseEntity<String> response = rest.exchange("/dataset/abc-123", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        ResponseEntity<String> response =
+            rest.exchange("/operations/dataset/named/abc-123", HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("dataset-ok");
-        // No prefix strip: operations-service saw the exact inbound path, /dataset/abc-123.
-        operationsStub.verify(getRequestedFor(urlEqualTo("/dataset/abc-123")));
+        // No prefix strip: operations-service saw the exact inbound path, /operations/dataset/named/abc-123.
+        operationsStub.verify(getRequestedFor(urlEqualTo("/operations/dataset/named/abc-123")));
     }
 }

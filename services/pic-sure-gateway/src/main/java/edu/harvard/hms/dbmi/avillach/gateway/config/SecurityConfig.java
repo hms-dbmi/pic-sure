@@ -85,7 +85,7 @@ public class SecurityConfig {
 
     @Bean
     QueryAuthFetcher queryAuthFetcher(GatewaySecurityProperties props) {
-        // The dispatch endpoint (/internal/queries/{id}/dispatch) lives on operations-service, the
+        // The dispatch endpoint (/operations/internal/queries/{id}/dispatch) lives on operations-service, the
         // sole DB owner -- not the DB-free query-service.
         return new QueryAuthFetcher(
             timeoutBoundedRestClientBuilder().build(), props.operationsServiceUrl(), props.queryServiceInternalToken()

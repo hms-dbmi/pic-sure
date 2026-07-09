@@ -49,26 +49,22 @@ spring:
             # Query-service and operations-service ingress. Unlike the routes
             # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
             # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
-            # /configuration/** and /dataset/** are served by operations-service, the sole DB owner (also home to
+            # /operations/** is served by operations-service, the sole DB owner (also home to
             # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
-            # auth). /configuration/** carries a public-GET carve-out for the introspection filter itself (see
-            # PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
-            # /configuration/admin/**, and all of /dataset/**) is introspected as usual by the always-on auth chain.
+            # auth). /operations/configuration/** carries a public-GET carve-out for the introspection filter itself
+            # (see PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
+            # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
+            # always-on auth chain.
             - id: hpds
               uri: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
               order: 100
               predicates:
                 - Path=/hpds/**
-            - id: configuration
+            - id: operations
               uri: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
               order: 100
               predicates:
-                - Path=/configuration/**
-            - id: dataset
-              uri: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
-              order: 100
-              predicates:
-                - Path=/dataset/**
+                - Path=/operations/**
 
 management:
   endpoints:

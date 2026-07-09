@@ -32,7 +32,7 @@ class DownstreamHealthPropertiesAioBindingTest {
     void operationsServiceIsAggregatedWithActuatorHealthAndRequiresStatusUp() {
         MonitoredDownstream d = byName("operations-service").orElseThrow();
         assertThat(d.baseUrl()).isEqualTo("http://pic-sure-operations-service:8080");
-        assertThat(d.healthPath()).isEqualTo("/actuator/health");
+        assertThat(d.healthPath()).isEqualTo("/operations/actuator/health");
         assertThat(d.requireStatusUp()).isTrue();
     }
 

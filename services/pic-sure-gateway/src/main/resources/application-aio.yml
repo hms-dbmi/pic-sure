@@ -46,7 +46,7 @@ picsure:
           require-status-up: true
         - name: operations-service
           base-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
-          health-path: /actuator/health
+          health-path: /operations/actuator/health
           require-status-up: true
         - name: query-service
           base-url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
