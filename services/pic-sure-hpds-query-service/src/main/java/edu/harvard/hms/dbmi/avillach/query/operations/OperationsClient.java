@@ -34,8 +34,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  */
 public class OperationsClient {
 
-    private static final String QUERIES_PATH = "/internal/queries";
-    private static final String SITES_PATH = "/internal/sites";
+    private static final String QUERIES_PATH = "/operations/internal/queries";
+    private static final String SITES_PATH = "/operations/internal/sites";
 
     private final RestClient http;
 
@@ -43,7 +43,7 @@ public class OperationsClient {
         this.http = http;
     }
 
-    /** {@code POST /internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
+    /** {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
     public UUID save(SaveQueryRequest request) {
         SaveQueryResponse response =
             execute(() -> http.post().uri(QUERIES_PATH).body(request).retrieve().body(SaveQueryResponse.class), "save");
@@ -53,7 +53,7 @@ public class OperationsClient {
         return response.picsureId();
     }
 
-    /** {@code GET /internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
+    /** {@code GET /operations/internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
     public StoredQuery get(UUID picsureId) {
         try {
             return http.get().uri(QUERIES_PATH + "/{id}", picsureId).retrieve().body(StoredQuery.class);
@@ -66,7 +66,7 @@ public class OperationsClient {
         }
     }
 
-    /** {@code PATCH /internal/queries/{id}}; null fields on {@code request} mean "leave unchanged". */
+    /** {@code PATCH /operations/internal/queries/{id}}; null fields on {@code request} mean "leave unchanged". */
     public void update(UUID picsureId, UpdateQueryRequest request) {
         execute(() -> {
             http.patch().uri(QUERIES_PATH + "/{id}", picsureId).body(request).retrieve().toBodilessEntity();
@@ -74,7 +74,7 @@ public class OperationsClient {
         }, "update");
     }
 
-    /** {@code GET /internal/queries/by-common-area/{uuid}} -&gt; 200 {@link StoredQuery}. */
+    /** {@code GET /operations/internal/queries/by-common-area/{uuid}} -&gt; 200 {@link StoredQuery}. */
     public StoredQuery findByCommonAreaUUID(UUID commonAreaUUID) {
         return execute(
             () -> http.get().uri(QUERIES_PATH + "/by-common-area/{uuid}", commonAreaUUID).retrieve().body(StoredQuery.class),
@@ -83,10 +83,10 @@ public class OperationsClient {
     }
 
     /**
-     * {@code GET /internal/sites/by-domain/{domain}} -&gt; 200 a JSON array of site codes (empty array when no site is registered for that
-     * domain). Backs {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService}: since this module owns no database (not even for
-     * the small institutional/GIC site-of-origin reference table), the site lookup goes over HTTP to operations-service exactly like query
-     * persistence does, rather than reintroducing a local {@code SiteRepository}/JPA dependency.
+     * {@code GET /operations/internal/sites/by-domain/{domain}} -&gt; 200 a JSON array of site codes (empty array when no site is
+     * registered for that domain). Backs {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService}: since this module owns no
+     * database (not even for the small institutional/GIC site-of-origin reference table), the site lookup goes over HTTP to
+     * operations-service exactly like query persistence does, rather than reintroducing a local {@code SiteRepository}/JPA dependency.
      *
      * <p><b>Note:</b> this endpoint does not exist on pic-sure-operations-service yet (as of this module's Query-lifecycle task); it is a
      * documented follow-up for whoever builds operations-service's Site surface (mirroring its existing Configuration/NamedDataset/Query
@@ -122,7 +122,7 @@ public class OperationsClient {
         );
     }
 
-    /** Shape of the {@code POST /internal/queries} response body: {@code { "picsureId": "<uuid>" } }. */
+    /** Shape of the {@code POST /operations/internal/queries} response body: {@code { "picsureId": "<uuid>" } }. */
     private record SaveQueryResponse(UUID picsureId) {
     }
 }
