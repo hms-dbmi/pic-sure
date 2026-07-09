@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.data.entity;
+package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -8,6 +8,8 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -15,6 +17,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
@@ -26,7 +30,16 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
  * not read or write it (new rows simply leave it NULL until the column itself is dropped).
  */
 @Entity(name = "query")
-public class Query extends BaseEntity {
+public class Query {
+
+    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
+    // the built-in random UUID generator. This replaces the legacy javax
+    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
+    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    @Id
+    @GeneratedValue
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID uuid;
 
     private Date startTime;
 
@@ -49,6 +62,14 @@ public class Query extends BaseEntity {
     private byte[] metadata;
 
     private String version;
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
 
     public String getResourceResultId() {
         return resourceResultId;
@@ -132,5 +153,26 @@ public class Query extends BaseEntity {
 
     public void setMetadata(byte[] metadata) {
         this.metadata = metadata;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(uuid);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof Query other)) {
+            return false;
+        }
+        return this.uuid != null && this.uuid.equals(other.uuid);
+    }
+
+    @Override
+    public String toString() {
+        return this.uuid != null ? this.uuid.toString() : super.toString();
     }
 }

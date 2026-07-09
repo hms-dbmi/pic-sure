@@ -12,8 +12,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Site;
-import edu.harvard.hms.dbmi.avillach.data.repository.SiteRepository;
 
 /**
  * Full-context MockMvc test exercising the real {@code InternalTokenFilter} together with {@link InternalSiteController}, same posture as

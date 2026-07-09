@@ -1,18 +1,22 @@
-package edu.harvard.hms.dbmi.avillach.data.entity;
+package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-
-import edu.harvard.hms.dbmi.avillach.data.entity.convert.JsonConverter;
+import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 /**
  * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.NamedDataset} (javax/CDI). The JSON-P-based {@code toString()}
@@ -22,7 +26,17 @@ import edu.harvard.hms.dbmi.avillach.data.entity.convert.JsonConverter;
 @Schema(description = "A NamedDataset object containing query, name, user, and archived status.")
 @Entity(name = "named_dataset")
 @Table(uniqueConstraints = {@UniqueConstraint(name = "unique_queryId_user", columnNames = {"queryId", "\"user\""})})
-public class NamedDataset extends BaseEntity {
+public class NamedDataset {
+
+    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
+    // the built-in random UUID generator. This replaces the legacy javax
+    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
+    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    @Id
+    @GeneratedValue
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID uuid;
+
     @Schema(description = "The associated Query")
     @OneToOne
     @JoinColumn(name = "queryId")
@@ -47,6 +61,14 @@ public class NamedDataset extends BaseEntity {
     @Column(length = 8192)
     @Convert(converter = JsonConverter.class)
     private Map<String, Object> metadata;
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
 
     public NamedDataset setName(String name) {
         this.name = name;
@@ -91,5 +113,26 @@ public class NamedDataset extends BaseEntity {
     public NamedDataset setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
         return this;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(uuid);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof NamedDataset other)) {
+            return false;
+        }
+        return this.uuid != null && this.uuid.equals(other.uuid);
+    }
+
+    @Override
+    public String toString() {
+        return this.uuid != null ? this.uuid.toString() : super.toString();
     }
 }

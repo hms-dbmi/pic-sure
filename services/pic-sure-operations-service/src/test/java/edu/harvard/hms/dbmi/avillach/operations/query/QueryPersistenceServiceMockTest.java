@@ -11,8 +11,6 @@ import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
  * Covers {@link QueryPersistenceService#findByCommonAreaUUID(UUID)} against a mocked {@link QueryRepository}. The real

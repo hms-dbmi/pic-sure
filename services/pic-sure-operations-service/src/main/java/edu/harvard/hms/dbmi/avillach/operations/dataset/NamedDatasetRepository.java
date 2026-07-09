@@ -1,4 +1,4 @@
-package edu.harvard.hms.dbmi.avillach.data.repository;
+package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import java.util.List;
 import java.util.Optional;
@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.NamedDataset;
 
 /**
  * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.repository.NamedDatasetRepository} (CDI/{@code BaseRepository}), which had

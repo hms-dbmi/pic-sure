@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
 
 class ConfigurationMapperTest {
 

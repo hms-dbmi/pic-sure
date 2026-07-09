@@ -16,7 +16,6 @@ import org.springframework.context.annotation.Import;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
  * Boots a real (H2) JPA context so save/get/update/dispatch are proven against an actual repository, not a mock -- same posture as

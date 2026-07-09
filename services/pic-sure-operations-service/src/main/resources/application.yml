@@ -14,7 +14,7 @@ spring:
       ddl-auto: none
       naming:
         # CRITICAL / LOAD-BEARING: Spring Boot's default SpringPhysicalNamingStrategy snake_cases identifiers even when
-        # pic-sure-api-data's entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
+        # the JPA entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
         # "resourceResultId" -> "resource_result_id"). The real production schema is camelCase throughout, not snake_case.
         # Without this override, Hibernate silently generates SQL that references columns which do not exist -- every query
         # against the real database breaks. Hibernate's own PhysicalNamingStrategyStandardImpl passes names through

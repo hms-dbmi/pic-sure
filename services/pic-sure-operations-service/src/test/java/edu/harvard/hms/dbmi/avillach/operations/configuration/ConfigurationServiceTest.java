@@ -17,8 +17,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 
 /**
  * Note: the plan brief this task was ported from assumed a {@code PicsureNotFoundException} subclass and an {@code ex.status()}-style

@@ -1,12 +1,17 @@
-package edu.harvard.hms.dbmi.avillach.data.entity;
+package edu.harvard.hms.dbmi.avillach.operations.configuration;
+
+import java.util.Objects;
+import java.util.UUID;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
-import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.entity.Configuration} (javax/CDI). The
@@ -22,7 +27,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
     uniqueConstraints = {@UniqueConstraint(name = "unique_uuid", columnNames = {"uuid"}),
         @UniqueConstraint(name = "unique_name_kind", columnNames = {"name", "kind"})}
 )
-public class Configuration extends BaseEntity {
+public class Configuration {
+
+    // Hibernate 6+: a UUID-typed id with a bare @GeneratedValue (AUTO strategy) is generated via
+    // the built-in random UUID generator. This replaces the legacy javax
+    // `@GenericGenerator(strategy = "org.hibernate.id.UUIDGenerator")`, which Hibernate 6 removed;
+    // both produce a random UUID, so the persisted values and BINARY(16) column are unaffected.
+    @Id
+    @GeneratedValue
+    @Column(columnDefinition = "BINARY(16)")
+    private UUID uuid;
+
     @Schema(description = "The configuration name")
     @Column(length = 255)
     private String name;
@@ -44,6 +59,14 @@ public class Configuration extends BaseEntity {
 
     @Schema(description = "This configuration is flagged for deletion")
     private Boolean markForDelete = false;
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
 
     public Configuration setName(String name) {
         this.name = name;
@@ -88,5 +111,26 @@ public class Configuration extends BaseEntity {
 
     public Boolean getMarkForDelete() {
         return markForDelete;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(uuid);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (!(obj instanceof Configuration other)) {
+            return false;
+        }
+        return this.uuid != null && this.uuid.equals(other.uuid);
+    }
+
+    @Override
+    public String toString() {
+        return this.uuid != null ? this.uuid.toString() : super.toString();
     }
 }

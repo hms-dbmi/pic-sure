@@ -19,8 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
  * Full-context MockMvc test exercising the real {@code InternalTokenFilter} (registered by {@code InternalTokenFilterConfig} as a

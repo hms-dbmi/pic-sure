@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 
 /**
  * Ports the legacy WildFly {@code ConfigurationService}. Preserved behaviors: (1) UUID-or-name lookup ({@link #getByIdentifier(String)}) --

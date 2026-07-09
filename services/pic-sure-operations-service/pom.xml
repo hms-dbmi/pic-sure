@@ -46,11 +46,6 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- In-reactor: jakarta entities/repositories (Query/Configuration/NamedDataset/Site). -->
-        <dependency>
-            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-api-data</artifactId>
-        </dependency>
         <!-- GatewayUser/GatewayUserResolver, PicsureException, GatewayExceptionAdvice, RequestIdFilter. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>

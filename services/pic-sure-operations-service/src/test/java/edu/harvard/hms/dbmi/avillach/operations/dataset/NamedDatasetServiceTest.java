@@ -16,10 +16,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.NamedDataset;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.NamedDatasetRepository;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
  * Note: a dedicated {@code PicsureNotFoundException} subclass might be expected here, but none exists in the actual

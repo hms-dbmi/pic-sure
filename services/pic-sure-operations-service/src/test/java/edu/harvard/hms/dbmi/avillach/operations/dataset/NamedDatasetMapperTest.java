@@ -7,8 +7,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.NamedDataset;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 class NamedDatasetMapperTest {
 

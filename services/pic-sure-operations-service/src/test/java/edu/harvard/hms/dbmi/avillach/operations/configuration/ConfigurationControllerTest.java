@@ -19,8 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 
 /**
  * Full-context MockMvc test: exercises the real {@link edu.harvard.hms.dbmi.avillach.operations.config.WebSecurityConfig} filter chain (not

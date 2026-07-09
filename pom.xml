@@ -11,7 +11,6 @@
         <module>platform</module>
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
-        <module>libs/pic-sure-api-data</module>
         <module>libs/pic-sure-spring-commons</module>
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
@@ -22,6 +21,7 @@
     <properties>
         <revision>3.0.0</revision>
         <java.version>25</java.version>
+<!--        TODO: Review why the standalone BOM cannot inherit these? -->
         <!-- Duplicated in platform/pom.xml (the standalone BOM cannot inherit these).
              Bump both files in lockstep. -->
         <spring-boot.version>3.5.9</spring-boot.version>
@@ -90,6 +90,7 @@
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
+<!--                    TODO: Should the modules inherit spring-boot-starter-parent? Why don't they? -->
                     <!-- Pinned here because modules do not inherit spring-boot-starter-parent. -->
                     <version>${spring-boot.version}</version>
                 </plugin>

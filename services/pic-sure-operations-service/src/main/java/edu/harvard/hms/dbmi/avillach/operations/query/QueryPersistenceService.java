@@ -16,8 +16,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
  * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}).

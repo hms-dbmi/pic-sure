@@ -9,10 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.NamedDataset;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.NamedDatasetRepository;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
 
 /**
  * Ports the legacy WildFly {@code NamedDatasetService}. User-scoping is pushed into SQL via {@code NamedDatasetRepository}'s

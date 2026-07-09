@@ -1,11 +1,9 @@
-package edu.harvard.hms.dbmi.avillach.data.repository;
+package edu.harvard.hms.dbmi.avillach.operations.query;
 
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-
-import edu.harvard.hms.dbmi.avillach.data.entity.Site;
 
 /**
  * Ported from the legacy {@code edu.harvard.dbmi.avillach.data.repository.SiteRepository} (CDI/{@code BaseRepository}) to a Spring Data JPA

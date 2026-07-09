@@ -9,18 +9,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
-import edu.harvard.hms.dbmi.avillach.data.repository.NamedDatasetRepository;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
-import edu.harvard.hms.dbmi.avillach.data.repository.SiteRepository;
+import edu.harvard.hms.dbmi.avillach.operations.configuration.Configuration;
+import edu.harvard.hms.dbmi.avillach.operations.configuration.ConfigurationRepository;
+import edu.harvard.hms.dbmi.avillach.operations.dataset.NamedDatasetRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
+import edu.harvard.hms.dbmi.avillach.operations.query.SiteRepository;
 
 /**
  * Smoke test: boots the full Spring context against H2 (see src/test/resources/application.yml) and proves that (1) the application context
  * loads at all -- including the security configuration (WebSecurityConfig, GatewayPrivilegesFilter) and the web MVC configuration
- * (GatewayUserArgumentResolver) -- and (2) the jakarta pic-sure-api-data repositories, which live outside this application's base package,
- * are correctly wired via the
- * @EntityScan/@EnableJpaRepositories declarations on {@link OperationsApplication}.
+ * (GatewayUserArgumentResolver) -- and (2) the JPA entities and repositories, co-located under this application's base package, are
+ * correctly detected and wired.
  */
 @SpringBootTest
 class OperationsApplicationTest {
