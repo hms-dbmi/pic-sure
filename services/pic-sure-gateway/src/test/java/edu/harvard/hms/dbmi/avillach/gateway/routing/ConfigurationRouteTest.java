@@ -60,6 +60,9 @@ class ConfigurationRouteTest {
         operationsStub
             .stubFor(get(urlEqualTo("/operations/configuration/")).willReturn(aResponse().withStatus(200).withBody("config-list-ok")));
         operationsStub.stubFor(
+            get(urlEqualTo("/operations/configuration")).willReturn(aResponse().withStatus(200).withBody("config-list-slashless-ok"))
+        );
+        operationsStub.stubFor(
             get(urlEqualTo("/operations/configuration/abc-123/")).willReturn(aResponse().withStatus(200).withBody("config-read-ok"))
         );
 
@@ -94,6 +97,18 @@ class ConfigurationRouteTest {
         assertThat(response.getBody()).isEqualTo("config-list-ok");
         // No prefix strip: operations-service saw the exact inbound path, /operations/configuration/.
         operationsStub.verify(getRequestedFor(urlEqualTo("/operations/configuration/")));
+        psamaStub.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void forwardsSlashlessConfigurationRootGetWithoutBearerTokenAndSkipsIntrospection() {
+        // The slash-less list is the form the operations-service controller actually serves; the bypass
+        // must not demand a Bearer for it either.
+        ResponseEntity<String> response = rest.getForEntity(url("/operations/configuration"), String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isEqualTo("config-list-slashless-ok");
+        operationsStub.verify(getRequestedFor(urlEqualTo("/operations/configuration")));
         psamaStub.verify(0, anyRequestedFor(anyUrl()));
     }
 

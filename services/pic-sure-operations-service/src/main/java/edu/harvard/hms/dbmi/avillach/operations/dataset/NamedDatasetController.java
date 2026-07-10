@@ -19,11 +19,12 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser;
 import jakarta.validation.Valid;
 
 /**
- * Ports the legacy WildFly {@code NamedDatasetRS}, trailing slashes preserved: {@code GET/POST /dataset/named/} and {@code GET/PUT/DELETE
- * /dataset/named/{id}/}. Authorization is enforced in two layers: {@code WebSecurityConfig} requires an authenticated caller for all of
- * {@code /dataset/**} (the gateway must have supplied {@code X-User-Id}); this controller then email-scopes every operation via
- * {@link NamedDatasetService}, whose repository lookups are keyed on the caller's email ({@code GatewayUser#getEmail()}), never
- * {@code userId}.
+ * Ports the legacy WildFly {@code NamedDatasetRS}: {@code GET/POST /dataset/named} and {@code GET/PUT/DELETE /dataset/named/{id}}. Mappings
+ * are slash-less on purpose: the frontend calls the slash-less form, and Spring 6 -- unlike the legacy JAX-RS runtime, which matched both
+ * -- serves EXACTLY the declared form (a trailing-slash mapping 404s the slash-less request). Authorization is enforced in two layers:
+ * {@code WebSecurityConfig} requires an authenticated caller for all of {@code /dataset/**} (the gateway must have supplied
+ * {@code X-User-Id}); this controller then email-scopes every operation via {@link NamedDatasetService}, whose repository lookups are keyed
+ * on the caller's email ({@code GatewayUser#getEmail()}), never {@code userId}.
  *
  * <p>DELETE is net-new relative to the legacy {@code NamedDatasetRS} (which had no delete endpoint) -- added here per the migration plan.
  */
@@ -37,28 +38,28 @@ public class NamedDatasetController {
         this.service = service;
     }
 
-    @GetMapping("/")
+    @GetMapping("")
     public List<NamedDatasetDto> list(GatewayUser user) {
         return service.listForUser(requireEmail(user));
     }
 
-    @PostMapping("/")
+    @PostMapping("")
     public ResponseEntity<NamedDatasetDto> create(GatewayUser user, @Valid @RequestBody NamedDatasetRequestDto req) {
         NamedDatasetDto created = service.create(requireEmail(user), req);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    @GetMapping("/{id}/")
+    @GetMapping("/{id}")
     public NamedDatasetDto get(GatewayUser user, @PathVariable("id") UUID id) {
         return service.getForUser(requireEmail(user), id);
     }
 
-    @PutMapping("/{id}/")
+    @PutMapping("/{id}")
     public NamedDatasetDto update(GatewayUser user, @PathVariable("id") UUID id, @Valid @RequestBody NamedDatasetRequestDto req) {
         return service.update(requireEmail(user), id, req);
     }
 
-    @DeleteMapping("/{id}/")
+    @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(GatewayUser user, @PathVariable("id") UUID id) {
         service.delete(requireEmail(user), id);
         return ResponseEntity.noContent().build();

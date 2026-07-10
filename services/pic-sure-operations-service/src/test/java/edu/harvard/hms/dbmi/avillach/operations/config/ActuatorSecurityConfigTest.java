@@ -80,7 +80,7 @@ class ActuatorSecurityConfigTest {
     /** Coexistence: the main chain's SUPER_ADMIN gate on /configuration/admin/** must be unaffected by the actuator chain. */
     @Test
     void adminEndpointStillRequiresSuperAdminAlongsideActuatorChain() throws Exception {
-        mockMvc.perform(post("/configuration/admin/").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post("/configuration/admin").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isForbidden());
     }
 }

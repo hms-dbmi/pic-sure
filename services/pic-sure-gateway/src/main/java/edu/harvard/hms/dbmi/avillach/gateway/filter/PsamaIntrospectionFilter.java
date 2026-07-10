@@ -84,16 +84,17 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Config-GET bypass carried over from the operations-service split: {@code GET /operations/configuration/} (the list) and {@code GET
+     * Config-GET bypass carried over from the operations-service split: {@code GET /operations/configuration(/)?} (the list) and {@code GET
      * /operations/configuration/{id}(/)?} (a single read) are public reads on operations-service itself, so the gateway must not demand a
-     * Bearer token for them either. Method-AND-path precise: any other method, and all of {@code /operations/configuration/admin/**}
-     * (including bare {@code /operations/configuration/admin}), stay introspected.
+     * Bearer token for them either. Both slash forms are accepted even though the controller serves only the slash-less one -- the bypass
+     * errs open on shape so the backend, not the auth layer, owns the 404. Method-AND-path precise: any other method, and all of
+     * {@code /operations/configuration/admin/**} (including bare {@code /operations/configuration/admin}), stay introspected.
      */
     private boolean isPublicConfigurationRead(String method, String path) {
         if (!"GET".equals(method) || path == null) {
             return false;
         }
-        if (path.equals("/operations/configuration/")) {
+        if (path.equals("/operations/configuration") || path.equals("/operations/configuration/")) {
             return true;
         }
         Matcher m = CONFIGURATION_ID_READ.matcher(path);

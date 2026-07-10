@@ -47,7 +47,7 @@ class NamedDatasetControllerTest {
 
     @Test
     void listWithoutIdentityIsForbidden() throws Exception {
-        mockMvc.perform(get("/dataset/named/")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/dataset/named")).andExpect(status().isForbidden());
     }
 
     @Test
@@ -58,7 +58,7 @@ class NamedDatasetControllerTest {
         namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bob-1").setQuery(bobQuery));
 
         mockMvc.perform(
-            get("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            get("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].name").value("alice-1"));
     }
@@ -69,7 +69,7 @@ class NamedDatasetControllerTest {
 
         mockMvc
             .perform(
-                post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+                post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                     .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"my dataset\"}")
             ).andExpect(status().isCreated()).andExpect(jsonPath("$.name").value("my dataset")).andExpect(jsonPath("$.uuid").exists())
@@ -79,7 +79,7 @@ class NamedDatasetControllerTest {
     @Test
     void createWithUnknownQueryReturns404() throws Exception {
         mockMvc.perform(
-            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + UUID.randomUUID() + "\",\"name\":\"my dataset\"}")
         ).andExpect(status().isNotFound());
@@ -90,13 +90,13 @@ class NamedDatasetControllerTest {
         Query query = queryRepo.save(new Query());
 
         mockMvc.perform(
-            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"first\"}")
         ).andExpect(status().isCreated());
 
         mockMvc.perform(
-            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"second\"}")
         ).andExpect(status().isConflict());
@@ -107,7 +107,7 @@ class NamedDatasetControllerTest {
         Query query = queryRepo.save(new Query());
 
         mockMvc.perform(
-            post("/dataset/named/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            post("/dataset/named").header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\"}")
         ).andExpect(status().isBadRequest());
@@ -119,7 +119,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
-            get("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("mine"));
     }
@@ -130,7 +130,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
-            get("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isNotFound());
     }
@@ -141,7 +141,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("old").setQuery(query));
 
         mockMvc.perform(
-            put("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            put("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"new-name\",\"archived\":true}")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("new-name")).andExpect(jsonPath("$.archived").value(true));
@@ -153,7 +153,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
-            put("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            put("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"queryId\":\"" + query.getUuid() + "\",\"name\":\"hijacked\"}")
         ).andExpect(status().isNotFound());
@@ -165,7 +165,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("mine").setQuery(query));
 
         mockMvc.perform(
-            delete("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            delete("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isNoContent());
     }
@@ -176,7 +176,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(BOB).setName("bobs").setQuery(query));
 
         mockMvc.perform(
-            delete("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            delete("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isNotFound());
     }
@@ -189,7 +189,7 @@ class NamedDatasetControllerTest {
         NamedDataset saved = namedDatasetRepo.save(new NamedDataset().setUser(ALICE).setName("with-query").setQuery(query));
 
         mockMvc.perform(
-            get("/dataset/named/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
+            get("/dataset/named/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|alice")
                 .header(GatewayUserResolver.HEADER_USER_EMAIL, ALICE)
         ).andExpect(status().isOk()).andExpect(jsonPath("$.queryId").value(query.getUuid().toString()));
 

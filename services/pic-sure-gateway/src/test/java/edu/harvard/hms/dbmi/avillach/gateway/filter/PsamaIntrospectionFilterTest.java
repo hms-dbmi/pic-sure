@@ -262,6 +262,16 @@ class PsamaIntrospectionFilterTest {
     }
 
     @Test
+    void publicConfigurationRootGetWithoutTrailingSlashIsNotIntrospected() throws Exception {
+        // The slash-less form is what the controller actually serves (Spring 6 has no lenient slash matching).
+        PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getRequestURI()).thenReturn("/operations/configuration");
+        when(req.getMethod()).thenReturn("GET");
+        assertThat(f.shouldNotFilter(req)).isTrue();
+    }
+
+    @Test
     void publicConfigurationIdReadGetIsNotIntrospected() throws Exception {
         PsamaIntrospectionFilter f = filter(mock(PsamaClient.class), new AuditContext(), mock(QueryAuthFetcher.class));
         HttpServletRequest req = mock(HttpServletRequest.class);

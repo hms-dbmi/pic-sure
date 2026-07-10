@@ -18,7 +18,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import jakarta.validation.Valid;
 
 /**
- * Ports the legacy WildFly {@code ConfigurationRS}, trailing slashes preserved. Authorization is enforced entirely by
+ * Ports the legacy WildFly {@code ConfigurationRS}. Mappings are slash-less on purpose: Spring 6 -- unlike the legacy JAX-RS runtime, which
+ * matched both forms -- serves EXACTLY the declared form, and PIC-SURE clients call slash-less URLs. Authorization is enforced entirely by
  * {@link edu.harvard.hms.dbmi.avillach.operations.config.WebSecurityConfig} ({@code /configuration/admin/**} requires {@code SUPER_ADMIN};
  * the two plain {@code GET}s below are public) -- this controller carries no auth code of its own, and its mappings must match those
  * security-layer paths exactly.
@@ -37,17 +38,17 @@ public class ConfigurationController {
         this.service = service;
     }
 
-    @GetMapping("/")
+    @GetMapping("")
     public List<ConfigurationDto> getConfigurations(@RequestParam(name = "kind", required = false) String kind) {
         return service.getConfigurations(kind);
     }
 
-    @GetMapping("/{identifier}/")
+    @GetMapping("/{identifier}")
     public ConfigurationDto getConfigurationById(@PathVariable("identifier") String identifier) {
         return service.getByIdentifier(identifier);
     }
 
-    @PostMapping("/admin/")
+    @PostMapping("/admin")
     public ConfigurationDto addConfiguration(@Valid @RequestBody ConfigurationRequestDto request) {
         if (request.name() == null || request.kind() == null || request.value() == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Name, Kind, and Value properties must not be null");
@@ -55,7 +56,7 @@ public class ConfigurationController {
         return service.create(request);
     }
 
-    @PatchMapping("/admin/{id}/")
+    @PatchMapping("/admin/{id}")
     public ConfigurationDto updateConfiguration(@PathVariable("id") UUID id, @Valid @RequestBody ConfigurationRequestDto request) {
         if (request.uuid() != null && !id.equals(request.uuid())) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "UUID cannot be changed");
@@ -63,7 +64,7 @@ public class ConfigurationController {
         return service.update(id, request);
     }
 
-    @DeleteMapping("/admin/{id}/")
+    @DeleteMapping("/admin/{id}")
     public ConfigurationDto deleteConfiguration(@PathVariable("id") UUID id) {
         return service.delete(id);
     }
