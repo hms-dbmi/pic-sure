@@ -22,7 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * removed, so {@code /hpds/auth/query[/sync]} no longer exists at all. {@code /hpds/open/query} and {@code /hpds/open/query/sync} are
  * served ONLY by this controller's literal mappings (consent-scoped / obfuscated). The remaining open-path read endpoints
  * ({@code /hpds/open/v3/query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) flow through
- * {@link AggregateV3Controller} / the v3 query ingress instead.
+ * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} (the generic v3 ingress) instead.
  *
  * <p>Two open submissions are intercepted: {@code query/sync} (the only endpoint the WAR ever obfuscated -- see {@link AggregateService}'s
  * Javadoc) and {@code query} (the async submit, which the WAR consent-scoped via {@code changeQueryToOpenCrossCount} for CROSS_COUNT before
