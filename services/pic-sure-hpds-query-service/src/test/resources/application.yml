@@ -1,0 +1,11 @@
+hpds:
+  auth-url: http://localhost:1/PIC-SURE
+  auth-token: test-auth-token
+  open-url: http://localhost:1/PIC-SURE
+  open-token: test-open-token
+
+picsure:
+  query:
+    operations:
+      base-url: http://localhost:1
+      internal-token: test
