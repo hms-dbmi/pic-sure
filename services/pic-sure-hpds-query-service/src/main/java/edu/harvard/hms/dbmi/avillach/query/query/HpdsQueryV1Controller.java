@@ -77,10 +77,9 @@ public class HpdsQueryV1Controller {
     }
 
     /**
-     * Federated/GIC queries were removed (see docs/superpowers/specs/2026-07-09-federated-gic-removal-design.md). The parameter stays bound
-     * on purpose: {@code QueryRequest}'s {@code defaultImpl} silently reinterprets a {@code "@type":"FederatedQueryRequest"} body as a
-     * {@code GeneralQueryRequest}, so this flag is the only surviving signal of federated intent. Accepting it would return 200 for a query
-     * whose federation had been quietly discarded.
+     * Federated/GIC queries were removed. The parameter stays bound on purpose: {@code QueryRequest}'s {@code defaultImpl} silently
+     * reinterprets a {@code "@type":"FederatedQueryRequest"} body as a {@code GeneralQueryRequest}, so this flag is the only surviving
+     * signal of federated intent. Accepting it would return 200 for a query whose federation had been quietly discarded.
      */
     static void rejectInstitutionalQuery(Boolean isInstitute) {
         if (Boolean.TRUE.equals(isInstitute)) {

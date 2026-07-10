@@ -251,9 +251,12 @@ class QueryServiceTest {
     }
 
     /**
-     * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it. Two reasons
-     * it does, both worth pinning: queryMetadata uses MAPPER.readValue(..., Object.class), which never binds to a Java type and so cannot
-     * fail on an unknown "@type"; and QueryRequest's defaultImpl would absorb it anyway. See the federated-gic-removal spec, section 5.1.
+     * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it: it parses the
+     * stored blob into a plain {@code Map} via {@code MAPPER.readValue(..., Object.class)}, so {@code "@type"} is just another map key and
+     * any value — known, unknown, or garbage — parses fine. That's why this test would still pass if the blob's {@code "@type"} were
+     * replaced with a nonsense value: it pins the parse path, not the subtype registry. The subtype-registry fallback (via
+     * {@code QueryRequest}'s {@code defaultImpl}) is separately pinned by
+     * {@code QueryRequestTest.shouldDeserializeRemovedFederatedTypeAsGeneralQueryRequest} in pic-sure-api-model.
      */
     @Test
     @SuppressWarnings("unchecked")

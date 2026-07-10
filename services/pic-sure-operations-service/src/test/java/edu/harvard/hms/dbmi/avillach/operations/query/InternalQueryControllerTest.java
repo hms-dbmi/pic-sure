@@ -141,8 +141,8 @@ class InternalQueryControllerTest {
     }
 
     // --- the federated/GIC surface is gone; these endpoints must stay gone ---
-    // See docs/superpowers/specs/2026-07-09-federated-gic-removal-design.md. A 404 here is the contract:
-    // it guards against someone reintroducing the routes while wiring something unrelated.
+    // A 404 here is the contract: it guards against someone reintroducing the routes while wiring something
+    // unrelated.
 
     @Test
     void byCommonAreaIsGone() throws Exception {
