@@ -96,12 +96,12 @@ public class QueryService {
         return results;
     }
 
-    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, boolean v3) {
+    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-        HpdsTarget target = selector.select(backend, v3);
-        String version = v3 ? CURRENT_VERSION : null;
+        HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
+        String version = CURRENT_VERSION;
 
         // persist FIRST (parity: sync persists then calls HPDS)
         UUID picsureId = operationsClient.save(new SaveQueryRequest(serializeQuery(req), null, null, version, null));

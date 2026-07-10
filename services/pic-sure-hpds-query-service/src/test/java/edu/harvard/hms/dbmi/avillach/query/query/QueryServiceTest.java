@@ -126,7 +126,7 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), null));
 
-        var resp = service.querySync("auth", req(), "UI", false);
+        var resp = service.querySync("auth", req(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
         // resourceResultId persisted = the picsureId when no header (maintain WAR behavior)
@@ -141,7 +141,7 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), "hpds-meta-id"));
 
-        service.querySync("auth", req(), "UI", false);
+        service.querySync("auth", req(), "UI");
 
         verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
     }

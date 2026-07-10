@@ -44,8 +44,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
  *
  * <p>Asserts: (a) {@code POST /hpds/open/query} for a CROSS_COUNT submission is rewritten (force CROSS_COUNT + inject the study-consents
  * allow-list) and the REWRITTEN query is what gets persisted AND dispatched -- so any later status/result read served off the stored query
- * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/query} is UNTOUCHED (no rewrite, no consent lookup); (c) a
- * WAR-rejected shape (missing {@code expectedResultType}) is still a 400 before any backend/persistence call.
+ * is already consent-scoped; (b) the generic authorized path {@code /hpds/auth/v3/query} is UNTOUCHED (no rewrite, no consent lookup); (c)
+ * a WAR-rejected shape (missing {@code expectedResultType}) is still a 400 before any backend/persistence call.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -133,12 +133,12 @@ class AggregateAsyncOpenQueryTest {
     @Test
     void authAsyncQueryIsNotRewritten() throws Exception {
         hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/query")).willReturn(okJson("{\"resourceResultId\":\"rr-auth\",\"status\":\"PENDING\"}"))
+            WireMock.post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(okJson("{\"resourceResultId\":\"rr-auth\",\"status\":\"PENDING\"}"))
         );
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
         mockMvc.perform(
-            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+            post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}")
         ).andExpect(status().isOk());
 
@@ -148,7 +148,7 @@ class AggregateAsyncOpenQueryTest {
         );
         hpds.verify(0, postRequestedFor(urlEqualTo("/search")));
         hpds.verify(
-            postRequestedFor(urlEqualTo("/PIC-SURE/query"))
+            postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
                 .withRequestBody(matchingJsonPath("$.query.expectedResultType", WireMock.equalTo("DATAFRAME")))
         );
     }

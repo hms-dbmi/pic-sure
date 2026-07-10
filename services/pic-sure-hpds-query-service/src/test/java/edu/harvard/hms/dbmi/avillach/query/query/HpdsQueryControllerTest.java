@@ -6,14 +6,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,8 +38,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 
 /**
- * Full-context MockMvc coverage of the {@code /hpds/{backend}[/v3]/query/**} ingress: {@link HpdsQueryV1Controller} and
- * {@link HpdsQueryV3Controller} against a real {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector}/
+ * Full-context MockMvc coverage of the {@code /hpds/{backend}/v3/query/**} ingress: {@link HpdsQueryV3Controller} (the sole query lifecycle
+ * ingress -- the legacy v1 ingress was removed) against a real {@link edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector}/
  * {@link edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient} pair, WireMock standing in for HPDS, and a Mockito
  * {@link OperationsClient} standing in for pic-sure-operations-service (this module is DB-free -- there is no embedded DB to run against).
  * The real {@code WebSecurityConfig} filter chain is exercised too (no mocked security), so the auth-required assertion is a genuine
@@ -84,24 +81,7 @@ class HpdsQueryControllerTest {
         hpds.resetAll();
     }
 
-    // --- create: v1 (no version) vs v3 (stamps version "3", hits the /v3 HPDS base) ---
-
-    @Test
-    void v1QueryCreatesWithNoVersion() throws Exception {
-        UUID picsureId = UUID.randomUUID();
-        hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/query")).willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"PENDING\"}"))
-        );
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        mockMvc.perform(
-            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk()).andExpect(jsonPath("$.resourceResultId").value("rr-1"));
-
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.version() == null));
-        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query")));
-    }
+    // --- create: v3 stamps version "3" and hits the /v3 HPDS base ---
 
     @Test
     void v3QueryCreatesWithVersion3AndHitsV3Base() throws Exception {
@@ -120,42 +100,7 @@ class HpdsQueryControllerTest {
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
     }
 
-    // --- read ops dispatch on the STORED version, regardless of which ingress path (v1 or v3) was used ---
-
-    @Test
-    void resultDispatchesOnStoredVersionEvenViaV1Path() throws Exception {
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-9", "PENDING", "3", null); // v3-stored, requested via the v1 path
-        when(operationsClient.get(id)).thenReturn(stored);
-        hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-9/result"))
-                .willReturn(aResponse().withStatus(200).withBody(new byte[] {1, 2, 3}))
-        );
-
-        mockMvc.perform(
-            post("/hpds/auth/query/{id}/result", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{}")
-        ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM));
-
-        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-9/result"))); // NOT the v1 base
-    }
-
-    @Test
-    void signedUrlDispatchesOnStoredVersionEvenViaV1Path() throws Exception { // THE decision-9 bug fix, asserted at controller level
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-9", "PENDING", "3", null); // v3-stored, requested via the v1 path
-        when(operationsClient.get(id)).thenReturn(stored);
-        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query/rr-9/signed-url")).willReturn(okJson("{\"url\":\"https://s3/x\"}")));
-
-        mockMvc
-            .perform(
-                post("/hpds/auth/query/{id}/signed-url", id).header(GatewayUserResolver.HEADER_USER_ID, USER)
-                    .contentType(MediaType.APPLICATION_JSON).content("{}")
-            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
-            .andExpect(content().string(containsString("https://s3/x")));
-
-        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/rr-9/signed-url"))); // NOT the v1 base
-    }
+    // --- read ops dispatch on the STORED version, never the ingress path's version ---
 
     @Test
     void resultViaV3PathAlsoDispatchesOnStoredVersionNotIngressVersion() throws Exception {
@@ -178,10 +123,10 @@ class HpdsQueryControllerTest {
 
     @Test
     void hpds500SurfacesAs502() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(500)));
+        hpds.stubFor(WireMock.post(urlEqualTo("/PIC-SURE/v3/query")).willReturn(aResponse().withStatus(500)));
 
         mockMvc.perform(
-            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+            post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"query\":\"q\"}")
         ).andExpect(status().isBadGateway()).andExpect(jsonPath("$.errorType").value("upstream_unavailable"));
     }
@@ -192,15 +137,6 @@ class HpdsQueryControllerTest {
     // reinterprets a {"@type":"FederatedQueryRequest"} body as a GeneralQueryRequest, so isInstitute
     // is the ONLY remaining signal that a caller intended a federated submission. Without this guard
     // such a caller gets a 200 for a query stripped of its federation. Do not delete as dead code.
-
-    @Test
-    void isInstituteIsGoneOnV1Controller() throws Exception {
-        mockMvc.perform(
-            post("/hpds/auth/query").param("isInstitute", "true").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .header(GatewayUserResolver.HEADER_USER_EMAIL, "alice@harvard.edu").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"@type\":\"FederatedQueryRequest\",\"query\":\"q\"}")
-        ).andExpect(status().isGone()).andExpect(jsonPath("$.errorType").value("gone"));
-    }
 
     @Test
     void isInstituteIsGoneOnV3Controller() throws Exception {
@@ -215,34 +151,23 @@ class HpdsQueryControllerTest {
 
     @Test
     void queryWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/query").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
+        mockMvc.perform(post("/hpds/auth/v3/query").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 
     @Test
     void resultWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(post("/hpds/auth/query/{id}/result", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post("/hpds/auth/v3/query/{id}/result", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 
-    // --- sync ---
+    // --- the legacy v1 ingress routes were removed ---
 
     @Test
-    void v1QuerySyncReturnsJsonWithMetadataHeader() throws Exception {
-        UUID picsureId = UUID.randomUUID();
-        when(operationsClient.save(any())).thenReturn(picsureId);
-        hpds.stubFor(
-            WireMock.post(urlEqualTo("/PIC-SURE/query/sync"))
-                .willReturn(aResponse().withStatus(200).withHeader("queryMetadata", "rr-sync").withBody("payload"))
-        );
-
-        mockMvc
-            .perform(
-                post("/hpds/auth/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"query\":\"q\"}")
-            ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON))
-            .andExpect(content().bytes("payload".getBytes()));
-
-        verify(operationsClient).update(eq(picsureId), argThat(u -> "rr-sync".equals(u.resourceResultId())));
+    void legacyV1QueryRouteIsGone() throws Exception {
+        mockMvc.perform(
+            post("/hpds/auth/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"q\"}")
+        ).andExpect(status().isNotFound());
     }
 }

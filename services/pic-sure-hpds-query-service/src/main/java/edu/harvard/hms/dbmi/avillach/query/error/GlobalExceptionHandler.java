@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -40,6 +41,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HpdsCommunicationException.class)
     public ResponseEntity<Map<String, Object>> hpdsUnavailable(HpdsCommunicationException e) {
         return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
+    }
+
+    /**
+     * Route absence must surface as an honest 404, not fall into the {@link #unknown} 500 catch-all. This matters since the legacy v1 query
+     * ingress ({@code /hpds/{backend}/query/**}) was removed: callers still submitting to those routes must see "gone", not "server error".
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> noRoute(NoResourceFoundException e) {
+        return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
     }
 
     @ExceptionHandler(Exception.class)

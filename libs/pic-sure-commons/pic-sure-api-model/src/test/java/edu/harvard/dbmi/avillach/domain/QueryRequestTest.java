@@ -36,7 +36,7 @@ public class QueryRequestTest {
     }
 
     /**
-     * Pins the fallback that makes HpdsQueryV1Controller#rejectInstitutionalQuery necessary. FederatedQueryRequest was removed, but
+     * Pins the fallback that makes HpdsQueryV3Controller#rejectInstitutionalQuery necessary. FederatedQueryRequest was removed, but
      * @JsonTypeInfo(defaultImpl = GeneralQueryRequest.class) resolves an UNKNOWN type id to the default impl before FAIL_ON_INVALID_SUBTYPE
      *                           is consulted, and @JsonIgnoreProperties(ignoreUnknown = true) swallows the surplus GIC fields. So a
      *                           federated body does not 400 -- it is silently reinterpreted. If this test ever fails, the 410 guard's
