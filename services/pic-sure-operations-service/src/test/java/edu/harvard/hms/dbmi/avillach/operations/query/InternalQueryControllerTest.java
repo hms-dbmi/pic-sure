@@ -149,4 +149,10 @@ class InternalQueryControllerTest {
         mockMvc.perform(get("/internal/queries/by-common-area/{id}", UUID.randomUUID()).header(InternalTokenFilter.HEADER, validToken))
             .andExpect(status().isNotFound());
     }
+
+    @Test
+    void sitesByDomainIsGone() throws Exception {
+        mockMvc.perform(get("/internal/sites/by-domain/{domain}", "harvard.edu").header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isNotFound());
+    }
 }

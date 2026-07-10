@@ -13,7 +13,6 @@ import edu.harvard.hms.dbmi.avillach.operations.configuration.Configuration;
 import edu.harvard.hms.dbmi.avillach.operations.configuration.ConfigurationRepository;
 import edu.harvard.hms.dbmi.avillach.operations.dataset.NamedDatasetRepository;
 import edu.harvard.hms.dbmi.avillach.operations.query.QueryRepository;
-import edu.harvard.hms.dbmi.avillach.operations.query.SiteRepository;
 
 /**
  * Smoke test: boots the full Spring context against H2 (see src/test/resources/application.yml) and proves that (1) the application context
@@ -33,15 +32,11 @@ class OperationsApplicationTest {
     @Autowired
     private QueryRepository queryRepository;
 
-    @Autowired
-    private SiteRepository siteRepository;
-
     @Test
     void contextLoadsWithApiDataRepositoriesWired() {
         assertThat(configurationRepository).isNotNull();
         assertThat(namedDatasetRepository).isNotNull();
         assertThat(queryRepository).isNotNull();
-        assertThat(siteRepository).isNotNull();
     }
 
     @Test
