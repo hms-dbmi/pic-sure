@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ops;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    # Test-only: H2 has no pre-existing schema to preserve, so let Hibernate build the api-data tables from the
+    # entities themselves to prove they bind cleanly. NEVER set this to anything but "none" against the real MySQL
+    # schema (see the load-bearing comment in src/main/resources/application.yml).
+    hibernate:
+      ddl-auto: create-drop
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+picsure:
+  operations:
+    # Test-only shared secret for InternalTokenFilter (/internal/**). NEVER commit a real production value here --
+    # the real deployment sources this from the QUERY_SERVICE_INTERNAL_TOKEN env var (see src/main/resources/application.yml).
+    internal-token: test-internal-secret
