@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -247,5 +248,28 @@ class QueryServiceTest {
 
         verify(operationsClient).get(id); // the one lookup queryMetadata is allowed to make
         verifyNoMoreInteractions(operationsClient); // pins that no second (e.g. common-area) lookup is attempted
+    }
+
+    /**
+     * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it. Two reasons
+     * it does, both worth pinning: queryMetadata uses MAPPER.readValue(..., Object.class), which never binds to a Java type and so cannot
+     * fail on an unknown "@type"; and QueryRequest's defaultImpl would absorb it anyway. See the federated-gic-removal spec, section 5.1.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataReadsALegacyFederatedStoredRow() {
+        UUID id = UUID.randomUUID();
+        String legacyBlob =
+            "{\"@type\":\"FederatedQueryRequest\"," + "\"query\":{\"expectedResultType\":\"COUNT\"}," + "\"commonAreaUUID\":\""
+                + UUID.randomUUID() + "\"," + "\"institutionOfOrigin\":\"BCH\"," + "\"requesterEmail\":\"alice@harvard.edu\"}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, legacyBlob, "rr-legacy", "AVAILABLE", "3", null));
+
+        QueryStatus result = service.queryMetadata(id);
+
+        Map<String, Object> resultMetadata = result.getResultMetadata();
+        Map<String, Object> queryJson = (Map<String, Object>) resultMetadata.get("queryJson");
+        assertThat(queryJson).isNotNull();
+        assertThat(queryJson).containsKey("query");
+        assertThat(result.getPicsureResultId()).isEqualTo(id);
     }
 }
