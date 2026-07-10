@@ -18,10 +18,7 @@ import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Boots a real (H2) JPA context so save/get/update/dispatch are proven against an actual repository, not a mock -- same posture as
- * {@code RepositorySmokeTest}. The {@code by-common-area} native lookup can't run on H2 (see
- * {@code QueryRepository#findByCommonAreaUUIDRegex}'s javadoc); that path is covered separately in {@link QueryPersistenceServiceMockTest}
- * against a mocked repository.
+ * Boots a real (H2) JPA context so save/get/update/dispatch are proven against an actual repository, not a mock.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)

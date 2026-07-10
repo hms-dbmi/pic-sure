@@ -139,4 +139,14 @@ class InternalQueryControllerTest {
         Query saved = queryRepo.save(new Query());
         mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid())).andExpect(status().isForbidden());
     }
+
+    // --- the federated/GIC surface is gone; these endpoints must stay gone ---
+    // See docs/superpowers/specs/2026-07-09-federated-gic-removal-design.md. A 404 here is the contract:
+    // it guards against someone reintroducing the routes while wiring something unrelated.
+
+    @Test
+    void byCommonAreaIsGone() throws Exception {
+        mockMvc.perform(get("/internal/queries/by-common-area/{id}", UUID.randomUUID()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isNotFound());
+    }
 }

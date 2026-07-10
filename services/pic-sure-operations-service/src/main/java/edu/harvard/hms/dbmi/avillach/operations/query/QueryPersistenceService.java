@@ -93,15 +93,6 @@ public class QueryPersistenceService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public StoredQuery findByCommonAreaUUID(UUID commonAreaUUID) {
-        Query entity = repo.getQueryUUIDFromCommonAreaUUID(commonAreaUUID);
-        if (entity == null) {
-            throw notFound(commonAreaUUID);
-        }
-        return toDto(entity);
-    }
-
     private Query load(UUID picsureId) {
         return repo.findById(picsureId).orElseThrow(() -> notFound(picsureId));
     }
