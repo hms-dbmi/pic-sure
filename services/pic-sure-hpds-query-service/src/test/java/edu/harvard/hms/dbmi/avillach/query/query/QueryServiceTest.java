@@ -1,21 +1,24 @@
 package edu.harvard.hms.dbmi.avillach.query.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -35,10 +38,9 @@ class QueryServiceTest {
 
     OperationsClient operationsClient = mock(OperationsClient.class);
     ResourceWebClient hpds = mock(ResourceWebClient.class);
-    SiteParsingService sites = mock(SiteParsingService.class);
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
-    QueryService service = new QueryService(operationsClient, hpds, selector, sites);
+    QueryService service = new QueryService(operationsClient, hpds, selector);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -112,23 +114,6 @@ class QueryServiceTest {
         QueryStatus out = service.query("auth", request);
 
         assertThat(out.getResourceID()).isEqualTo(request.getResourceUUID());
-    }
-
-    @Test
-    void institutionalQuerySetsSiteAndEmailBeforeCreating() {
-        UUID picsureId = UUID.randomUUID();
-        FederatedQueryRequest request = new FederatedQueryRequest();
-        request.setQuery("q");
-        request.setResourceUUID(UUID.randomUUID());
-        when(sites.parseSiteOfOrigin("alice@harvard.edu")).thenReturn(java.util.Optional.of("HARVARD"));
-        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        service.institutionalQuery("auth", request, "alice@harvard.edu", false);
-
-        assertThat(request.getInstitutionOfOrigin()).isEqualTo("HARVARD");
-        assertThat(request.getRequesterEmail()).isEqualTo("alice@harvard.edu");
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.metadata() != null));
     }
 
     // --- sync ---
@@ -253,34 +238,14 @@ class QueryServiceTest {
     }
 
     @Test
-    void metadataFallsBackToCommonAreaLookup() {
-        UUID id = UUID.randomUUID();
-        StoredQuery stored =
-            new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":\"q\"}", null, null, null, null);
-        when(operationsClient.get(id)).thenThrow(
-            new edu.harvard.hms.dbmi.avillach.commons.error.PicsureException(
-                org.springframework.http.HttpStatus.NOT_FOUND, "not_found", "not found"
-            )
-        );
-        when(operationsClient.findByCommonAreaUUID(id)).thenReturn(stored);
-
-        QueryStatus out = service.queryMetadata(id);
-
-        assertThat(out.getResultMetadata()).containsKey("queryJson");
-        assertThat(out.getResultMetadata()).containsKey("queryResultMetadata");
-    }
-
-    @Test
     void metadataUnknownIdThrowsNotFound() {
         UUID id = UUID.randomUUID();
-        when(operationsClient.get(id)).thenThrow(
-            new edu.harvard.hms.dbmi.avillach.commons.error.PicsureException(
-                org.springframework.http.HttpStatus.NOT_FOUND, "not_found", "not found"
-            )
-        );
-        when(operationsClient.findByCommonAreaUUID(id)).thenReturn(null);
+        when(operationsClient.get(id)).thenThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "nope"));
 
-        org.junit.jupiter.api.Assertions
-            .assertThrows(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class, () -> service.queryMetadata(id));
+        assertThatThrownBy(() -> service.queryMetadata(id))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+
+        verify(operationsClient).get(id); // the one lookup queryMetadata is allowed to make
+        verifyNoMoreInteractions(operationsClient); // pins that no second (e.g. common-area) lookup is attempted
     }
 }

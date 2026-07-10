@@ -16,7 +16,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
@@ -51,13 +50,11 @@ public class QueryService {
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
-    private final SiteParsingService sites;
 
-    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector, SiteParsingService sites) {
+    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
-        this.sites = sites;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
@@ -73,13 +70,6 @@ public class QueryService {
         return create(backend, req, true);
     }
 
-    public QueryStatus institutionalQuery(String backend, FederatedQueryRequest req, String email, boolean v3) {
-        String siteCode = sites.parseSiteOfOrigin(email).orElse("Unknown");
-        req.setInstitutionOfOrigin(siteCode);
-        req.setRequesterEmail(email);
-        return create(backend, req, v3);
-    }
-
     private QueryStatus create(String backend, QueryRequest req, boolean v3) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
@@ -88,7 +78,7 @@ public class QueryService {
 
         QueryStatus results = hpds.query(target, req); // HPDS call first (parity: query() calls HPDS then persists)
         String version = v3 ? CURRENT_VERSION : null;
-        String metadataBase64 = buildMetadataBase64(req, results);
+        String metadataBase64 = buildMetadataBase64(results);
 
         UUID picsureId = operationsClient.save(
             new SaveQueryRequest(
@@ -124,18 +114,10 @@ public class QueryService {
     }
 
     /** Port of copyQuery's metadata assembly (PicsureQueryService.java:380-419) minus Resource + AuditContext. */
-    private String buildMetadataBase64(QueryRequest req, QueryStatus response) {
+    private String buildMetadataBase64(QueryStatus response) {
         Map<String, Object> meta = response.getResultMetadata();
         if (meta == null) {
             meta = new HashMap<>();
-        }
-        if (req instanceof FederatedQueryRequest gic) {
-            meta.put("commonAreaUUID", gic.getCommonAreaUUID());
-            meta.put("site", gic.getInstitutionOfOrigin());
-            // DataSharingStatus.Unknown by name: this module has no dependency on pic-sure-api-data's entity package
-            // (DB-free), so the GIC sharing-status marker is carried as its enum-name string instead of the enum type.
-            meta.put("sharingStatus", "Unknown");
-            meta.put("requesterEmail", gic.getRequesterEmail());
         }
         response.setResultMetadata(meta);
         if (meta.isEmpty()) {
@@ -222,7 +204,7 @@ public class QueryService {
         if (id == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query id");
         }
-        StoredQuery stored = loadForMetadata(id);
+        StoredQuery stored = load(id);
 
         QueryStatus response = new QueryStatus();
         response.setPicsureResultId(stored.picsureId());
@@ -239,27 +221,6 @@ public class QueryService {
         }
         response.setResultMetadata(metadata);
         return response;
-    }
-
-    /** Accepts EITHER a picsureId or a GIC commonAreaUUID, matching the legacy queryMetadata's dual lookup. */
-    private StoredQuery loadForMetadata(UUID id) {
-        try {
-            return operationsClient.get(id);
-        } catch (PicsureException primary) {
-            if (primary.getStatus() != HttpStatus.NOT_FOUND) {
-                throw primary;
-            }
-            StoredQuery byCommonArea;
-            try {
-                byCommonArea = operationsClient.findByCommonAreaUUID(id);
-            } catch (PicsureException fallbackFailure) {
-                throw primary; // surface the original, clean NOT_FOUND rather than the fallback call's error shape
-            }
-            if (byCommonArea == null) {
-                throw primary;
-            }
-            return byCommonArea;
-        }
     }
 
     private static String decodeMetadata(String base64Metadata) {
