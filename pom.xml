@@ -13,6 +13,7 @@
         <module>libs/pic-sure-logging-client</module>
         <module>libs/pic-sure-spring-commons</module>
         <module>services/pic-sure-gateway</module>
+        <module>services/pic-sure-operations-service</module>
     </modules>
     <properties>
         <revision>3.0.0</revision>
