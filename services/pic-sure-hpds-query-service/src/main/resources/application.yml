@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: pic-sure-hpds-query-service
+
+server:
+  port: ${SERVER_PORT:8080}
+
+hpds:
+  # HPDS_AUTH_URL / HPDS_AUTH_TOKEN: the auth (non-obfuscated) backend base + service Bearer token.
+  auth-url: ${HPDS_AUTH_URL:}
+  auth-token: ${HPDS_AUTH_TOKEN:}
+  # HPDS_OPEN_URL / HPDS_OPEN_TOKEN: the open (aggregate/obfuscated) backend base + service Bearer token.
+  # In AIO both HPDS_* URL vars point at the same HPDS instance.
+  open-url: ${HPDS_OPEN_URL:}
+  open-token: ${HPDS_OPEN_TOKEN:}
+
+picsure:
+  query:
+    operations:
+      # OPERATIONS_SERVICE_URL: base URL of pic-sure-operations-service (the sole pic-sure-DB owner). This service
+      # is DB-free -- every query read/write goes over HTTP through OperationsClient.
+      base-url: ${OPERATIONS_SERVICE_URL:}
+      # QUERY_SERVICE_INTERNAL_TOKEN: shared secret sent as X-PIC-SURE-INTERNAL-TOKEN on every operations-service
+      # call, checked by that service's InternalTokenFilter. Fail-closed on the operations-service side if unset.
+      internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+  # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
+  # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
+
+aggregate:
+  # HPDS_OPEN_URL / HPDS_OPEN_TOKEN: same open-backend values as hpds.open-url / hpds.open-token above,
+  # reused here so the aggregate obfuscation path talks to the same open HPDS backend.
+  hpds-open-url: ${HPDS_OPEN_URL:}
+  hpds-open-token: ${HPDS_OPEN_TOKEN:}
+  # VISUALIZATION_URL: base URL of the visualization service; replaces the WAR's DB ResourceRepository.getById()
+  # lookup. Blank = no binning configured (continuous cross-count obfuscation falls back to raw per-value counts).
+  visualization-url: ${VISUALIZATION_URL:}
+  visualization-resource-id: ${AGGREGATE_VISUALIZATION_RESOURCE_ID:}
+  target-resource-id: ${AGGREGATE_TARGET_RESOURCE_ID:}
+  connect-timeout-sec: 10
+  read-timeout-sec: 60
+  obfuscation:
+    threshold: ${AGGREGATE_OBFUSCATION_THRESHOLD:10}
+    variance: ${AGGREGATE_OBFUSCATION_VARIANCE:3}
+    salt: ${AGGREGATE_OBFUSCATION_SALT:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # OFF BY DEFAULT: 'none' is a sentinel that matches no endpoint, so /actuator/** is 404. (An EMPTY include is
+        # NOT off -- Spring Boot then falls back to exposing health.) AIO enables it via PICSURE_ACTUATOR_EXPOSURE;
+        # prometheus/metrics are added via the same var in the monitoring (M2) rollout.
+        include: ${PICSURE_ACTUATOR_EXPOSURE:none}
+  endpoint:
+    health:
+      show-details: ${PICSURE_ACTUATOR_DETAILS:never} # default never; when_authorized (AIO) gates detail behind picsure.actuator.token
+      probes:
+        enabled: true # /actuator/health/liveness stays shallow-open
+      group:
+        # Explicit liveness group (mirrors the gateway's) -- pins /actuator/health/liveness to the app's
+        # own process state so it never depends on HPDS reachability or auto-registration nuances of probes.enabled.
+        liveness:
+          include: livenessState
+  health:
+    defaults:
+      enabled: true
