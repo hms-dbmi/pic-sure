@@ -14,6 +14,7 @@
         <module>libs/pic-sure-spring-commons</module>
         <module>services/pic-sure-gateway</module>
         <module>services/pic-sure-operations-service</module>
+        <module>services/pic-sure-hpds-query-service</module>
     </modules>
     <properties>
         <revision>3.0.0</revision>
