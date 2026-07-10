@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <!-- Standalone on purpose: this BOM must NOT inherit the root parent.
+         The root parent imports this BOM; a <parent> pointing back at the root
+         would create a model-resolution cycle. -->
+    <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+    <artifactId>pic-sure-bom</artifactId>
+    <version>3.0.0</version>
+    <packaging>pom</packaging>
+    <name>PIC-SURE BOM</name>
+    <description>Bill of Materials for PIC-SURE API dependencies</description>
+    <properties>
+        <!-- Duplicated from the root parent by design (standalone BOM cannot inherit).
+             Bump these in lockstep with the root pom. -->
+        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <!-- Internal artifacts: the 3.0.0 Java 25 line published from this repo.
+             Legacy stays pinned to the frozen Java 11 releases and never resolves these. -->
+        <pic-sure-api-model.version>3.0.0</pic-sure-api-model.version>
+        <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
+        <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
+        <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
+        <pic-sure-operations-service.version>3.0.0</pic-sure-operations-service.version>
+        <pic-sure-hpds-query-service.version>3.0.0</pic-sure-hpds-query-service.version>
+        <!-- Shared third-party pins not governed by the Spring BOMs -->
+        <wiremock.version>3.10.0</wiremock.version>
+    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Consumable jars from libs/pic-sure-commons (the pic-sure-common
+                 aggregator pom itself is not a dependency target). Note the
+                 distinct groupId on pic-sure-hpds-model. -->
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-api-model</artifactId>
+                <version>${pic-sure-api-model.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+                <artifactId>pic-sure-hpds-model</artifactId>
+                <version>${pic-sure-hpds-model.version}</version>
+            </dependency>
+            <!-- Historic groupId (no "hms") is frozen for compatibility. -->
+            <dependency>
+                <groupId>edu.harvard.dbmi.avillach</groupId>
+                <artifactId>pic-sure-logging-client</artifactId>
+                <version>${pic-sure-logging-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-spring-commons</artifactId>
+                <version>${pic-sure-spring-commons.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-operations-service</artifactId>
+                <version>${pic-sure-operations-service.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-hpds-query-service</artifactId>
+                <version>${pic-sure-hpds-query-service.version}</version>
+            </dependency>
+            <!-- Test tooling shared across services -->
+            <dependency>
+                <groupId>org.wiremock</groupId>
+                <artifactId>wiremock-standalone</artifactId>
+                <version>${wiremock.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub HMS-DBMI Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/hms-dbmi/pic-sure</url>
+        </repository>
+    </distributionManagement>
+</project>
