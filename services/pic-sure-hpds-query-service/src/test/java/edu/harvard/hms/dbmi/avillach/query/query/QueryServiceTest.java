@@ -299,9 +299,10 @@ class QueryServiceTest {
     void metadataFallsBackToUntranslatedOnUntranslatableV1Row() {
         UUID id = UUID.randomUUID();
         // two non-empty variantInfoFilters groups -> UntranslatableQueryException -> fall back to raw
-        String v1Blob = "{\"query\":{\"expectedResultType\":\"COUNT\",\"variantInfoFilters\":["
-            + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"A\"]},\"numericVariantInfoFilters\":{}},"
-            + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
+        String v1Blob =
+            "{\"query\":{\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}," + "\"variantInfoFilters\":["
+                + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"A\"]},\"numericVariantInfoFilters\":{}},"
+                + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
 
         QueryStatus out = service.queryMetadata(id);
@@ -309,6 +310,8 @@ class QueryServiceTest {
         Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
         Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
         assertThat(inner).containsKey("variantInfoFilters"); // untranslated v1 body preserved
+        assertThat(inner).containsKey("categoryFilters"); // raw v1 body returned in full, not partially translated
+        assertThat(inner).doesNotContainKey("phenotypicClause"); // no translation output leaked in
     }
 
     @Test
@@ -316,13 +319,19 @@ class QueryServiceTest {
     void metadataLeavesV3StoredRowUntranslated() {
         UUID id = UUID.randomUUID();
         String v3Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
-            + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":null,\"genomicFilters\":[]}}";
+            + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
+            + "\"conceptPath\":\"\\\\x\\\\\"},\"genomicFilters\":[]}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Blob, "rr-1", "AVAILABLE", "3", null));
 
         QueryStatus out = service.queryMetadata(id);
 
         Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
         Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
-        assertThat(inner).containsKey("phenotypicClause"); // passed through unchanged (already v3)
+        // non-null structural assertion: a wrongly-applied v1 translation would produce a different/empty clause,
+        // so asserting the exact conceptPath survives discriminates "left alone" from "translated".
+        assertThat(inner.get("phenotypicClause")).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clause = (Map<String, Object>) inner.get("phenotypicClause");
+        assertThat(clause.get("conceptPath")).isEqualTo("\\x\\");
     }
 }

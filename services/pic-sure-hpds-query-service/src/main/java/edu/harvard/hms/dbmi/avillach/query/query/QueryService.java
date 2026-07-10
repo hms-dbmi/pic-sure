@@ -13,8 +13,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
@@ -47,6 +49,13 @@ public class QueryService {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Lenient mapper used ONLY to deserialize a stored v1 {@code query} node in {@link #tryTranslate}: unknown fields on a stored row that
+     * predate the current v1 {@code Query} model must not abort translation, so this mapper (unlike {@link #MAPPER}) does not fail on
+     * unknown properties. Never used for anything else in this class.
+     */
+    private static final ObjectMapper V1_QUERY_MAPPER =
+        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final String CURRENT_VERSION = "3";
 
     private final OperationsClient operationsClient;
@@ -256,7 +265,8 @@ public class QueryService {
     /**
      * Attempts to translate a stored v1 {@code QueryRequest} wrapper: parse it, deserialize its {@code query} node as a v1 {@code Query},
      * translate to v3, and re-embed. Returns {@code null} (caller falls back to the raw body) when the body is not a wrapper object, has no
-     * object-valued {@code query} node, or cannot be translated ({@link UntranslatableQueryException} or any Jackson error). Never throws.
+     * object-valued {@code query} node, or cannot be translated
+     * ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any Jackson error). Never throws.
      */
     JsonNode tryTranslate(String json) {
         try {
@@ -269,7 +279,7 @@ public class QueryService {
                 return null;
             }
             edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 =
-                MAPPER.treeToValue(queryNode, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+                V1_QUERY_MAPPER.treeToValue(queryNode, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
             edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
             wrapper.set("query", MAPPER.valueToTree(v3));
             return wrapper;
