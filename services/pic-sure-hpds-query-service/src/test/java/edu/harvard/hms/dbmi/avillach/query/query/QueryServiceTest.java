@@ -275,4 +275,54 @@ class QueryServiceTest {
         assertThat(queryJson).containsKey("query");
         assertThat(result.getPicsureResultId()).isEqualTo(id);
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataTranslatesStoredV1QueryToV3Shape() {
+        UUID id = UUID.randomUUID();
+        String v1Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
+            + "\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
+
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        assertThat(queryJson).isNotNull();
+        assertThat(queryJson).containsKey("resourceUUID"); // wrapper preserved
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        assertThat(inner).containsKey("phenotypicClause"); // v3 field present
+        assertThat(inner).doesNotContainKey("categoryFilters"); // v1 field gone
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataFallsBackToUntranslatedOnUntranslatableV1Row() {
+        UUID id = UUID.randomUUID();
+        // two non-empty variantInfoFilters groups -> UntranslatableQueryException -> fall back to raw
+        String v1Blob = "{\"query\":{\"expectedResultType\":\"COUNT\",\"variantInfoFilters\":["
+            + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"A\"]},\"numericVariantInfoFilters\":{}},"
+            + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
+
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        assertThat(inner).containsKey("variantInfoFilters"); // untranslated v1 body preserved
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataLeavesV3StoredRowUntranslated() {
+        UUID id = UUID.randomUUID();
+        String v3Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
+            + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":null,\"genomicFilters\":[]}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Blob, "rr-1", "AVAILABLE", "3", null));
+
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        assertThat(inner).containsKey("phenotypicClause"); // passed through unchanged (already v3)
+    }
 }

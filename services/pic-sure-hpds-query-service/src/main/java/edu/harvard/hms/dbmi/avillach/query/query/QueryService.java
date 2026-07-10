@@ -15,11 +15,13 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
@@ -214,7 +216,7 @@ public class QueryService {
 
         Map<String, Object> metadata = new HashMap<>();
         try {
-            metadata.put("queryJson", stored.query() == null ? null : MAPPER.readValue(stored.query(), Object.class));
+            metadata.put("queryJson", buildQueryJson(stored));
             metadata.put("queryResultMetadata", decodeMetadata(stored.metadata()));
         } catch (JsonProcessingException e) {
             logger.warn("Unable to read stored query/metadata for {}", id, e);
@@ -228,5 +230,52 @@ public class QueryService {
             return null;
         }
         return new String(Base64.getDecoder().decode(base64Metadata), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The stored-query body for the {@code /metadata} response. For a v3 row (or a null body) this is the raw parsed JSON, byte-for-byte as
+     * before. For a v1 row it is the same {@code QueryRequest} wrapper with its nested {@code query} translated to the v3 shape, so clients
+     * see one shape regardless of when the query was stored. Any translation failure falls back to the untranslated body (never an error);
+     * a genuinely unparseable body still propagates {@link JsonProcessingException} to preserve the prior "queryJson absent" behavior.
+     */
+    Object buildQueryJson(StoredQuery stored) throws JsonProcessingException {
+        String json = stored.query();
+        if (json == null) {
+            return null;
+        }
+        if (!isV3(stored)) {
+            JsonNode translated = tryTranslate(json);
+            if (translated != null) {
+                // Normalize to the same Map shape the v3/raw path returns, so queryJson has one type regardless of stored version.
+                return MAPPER.convertValue(translated, Object.class);
+            }
+        }
+        return MAPPER.readValue(json, Object.class);
+    }
+
+    /**
+     * Attempts to translate a stored v1 {@code QueryRequest} wrapper: parse it, deserialize its {@code query} node as a v1 {@code Query},
+     * translate to v3, and re-embed. Returns {@code null} (caller falls back to the raw body) when the body is not a wrapper object, has no
+     * object-valued {@code query} node, or cannot be translated ({@link UntranslatableQueryException} or any Jackson error). Never throws.
+     */
+    JsonNode tryTranslate(String json) {
+        try {
+            JsonNode root = MAPPER.readTree(json);
+            if (!(root instanceof ObjectNode wrapper)) {
+                return null;
+            }
+            JsonNode queryNode = wrapper.get("query");
+            if (queryNode == null || !queryNode.isObject()) {
+                return null;
+            }
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 =
+                MAPPER.treeToValue(queryNode, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
+            wrapper.set("query", MAPPER.valueToTree(v3));
+            return wrapper;
+        } catch (Exception e) {
+            logger.warn("Unable to translate stored v1 query to v3; returning it untranslated", e);
+            return null;
+        }
     }
 }
