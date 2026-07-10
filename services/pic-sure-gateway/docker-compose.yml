@@ -1,0 +1,14 @@
+services:
+  gateway:
+    build: .
+    image: pic-sure-gateway:local
+    environment:
+      - SPRING_PROFILE=${SPRING_PROFILE:-aio}
+    ports:
+      - "8090:8080"
+    networks:
+      - picsure
+
+networks:
+  picsure:
+    external: true
