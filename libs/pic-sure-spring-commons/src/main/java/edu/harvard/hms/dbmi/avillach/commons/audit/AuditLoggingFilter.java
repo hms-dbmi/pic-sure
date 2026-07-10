@@ -109,6 +109,11 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
         LoggingEvent.Builder eventBuilder = LoggingEvent.builder(eventType).action(action).sessionId(sessionId).request(requestInfo)
             .metadata(metadata.isEmpty() ? null : metadata);
 
+        String clientType = request.getHeader("X-Client-Type");
+        if (clientType != null && !clientType.isBlank()) {
+            eventBuilder.caller(clientType);
+        }
+
         if (response.getStatus() >= 400) {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("status", response.getStatus());

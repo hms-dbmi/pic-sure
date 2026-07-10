@@ -110,6 +110,46 @@ class AuditLoggingFilterTest {
     }
 
     @Test
+    void emitsAnAuditEventWithCallerWhenXClientTypeHeaderIsPresent() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "PYTHON_ADAPTER");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+
+        LoggingEvent event = eventCaptor.getValue();
+        assertThat(event.getCaller()).isEqualTo("PYTHON_ADAPTER");
+    }
+
+    @Test
+    void doesNotSetCallerWhenXClientTypeHeaderIsAbsentOrBlank() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.addHeader("X-Client-Type", "   ");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+
+        LoggingEvent event = eventCaptor.getValue();
+        assertThat(event.getCaller()).isNull();
+    }
+
+    @Test
     void doesNotEmitWhenTheRequestIsSkipped() throws Exception {
         LoggingClient client = mock(LoggingClient.class);
         when(client.isEnabled()).thenReturn(true);
