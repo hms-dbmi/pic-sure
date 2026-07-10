@@ -30,7 +30,7 @@ class QueryAuthFetcherTest {
     static void start() {
         // http2PlainDisabled avoids a known JDK HttpClient <-> WireMock(Jetty) h2c upgrade bug that manifests as
         // "RST_STREAM: Stream cancelled" when RestClient's default JDK-backed request factory is used.
-        qs = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        qs = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         qs.start();
     }
 
@@ -40,7 +40,7 @@ class QueryAuthFetcherTest {
     }
 
     private QueryAuthFetcher fetcher() {
-        return new QueryAuthFetcher(RestClient.builder().build(), "http://localhost:" + qs.port(), "internal-secret");
+        return new QueryAuthFetcher(RestClient.builder().build(), "http://127.0.0.1:" + qs.port(), "internal-secret");
     }
 
     @Test

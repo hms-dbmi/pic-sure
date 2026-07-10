@@ -25,7 +25,7 @@ class PsamaClientTest {
     static void start() {
         // http2PlainDisabled avoids a known JDK HttpClient <-> WireMock(Jetty) h2c upgrade bug that manifests as
         // "RST_STREAM: Stream cancelled" when RestClient's default JDK-backed request factory is used.
-        psama = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        psama = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         psama.start();
     }
 
@@ -36,8 +36,8 @@ class PsamaClientTest {
 
     private PsamaClient client() {
         return new PsamaClient(
-            RestClient.builder().build(), "http://localhost:" + psama.port() + "/token/introspect",
-            "http://localhost:" + psama.port() + "/open/validate", "service-token"
+            RestClient.builder().build(), "http://127.0.0.1:" + psama.port() + "/token/introspect",
+            "http://127.0.0.1:" + psama.port() + "/open/validate", "service-token"
         );
     }
 

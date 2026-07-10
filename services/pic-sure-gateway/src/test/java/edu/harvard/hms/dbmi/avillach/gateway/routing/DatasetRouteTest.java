@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -38,11 +39,11 @@ class DatasetRouteTest {
 
     @DynamicPropertySource
     static void urls(DynamicPropertyRegistry registry) {
-        operationsStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        operationsStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         operationsStub.start();
         registry.add("OPERATIONS_SERVICE_URL", operationsStub::baseUrl);
 
-        psamaStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        psamaStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         psamaStub.start();
         registry.add("TOKEN_INTROSPECTION_URL", () -> psamaStub.baseUrl() + "/auth/token/inspect");
     }
@@ -69,12 +70,26 @@ class DatasetRouteTest {
     @Autowired
     private TestRestTemplate rest;
 
+
+    @LocalServerPort
+    int port;
+
+    /**
+     * Dial the loopback ADDRESS, never the name. {@code localhost} resolves to {@code ::1} before {@code 127.0.0.1} on macOS, while these
+     * test servers bind the IPv4 wildcard -- so an unrelated local process holding the same port number on {@code [::]} can answer instead,
+     * and the test fails with a bewildering status from a server it never meant to contact. Relative {@code TestRestTemplate} URLs go
+     * through {@code LocalHostUriTemplateHandler}, which hardcodes the name {@code localhost}; absolute URLs bypass it entirely.
+     */
+    private String url(String path) {
+        return "http://127.0.0.1:" + port + path;
+    }
+
     @Test
     void forwardsDatasetPathToOperationsServiceVerbatim() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer user-token");
         ResponseEntity<String> response =
-            rest.exchange("/operations/dataset/named/abc-123", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            rest.exchange(url("/operations/dataset/named/abc-123"), HttpMethod.GET, new HttpEntity<>(headers), String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("dataset-ok");

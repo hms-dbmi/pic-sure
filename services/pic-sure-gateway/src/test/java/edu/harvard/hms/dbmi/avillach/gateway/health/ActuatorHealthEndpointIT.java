@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.ResponseEntity;
@@ -38,9 +39,23 @@ class ActuatorHealthEndpointIT {
     @Autowired
     private TestRestTemplate rest;
 
+
+    @LocalServerPort
+    int port;
+
+    /**
+     * Dial the loopback ADDRESS, never the name. {@code localhost} resolves to {@code ::1} before {@code 127.0.0.1} on macOS, while these
+     * test servers bind the IPv4 wildcard -- so an unrelated local process holding the same port number on {@code [::]} can answer instead,
+     * and the test fails with a bewildering status from a server it never meant to contact. Relative {@code TestRestTemplate} URLs go
+     * through {@code LocalHostUriTemplateHandler}, which hardcodes the name {@code localhost}; absolute URLs bypass it entirely.
+     */
+    private String url(String path) {
+        return "http://127.0.0.1:" + port + path;
+    }
+
     @BeforeAll
     static void start() {
-        hpds = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        hpds = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         hpds.start();
         hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(aResponse().withStatus(503)));
     }
@@ -53,13 +68,13 @@ class ActuatorHealthEndpointIT {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
         r.add("picsure.gateway.health.downstreams[0].name", () -> "hpds");
-        r.add("picsure.gateway.health.downstreams[0].base-url", () -> "http://localhost:" + hpds.port());
+        r.add("picsure.gateway.health.downstreams[0].base-url", () -> "http://127.0.0.1:" + hpds.port());
         r.add("picsure.gateway.health.downstreams[0].require-status-up", () -> "true");
     }
 
     @Test
     void actuatorHealthShowsDownDownstreamAsDown() throws Exception {
-        ResponseEntity<String> response = rest.getForEntity("/actuator/health", String.class);
+        ResponseEntity<String> response = rest.getForEntity(url("/actuator/health"), String.class);
 
         JsonNode body = new ObjectMapper().readTree(response.getBody());
         JsonNode hpdsComponent = body.path("components").path("downstreams").path("components").path("hpds");
@@ -77,7 +92,7 @@ class ActuatorHealthEndpointIT {
      */
     @Test
     void livenessStaysUpWhenDownstreamIsDown() throws Exception {
-        ResponseEntity<String> response = rest.getForEntity("/actuator/health/liveness", String.class);
+        ResponseEntity<String> response = rest.getForEntity(url("/actuator/health/liveness"), String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
 

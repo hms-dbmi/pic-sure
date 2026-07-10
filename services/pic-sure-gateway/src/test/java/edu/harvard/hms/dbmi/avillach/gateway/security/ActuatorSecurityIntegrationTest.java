@@ -57,7 +57,7 @@ class ActuatorSecurityIntegrationTest {
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + path;
+        return "http://127.0.0.1:" + port + path;
     }
 
     @Test
