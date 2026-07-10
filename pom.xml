@@ -11,6 +11,7 @@
         <module>platform</module>
         <module>libs/pic-sure-commons</module>
         <module>libs/pic-sure-logging-client</module>
+        <module>libs/pic-sure-spring-commons</module>
     </modules>
     <properties>
         <revision>3.0.0</revision>
