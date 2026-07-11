@@ -19,6 +19,9 @@
         <module>services/pic-sure-visualization-service</module>
         <module>services/pic-sure-services/info-service</module>
         <module>services/pic-sure-services/uploader</module>
+        <module>services/picsure-dictionary</module>
+        <module>services/picsure-dictionary/aggregate</module>
+        <module>services/picsure-dictionary/dictionaryweights</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>

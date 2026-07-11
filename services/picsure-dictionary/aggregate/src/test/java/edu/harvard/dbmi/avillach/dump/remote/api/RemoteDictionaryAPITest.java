@@ -3,45 +3,42 @@ package edu.harvard.dbmi.avillach.dump.remote.api;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.dump.entities.*;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.entity.BasicHttpEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
+import edu.harvard.dbmi.avillach.dump.util.JacksonConfig;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
-@SpringBootTest
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+
 class RemoteDictionaryAPITest {
 
+    private static final String ROOT = "http://passthru:80/dictionary-dump/";
     private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
-    @Autowired
-    ObjectMapper mapper;
+    private final ObjectMapper mapper = new JacksonConfig().objectMapper();
 
-    @MockitoBean
-    CloseableHttpClient client;
+    private MockRestServiceServer server;
+    private RemoteDictionaryAPI subject;
 
-    @Autowired
-    RemoteDictionaryAPI subject;
+    @BeforeEach
+    void setUp() {
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        subject = new RemoteDictionaryAPI(builder.build(), mapper);
+    }
 
     @Test
-    void shouldFetchTimestamp() throws IOException {
+    void shouldFetchTimestamp() {
         LocalDateTime now = LocalDateTime.parse(LocalDateTime.now().format(dateTimeFormatter), dateTimeFormatter);
-        CloseableHttpResponse response = Mockito.mock(CloseableHttpResponse.class);
-        BasicHttpEntity body = new BasicHttpEntity();
-        body.setContent(new ByteArrayInputStream(now.format(dateTimeFormatter).getBytes()));
-        Mockito.when(response.getEntity()).thenReturn(body);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/last-updated")).andRespond(withSuccess(now.format(dateTimeFormatter), MediaType.TEXT_PLAIN));
 
         Optional<LocalDateTime> actual = subject.fetchUpdateTimestamp("bch");
         Optional<LocalDateTime> expected = Optional.of(now);
@@ -50,13 +47,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchDatabaseVersion() throws IOException {
-        CloseableHttpResponse response = Mockito.mock(CloseableHttpResponse.class);
-        BasicHttpEntity body = new BasicHttpEntity();
+    void shouldFetchDatabaseVersion() {
         Integer version = 3;
-        body.setContent(new ByteArrayInputStream(version.toString().getBytes()));
-        Mockito.when(response.getEntity()).thenReturn(body);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/database-version")).andRespond(withSuccess(version.toString(), MediaType.TEXT_PLAIN));
 
         Optional<Integer> actual = subject.fetchDatabaseVersion("bch");
         Optional<Integer> expected = Optional.of(version);
@@ -65,10 +58,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchConceptNodes() throws IOException {
+    void shouldFetchConceptNodes() {
         List<ConceptNodeDump> concepts = List.of(new ConceptNodeDump("a", "b", "c", "d", "e", 1, 2));
-        CloseableHttpResponse response = mockResponseWithBody(concepts);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/ConceptNode")).andRespond(json(concepts));
 
         Optional<List<ConceptNodeDump>> actual = subject.fetchConcepts("bch");
 
@@ -77,10 +69,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchFacetCategories() throws IOException {
+    void shouldFetchFacetCategories() {
         List<FacetCategoryDump> facetCats = List.of(new FacetCategoryDump("foo", "bar", "desc"));
-        CloseableHttpResponse response = mockResponseWithBody(facetCats);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/FacetCategory")).andRespond(json(facetCats));
 
         Optional<List<FacetCategoryDump>> actual = subject.fetchFacetCategories("bch");
 
@@ -89,11 +80,10 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchFacets() throws IOException {
+    void shouldFetchFacets() {
         FacetDump child = new FacetDump("1", "1", "1", "1", List.of(), 2, 1);
         List<FacetDump> facets = List.of(new FacetDump("foo", "bar", "baz", "qux", List.of(child), 1, null));
-        CloseableHttpResponse response = mockResponseWithBody(facets);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/Facet")).andRespond(json(facets));
 
         Optional<List<FacetDump>> actual = subject.fetchFacets("bch");
 
@@ -102,10 +92,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchPairs() throws IOException {
+    void shouldFetchPairs() {
         List<FacetConceptPair> pairs = List.of(new FacetConceptPair("name", "cat", "path"));
-        CloseableHttpResponse response = mockResponseWithBody(pairs);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/FacetConceptNode")).andRespond(json(pairs));
 
         Optional<List<FacetConceptPair>> actual = subject.fetchFacetConceptPairs("bch");
 
@@ -114,10 +103,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchConceptMetas() throws IOException {
+    void shouldFetchConceptMetas() {
         List<ConceptNodeMetaDump> metas = List.of(new ConceptNodeMetaDump("path", "k", "v"));
-        CloseableHttpResponse response = mockResponseWithBody(metas);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/ConceptNodeMeta")).andRespond(json(metas));
 
         Optional<List<ConceptNodeMetaDump>> actual = subject.fetchConceptMetas("bch");
 
@@ -126,10 +114,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchFacetCategoryMetas() throws IOException {
+    void shouldFetchFacetCategoryMetas() {
         List<FacetCategoryMetaDump> metas = List.of(new FacetCategoryMetaDump("facet cat", "k", "v"));
-        CloseableHttpResponse response = mockResponseWithBody(metas);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/FacetCategoryMeta")).andRespond(json(metas));
 
         Optional<List<FacetCategoryMetaDump>> actual = subject.fetchFacetCategoryMetas("bch");
 
@@ -138,10 +125,9 @@ class RemoteDictionaryAPITest {
     }
 
     @Test
-    void shouldFetchFacetMetas() throws IOException {
+    void shouldFetchFacetMetas() {
         List<FacetMetaDump> metas = List.of(new FacetMetaDump("facet", "cat", "k", "v"));
-        CloseableHttpResponse response = mockResponseWithBody(metas);
-        Mockito.when(client.execute(Mockito.any())).thenReturn(response);
+        server.expect(requestTo(ROOT + "bch/dump/FacetMeta")).andRespond(json(metas));
 
         Optional<List<FacetMetaDump>> actual = subject.fetchFacetMetas("bch");
 
@@ -149,16 +135,12 @@ class RemoteDictionaryAPITest {
         Assertions.assertEquals(metas, actual.get());
     }
 
-    private CloseableHttpResponse mockResponseWithBody(Object jsonBody) {
-        CloseableHttpResponse response = Mockito.mock(CloseableHttpResponse.class);
-        BasicHttpEntity body = new BasicHttpEntity();
-        Mockito.when(response.getEntity()).thenReturn(body);
+    private org.springframework.test.web.client.ResponseCreator json(Object jsonBody) {
         try {
-            body.setContent(new ByteArrayInputStream(mapper.writeValueAsBytes(jsonBody)));
+            return withSuccess(mapper.writeValueAsString(jsonBody), MediaType.APPLICATION_JSON);
         } catch (JsonProcessingException e) {
-            e.printStackTrace();
-            Assertions.fail();
+            Assertions.fail(e);
+            throw new IllegalStateException(e);
         }
-        return response;
     }
 }
