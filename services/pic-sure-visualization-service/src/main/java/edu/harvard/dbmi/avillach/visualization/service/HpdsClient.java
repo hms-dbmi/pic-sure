@@ -53,7 +53,9 @@ public class HpdsClient {
         );
     }
 
-    public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(Query query, ResultType resultType, UUID resourceUUID, String bearerToken) {
+    public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(
+        Query query, ResultType resultType, UUID resourceUUID, String bearerToken
+    ) {
         return getOpenCrossCounts(query, resultType, resourceUUID, bearerToken, null, AccessType.OPEN, null);
     }
 
@@ -112,8 +114,8 @@ public class HpdsClient {
         } catch (RuntimeException e) {
             Integer status = e instanceof HttpStatusCodeException httpError ? httpError.getStatusCode().value() : null;
             logger.warn(
-                "HPDS call failed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} error={}",
-                requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, status,
+                "HPDS call failed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} error={}", requestId,
+                accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, status,
                 System.currentTimeMillis() - startTime, e.getMessage()
             );
             sendHpdsEvent(

@@ -4,12 +4,7 @@ import java.util.Set;
 
 final class DistributionMetadata {
 
-    static final Set<String> SKIP_KEYS = Set.of(
-        "\\_consents\\",
-        "\\_harmonized_consent\\",
-        "\\_topmed_consents\\",
-        "\\_parent_consents\\"
-    );
+    static final Set<String> SKIP_KEYS = Set.of("\\_consents\\", "\\_harmonized_consent\\", "\\_topmed_consents\\", "\\_parent_consents\\");
 
     private DistributionMetadata() {}
 

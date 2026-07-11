@@ -8,9 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins the JSON wire shape that the visualization resource exchanges with
- * aggregate-data-sharing. If either side renames a field, this test fails
- * BEFORE the cross-repo contract silently breaks in production.
+ * Pins the JSON wire shape that the visualization resource exchanges with aggregate-data-sharing. If either side renames a field, this test
+ * fails BEFORE the cross-repo contract silently breaks in production.
  */
 class ObfuscatedCountShapeTest {
 

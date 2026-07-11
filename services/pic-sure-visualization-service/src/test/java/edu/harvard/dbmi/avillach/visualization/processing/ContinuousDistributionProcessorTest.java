@@ -24,11 +24,12 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
         data.put(
             "\\measurements\\bmi\\",
-            new LinkedHashMap<>(Map.of(
-                "18.0 - 24.0", new ObfuscatedCount(600, "600"),
-                "24.0 - 30.0", new ObfuscatedCount(700, "700"),
-                "30.0 +", new ObfuscatedCount(150, "150")
-            ))
+            new LinkedHashMap<>(
+                Map.of(
+                    "18.0 - 24.0", new ObfuscatedCount(600, "600"), "24.0 - 30.0", new ObfuscatedCount(700, "700"), "30.0 +",
+                    new ObfuscatedCount(150, "150")
+                )
+            )
         );
 
         List<ContinuousDistributionData> result = processor.process(data, false);
@@ -49,10 +50,9 @@ class ContinuousDistributionProcessorTest {
         Map<String, Map<String, ObfuscatedCount>> data = new LinkedHashMap<>();
         data.put(
             "\\measurements\\bmi\\",
-            new LinkedHashMap<>(Map.of(
-                "18.0 - 22.0", new ObfuscatedCount(500, "500 ±3", 3),
-                "22.0 - 26.0", new ObfuscatedCount(0, "< 10", 9)
-            ))
+            new LinkedHashMap<>(
+                Map.of("18.0 - 22.0", new ObfuscatedCount(500, "500 ±3", 3), "22.0 - 26.0", new ObfuscatedCount(0, "< 10", 9))
+            )
         );
 
         List<ContinuousDistributionData> result = processor.process(data, true);

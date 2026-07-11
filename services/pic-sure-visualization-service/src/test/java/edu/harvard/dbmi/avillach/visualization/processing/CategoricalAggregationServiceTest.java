@@ -80,10 +80,7 @@ class CategoricalAggregationServiceTest {
         Map<String, Integer> result = service.aggregateTopN(categories);
 
         assertFalse(result.containsKey(longKey));
-        assertTrue(
-            result.keySet().iterator().next().length() <= 48,
-            "Long keys should be truncated"
-        );
+        assertTrue(result.keySet().iterator().next().length() <= 48, "Long keys should be truncated");
     }
 
     @Test
@@ -130,8 +127,7 @@ class CategoricalAggregationServiceTest {
 
         assertEquals(90, result.get("Other"), "Real 'Other' category must sum with tail bucket, not be overwritten");
         assertEquals(
-            categories.values().stream().mapToInt(Integer::intValue).sum(),
-            result.values().stream().mapToInt(Integer::intValue).sum(),
+            categories.values().stream().mapToInt(Integer::intValue).sum(), result.values().stream().mapToInt(Integer::intValue).sum(),
             "Total count must be preserved"
         );
     }
@@ -155,8 +151,7 @@ class CategoricalAggregationServiceTest {
 
         assertEquals(50, result.size(), "All 50 keys should produce distinct adjusted labels");
         assertEquals(
-            categories.values().stream().mapToInt(Integer::intValue).sum(),
-            result.values().stream().mapToInt(Integer::intValue).sum(),
+            categories.values().stream().mapToInt(Integer::intValue).sum(), result.values().stream().mapToInt(Integer::intValue).sum(),
             "Total counts must not be lost during disambiguation"
         );
     }

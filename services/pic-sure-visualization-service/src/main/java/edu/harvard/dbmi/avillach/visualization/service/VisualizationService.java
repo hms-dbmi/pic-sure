@@ -31,9 +31,9 @@ public class VisualizationService {
     private final CategoricalAggregationService categoricalAggregationService;
 
     public VisualizationService(
-        QueryDecomposer queryDecomposer, HpdsClient hpdsClient,
-        CategoricalDistributionProcessor categoricalDistributionProcessor, ContinuousDistributionProcessor continuousDistributionProcessor,
-        BinningService binningService, CategoricalAggregationService categoricalAggregationService
+        QueryDecomposer queryDecomposer, HpdsClient hpdsClient, CategoricalDistributionProcessor categoricalDistributionProcessor,
+        ContinuousDistributionProcessor continuousDistributionProcessor, BinningService binningService,
+        CategoricalAggregationService categoricalAggregationService
     ) {
         this.queryDecomposer = queryDecomposer;
         this.hpdsClient = hpdsClient;
@@ -52,15 +52,16 @@ public class VisualizationService {
         List<CategoricalDistributionData> categoricalData = new ArrayList<>();
         List<ContinuousDistributionData> continuousData = new ArrayList<>();
         logger.info(
-            "Generating visualization distributions requestId={} accessType={} resourceUUID={} subQueryCount={}",
-            requestId, accessContext.accessType().getValue(), accessContext.resourceUUID(), subQueries.size()
+            "Generating visualization distributions requestId={} accessType={} resourceUUID={} subQueryCount={}", requestId,
+            accessContext.accessType().getValue(), accessContext.resourceUUID(), subQueries.size()
         );
 
         for (QueryDecomposer.SubQueryDescriptor descriptor : subQueries) {
             try {
                 if (accessContext.accessType() == AccessType.AUTHORIZED) {
                     Map<String, Map<String, Integer>> crossCounts = requestId == null
-                        ? hpdsClient.getAuthCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken)
+                        ? hpdsClient
+                            .getAuthCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken)
                         : hpdsClient.getAuthCrossCounts(
                             descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken, requestId,
                             accessContext.accessType(), descriptor.distributionKind()
@@ -71,15 +72,15 @@ public class VisualizationService {
                     switch (descriptor.distributionKind()) {
                         case CONTINUOUS -> crossCounts
                             .forEach((concept, values) -> processed.put(concept, binningService.bucketData(nonNullValues(values))));
-                        case CATEGORICAL -> crossCounts
-                            .forEach(
-                                (concept, values) -> processed.put(concept, categoricalAggregationService.aggregateTopN(nonNullValues(values)))
-                            );
+                        case CATEGORICAL -> crossCounts.forEach(
+                            (concept, values) -> processed.put(concept, categoricalAggregationService.aggregateTopN(nonNullValues(values)))
+                        );
                     }
                     addDistributions(descriptor, wrap(processed), false, categoricalData, continuousData);
                 } else {
                     Map<String, Map<String, ObfuscatedCount>> rawCrossCounts = requestId == null
-                        ? hpdsClient.getOpenCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken)
+                        ? hpdsClient
+                            .getOpenCrossCounts(descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken)
                         : hpdsClient.getOpenCrossCounts(
                             descriptor.query(), descriptor.resultType(), accessContext.resourceUUID(), bearerToken, requestId,
                             accessContext.accessType(), descriptor.distributionKind()
@@ -108,8 +109,8 @@ public class VisualizationService {
 
         VisualizationResponse response = new VisualizationResponse(categoricalData, continuousData);
         logger.info(
-            "Generated visualization distributions requestId={} accessType={} categoricalChartCount={} continuousChartCount={}",
-            requestId, accessContext.accessType().getValue(), categoricalData.size(), continuousData.size()
+            "Generated visualization distributions requestId={} accessType={} categoricalChartCount={} continuousChartCount={}", requestId,
+            accessContext.accessType().getValue(), categoricalData.size(), continuousData.size()
         );
         return response;
     }
@@ -148,8 +149,8 @@ public class VisualizationService {
     }
 
     private void addDistributions(
-        QueryDecomposer.SubQueryDescriptor descriptor, Map<String, Map<String, ObfuscatedCount>> crossCounts,
-        boolean isObfuscated, List<CategoricalDistributionData> categoricalData, List<ContinuousDistributionData> continuousData
+        QueryDecomposer.SubQueryDescriptor descriptor, Map<String, Map<String, ObfuscatedCount>> crossCounts, boolean isObfuscated,
+        List<CategoricalDistributionData> categoricalData, List<ContinuousDistributionData> continuousData
     ) {
         if (!hasSeriesData(crossCounts)) {
             return;
@@ -168,9 +169,7 @@ public class VisualizationService {
         }
     }
 
-    private static void logRawHpdsShape(
-        QueryDecomposer.SubQueryDescriptor descriptor, Map<String, ? extends Map<?, ?>> rawCrossCounts
-    ) {
+    private static void logRawHpdsShape(QueryDecomposer.SubQueryDescriptor descriptor, Map<String, ? extends Map<?, ?>> rawCrossCounts) {
         if (rawCrossCounts == null) {
             return;
         }
