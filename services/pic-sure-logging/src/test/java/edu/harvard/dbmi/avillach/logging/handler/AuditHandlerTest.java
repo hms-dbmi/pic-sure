@@ -116,9 +116,7 @@ class AuditHandlerTest {
 
     @Test
     void metadataExceeding50KeysRejected() {
-        Map<String, String> metadata = IntStream.rangeClosed(1, 51)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> metadata = IntStream.rangeClosed(1, 51).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String metadataJson = mapToJson(metadata);
         String json = "{\"event_type\":\"TEST\",\"metadata\":" + metadataJson + "}";
 
@@ -131,9 +129,7 @@ class AuditHandlerTest {
 
     @Test
     void errorExceeding20KeysRejected() {
-        Map<String, String> error = IntStream.rangeClosed(1, 21)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> error = IntStream.rangeClosed(1, 21).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String errorJson = mapToJson(error);
         String json = "{\"event_type\":\"TEST\",\"error\":" + errorJson + "}";
 
@@ -146,9 +142,7 @@ class AuditHandlerTest {
 
     @Test
     void metadataAtExactly50KeysAccepted() {
-        Map<String, String> metadata = IntStream.rangeClosed(1, 50)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> metadata = IntStream.rangeClosed(1, 50).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String metadataJson = mapToJson(metadata);
         String json = "{\"event_type\":\"TEST\",\"metadata\":" + metadataJson + "}";
 
@@ -162,9 +156,7 @@ class AuditHandlerTest {
 
     @Test
     void errorAtExactly20KeysAccepted() {
-        Map<String, String> error = IntStream.rangeClosed(1, 20)
-            .boxed()
-            .collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
+        Map<String, String> error = IntStream.rangeClosed(1, 20).boxed().collect(Collectors.toMap(i -> "key" + i, i -> "val" + i));
         String errorJson = mapToJson(error);
         String json = "{\"event_type\":\"TEST\",\"error\":" + errorJson + "}";
 
