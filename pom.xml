@@ -17,6 +17,8 @@
         <module>services/pic-sure-hpds-query-service</module>
         <!-- Imported services adopted onto the reactor (carved from pic_sure_api_mono_repo) -->
         <module>services/pic-sure-visualization-service</module>
+        <module>services/pic-sure-services/info-service</module>
+        <module>services/pic-sure-services/uploader</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>

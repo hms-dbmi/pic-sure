@@ -3,29 +3,32 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.4.2</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
+		<version>${revision}</version>
+		<relativePath>../../../pom.xml</relativePath>
 	</parent>
 	<groupId>edu.harvard.dbmi.avillach</groupId>
 	<artifactId>uploader</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
 	<name>dataupload</name>
 	<description>Data Upload Client</description>
 	<properties>
-		<java.version>21</java.version>
 		<aws.version>2.30.24</aws.version>
 	</properties>
-	<repositories>
-		<repository>
-			<id>jitpack.io</id>
-			<url>https://jitpack.io</url>
-		</repository>
-	</repositories>
+	<dependencyManagement>
+		<dependencies>
+			<!-- Converges every software.amazon.awssdk artifact (the s3-encryption-client
+			     drags an older s3) onto ${aws.version} — dependencyConvergence enforcement. -->
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
-        <!--Checkmarx winges about a vulnerability in snakeyaml, but the CVE is for 1.30, not 1.33. Ignoring-->
-		<!--suppress VulnerableLibrariesLocal -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-jdbc</artifactId>
@@ -74,16 +77,12 @@
 		</dependency>
 
 		<dependency>
-			<groupId>com.github.hms-dbmi</groupId>
-			<artifactId>pic-sure</artifactId>
-			<version>fdfd61388980b8f3dad74e4c40e715d9350ccee4</version>
-			<exclusions>
-				<!--Exclude all transitive dependencies. I just want the ResourceInfo class-->
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-api-model</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
 		</dependency>
 
 		<dependency>

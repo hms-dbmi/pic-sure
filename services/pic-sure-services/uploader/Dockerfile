@@ -1,17 +1,9 @@
-FROM maven:3-amazoncorretto-21 as build
+FROM amazoncorretto:25
 
-COPY pom.xml .
-
-RUN mvn -B dependency:go-offline
-
-COPY src src
-
-RUN mvn -B package -DskipTests
-
-FROM amazoncorretto:21.0.1-alpine3.18
-
-# Copy jar and access token from maven build
-COPY --from=build target/uploader-*.jar /dataupload.jar
+# Runtime-only image (reactor convention): build the jar first with
+#   mvn -pl services/pic-sure-services/uploader -am package
+# from the monorepo root, then build this image from the module directory.
+COPY target/uploader-*.jar /dataupload.jar
 
 # Time zone
 ENV TZ="US/Eastern"

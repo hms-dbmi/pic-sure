@@ -3,37 +3,19 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.1.5</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
+		<version>${revision}</version>
+		<relativePath>../../../pom.xml</relativePath>
 	</parent>
 	<groupId>edu.harvard.dbmi.avillach</groupId>
 	<artifactId>infoservice</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
 	<name>Info Service</name>
 	<description>Info Service API</description>
-	<repositories>
-		<repository>
-			<id>jitpack.io</id>
-			<url>https://jitpack.io</url>
-		</repository>
-	</repositories>
-	<properties>
-		<java.version>21</java.version>
-	</properties>
 	<dependencies>
 		<dependency>
-			<groupId>com.github.hms-dbmi</groupId>
-			<artifactId>pic-sure</artifactId>
-			<version>e421ae9caff5ed02e9cd27812edfe24ec455281c</version>
-			<exclusions>
-				<!--Exclude all transitive dependencies. I just want the ResourceInfo class-->
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>*</artifactId>
-				</exclusion>
-			</exclusions>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-api-model</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

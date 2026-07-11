@@ -1,49 +1,38 @@
 package edu.harvard.dbmi.avillach.dataupload.hpds;
 
 import edu.harvard.dbmi.avillach.dataupload.hpds.hpdsartifactsdonotchange.Query;
-import org.apache.http.HttpResponse;
-import org.apache.http.StatusLine;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.protocol.HttpClientContext;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 
-import java.io.IOException;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-@SpringBootTest
 class HPDSClientTest {
 
-    @Mock
-    HttpClient client;
+    private static final String HPDS_URI = "http://hpds:8080/PIC-SURE/";
 
-    @Mock
-    HttpClientContext context;
+    private MockRestServiceServer server;
+    private HPDSClient subject;
 
-    @Mock
-    HttpResponse response;
-
-    @Mock
-    StatusLine line;
-
-    @InjectMocks
-    HPDSClient subject;
+    @BeforeEach
+    void setUp() {
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        subject = new HPDSClient(builder.build());
+    }
 
     @Test
-    void shouldInitializeQuery() throws IOException, InterruptedException {
+    void shouldInitializeQuery() {
         Query query = new Query();
         query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(200);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
+        server.expect(requestTo(HPDS_URI + "query/sync")).andExpect(method(HttpMethod.POST)).andRespond(withSuccess());
 
         boolean actual = subject.initializeQuery(query);
 
@@ -51,16 +40,11 @@ class HPDSClientTest {
     }
 
     @Test
-    void shouldNotInitializeQuery() throws IOException {
+    void shouldNotInitializeQuery() {
         Query query = new Query();
         query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(404);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
+        server.expect(requestTo(HPDS_URI + "query/sync")).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         boolean actual = subject.initializeQuery(query);
 
@@ -68,33 +52,10 @@ class HPDSClientTest {
     }
 
     @Test
-    void shouldHandleException() throws IOException, InterruptedException {
+    void shouldWritePhenotypicData() {
         Query query = new Query();
         query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(404);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
-
-        boolean actual = subject.initializeQuery(query);
-
-        Assertions.assertFalse(actual);
-    }
-
-    @Test
-    void shouldWritePhenotypicData() throws IOException, InterruptedException {
-        Query query = new Query();
-        query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(200);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
+        server.expect(requestTo(HPDS_URI + "write/phenotypic")).andExpect(method(HttpMethod.POST)).andRespond(withSuccess());
 
         boolean actual = subject.writePhenotypicData(query);
 
@@ -102,16 +63,11 @@ class HPDSClientTest {
     }
 
     @Test
-    void shouldNotWriteGenomicData() throws IOException, InterruptedException {
+    void shouldNotWriteGenomicData() {
         Query query = new Query();
         query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(500);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
+        server.expect(requestTo(HPDS_URI + "write/genomic")).andExpect(method(HttpMethod.POST))
+            .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
         boolean actual = subject.writeGenomicData(query);
 
@@ -119,16 +75,10 @@ class HPDSClientTest {
     }
 
     @Test
-    void shouldWriteTestData() throws IOException {
+    void shouldWriteTestData() {
         Query query = new Query();
         query.setPicSureId("my id");
-
-        Mockito.when(response.getStatusLine())
-            .thenReturn(line);
-        Mockito.when(line.getStatusCode())
-            .thenReturn(200);
-        Mockito.when(client.execute(Mockito.any(), Mockito.eq(context)))
-            .thenReturn(response);
+        server.expect(requestTo(HPDS_URI + "write/test_upload")).andExpect(method(HttpMethod.POST)).andRespond(withSuccess());
 
         boolean actual = subject.writeTestData(query);
 
