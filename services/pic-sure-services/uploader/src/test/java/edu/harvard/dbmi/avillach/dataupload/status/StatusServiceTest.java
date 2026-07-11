@@ -76,11 +76,9 @@ class StatusServiceTest {
         Query q = new Query();
         q.setPicSureId(":)");
         DataUploadStatuses statuses = new DataUploadStatuses(
-            UploadStatus.Error, UploadStatus.Error, UploadStatus.Unsent, UploadStatus.Unsent,
-            ":)", LocalDate.now(), "bch"
+            UploadStatus.Error, UploadStatus.Error, UploadStatus.Unsent, UploadStatus.Unsent, ":)", LocalDate.now(), "bch"
         );
-        Mockito.when(repository.getQueryStatus(":)"))
-            .thenReturn(Optional.of(statuses));
+        Mockito.when(repository.getQueryStatus(":)")).thenReturn(Optional.of(statuses));
 
         Optional<DataUploadStatuses> actual = subject.getStatus(q.getPicSureId());
         Optional<DataUploadStatuses> expected = Optional.of(statuses);

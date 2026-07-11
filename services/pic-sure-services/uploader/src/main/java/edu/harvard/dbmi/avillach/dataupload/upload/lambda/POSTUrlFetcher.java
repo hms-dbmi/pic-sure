@@ -31,9 +31,7 @@ public class POSTUrlFetcher {
 
     @Autowired
     public POSTUrlFetcher(
-        AWSCredentialsService credentialsService,
-        @Value("${aws.region}") String region,
-        @Value("${cumulus.lambda:}") String labdaARN,
+        AWSCredentialsService credentialsService, @Value("${aws.region}") String region, @Value("${cumulus.lambda:}") String labdaARN,
         @Value("${cumulus.bucket:}") String bucketName
     ) {
         this.credentialsService = credentialsService;
@@ -47,20 +45,12 @@ public class POSTUrlFetcher {
         StaticCredentialsProvider credentialsProvider = StaticCredentialsProvider.create(awsCredentials);
 
 
-        try (
-            LambdaClient lambdaClient = LambdaClient.builder()
-                .region(region)
-                .credentialsProvider(credentialsProvider)
-                .build()
-        ) {
+        try (LambdaClient lambdaClient = LambdaClient.builder().region(region).credentialsProvider(credentialsProvider).build()) {
 
             String payload = new Payload(uploadUUID, fileName, bucketName).asJson();
             log.info("Created upload request payload of {}", payload);
 
-            InvokeRequest invokeRequest = InvokeRequest.builder()
-                .functionName(labdaARN)
-                .payload(SdkBytes.fromUtf8String(payload))
-                .build();
+            InvokeRequest invokeRequest = InvokeRequest.builder().functionName(labdaARN).payload(SdkBytes.fromUtf8String(payload)).build();
 
             log.info("Invoking lambda");
             InvokeResponse invokeResponse = lambdaClient.invoke(invokeRequest);

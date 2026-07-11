@@ -70,8 +70,8 @@ public class DataUploadService {
         dataType.getStatusSetter(statusService).accept(query, UploadStatus.Queued);
         Thread.ofVirtual().start(() -> uploadData(query, dataType, site));
         statusService.setSite(query, site);
-        return statusService.getStatus(query.getPicSureId())
-            .orElse(null); // this should never happen. the status object is created during the set calls above
+        return statusService.getStatus(query.getPicSureId()).orElse(null); // this should never happen. the status object is created during
+                                                                           // the set calls above
     }
 
     protected void uploadData(Query query, DataType dataType, String site) {
@@ -104,7 +104,7 @@ public class DataUploadService {
             uploadLock.release();
             return;
         }
-        
+
         LOG.info("File location verified. Uploading for {} to AWS", query.getPicSureId());
         success = uploadFileFromPath(data, roleARNs.get(site), query.getPicSureId());
         deleteFile(data);
@@ -120,9 +120,8 @@ public class DataUploadService {
     }
 
     private void uploadQueryJson(Query query, SiteAWSInfo site) {
-        UploadStatus queryUploadStatus = statusService.getStatus(query.getPicSureId())
-                                             .map(DataUploadStatuses::query)
-                                             .orElse(UploadStatus.Unsent);
+        UploadStatus queryUploadStatus =
+            statusService.getStatus(query.getPicSureId()).map(DataUploadStatuses::query).orElse(UploadStatus.Unsent);
         if (queryUploadStatus == UploadStatus.Uploaded || queryUploadStatus == UploadStatus.Uploading) {
             return;
         }
@@ -166,12 +165,9 @@ public class DataUploadService {
         S3Client s3 = maybeClient.get();
         LOG.info("Starting multipart upload for file {} to site {} in dir {}", p, site, dir);
 
-        CreateMultipartUploadRequest createRequest = CreateMultipartUploadRequest.builder()
-            .bucket(site.bucket())
-            .serverSideEncryption(ServerSideEncryption.AWS_KMS)
-            .ssekmsKeyId(site.kmsKeyID())
-            .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
-            .build();
+        CreateMultipartUploadRequest createRequest =
+            CreateMultipartUploadRequest.builder().bucket(site.bucket()).serverSideEncryption(ServerSideEncryption.AWS_KMS)
+                .ssekmsKeyId(site.kmsKeyID()).key(Path.of(dir, home + "_" + p.getFileName().toString()).toString()).build();
         String uploadId;
         try {
             uploadId = s3.createMultipartUpload(createRequest).uploadId();
@@ -189,15 +185,10 @@ public class DataUploadService {
         LOG.info("Upload complete! Uploaded {} parts", completedParts.size());
 
         LOG.info("Notifying S3 of completed upload...");
-        CompletedMultipartUpload completedUpload = CompletedMultipartUpload.builder()
-            .parts(completedParts)
-            .build();
+        CompletedMultipartUpload completedUpload = CompletedMultipartUpload.builder().parts(completedParts).build();
 
-        CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder()
-            .bucket(site.bucket())
-            .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
-            .uploadId(uploadId)
-            .multipartUpload(completedUpload)
+        CompleteMultipartUploadRequest completeRequest = CompleteMultipartUploadRequest.builder().bucket(site.bucket())
+            .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString()).uploadId(uploadId).multipartUpload(completedUpload)
             .build();
 
         try {
@@ -225,21 +216,14 @@ public class DataUploadService {
 
                 LOG.info("Uploading file {} part {}", p.getFileName(), part);
                 buffer.flip();
-                UploadPartRequest uploadPartRequest = UploadPartRequest.builder()
-                    .bucket(site.bucket())
-                    .key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
-                    .uploadId(uploadId)
-                    .partNumber(part)
-                    .contentLength((long) bytesRead)
-                    .build();
+                UploadPartRequest uploadPartRequest =
+                    UploadPartRequest.builder().bucket(site.bucket()).key(Path.of(dir, home + "_" + p.getFileName().toString()).toString())
+                        .uploadId(uploadId).partNumber(part).contentLength((long) bytesRead).build();
 
 
                 UploadPartResponse response = s3.uploadPart(uploadPartRequest, RequestBody.fromByteBuffer(buffer));
 
-                completedParts.add(CompletedPart.builder()
-                    .partNumber(part)
-                    .eTag(response.eTag())
-                    .build());
+                completedParts.add(CompletedPart.builder().partNumber(part).eTag(response.eTag()).build());
 
                 buffer.clear();
                 position += bytesRead;

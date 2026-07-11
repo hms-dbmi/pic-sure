@@ -19,16 +19,12 @@ public class DataUploadStatusesMapper implements RowMapper<DataUploadStatuses> {
         String query = fromDashlessString(rs.getString("QUERY")).toString();
         Date approved = rs.getDate("APPROVED");
         String site = rs.getString("SITE");
-        return new DataUploadStatuses(
-                genomic, pheno, patient, queryStatus, query, approved == null ? null : approved.toLocalDate(), site
-        );
+        return new DataUploadStatuses(genomic, pheno, patient, queryStatus, query, approved == null ? null : approved.toLocalDate(), site);
     }
 
     private UUID fromDashlessString(String uuid) {
-        String dashed = uuid.replaceFirst(
-            "(\\p{XDigit}{8})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}+)",
-            "$1-$2-$3-$4-$5"
-        );
+        String dashed =
+            uuid.replaceFirst("(\\p{XDigit}{8})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}+)", "$1-$2-$3-$4-$5");
         return UUID.fromString(dashed);
     }
 }

@@ -46,23 +46,16 @@ public class S3StateVerifier {
 
     private void asyncVerify(SiteAWSInfo institution) {
         LOG.info("Checking S3 connection to {} ...", institution.siteName());
-        createTempFileWithText(institution)
-            .flatMap(p -> uploadFileFromPath(p, institution))
-            .orElseThrow();
+        createTempFileWithText(institution).flatMap(p -> uploadFileFromPath(p, institution)).orElseThrow();
         LOG.info("S3 connection to {} verified.", institution.siteName());
     }
 
     private Optional<String> uploadFileFromPath(Path p, SiteAWSInfo info) {
         LOG.info("Verifying upload capabilities");
         RequestBody body = RequestBody.fromFile(p.toFile());
-        PutObjectRequest request = PutObjectRequest.builder()
-            .bucket(info.bucket())
-            .serverSideEncryption(ServerSideEncryption.AWS_KMS)
-            .ssekmsKeyId(info.kmsKeyID())
-            .key(p.getFileName().toString())
-            .build();
-        return clientBuilder.buildClientForSite(info.siteName())
-            .map(client -> client.putObject(request, body))
+        PutObjectRequest request = PutObjectRequest.builder().bucket(info.bucket()).serverSideEncryption(ServerSideEncryption.AWS_KMS)
+            .ssekmsKeyId(info.kmsKeyID()).key(p.getFileName().toString()).build();
+        return clientBuilder.buildClientForSite(info.siteName()).map(client -> client.putObject(request, body))
             .map(resp -> p.getFileName().toString());
     }
 

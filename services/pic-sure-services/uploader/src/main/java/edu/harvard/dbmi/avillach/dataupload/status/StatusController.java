@@ -26,19 +26,15 @@ public class StatusController {
 
     @GetMapping("/status/{queryId}")
     public ResponseEntity<DataUploadStatuses> getUploadStatus(@PathVariable("queryId") String queryId) {
-        return statusService.getStatus(queryId)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+        return statusService.getStatus(queryId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/status/{queryId}/approve")
     public ResponseEntity<DataUploadStatuses> getUploadStatus(
-            @PathVariable("queryId") String queryId,
-            @RequestParam("date") String approvalDate
+        @PathVariable("queryId") String queryId, @RequestParam("date") String approvalDate
     ) {
-        return statusService.approve(queryId, parseDate(approvalDate))
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.internalServerError().build());
+        return statusService.approve(queryId, parseDate(approvalDate)).map(ResponseEntity::ok)
+            .orElse(ResponseEntity.internalServerError().build());
     }
 
     private LocalDate parseDate(@Nullable String date) {

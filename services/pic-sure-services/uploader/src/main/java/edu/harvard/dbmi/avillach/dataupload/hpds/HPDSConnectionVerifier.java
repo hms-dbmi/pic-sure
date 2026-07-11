@@ -47,10 +47,7 @@ public class HPDSConnectionVerifier {
             log.info("File found! Connection to HPDS verified!");
             return testData.delete();
         }
-        log.info(
-            "File {} not found. HPDS is running, but the shared directory is probably misconfigured",
-            testData.getPath()
-        );
+        log.info("File {} not found. HPDS is running, but the shared directory is probably misconfigured", testData.getPath());
         return false;
     }
 }

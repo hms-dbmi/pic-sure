@@ -22,8 +22,7 @@ import java.util.UUID;
 class StatusRepositoryTest {
 
     @Container
-    static final MySQLContainer<?> databaseContainer =
-        new MySQLContainer<>("mysql:8.0").withReuse(true);
+    static final MySQLContainer<?> databaseContainer = new MySQLContainer<>("mysql:8.0").withReuse(true);
 
     @DynamicPropertySource
     static void mySQLProperties(DynamicPropertyRegistry registry) {
@@ -41,8 +40,7 @@ class StatusRepositoryTest {
         Query query = new Query();
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                .map(DataUploadStatuses::genomic);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::genomic);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Uploaded);
 
         Assertions.assertEquals(expected, actual);
@@ -53,8 +51,7 @@ class StatusRepositoryTest {
         Query query = new Query();
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                .map(DataUploadStatuses::phenotypic);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::phenotypic);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Error);
 
         Assertions.assertEquals(expected, actual);
@@ -66,8 +63,7 @@ class StatusRepositoryTest {
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
         subject.setGenomicStatus(query.getPicSureId(), UploadStatus.Uploading);
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                .map(DataUploadStatuses::genomic);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::genomic);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Uploading);
 
         Assertions.assertEquals(expected, actual);
@@ -79,8 +75,7 @@ class StatusRepositoryTest {
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
         subject.setPhenotypicStatus(query.getPicSureId(), UploadStatus.Unsent);
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                .map(DataUploadStatuses::phenotypic);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::phenotypic);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Unsent);
 
         Assertions.assertEquals(expected, actual);
@@ -93,8 +88,7 @@ class StatusRepositoryTest {
 
         subject.setGenomicStatus(query.getPicSureId(), UploadStatus.Uploading);
 
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                .map(DataUploadStatuses::phenotypic);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::phenotypic);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Unsent);
         Assertions.assertEquals(expected, actual);
     }
@@ -129,8 +123,8 @@ class StatusRepositoryTest {
 
         DataUploadStatuses actual = subject.getQueryStatus(query.getPicSureId()).orElseThrow();
         DataUploadStatuses expected = new DataUploadStatuses(
-            UploadStatus.Uploaded, UploadStatus.Error, UploadStatus.Unsent, UploadStatus.Uploading,
-            "33613336-3934-3761-2d38-3233312d3131", LocalDate.of(2022, 2, 22), "bch"
+            UploadStatus.Uploaded, UploadStatus.Error, UploadStatus.Unsent, UploadStatus.Uploading, "33613336-3934-3761-2d38-3233312d3131",
+            LocalDate.of(2022, 2, 22), "bch"
         );
 
         Assertions.assertEquals(expected, actual);
@@ -142,8 +136,7 @@ class StatusRepositoryTest {
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
         subject.setSite(query.getPicSureId(), "Narnia");
-        Optional<String> actual = subject.getQueryStatus(query.getPicSureId())
-            .map(DataUploadStatuses::site);
+        Optional<String> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::site);
         Optional<String> expected = Optional.of("Narnia");
 
         Assertions.assertEquals(expected, actual);
@@ -155,8 +148,7 @@ class StatusRepositoryTest {
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
         subject.setPatientStatus(query.getPicSureId(), UploadStatus.Uploaded);
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                                            .map(DataUploadStatuses::patient);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::patient);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Uploaded);
 
         Assertions.assertEquals(expected, actual);
@@ -168,8 +160,7 @@ class StatusRepositoryTest {
         query.setPicSureId(UUID.fromString("33613336-3934-3761-2d38-3233312d3131").toString());
 
         subject.setQueryUploadStatus(query.getPicSureId(), UploadStatus.Error);
-        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId())
-                                            .map(DataUploadStatuses::query);
+        Optional<UploadStatus> actual = subject.getQueryStatus(query.getPicSureId()).map(DataUploadStatuses::query);
         Optional<UploadStatus> expected = Optional.of(UploadStatus.Error);
 
         Assertions.assertEquals(expected, actual);

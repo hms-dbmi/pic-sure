@@ -55,20 +55,15 @@ public class AWSConfiguration {
     @Bean
     @ConditionalOnProperty(name = "production", havingValue = "true")
     Map<String, SiteAWSInfo> roleARNs() {
-        boolean badConfig = Stream.of(roleArns, externalIDs, kmsKeyIds, buckets)
-            .filter(l -> l.size() != institutions.size())
-            .peek(l -> LOG.error("Mismatched aws credentials {}", l))
-            .findAny()
-            .isPresent();
+        boolean badConfig = Stream.of(roleArns, externalIDs, kmsKeyIds, buckets).filter(l -> l.size() != institutions.size())
+            .peek(l -> LOG.error("Mismatched aws credentials {}", l)).findAny().isPresent();
         if (badConfig) {
             context.close();
             return Map.of();
         }
         HashMap<String, SiteAWSInfo> roles = new HashMap<>();
         for (int i = 0; i < institutions.size(); i++) {
-            SiteAWSInfo info = new SiteAWSInfo(
-                institutions.get(i), roleArns.get(i), externalIDs.get(i), buckets.get(i), kmsKeyIds.get(i)
-            );
+            SiteAWSInfo info = new SiteAWSInfo(institutions.get(i), roleArns.get(i), externalIDs.get(i), buckets.get(i), kmsKeyIds.get(i));
             roles.put(info.siteName(), info);
         }
         return roles;

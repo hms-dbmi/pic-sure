@@ -41,23 +41,19 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
         DataUploadStatuses before = new DataUploadStatuses(
-            UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent,
-            query.getPicSureId(), LocalDate.EPOCH, "bch"
+            UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.EPOCH, "bch"
         );
         DataUploadStatuses after = new DataUploadStatuses(
-            UploadStatus.Uploading, UploadStatus.Uploading, UploadStatus.Unsent, UploadStatus.Unsent,
-            query.getPicSureId(), LocalDate.EPOCH, "bch"
+            UploadStatus.Uploading, UploadStatus.Uploading, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.EPOCH,
+            "bch"
         );
-        Mockito.when(statusService.getStatus(query.getPicSureId()))
-            .thenReturn(Optional.of(before));
-        Mockito.when(uploadService.asyncUpload(query, "bch", DataType.Genomic))
-            .thenReturn(after);
+        Mockito.when(statusService.getStatus(query.getPicSureId())).thenReturn(Optional.of(before));
+        Mockito.when(uploadService.asyncUpload(query, "bch", DataType.Genomic)).thenReturn(after);
 
         ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
         ResponseEntity<DataUploadStatuses> expected = ResponseEntity.ok(after);
 
-        Mockito.verify(uploadService, Mockito.times(1))
-            .asyncUpload(query, "bch", DataType.Genomic);
+        Mockito.verify(uploadService, Mockito.times(1)).asyncUpload(query, "bch", DataType.Genomic);
         Assertions.assertEquals(expected, actual);
     }
 
@@ -66,8 +62,7 @@ class DataUploadControllerTest {
         Query query = new Query();
         query.setPicSureId("my id");
 
-        Mockito.when(statusService.getStatus(query.getPicSureId()))
-            .thenReturn(Optional.empty());
+        Mockito.when(statusService.getStatus(query.getPicSureId())).thenReturn(Optional.empty());
 
         ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
@@ -88,10 +83,10 @@ class DataUploadControllerTest {
     void shouldBlockUnapproved() {
         Query query = new Query();
         query.setPicSureId("my id");
-        DataUploadStatuses nullApprovalDate =
-            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), null, "bch");
-        Mockito.when(statusService.getStatus(query.getPicSureId()))
-            .thenReturn(Optional.of(nullApprovalDate));
+        DataUploadStatuses nullApprovalDate = new DataUploadStatuses(
+            UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), null, "bch"
+        );
+        Mockito.when(statusService.getStatus(query.getPicSureId())).thenReturn(Optional.of(nullApprovalDate));
 
         ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 
@@ -102,10 +97,10 @@ class DataUploadControllerTest {
     void shouldBlockApprovedInFuture() {
         Query query = new Query();
         query.setPicSureId("my id");
-        DataUploadStatuses nullApprovalDate =
-            new DataUploadStatuses(UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.MAX, "bch");
-        Mockito.when(statusService.getStatus(query.getPicSureId()))
-            .thenReturn(Optional.of(nullApprovalDate));
+        DataUploadStatuses nullApprovalDate = new DataUploadStatuses(
+            UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, UploadStatus.Unsent, query.getPicSureId(), LocalDate.MAX, "bch"
+        );
+        Mockito.when(statusService.getStatus(query.getPicSureId())).thenReturn(Optional.of(nullApprovalDate));
 
         ResponseEntity<DataUploadStatuses> actual = subject.startUpload(query, "bch", DataType.Genomic);
 

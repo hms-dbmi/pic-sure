@@ -42,10 +42,8 @@ class AWSConfigurationTest {
         ReflectionTestUtils.setField(subject, "kmsKeyIds", List.of("k1", "k2"));
 
         Map<String, SiteAWSInfo> actual = subject.roleARNs();
-        Map<String, SiteAWSInfo> expected = Map.of(
-            "i1", new SiteAWSInfo("i1", ":)", "frodo", "b1", "k1"),
-            "i2", new SiteAWSInfo("i2", ">:|", "gimli", "b2", "k2")
-        );
+        Map<String, SiteAWSInfo> expected =
+            Map.of("i1", new SiteAWSInfo("i1", ":)", "frodo", "b1", "k1"), "i2", new SiteAWSInfo("i2", ">:|", "gimli", "b2", "k2"));
 
         Assertions.assertEquals(expected, actual);
     }

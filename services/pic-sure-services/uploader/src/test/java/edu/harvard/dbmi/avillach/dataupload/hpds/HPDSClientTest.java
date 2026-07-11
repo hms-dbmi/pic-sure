@@ -43,8 +43,7 @@ class HPDSClientTest {
     void shouldNotInitializeQuery() {
         Query query = new Query();
         query.setPicSureId("my id");
-        server.expect(requestTo(HPDS_URI + "query/sync")).andExpect(method(HttpMethod.POST))
-            .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        server.expect(requestTo(HPDS_URI + "query/sync")).andExpect(method(HttpMethod.POST)).andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         boolean actual = subject.initializeQuery(query);
 

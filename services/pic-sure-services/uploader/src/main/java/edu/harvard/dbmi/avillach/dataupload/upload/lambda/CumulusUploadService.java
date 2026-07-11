@@ -42,6 +42,7 @@ public class CumulusUploadService {
         Thread.ofVirtual().start(() -> upload(query));
         return true;
     }
+
     private void upload(Query query) {
         log.info("Fetching upload URL");
         Optional<String> uploadURL = urlFetcher.getPreSignedUploadURL(query.getPicSureId(), "patients.txt");
@@ -84,9 +85,8 @@ public class CumulusUploadService {
         connection.setRequestMethod("PUT");
         OutputStream out = connection.getOutputStream();
 
-        try (RandomAccessFile file = new RandomAccessFile(filePath.toString(), "r");
-            FileChannel inChannel = file.getChannel()) {
-            ByteBuffer buffer = ByteBuffer.allocate(8192); //Buffer size is 8k
+        try (RandomAccessFile file = new RandomAccessFile(filePath.toString(), "r"); FileChannel inChannel = file.getChannel()) {
+            ByteBuffer buffer = ByteBuffer.allocate(8192); // Buffer size is 8k
 
             while (inChannel.read(buffer) > 0) {
                 buffer.flip();

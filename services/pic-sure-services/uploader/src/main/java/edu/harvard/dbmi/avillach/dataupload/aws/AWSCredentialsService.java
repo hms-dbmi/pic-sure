@@ -28,10 +28,8 @@ public class AWSCredentialsService {
 
     @Autowired
     public AWSCredentialsService(
-        @Value("${aws.authentication.method:}") String authMethod,
-        @Value("${aws.s3.access_key_secret:}") String secret,
-        @Value("${aws.s3.access_key_id:}") String key,
-        @Value("${aws.s3.session_token:}") String token,
+        @Value("${aws.authentication.method:}") String authMethod, @Value("${aws.s3.access_key_secret:}") String secret,
+        @Value("${aws.s3.access_key_id:}") String key, @Value("${aws.s3.session_token:}") String token,
         ConfigurableApplicationContext context
     ) {
         this.authMethod = authMethod;
@@ -42,7 +40,7 @@ public class AWSCredentialsService {
     }
 
     public AwsCredentials constructCredentials() {
-        //noinspection SwitchStatementWithTooFewBranches
+        // noinspection SwitchStatementWithTooFewBranches
         return switch (authMethod) {
             case "instance-profile" -> createInstanceProfileBasedCredentials();
             default -> createUserBasedCredentials();

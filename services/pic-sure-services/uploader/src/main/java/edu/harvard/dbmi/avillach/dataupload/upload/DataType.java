@@ -10,6 +10,7 @@ import java.util.function.Function;
 
 public enum DataType {
     Genomic("genomic_data.tsv"), Phenotypic("phenotypic_data.csv"), Patient("patients.txt");
+
     public final String fileName;
 
     DataType(String fileName) {
