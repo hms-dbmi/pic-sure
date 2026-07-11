@@ -25,22 +25,14 @@ import java.util.stream.Collectors;
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.*;
 
 /**
- * This class handles authorization activities in the project. It decides
- * if a user can send a request to certain applications based on
- * what endpoint they are trying to hit and the content of the request body (in HTTP POST method).
- * <h3>Thoughts on design:</h3>
- * The core technology used here is jsonpath.
- * In the {@link TokenController#inspectToken(Map)} class, other registered applications
- * can hit the tokenIntrospection endpoint with a token they want PSAMA to introspect along
- * with the URL the token holder is trying to hit and what data this token holder is trying to send. After
- * checking if the token is valid or not, the authorization check in this class will start.
- * <br><br>
- * <p>
- * Whether users are allowed access or not depends on their privileges, which depends on
- * the accessRules underneath. AuthorizationService class will eventually use jsonpath to check if
- * certain places in the incoming JSON meet the requirement of the preset rules in accessRules to determine
- * if the token holder is authorized or not.
- * </p>
+ * This class handles authorization activities in the project. It decides if a user can send a request to certain applications based on what
+ * endpoint they are trying to hit and the content of the request body (in HTTP POST method). <h3>Thoughts on design:</h3> The core
+ * technology used here is jsonpath. In the {@link TokenController#inspectToken(Map)} class, other registered applications can hit the
+ * tokenIntrospection endpoint with a token they want PSAMA to introspect along with the URL the token holder is trying to hit and what data
+ * this token holder is trying to send. After checking if the token is valid or not, the authorization check in this class will start.
+ * <br><br> <p> Whether users are allowed access or not depends on their privileges, which depends on the accessRules underneath.
+ * AuthorizationService class will eventually use jsonpath to check if certain places in the incoming JSON meet the requirement of the
+ * preset rules in accessRules to determine if the token holder is authorized or not. </p>
  */
 @Service
 public class AuthorizationService {
@@ -48,12 +40,13 @@ public class AuthorizationService {
     private final Logger logger = LoggerFactory.getLogger(AuthorizationService.class);
 
     /**
-     * Matches clean HPDS-v3 target service paths, e.g. {@code /hpds/auth/v3}, {@code /hpds/auth/v3/query},
-     * {@code /hpds/open/v3}, {@code /hpds/open/v3/query/abc/result}. Intentionally segment-aware so it does
-     * NOT match things like {@code /hpds/auth/v30/query}, {@code /hpds/auth/v3ish/query},
-     * {@code /hpds/v3/query}, {@code /foo/hpds/auth/v3/query}, or {@code /hpds/auth/v3-query}.
+     * Matches clean HPDS-v3 (auth-backend) target service paths, e.g. {@code /hpds/auth/v3}, {@code /hpds/auth/v3/query},
+     * {@code /hpds/auth/v3/query/abc/result}. Only the {@code auth} backend reaches this method — open-access requests are authorized via a
+     * separate endpoint — so the {@code open} backend is intentionally not matched. Segment-aware so it does NOT match things like
+     * {@code /hpds/auth/v30/query}, {@code /hpds/auth/v3ish/query}, {@code /hpds/v3/query}, {@code /foo/hpds/auth/v3/query}, or
+     * {@code /hpds/auth/v3-query}.
      */
-    private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/(auth|open)/v3(/.*)?$");
+    private static final Pattern HPDS_V3_TARGET_SERVICE_PATTERN = Pattern.compile("^/hpds/auth/v3(/.*)?$");
 
     protected AccessRuleService accessRuleService;
     protected SessionService sessionService;
@@ -62,8 +55,8 @@ public class AuthorizationService {
     private final ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator;
 
     /**
-     * Applications that have strict access control. If the application is strict a user must have both privileges and access rules.
-     * If the application is not strict, the user only needs privileges. Access rules are optional.
+     * Applications that have strict access control. If the application is strict a user must have both privileges and access rules. If the
+     * application is not strict, the user only needs privileges. Access rules are optional.
      */
     private final Set<String> strictConnections = new HashSet<>();
 
@@ -71,12 +64,11 @@ public class AuthorizationService {
     private final UserConsentsRepository userConsentsRepository;
 
     @Autowired
-    public AuthorizationService(AccessRuleService accessRuleService,
-                                SessionService sessionService,
-                                RoleService roleService,
-                                ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator,
-                                @Value("${strict.authorization.applications.connections}") String strictConnections,
-                                UserConsentsRepository userConsentsRepository) {
+    public AuthorizationService(
+        AccessRuleService accessRuleService, SessionService sessionService, RoleService roleService,
+        ConsentBasedAccessRuleEvaluator consentBasedAccessRuleEvaluator,
+        @Value("${strict.authorization.applications.connections}") String strictConnections, UserConsentsRepository userConsentsRepository
+    ) {
         this.accessRuleService = accessRuleService;
         this.sessionService = sessionService;
         this.roleService = roleService;
@@ -88,24 +80,11 @@ public class AuthorizationService {
     }
 
     /**
-     * Checking based on AccessRule in Privilege
-     * <br><br>
-     * Thoughts on design:
-     * <br>
-     * <br>
-     * We have three layers here: role, privilege, accessRule.
-     * <br>
-     * A role might have multiple privileges, a privilege might have multiple accessRules.
-     * <br>
-     * Currently, we retrieve all accessRules together. Between AccessRules, they should be OR relationship, which means
-     * roles and privileges are OR relationship, pass one, and you are good.
-     * <br>
-     * <br>
-     * Inside each accessRule, there are  subAccessRules and Gates.
-     * <br>
-     * Only if all gates are applied will the accessRule be checked.
-     * <br>
-     * The accessRule and subAccessRules are an AND relationship.
+     * Checking based on AccessRule in Privilege <br><br> Thoughts on design: <br> <br> We have three layers here: role, privilege,
+     * accessRule. <br> A role might have multiple privileges, a privilege might have multiple accessRules. <br> Currently, we retrieve all
+     * accessRules together. Between AccessRules, they should be OR relationship, which means roles and privileges are OR relationship, pass
+     * one, and you are good. <br> <br> Inside each accessRule, there are subAccessRules and Gates. <br> Only if all gates are applied will
+     * the accessRule be checked. <br> The accessRule and subAccessRules are an AND relationship.
      *
      * @param application
      * @param requestBody
@@ -134,9 +113,12 @@ public class AuthorizationService {
             return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
         }
 
-        //in some cases, we don't go through the evaluation
+        // in some cases, we don't go through the evaluation
         if (requestBody == null) {
-            logger.debug("ACCESS_LOG ___ {},{},{} ___ has been granted access to application ___ {} ___ NO REQUEST BODY FORWARDED BY APPLICATION", user.getUuid().toString(), user.getEmail(), user.getName(), applicationName);
+            logger.debug(
+                "ACCESS_LOG ___ {},{},{} ___ has been granted access to application ___ {} ___ NO REQUEST BODY FORWARDED BY APPLICATION",
+                user.getUuid().toString(), user.getEmail(), user.getName(), applicationName
+            );
             return new EvaluateAccessRuleResult(true, Set.of(), null, Optional.empty());
         }
 
@@ -154,12 +136,15 @@ public class AuthorizationService {
             formattedQuery = (String) ((Map) requestBody).get("formattedQuery");
 
             if (formattedQuery == null) {
-                //fallback in case no formatted query info present
+                // fallback in case no formatted query info present
                 formattedQuery = new ObjectMapper().writeValueAsString(requestBody);
             }
 
         } catch (ClassCastException | JsonProcessingException e1) {
-            logger.debug("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ UNABLE TO PARSE REQUEST", user.getUuid().toString(), user.getEmail(), user.getName(), requestBody, applicationName);
+            logger.debug(
+                "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ UNABLE TO PARSE REQUEST",
+                user.getUuid().toString(), user.getEmail(), user.getName(), requestBody, applicationName
+            );
             logger.debug("isAuthorized() Stack Trace: ", e1);
             return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
         }
@@ -174,36 +159,54 @@ public class AuthorizationService {
         if (this.strictConnections.contains(label)) {
             accessRules = this.accessRuleService.getAccessRulesForUserAndApp(user, application);
             if (accessRules.isEmpty()) {
-                logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
+                logger.info(
+                    "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
+                    user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
+                );
                 return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
             }
         } else {
             Set<Privilege> privileges = user.getPrivilegesByApplication(application);
             // List all privileges of the user
-            logger.info("ACCESS_LOG ___ {},{},{} ___ has the following privileges: {}", user.getUuid().toString(), user.getEmail(), user.getName(), privileges.stream().map(Privilege::getName).collect(Collectors.joining(", ")));
+            logger.info(
+                "ACCESS_LOG ___ {},{},{} ___ has the following privileges: {}", user.getUuid().toString(), user.getEmail(), user.getName(),
+                privileges.stream().map(Privilege::getName).collect(Collectors.joining(", "))
+            );
             if (privileges == null || privileges.isEmpty()) {
-                logger.info("ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
+                logger.info(
+                    "ACCESS_LOG ___ {},{},{} ___ has been denied access to execute query ___ {} ___ in application ___ {} __ USER HAS NO PRIVILEGES ASSOCIATED TO THE APPLICATION, BUT APPLICATION HAS PRIVILEGES",
+                    user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
+                );
                 return new EvaluateAccessRuleResult(false, Set.of(), null, Optional.empty());
             }
 
             accessRules = this.accessRuleService.cachedPreProcessAccessRules(user, privileges);
             if (accessRules.isEmpty()) {
-                logger.info("ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED", user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName);
+                logger.info(
+                    "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO ACCESS RULES EVALUATED",
+                    user.getUuid().toString(), user.getEmail(), user.getName(), formattedQuery, applicationName
+                );
                 return new EvaluateAccessRuleResult(true, Set.of(), null, Optional.empty());
             }
         }
 
-        logger.info("ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(), accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", ")));
+        logger.info(
+            "ACCESS_LOG ___ {},{},{} ___ has the following access rules: {}", user.getUuid().toString(), user.getEmail(), user.getName(),
+            accessRules.stream().map(AccessRule::toString).collect(Collectors.joining(", "))
+        );
 
         EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, accessRules, user);
         boolean result = evaluationResult.result();
         String passRuleName = evaluationResult.passRuleName();
         Set<AccessRule> failedRules = evaluationResult.failedRules();
 
-        logger.info("ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}", user.getUuid().toString(), user.getEmail(), user.getName(), (result ? "granted" : "denied"), formattedQuery, applicationName, (result ? "passed by " + passRuleName : "failed by rules: ["
-                + failedRules.stream()
-                .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
-                .collect(Collectors.joining(", ")) + "]"));
+        logger.info(
+            "ACCESS_LOG ___ {},{},{} ___ has been {} access to execute query ___ {} ___ in application ___ {} ___ {}",
+            user.getUuid().toString(), user.getEmail(), user.getName(), (result ? "granted" : "denied"), formattedQuery, applicationName,
+            (result ? "passed by " + passRuleName
+                : "failed by rules: [" + failedRules.stream().map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
+                    .collect(Collectors.joining(", ")) + "]")
+        );
 
         return evaluationResult;
     }
@@ -221,7 +224,7 @@ public class AuthorizationService {
                     UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
 
                     // This is an HPDS query inside a PIC-SURE query
-                    Map queryMap  = (Map) ((Map) requestBody).get("query");
+                    Map queryMap = (Map) ((Map) requestBody).get("query");
                     Object queryObject = queryMap.get("query");
                     Query query;
 
@@ -240,14 +243,12 @@ public class AuthorizationService {
                     } else {
                         failedRules.add(accessRule);
                     }
-                }
-                else {
+                } else {
                     String targetService = (String) ((Map) requestBody).get("Target Service");
                     logger.debug("Target service = " + targetService);
                     if (targetService != null && (targetService.startsWith("/v3") || isHpdsV3TargetService(targetService))) {
                         logger.debug("Skipping access rule {}", accessRule.getName());
-                    }
-                    else if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
+                    } else if (this.accessRuleService.evaluateAccessRule(requestBody, accessRule)) {
                         result = true;
                         passByRule = accessRule;
                         break;
@@ -255,12 +256,10 @@ public class AuthorizationService {
                         failedRules.add(accessRule);
                         // Print the evaluation tree when a rule fails
                         if (logger.isInfoEnabled()) {
-                            String ruleName = accessRule.getMergedName().isEmpty() ?
-                                    accessRule.getName() :
-                                    accessRule.getMergedName();
-                            logger.info("Rule evaluation tree for failed rule {}:\n{}",
-                                    ruleName,
-                                    this.accessRuleService.printEvaluationTree());
+                            String ruleName = accessRule.getMergedName().isEmpty() ? accessRule.getName() : accessRule.getMergedName();
+                            logger.info(
+                                "Rule evaluation tree for failed rule {}:\n{}", ruleName, this.accessRuleService.printEvaluationTree()
+                            );
                         }
                     }
                 }
@@ -284,11 +283,10 @@ public class AuthorizationService {
     }
 
     /**
-     * Returns true only when {@code targetService} is a clean HPDS-v3 target service path, i.e. exactly
-     * {@code /hpds/auth/v3}, {@code /hpds/auth/v3/**}, {@code /hpds/open/v3}, or {@code /hpds/open/v3/**}.
-     * <p>
-     * This is intentionally segment/prefix-aware (not a loose {@code contains("hpds") && contains("v3")}
-     * check) so that consent-rule evaluation is skipped only for genuine HPDS-v3 calls, not for
+     * Returns true only when {@code targetService} is a clean HPDS-v3 (auth-backend) target service path, i.e. exactly
+     * {@code /hpds/auth/v3} or {@code /hpds/auth/v3/**}. Open-access requests never reach this method (they are authorized via a separate
+     * endpoint), so the {@code open} backend is not matched. <p> This is intentionally segment/prefix-aware (not a loose
+     * {@code contains("hpds") && contains("v3")} check) so that consent-rule evaluation is skipped only for genuine HPDS-v3 calls, not for
      * unrelated paths that happen to contain those substrings.
      */
     static boolean isHpdsV3TargetService(String targetService) {
@@ -301,26 +299,33 @@ public class AuthorizationService {
     public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
 
         if (inputMap == null || inputMap.isEmpty()) {
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION");
+            logger.info(
+                "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
+            );
             return true;
         }
 
         Object requestBody = inputMap.get("request");
         // If there is no request body, we can assume the request is valid
         if (requestBody == null) {
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION");
+            logger.info(
+                "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
+            );
             return true;
         }
 
         // Load the open access rules
         Role openAccessRole = this.roleService.getRoleByName(MANAGED_OPEN_ACCESS_ROLE_NAME);
         if (openAccessRole == null) {
-            logger.info("{} has not be created for this environment. Please create the role and its permissions before attempting to use open access.", MANAGED_OPEN_ACCESS_ROLE_NAME);
+            logger.info(
+                "{} has not be created for this environment. Please create the role and its permissions before attempting to use open access.",
+                MANAGED_OPEN_ACCESS_ROLE_NAME
+            );
             return false;
         }
 
-        Set<AccessRule> allOpenAccessRules = openAccessRole.getPrivileges().stream()
-                .map(Privilege::getAccessRules).collect(Collectors.toSet()).stream().flatMap(Collection::stream).collect(Collectors.toSet());
+        Set<AccessRule> allOpenAccessRules = openAccessRole.getPrivileges().stream().map(Privilege::getAccessRules)
+            .collect(Collectors.toSet()).stream().flatMap(Collection::stream).collect(Collectors.toSet());
 
         boolean result = false;
         if (allOpenAccessRules.isEmpty()) {
@@ -331,10 +336,14 @@ public class AuthorizationService {
             result = evaluationResult.result();
             String passRuleName = evaluationResult.passRuleName();
             Set<AccessRule> failedRules = evaluationResult.failedRules();
-            logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been {} access to execute query ___ {} ___ in application ___ OPEN ACCESS ___ {}", (result ? "granted" : "denied"), requestBody, (result ? "passed by " + passRuleName : "failed by rules: ["
-                                                                                                                                                                                                                                             + failedRules.stream()
-                                                                                                                                                                                                                                                     .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName()))
-                                                                                                                                                                                                                                                     .collect(Collectors.joining(", ")) + "]"));
+            logger.info(
+                "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been {} access to execute query ___ {} ___ in application ___ OPEN ACCESS ___ {}",
+                (result ? "granted" : "denied"), requestBody,
+                (result ? "passed by " + passRuleName
+                    : "failed by rules: [" + failedRules.stream()
+                        .map(ar -> (ar.getMergedName().isEmpty() ? ar.getName() : ar.getMergedName())).collect(Collectors.joining(", "))
+                        + "]")
+            );
         }
 
         return result;

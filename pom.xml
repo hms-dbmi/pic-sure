@@ -23,6 +23,7 @@
         <module>services/picsure-dictionary/aggregate</module>
         <module>services/picsure-dictionary/dictionaryweights</module>
         <module>services/pic-sure-logging</module>
+        <module>services/pic-sure-auth-microapp</module>
         <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
              (Java 11/javax, own parent pom) and builds independently. -->
     </modules>
