@@ -28,7 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 @ExtendWith(MockitoExtension.class)
 class HpdsClientTest {
@@ -45,9 +45,9 @@ class HpdsClientTest {
 
     @BeforeEach
     void setUp() {
-        RestTemplate restTemplate = new RestTemplate();
-        mockServer = MockRestServiceServer.createServer(restTemplate);
-        client = new HpdsClient(restTemplate, loggingClient, "http://localhost:9999/mock-hpds");
+        RestClient.Builder builder = RestClient.builder();
+        mockServer = MockRestServiceServer.bindTo(builder).build();
+        client = new HpdsClient(builder.build(), loggingClient, "http://localhost:9999/mock-hpds");
     }
 
     @Test

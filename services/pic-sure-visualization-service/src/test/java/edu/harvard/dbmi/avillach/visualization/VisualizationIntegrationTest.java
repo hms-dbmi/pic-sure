@@ -24,7 +24,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 // Production shape: no configured fallback UUIDs -- resourceUUID flows as null end-to-end (HpdsCallIntegrationTest
 // covers the configured-fallback shape via the test profile's properties).
-@TestPropertySource(properties = {"hpds.resource.authorized.uuid=", "hpds.resource.open.uuid="})
+// Actuator is OFF BY DEFAULT (exposure defaults to 'none'); expose health so healthEndpoint_isPublic exercises the
+// endpoint the AIO deployment enables via PICSURE_ACTUATOR_EXPOSURE=health.
+@TestPropertySource(
+    properties = {"hpds.resource.authorized.uuid=", "hpds.resource.open.uuid=", "management.endpoints.web.exposure.include=health"}
+)
 class VisualizationIntegrationTest {
 
     private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -76,9 +80,8 @@ class VisualizationIntegrationTest {
         // resourceUUID is null end-to-end (HPDS ignores the field; audit metadata must tolerate it).
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
-        mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body)
-        ).andExpect(status().isOk());
+        mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body))
+            .andExpect(status().isOk());
     }
 
     @Test
@@ -87,9 +90,8 @@ class VisualizationIntegrationTest {
         String body =
             objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
-        mockMvc.perform(
-            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body)
-        ).andExpect(status().isOk());
+        mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body))
+            .andExpect(status().isOk());
     }
 
     @Test
@@ -168,9 +170,9 @@ class VisualizationIntegrationTest {
             "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
         );
 
-        MvcResult result = mockMvc
-            .perform(post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
-            .andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(
+            post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody))
+        ).andExpect(status().isOk()).andReturn();
 
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);

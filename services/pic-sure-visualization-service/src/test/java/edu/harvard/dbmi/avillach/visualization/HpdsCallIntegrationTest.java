@@ -24,12 +24,29 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Import;
+import org.springframework.web.client.RestClient;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(HpdsCallIntegrationTest.MockHpdsRestClient.class)
 class HpdsCallIntegrationTest {
+
+    @TestConfiguration
+    static class MockHpdsRestClient {
+        static final RestClient.Builder BUILDER = RestClient.builder();
+        static final MockRestServiceServer SERVER = MockRestServiceServer.bindTo(BUILDER).build();
+
+        @Bean
+        @Primary
+        RestClient mockBoundRestClient() {
+            return BUILDER.build();
+        }
+    }
 
     private static final String AUTHORIZED_UUID =
         "550e8400-e29b-41d4-a716-446655440000";
@@ -42,14 +59,12 @@ class HpdsCallIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private RestTemplate restTemplate;
-
     private MockRestServiceServer mockServer;
 
     @BeforeEach
     void setUp() {
-        mockServer = MockRestServiceServer.createServer(restTemplate);
+        mockServer = MockHpdsRestClient.SERVER;
+        mockServer.reset();
     }
 
     @Test
