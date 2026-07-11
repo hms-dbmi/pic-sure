@@ -10,14 +10,16 @@ import java.io.FileNotFoundException;
 import java.io.Serializable;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class FileBackedStorageVariantMasksImpl extends FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> implements Serializable {
+public class FileBackedStorageVariantMasksImpl extends FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>
+    implements Serializable {
     private static final long serialVersionUID = -1086729119489479152L;
 
     public FileBackedStorageVariantMasksImpl(File storageFile) throws FileNotFoundException {
         super(storageFile);
     }
-    private static final TypeReference<ConcurrentHashMap<String, VariableVariantMasks>> typeRef
-            = new TypeReference<ConcurrentHashMap<String, VariableVariantMasks>>() {};
+
+    private static final TypeReference<ConcurrentHashMap<String, VariableVariantMasks>> typeRef =
+        new TypeReference<ConcurrentHashMap<String, VariableVariantMasks>>() {};
 
     @Override
     public TypeReference<ConcurrentHashMap<String, VariableVariantMasks>> getTypeReference() {

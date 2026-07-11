@@ -40,6 +40,7 @@ public class CsvWriter implements ResultWriter {
             throw new RuntimeException("IOException while appending to CSV file", e);
         }
     }
+
     @Override
     public void writeEntity(Collection<String[]> data) {
         try {
@@ -52,14 +53,12 @@ public class CsvWriter implements ResultWriter {
     @Override
     public void writeMultiValueEntity(Collection<List<List<String>>> data) {
         List<String[]> collect = data.stream().map(line -> {
-            return line.stream()
-                    .map(cell -> {
-                        if (cell == null) {
-                            return "";
-                        }
-                        return Joiner.on('\t').join(cell);
-                    })
-                    .toArray(String[]::new);
+            return line.stream().map(cell -> {
+                if (cell == null) {
+                    return "";
+                }
+                return Joiner.on('\t').join(cell);
+            }).toArray(String[]::new);
         }).toList();
         try {
             csvWriter.write(fileWriter, collect);

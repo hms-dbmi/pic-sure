@@ -44,6 +44,7 @@ public class VariantService {
     public BucketIndexBySample getBucketIndex() {
         return bucketIndex;
     }
+
     public Set<String> filterVariantSetForPatientSet(Set<String> variantSet, Collection<Integer> patientSet) {
         try {
             return bucketIndex.filterVariantSetForPatientSet(variantSet, patientSet);
@@ -81,8 +82,8 @@ public class VariantService {
     }
 
     public String[] loadVariantIndex() {
-        //skip if we have no variants
-        if(variantStore.getPatientIds().length == 0) {
+        // skip if we have no variants
+        if (variantStore.getPatientIds().length == 0) {
             log.warn("No Genomic Data found.  Skipping variant Indexing");
             return new String[0];
         }
@@ -100,22 +101,25 @@ public class VariantService {
      * @throws InterruptedException
      */
     private void loadGenomicCacheFiles() throws FileNotFoundException, IOException, InterruptedException {
-        if(bucketIndex==null) {
-            if(variantIndex==null) {
-                if(!new File(VARIANT_INDEX_FBBIS_FILE).exists()) {
+        if (bucketIndex == null) {
+            if (variantIndex == null) {
+                if (!new File(VARIANT_INDEX_FBBIS_FILE).exists()) {
                     log.info("Creating new " + VARIANT_INDEX_FBBIS_FILE);
                     this.variantIndex = loadVariantIndex();
                     FileBackedByteIndexedStorage<Integer, String[]> fbbis =
-                            new FileBackedJavaIndexedStorage<>(Integer.class, String[].class, new File(VARIANT_INDEX_FBBIS_STORAGE_FILE));
-                    try (ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(VARIANT_INDEX_FBBIS_FILE)));
-                    ){
+                        new FileBackedJavaIndexedStorage<>(Integer.class, String[].class, new File(VARIANT_INDEX_FBBIS_STORAGE_FILE));
+                    try (
+                        ObjectOutputStream oos =
+                            new ObjectOutputStream(new GZIPOutputStream(new FileOutputStream(VARIANT_INDEX_FBBIS_FILE)));
+                    ) {
 
                         log.debug("Writing Cache Object in blocks of " + VARIANT_INDEX_BLOCK_SIZE);
 
-                        int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
+                        int bucketCount = (variantIndex.length / VARIANT_INDEX_BLOCK_SIZE) + 1; // need to handle overflow
                         int index = 0;
-                        for( int i = 0; i < bucketCount; i++) {
-                            int blockSize = i == (bucketCount - 1) ? (variantIndex.length % VARIANT_INDEX_BLOCK_SIZE) : VARIANT_INDEX_BLOCK_SIZE;
+                        for (int i = 0; i < bucketCount; i++) {
+                            int blockSize =
+                                i == (bucketCount - 1) ? (variantIndex.length % VARIANT_INDEX_BLOCK_SIZE) : VARIANT_INDEX_BLOCK_SIZE;
 
                             String[] variantArrayBlock = new String[blockSize];
                             System.arraycopy(variantIndex, index, variantArrayBlock, 0, blockSize);
@@ -127,33 +131,40 @@ public class VariantService {
                         fbbis.complete();
                         oos.writeObject("" + variantIndex.length);
                         oos.writeObject(fbbis);
-                        oos.flush();oos.close();
+                        oos.flush();
+                        oos.close();
                     }
-                }else {
+                } else {
                     ExecutorService ex = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-                    try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FBBIS_FILE)));){
+                    try (
+                        ObjectInputStream objectInputStream =
+                            new ObjectInputStream(new GZIPInputStream(new FileInputStream(VARIANT_INDEX_FBBIS_FILE)));
+                    ) {
                         Integer variantCount = Integer.parseInt((String) objectInputStream.readObject());
-                        FileBackedByteIndexedStorage<Integer, String[]> indexStore = (FileBackedByteIndexedStorage<Integer, String[]>) objectInputStream.readObject();
+                        FileBackedByteIndexedStorage<Integer, String[]> indexStore =
+                            (FileBackedByteIndexedStorage<Integer, String[]>) objectInputStream.readObject();
                         log.info("loading " + VARIANT_INDEX_FBBIS_FILE);
 
                         variantIndex = new String[variantCount];
                         String[] _varaiantIndex2 = variantIndex;
 
-                        //variant index has to be a single array (we use a binary search for lookups)
-                        //but reading/writing to disk should be batched for performance
-                        int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1;  //need to handle overflow
+                        // variant index has to be a single array (we use a binary search for lookups)
+                        // but reading/writing to disk should be batched for performance
+                        int bucketCount = (variantCount / VARIANT_INDEX_BLOCK_SIZE) + 1; // need to handle overflow
 
-                        for( int i = 0; i < bucketCount; i++) {
+                        for (int i = 0; i < bucketCount; i++) {
                             final int _i = i;
                             ex.submit(() -> {
                                 String[] variantIndexBucket = indexStore.get(_i);
-                                System.arraycopy(variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length);
+                                System.arraycopy(
+                                    variantIndexBucket, 0, _varaiantIndex2, (_i * VARIANT_INDEX_BLOCK_SIZE), variantIndexBucket.length
+                                );
                                 log.debug("loaded " + (_i * VARIANT_INDEX_BLOCK_SIZE) + " block");
                             });
                         }
                         objectInputStream.close();
                         ex.shutdown();
-                        while(! ex.awaitTermination(60, TimeUnit.SECONDS)) {
+                        while (!ex.awaitTermination(60, TimeUnit.SECONDS)) {
                             log.info("Waiting for tasks to complete");
                             Thread.sleep(10000);
                         }
@@ -163,22 +174,27 @@ public class VariantService {
                     log.info("Found " + variantIndex.length + " total variants.");
                 }
             }
-            // todo: not loading bucket index when there is no variant metadata index is a temporary fix for non-variant explorer environments
+            // todo: not loading bucket index when there is no variant metadata index is a temporary fix for non-variant explorer
+            // environments
             // once we start building the bucket index as part of the ETL, we can remove this check and leverage the bucket index
             // for all genomic queries
-            if(variantStore.getPatientIds().length > 0 && variantMetadataIndex != null && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
+            if (
+                variantStore.getPatientIds().length > 0 && variantMetadataIndex != null && !new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()
+            ) {
                 log.info("creating new " + BUCKET_INDEX_BY_SAMPLE_FILE);
                 bucketIndex = new BucketIndexBySample(variantStore, genomicDataDirectory);
                 try (
-                        FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE);
-                        GZIPOutputStream gzos = new GZIPOutputStream(fos);
-                        ObjectOutputStream oos = new ObjectOutputStream(gzos);
-                ){
+                    FileOutputStream fos = new FileOutputStream(BUCKET_INDEX_BY_SAMPLE_FILE); GZIPOutputStream gzos =
+                        new GZIPOutputStream(fos); ObjectOutputStream oos = new ObjectOutputStream(gzos);
+                ) {
                     oos.writeObject(bucketIndex);
                     oos.flush();
                 }
-            }else if (new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
-                try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));){
+            } else if (new File(BUCKET_INDEX_BY_SAMPLE_FILE).exists()) {
+                try (
+                    ObjectInputStream objectInputStream =
+                        new ObjectInputStream(new GZIPInputStream(new FileInputStream(BUCKET_INDEX_BY_SAMPLE_FILE)));
+                ) {
                     log.info("loading " + BUCKET_INDEX_BY_SAMPLE_FILE);
                     bucketIndex = (BucketIndexBySample) objectInputStream.readObject();
                     bucketIndex.updateStorageDirectory(new File(genomicDataDirectory));
@@ -200,6 +216,7 @@ public class VariantService {
             throw new UncheckedIOException(e);
         }
     }
+
     public List<VariableVariantMasks> getMasksForDbSnpSpec(String variantName) {
         return variantStore.getMasksForDbSnpSpec(variantName);
     }

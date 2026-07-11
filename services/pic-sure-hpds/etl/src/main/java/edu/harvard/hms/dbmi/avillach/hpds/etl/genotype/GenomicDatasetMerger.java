@@ -33,7 +33,10 @@ public class GenomicDatasetMerger {
 
     private final VariantStore mergedVariantStore;
 
-    public GenomicDatasetMerger(VariantStore variantStore1, VariantStore variantStore2, Map<String, FileBackedByteIndexedInfoStore> infoStores1, Map<String, FileBackedByteIndexedInfoStore> infoStores2, String outputDirectory) {
+    public GenomicDatasetMerger(
+        VariantStore variantStore1, VariantStore variantStore2, Map<String, FileBackedByteIndexedInfoStore> infoStores1,
+        Map<String, FileBackedByteIndexedInfoStore> infoStores2, String outputDirectory
+    ) {
         this.variantStore1 = variantStore1;
         this.variantStore1PatientCount = variantStore1.getPatientIds().length;
         this.variantStore2 = variantStore2;
@@ -52,38 +55,40 @@ public class GenomicDatasetMerger {
             log.error(String.join(", ", variantStore2.getVariantMaskStorage().keySet()));
             throw new IllegalStateException("Unable to merge variant stores with different numbers of chromosomes");
         }
-        Sets.SetView<String> patientIntersection = Sets.intersection(Sets.newHashSet(variantStore1.getPatientIds()), Sets.newHashSet(variantStore2.getPatientIds()));
+        Sets.SetView<String> patientIntersection =
+            Sets.intersection(Sets.newHashSet(variantStore1.getPatientIds()), Sets.newHashSet(variantStore2.getPatientIds()));
         if (!patientIntersection.isEmpty()) {
             throw new IllegalStateException("Cannot merge genomic datasets containing the same patient id");
         }
     }
 
-    public VariantStore mergeVariantStore(Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergedChromosomeMasks) {
+    public VariantStore mergeVariantStore(
+        Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergedChromosomeMasks
+    ) {
         mergedVariantStore.setVariantMaskStorage(mergedChromosomeMasks);
         return mergedVariantStore;
     }
+
     public void mergePatients() {
         mergedVariantStore.setPatientIds(mergePatientIds());
     }
 
     /**
-     * Since both sets of variant indexes reference a different variant spec list, we need to re-index
-     * the values in the second set of variant indexes.
+     * Since both sets of variant indexes reference a different variant spec list, we need to re-index the values in the second set of
+     * variant indexes.
      *
-     * For each variant in the second list of variants:
-     * If it exists in list one, update any references to it by index to it's index in list 1
-     * Otherwise, append it to list one, and update any references to it by index to it's new position in list 1
+     * For each variant in the second list of variants: If it exists in list one, update any references to it by index to it's index in list
+     * 1 Otherwise, append it to list one, and update any references to it by index to it's new position in list 1
      *
      * Ex:
      *
-     * variantIndex1 = ["chr1,1000,A,G", "chr1,1002,A,G", "chr1,2000,A,G"]
-     * variantIndex2 = ["chr1,1000,A,G", "chr1,1004,A,G", "chr1,3000,A,G"]
+     * variantIndex1 = ["chr1,1000,A,G", "chr1,1002,A,G", "chr1,2000,A,G"] variantIndex2 = ["chr1,1000,A,G", "chr1,1004,A,G",
+     * "chr1,3000,A,G"]
      *
-     * GeneWithVariant_store1 = [0, 1]
-     * GeneWithVariant_store2 = [0, 1, 2]
+     * GeneWithVariant_store1 = [0, 1] GeneWithVariant_store2 = [0, 1, 2]
      *
-     * mergedVariantIndex = ["chr1,1000,A,G", "chr1,1002,A,G", "chr1,2000,A,G", "chr1,1004,A,G", "chr1,3000,A,G"]
-     * GeneWithVariant_merged = [0, 1, 3, 4]
+     * mergedVariantIndex = ["chr1,1000,A,G", "chr1,1002,A,G", "chr1,2000,A,G", "chr1,1004,A,G", "chr1,3000,A,G"] GeneWithVariant_merged =
+     * [0, 1, 3, 4]
      *
      * @return
      * @throws IOException
@@ -123,7 +128,7 @@ public class GenomicDatasetMerger {
         if (!infoStores1.keySet().equals(infoStores2.keySet())) {
             throw new IllegalStateException("Info stores do not match");
         }
-        //for (Map.Entry<String, FileBackedByteIndexedInfoStore> infoStores1Entry : infoStores1.entrySet()) {
+        // for (Map.Entry<String, FileBackedByteIndexedInfoStore> infoStores1Entry : infoStores1.entrySet()) {
         infoStores1.entrySet().stream().forEach(infoStores1Entry -> {
             FileBackedByteIndexedInfoStore infoStore2 = infoStores2.get(infoStores1Entry.getKey());
 
@@ -133,8 +138,8 @@ public class GenomicDatasetMerger {
 
             Sets.SetView<String> allKeys = Sets.union(allValuesStore1.keys(), allValuesStore2.keys());
             for (String key : allKeys) {
-                Set<Integer> store1Values = Set.of(allValuesStore1.getOrELse(key, new Integer[]{}));
-                Set<Integer> store2Values = Set.of(allValuesStore2.getOrELse(key, new Integer[]{}));
+                Set<Integer> store1Values = Set.of(allValuesStore1.getOrELse(key, new Integer[] {}));
+                Set<Integer> store2Values = Set.of(allValuesStore2.getOrELse(key, new Integer[] {}));
                 Set<Integer> remappedValuesStore2 = store2Values.stream().map(value -> remappedIndexes[value]).collect(Collectors.toSet());
 
                 Set<Integer> mergedValues = Sets.union(store1Values, remappedValuesStore2);
@@ -163,7 +168,7 @@ public class GenomicDatasetMerger {
      */
     private String[] mergePatientIds() {
         return Stream.concat(Arrays.stream(variantStore1.getPatientIds()), Arrays.stream(variantStore2.getPatientIds()))
-                .toArray(String[]::new);
+            .toArray(String[]::new);
     }
 
     /**
@@ -171,7 +176,8 @@ public class GenomicDatasetMerger {
      * @return
      */
     public Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergeChromosomeMasks() {
-        Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergedMaskStorage = new ConcurrentHashMap<>();
+        Map<String, FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>>> mergedMaskStorage =
+            new ConcurrentHashMap<>();
         variantStore1.getVariantMaskStorage().keySet().forEach(chromosome -> {
             try {
                 mergedMaskStorage.put(chromosome, mergeChromosomeMask(chromosome));
@@ -183,52 +189,27 @@ public class GenomicDatasetMerger {
     }
 
     /**
-     * Merge the masks for a chormosome. The logic here is somewhat complex but straightforward, dealing with no values at various places in the maps.
-     * If a variant mask contains no matches (ie, is 000000...), it is not stored in the data.
+     * Merge the masks for a chormosome. The logic here is somewhat complex but straightforward, dealing with no values at various places in
+     * the maps. If a variant mask contains no matches (ie, is 000000...), it is not stored in the data.
      *
-     * Examples:
-     * variantMaskStorage1: {
-     *     10001 -> {
-     *         "chr22,10001031,A,G" -> "10101010",
-     *         "chr22,10001143,G,A" -> "10101010"
-     *     },
-     *     10002 -> {
-     *         "chr22,10002031,A,G" -> "10101010",
-     *         "chr22,10002143,G,A" -> "10101010"
-     *     }
-     * }
-     * variantMaskStorage2: {
-     *     10001 -> {
-     *         "chr22,10001031,A,G" -> "00001111",
-     *         "chr22,10001213,A,G" -> "00001111"
-     *     },
-     *     10003 -> {
-     *         "chr22,10003031,A,G" -> "00001111",
-     *         "chr22,10003213,A,G" -> "00001111"
-     *     }
+     * Examples: variantMaskStorage1: { 10001 -> { "chr22,10001031,A,G" -> "10101010", "chr22,10001143,G,A" -> "10101010" }, 10002 -> {
+     * "chr22,10002031,A,G" -> "10101010", "chr22,10002143,G,A" -> "10101010" } } variantMaskStorage2: { 10001 -> { "chr22,10001031,A,G" ->
+     * "00001111", "chr22,10001213,A,G" -> "00001111" }, 10003 -> { "chr22,10003031,A,G" -> "00001111", "chr22,10003213,A,G" -> "00001111" }
      * }
      *
-     * mergedVariantMaskStorage: {
-     *     10001 -> {
-     *         "chr22,10001031,A,G" -> "1010101000001111",
-     *         "chr22,10001213,A,G" -> "0000000000001111",
-     *         "chr22,10001143,G,A" -> "1010101000000000"
-     *     },
-     *     10002 -> {
-     *         "chr22,10002031,A,G" -> "1010101000000000",
-     *         "chr22,10002143,G,A" -> "1010101000000000"
-     *     }
-     *     10003 -> {
-     *         "chr22,10003031,A,G" -> "0000000000001111",
-     *         "chr22,10003213,A,G" -> "0000000000001111"
-     *     }
-     * }
+     * mergedVariantMaskStorage: { 10001 -> { "chr22,10001031,A,G" -> "1010101000001111", "chr22,10001213,A,G" -> "0000000000001111",
+     * "chr22,10001143,G,A" -> "1010101000000000" }, 10002 -> { "chr22,10002031,A,G" -> "1010101000000000", "chr22,10002143,G,A" ->
+     * "1010101000000000" } 10003 -> { "chr22,10003031,A,G" -> "0000000000001111", "chr22,10003213,A,G" -> "0000000000001111" } }
      */
-    public FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> mergeChromosomeMask(String chromosome) throws FileNotFoundException {
-        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> variantMaskStorage1 = variantStore1.getVariantMaskStorage().get(chromosome);
-        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> variantMaskStorage2 = variantStore2.getVariantMaskStorage().get(chromosome);
+    public FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> mergeChromosomeMask(String chromosome)
+        throws FileNotFoundException {
+        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> variantMaskStorage1 =
+            variantStore1.getVariantMaskStorage().get(chromosome);
+        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> variantMaskStorage2 =
+            variantStore2.getVariantMaskStorage().get(chromosome);
 
-        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> merged = new FileBackedStorageVariantMasksImpl(new File(outputDirectory + chromosome + "masks.bin"));
+        FileBackedJsonIndexStorage<Integer, ConcurrentHashMap<String, VariableVariantMasks>> merged =
+            new FileBackedStorageVariantMasksImpl(new File(outputDirectory + chromosome + "masks.bin"));
         variantMaskStorage1.keys().stream().forEach(key -> {
             Map<String, VariableVariantMasks> masks1 = variantMaskStorage1.get(key);
             Map<String, VariableVariantMasks> masks2 = variantMaskStorage2.get(key);
@@ -245,14 +226,16 @@ public class GenomicDatasetMerger {
                     variantMasks2 = new VariableVariantMasks();
                 }
 
-                VariableVariantMasks mergeResult = VariableVariantMasks.append(entry.getValue(), variantStore1PatientCount, variantMasks2, variantStore2PatientCount);
+                VariableVariantMasks mergeResult =
+                    VariableVariantMasks.append(entry.getValue(), variantStore1PatientCount, variantMasks2, variantStore2PatientCount);
                 mergedMasks.put(entry.getKey(), mergeResult);
             }
             // Any entry in the second set that is not in the merged set can be merged with an empty variant mask,
             // if there were a corresponding entry in set 1, it would have been merged in the previous loop
             for (Map.Entry<String, VariableVariantMasks> entry : masks2.entrySet()) {
                 if (!mergedMasks.containsKey(entry.getKey())) {
-                    VariableVariantMasks appendedMasks = VariableVariantMasks.append(new VariableVariantMasks(), variantStore1PatientCount, entry.getValue(), variantStore2PatientCount);
+                    VariableVariantMasks appendedMasks = VariableVariantMasks
+                        .append(new VariableVariantMasks(), variantStore1PatientCount, entry.getValue(), variantStore2PatientCount);
                     mergedMasks.put(entry.getKey(), appendedMasks);
                 }
             }
@@ -269,7 +252,8 @@ public class GenomicDatasetMerger {
                 Map<String, VariableVariantMasks> masks2 = variantMaskStorage2.get(key);
                 for (Map.Entry<String, VariableVariantMasks> entry : masks2.entrySet()) {
                     if (!mergedMasks.containsKey(entry.getKey())) {
-                        VariableVariantMasks appendedMasks = VariableVariantMasks.append(new VariableVariantMasks(), variantStore1PatientCount, entry.getValue(), variantStore2PatientCount);
+                        VariableVariantMasks appendedMasks = VariableVariantMasks
+                            .append(new VariableVariantMasks(), variantStore1PatientCount, entry.getValue(), variantStore2PatientCount);
                         mergedMasks.put(entry.getKey(), appendedMasks);
                     }
                 }

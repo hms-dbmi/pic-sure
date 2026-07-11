@@ -11,16 +11,16 @@ import java.io.RandomAccessFile;
 public class CreateColumnmetaCSV {
     private static LoadingStore store = new LoadingStore();
 
-       private static Logger log = LoggerFactory.getLogger(CSVLoader.class);
+    private static Logger log = LoggerFactory.getLogger(CSVLoader.class);
 
-       private static String HPDS_DIRECTORY = "/opt/local/hpds/";
+    private static String HPDS_DIRECTORY = "/opt/local/hpds/";
 
-       public static void main(String[] args) throws IOException {
-           if (args.length > 0) {
-               HPDS_DIRECTORY = args[0] + "/";
-           }
-           store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
-           store.dumpStatsAndColumnMeta(HPDS_DIRECTORY);
-       }
+    public static void main(String[] args) throws IOException {
+        if (args.length > 0) {
+            HPDS_DIRECTORY = args[0] + "/";
+        }
+        store.allObservationsStore = new RandomAccessFile(HPDS_DIRECTORY + "allObservationsStore.javabin", "rw");
+        store.dumpStatsAndColumnMeta(HPDS_DIRECTORY);
+    }
 
 }

@@ -19,11 +19,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
-@TestPropertySource(properties = {
-    "SMALL_JOB_LIMIT=100",
-    "SMALL_TASK_THREADS=2",
-    "LARGE_TASK_THREADS=2",
-})
+@TestPropertySource(properties = {"SMALL_JOB_LIMIT=100", "SMALL_TASK_THREADS=2", "LARGE_TASK_THREADS=2",})
 class AuditWiringTest {
 
     // -- Bean under verification --------------------------------------------------

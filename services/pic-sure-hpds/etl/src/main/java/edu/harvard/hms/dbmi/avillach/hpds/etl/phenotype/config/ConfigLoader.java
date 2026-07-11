@@ -17,16 +17,15 @@ public class ConfigLoader {
     private Map<String, CSVConfig> csvConfigMap = new HashMap<>();
 
     /**
-     * Constructor for ConfigLoader. It loads the configuration from a JSON file located in the INPUT_DIR.
-     * The JSON file should contain a mapping of CSV file names to their respective configurations.
+     * Constructor for ConfigLoader. It loads the configuration from a JSON file located in the INPUT_DIR. The JSON file should contain a
+     * mapping of CSV file names to their respective configurations.
      */
     public ConfigLoader() {
         File file = new File(INPUT_DIR);
         if (file.exists()) {
             ObjectMapper objectMapper = new ObjectMapper();
             try {
-                this.csvConfigMap = objectMapper.readValue(new File(INPUT_DIR + "/config.json"), new TypeReference<>() {
-                });
+                this.csvConfigMap = objectMapper.readValue(new File(INPUT_DIR + "/config.json"), new TypeReference<>() {});
 
                 // Remove the ".csv" extension from the keys in the map if they exist
                 for (String key : csvConfigMap.keySet()) {

@@ -16,7 +16,7 @@ class LowRAMMultiCSVLoaderTest {
     void shouldFilterOutNonCSVs(@TempDir File testDir) throws IOException {
         Path csvPath = Path.of(testDir.getAbsolutePath(), "test.txt");
         RandomAccessFile largeFile = new RandomAccessFile(csvPath.toString(), "rw");
-        largeFile.setLength(6L*1024);
+        largeFile.setLength(6L * 1024);
 
         LowRAMCSVProcessor processor = Mockito.mock(LowRAMCSVProcessor.class);
         LowRAMLoadingStore store = Mockito.mock(LowRAMLoadingStore.class);
@@ -32,11 +32,10 @@ class LowRAMMultiCSVLoaderTest {
     void shouldProcessSmallCSVs(@TempDir File testDir) throws IOException {
         Path csvPath = Path.of(testDir.getAbsolutePath(), "test.csv");
         RandomAccessFile largeFile = new RandomAccessFile(csvPath.toString(), "rw");
-        largeFile.setLength(6L*1024);
+        largeFile.setLength(6L * 1024);
 
         LowRAMCSVProcessor processor = Mockito.mock(LowRAMCSVProcessor.class);
-        Mockito.when(processor.process(Mockito.any()))
-            .thenReturn(new IngestStatus(csvPath, 10, 10, 10L));
+        Mockito.when(processor.process(Mockito.any())).thenReturn(new IngestStatus(csvPath, 10, 10, 10L));
         LowRAMLoadingStore store = Mockito.mock(LowRAMLoadingStore.class);
 
         LowRAMMultiCSVLoader subject = new LowRAMMultiCSVLoader(store, processor, testDir.getAbsolutePath());
@@ -50,11 +49,10 @@ class LowRAMMultiCSVLoaderTest {
     void shouldProcessSmallCSVs_withReducedChunkSize(@TempDir File testDir) throws IOException {
         Path csvPath = Path.of(testDir.getAbsolutePath(), "test.csv");
         RandomAccessFile largeFile = new RandomAccessFile(csvPath.toString(), "rw");
-        largeFile.setLength(6L*1024);
+        largeFile.setLength(6L * 1024);
 
         LowRAMCSVProcessor processor = Mockito.mock(LowRAMCSVProcessor.class);
-        Mockito.when(processor.process(Mockito.any()))
-                .thenReturn(new IngestStatus(csvPath, 10, 10, 10L));
+        Mockito.when(processor.process(Mockito.any())).thenReturn(new IngestStatus(csvPath, 10, 10, 10L));
         LowRAMLoadingStore store = Mockito.mock(LowRAMLoadingStore.class);
 
         LowRAMMultiCSVLoader subject = new LowRAMMultiCSVLoader(store, processor, testDir.getAbsolutePath());

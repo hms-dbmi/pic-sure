@@ -4,59 +4,59 @@ import java.io.Serializable;
 
 public class KeyAndValue<V extends Comparable<V>> implements Serializable, Comparable<KeyAndValue<?>> {
 
-	private static final long serialVersionUID = -3714097509955396941L;
+    private static final long serialVersionUID = -3714097509955396941L;
 
-	int key;
+    int key;
 
-	V value;
-	
-	Long timestamp;
-		
-	public KeyAndValue() {
-		
-	}
+    V value;
 
-	public KeyAndValue(int key, V value) {
-		this.key = key;
-		this.value = value;
-		this.setTimestamp(Long.MIN_VALUE);
-	}
+    Long timestamp;
+
+    public KeyAndValue() {
+
+    }
+
+    public KeyAndValue(int key, V value) {
+        this.key = key;
+        this.value = value;
+        this.setTimestamp(Long.MIN_VALUE);
+    }
 
 
-	public KeyAndValue(int key, V value, Long timestamp) {
-		this.key = key;
-		this.value = value;
-		this.setTimestamp(timestamp);
-	}
+    public KeyAndValue(int key, V value, Long timestamp) {
+        this.key = key;
+        this.value = value;
+        this.setTimestamp(timestamp);
+    }
 
-	public V getValue() {
-		return value;
-	}
+    public V getValue() {
+        return value;
+    }
 
-	public KeyAndValue<V> setValue(V value) {
-		this.value = value;
-		return this;
-	}
+    public KeyAndValue<V> setValue(V value) {
+        this.value = value;
+        return this;
+    }
 
-	public Integer getKey() {
-		return key;
-	}
+    public Integer getKey() {
+        return key;
+    }
 
-	public KeyAndValue<V> setKey(Integer key) {
-		this.key = key;
-		return this;
-	}
+    public KeyAndValue<V> setKey(Integer key) {
+        this.key = key;
+        return this;
+    }
 
-	@Override
-	public int compareTo(KeyAndValue<?> o) {
-		return this.key - o.key;
-	}
+    @Override
+    public int compareTo(KeyAndValue<?> o) {
+        return this.key - o.key;
+    }
 
-	public Long getTimestamp() {
-		return timestamp;
-	}
+    public Long getTimestamp() {
+        return timestamp;
+    }
 
-	public void setTimestamp(Long timestamp) {
-		this.timestamp = timestamp;
-	}
+    public void setTimestamp(Long timestamp) {
+        this.timestamp = timestamp;
+    }
 }
