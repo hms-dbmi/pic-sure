@@ -1,0 +1,11 @@
+.git
+target/*
+!target/pic-sure-visualization-service-*.jar
+*.md
+docker-compose.yml
+.idea/
+*.iml
+.DS_Store
+.claude/
+.env
+.env.*
