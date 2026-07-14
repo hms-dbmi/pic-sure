@@ -1,0 +1,8 @@
+These files are copied directly from HPDS manually. Please only change these as you change them in HPDS.
+We're doing this rather than referencing the artifacts directly because:
+- HPDS depends on artifacts in the pic-sure repo
+- We can't make HPDS pull those artifacts from Jitpack because FISMA
+- Because HPDS relies on your m2 cache, we can't build it in Jitpack
+- So we have no way to reference the artifacts directly that doesn't lean on your m2 local
+  - Which I refuse to do. I think this is clearer.
+  - Also, that won't work well with Docker builds
