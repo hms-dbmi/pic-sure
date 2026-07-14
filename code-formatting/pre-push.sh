@@ -23,7 +23,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
     else
         range="$remote_sha..$local_sha"
     fi
-    if ! gitleaks git --redact --no-banner --log-opts="$range"; then
+    if ! gitleaks git --redact --no-banner --log-opts="$range" </dev/null; then
         echo 'gitleaks detected a secret in outgoing commits. Push aborted.' 1>&2
         echo 'Fix the commit, or for a false positive record its fingerprint in .gitleaksignore.' 1>&2
         exit 1
