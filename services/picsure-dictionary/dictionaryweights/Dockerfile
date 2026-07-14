@@ -1,17 +1,8 @@
-FROM maven:3.9-eclipse-temurin-22-alpine AS build
+FROM amazoncorretto:25-alpine
 
-COPY pom.xml .
-
-RUN mvn -B dependency:go-offline
-
-COPY src src
-
-RUN mvn -B package -DskipTests
-
-FROM amazoncorretto:22-alpine
-
-# Copy jar and access token from maven build
-COPY --from=build target/dictionaryweights-*.jar /dictionaryweights.jar
+# Jar comes pre-built from the pic-sure reactor (PIC-SURE Maven Build job);
+# this image only packages it.
+COPY target/dictionaryweights-*.jar /dictionaryweights.jar
 
 ARG DATASOURCE_URL
 ARG DATASOURCE_USERNAME
