@@ -25,8 +25,6 @@
         <module>services/picsure-dictionary</module>
         <module>services/picsure-dictionary/aggregate</module>
         <module>services/picsure-dictionary/dictionaryweights</module>
-        <!-- pic-sure-legacy is deliberately NOT aggregated: it is quarantined
-             (Java 11/javax, own parent pom) and builds independently. -->
     </modules>
     <properties>
         <revision>3.0.0</revision>
