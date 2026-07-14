@@ -178,7 +178,6 @@ public class QueryService {
 
     public ResponseEntity<String> queryResultSignedUrl(String backend, UUID picsureId, QueryRequest req) {
         StoredQuery stored = load(picsureId);
-        // DECISION 9 FIX: dispatch on STORED version for signed-url too (the legacy WAR omitted this).
         return hpds.queryResultSignedUrl(selector.select(backend, isV3(stored)), stored.resourceResultId(), req);
     }
 
