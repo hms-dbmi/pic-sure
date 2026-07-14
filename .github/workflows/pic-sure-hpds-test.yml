@@ -17,6 +17,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Test with Maven
-        run: mvn -B -pl services/pic-sure-hpds/common,services/pic-sure-hpds/data,services/pic-sure-hpds/etl,services/pic-sure-hpds/processing,services/pic-sure-hpds/service,services/pic-sure-hpds/genomic-processor,services/pic-sure-hpds/war,services/pic-sure-hpds/docker -am verify
+        run: ./mvnw -B -pl services/pic-sure-hpds/common,services/pic-sure-hpds/data,services/pic-sure-hpds/etl,services/pic-sure-hpds/processing,services/pic-sure-hpds/service,services/pic-sure-hpds/genomic-processor,services/pic-sure-hpds/war,services/pic-sure-hpds/docker -am verify
         env:
           GITHUB_TOKEN: ${{ github.token }}

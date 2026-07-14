@@ -13,7 +13,8 @@ jobs:
         with:
           java-version: '25'
           distribution: 'temurin'
+          cache: maven
       - name: Test with Maven
-        run: mvn --update-snapshots test
+        run: ./mvnw --update-snapshots test
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -17,6 +17,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Test with Maven
-        run: mvn -B -pl services/pic-sure-services/info-service,services/pic-sure-services/uploader -am verify
+        run: ./mvnw -B -pl services/pic-sure-services/info-service,services/pic-sure-services/uploader -am verify
         env:
           GITHUB_TOKEN: ${{ github.token }}

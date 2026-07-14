@@ -17,6 +17,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Test with Maven
-        run: mvn -B -pl services/picsure-dictionary,services/picsure-dictionary/aggregate,services/picsure-dictionary/dictionaryweights -am verify
+        run: ./mvnw -B -pl services/picsure-dictionary,services/picsure-dictionary/aggregate,services/picsure-dictionary/dictionaryweights -am verify
         env:
           GITHUB_TOKEN: ${{ github.token }}
