@@ -1,0 +1,4 @@
+# gitleaks false-positive fingerprints — one per line:
+#   <commit>:<file>:<rule-id>:<line>
+# Put a comment above each entry explaining why the finding is safe.
+# Honored by the pre-commit hook, the pre-push hook, and the secrets-scan workflow.

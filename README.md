@@ -49,3 +49,21 @@ Formatting: Spotless (Eclipse formatter, config inherited from the root) — `mv
 ## Migration
 
 Design docs and the implementation plan live under `docs/superpowers/`. This migration is tracked under Jira epic ALS-10463 and is delivered as a stack of sequential, independently-green PRs — reviewed and merged bottom-up onto the rewrite integration branch. The legacy WildFly modules (`pic-sure-api-war`, `pic-sure-api-data`, `pic-sure-util`, `pic-sure-resources`) are removed in the final PR of the stack.
+
+## Git hooks
+
+Two optional-but-recommended local hooks live in `code-formatting/`:
+
+- `pre-commit.sh` — formats staged Java files with Spotless and blocks commits containing secrets (gitleaks).
+- `pre-push.sh` — blocks pushes whose outgoing commits contain secrets (gitleaks).
+
+Install both:
+
+```sh
+cp code-formatting/pre-commit.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+cp code-formatting/pre-push.sh .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+```
+
+Secret-scan false positives: add a `gitleaks:allow` trailing comment on the flagged line, or record
+the finding's fingerprint in `.gitleaksignore` with a comment explaining why it is safe. CI runs the
+same scan on every pull request (`.github/workflows/secrets-scan.yml`).
