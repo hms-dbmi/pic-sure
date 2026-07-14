@@ -16,7 +16,6 @@ import org.slf4j.MDC;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.commons.request.RequestIdFilter;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,7 +39,7 @@ class IdentityPropagationFilterTest {
 
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
@@ -56,7 +55,7 @@ class IdentityPropagationFilterTest {
         when(req.getHeaderNames()).thenReturn(Collections.emptyEnumeration());
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
@@ -77,7 +76,7 @@ class IdentityPropagationFilterTest {
 
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
@@ -107,7 +106,7 @@ class IdentityPropagationFilterTest {
 
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
@@ -137,7 +136,7 @@ class IdentityPropagationFilterTest {
 
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));
@@ -166,7 +165,7 @@ class IdentityPropagationFilterTest {
         when(req.getHeaderNames()).thenReturn(Collections.emptyEnumeration());
         HttpServletResponse resp = mock(HttpServletResponse.class);
         FilterChain chain = mock(FilterChain.class);
-        new IdentityPropagationFilter(GatewayModeResolver.enforcing()).doFilter(req, resp, chain);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
 
         ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
         verify(chain).doFilter(cap.capture(), eq(resp));

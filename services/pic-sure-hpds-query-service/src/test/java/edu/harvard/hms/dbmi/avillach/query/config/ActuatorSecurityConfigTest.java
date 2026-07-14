@@ -18,8 +18,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Proves the Phase-6 {@code ActuatorSecurityConfig} chain (order 0) and the pre-existing {@link WebSecurityConfig} main chain (order 10)
- * coexist on hpds-query-service: the actuator chain owns {@code /actuator/**} (shallow health open, detail/prometheus gated by
+ * Proves the {@code ActuatorSecurityConfig} chain (order 0) and the pre-existing {@link WebSecurityConfig} main chain (order 10) coexist on
+ * hpds-query-service: the actuator chain owns {@code /actuator/**} (shallow health open, detail/prometheus gated by
  * {@code X-Application-Token}) while the main chain's {@code authenticated()} rule on {@code /hpds/**} is untouched.
  *
  * <p>The test config points {@code hpds.auth-url}/{@code hpds.open-url} at an unreachable placeholder (see

@@ -15,13 +15,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 
 /**
- * Spec 3.3 + review P-mi5: the resource registry is removed. Assert on the configured route IDS (behavior-pinning, not a weak bean-name
- * check) — the gateway exposes NO {@code /info/resources} or {@code /resource} route. Those paths fall through to the WildFly catch-all
- * until decommission.
+ * The resource registry is removed. Assert on the configured route IDS (behavior-pinning, not a weak bean-name check) — the gateway exposes
+ * NO {@code /info/resources} or {@code /resource} route. Those paths are unmatched and 404.
  *
- * <p>Phase-3 configured routes: {@code logging}, {@code dictionary}, {@code uploader}, {@code visualization} (Task 1 / Task 1b) +
- * Phase 4 (gateway integration) adds {@code hpds}, {@code configuration}, {@code dataset}; the Phase-1 WildFly catch-all was removed in Phase 7 —
- * verbatim routes to the new query-service / operations-service. The load-bearing assertion is that no registry id ever appears.
+ * <p>Configured routes: {@code logging}, {@code dictionary}, {@code uploader}, {@code visualization}, plus {@code hpds}, {@code operations}
+ * — verbatim routes to the query-service / operations-service. The load-bearing assertion is that no registry id ever appears.
  */
 @SpringBootTest
 class NoRegistryRouteTest {
@@ -40,9 +38,7 @@ class NoRegistryRouteTest {
     @Test
     void exposesOnlyTheExpectedRouteIdsAndNoRegistryRoute() {
         Set<String> ids = configuredRouteIds();
-        assertThat(ids).containsExactlyInAnyOrder(
-            "logging", "dictionary", "uploader", "visualization", "hpds", "configuration", "dataset"
-        );
+        assertThat(ids).containsExactlyInAnyOrder("logging", "dictionary", "uploader", "visualization", "hpds", "operations");
         assertThat(ids).noneMatch(id -> {
             String lower = id.toLowerCase();
             return lower.contains("resource") || lower.contains("info-resources");

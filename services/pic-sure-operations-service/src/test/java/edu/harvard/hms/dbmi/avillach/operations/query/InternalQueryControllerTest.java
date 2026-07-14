@@ -19,8 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
-import edu.harvard.hms.dbmi.avillach.data.repository.QueryRepository;
 
 /**
  * Full-context MockMvc test exercising the real {@code InternalTokenFilter} (registered by {@code InternalTokenFilterConfig} as a
@@ -140,5 +138,21 @@ class InternalQueryControllerTest {
     void dispatchWithoutTokenIsForbidden() throws Exception {
         Query saved = queryRepo.save(new Query());
         mockMvc.perform(get("/internal/queries/{picsureId}/dispatch", saved.getUuid())).andExpect(status().isForbidden());
+    }
+
+    // --- the federated/GIC surface is gone; these endpoints must stay gone ---
+    // A 404 here is the contract: it guards against someone reintroducing the routes while wiring something
+    // unrelated.
+
+    @Test
+    void byCommonAreaIsGone() throws Exception {
+        mockMvc.perform(get("/internal/queries/by-common-area/{id}", UUID.randomUUID()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void sitesByDomainIsGone() throws Exception {
+        mockMvc.perform(get("/internal/sites/by-domain/{domain}", "harvard.edu").header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isNotFound());
     }
 }

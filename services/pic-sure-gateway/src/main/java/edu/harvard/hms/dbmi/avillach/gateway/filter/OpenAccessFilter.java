@@ -14,7 +14,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.error.GatewayErrors;
 import jakarta.servlet.FilterChain;
@@ -28,27 +27,20 @@ import jakarta.servlet.http.HttpServletResponse;
  * different shape than introspection ({@code JWTFilter.java:389-394}): {@code { "request": { "Target Service": "<real path>", "query":
  * <body minus resourceCredentials> }, "ipAddress": "OPEN_ACCESS:<host>" }} — no {@code token} field, adds {@code ipAddress}. PSAMA returns
  * a bare boolean: {@code true} grants with username {@code OPEN_ACCESS:<host>}; {@code false} denies with a 401. A real bearer token, or
- * open access disabled, passes through untouched. Skips interim (result/signed-url) paths still owned by WildFly.
+ * open access disabled, passes through untouched.
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
     private final PsamaClient psama;
     private final AuditContext audit;
     private final ObjectMapper json;
-    private final GatewayAuthScope scope;
     private final boolean openAccessEnabled;
 
-    public OpenAccessFilter(PsamaClient psama, AuditContext audit, ObjectMapper json, GatewayAuthScope scope, boolean openAccessEnabled) {
+    public OpenAccessFilter(PsamaClient psama, AuditContext audit, ObjectMapper json, boolean openAccessEnabled) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
-        this.scope = scope;
         this.openAccessEnabled = openAccessEnabled;
-    }
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest req) {
-        return scope.interimOwnedByWildFly(req.getRequestURI());
     }
 
     @Override
@@ -88,7 +80,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
     /** Builds the inner {@code { "Target Service", "query" }} request map sent to PSAMA's open-access validate endpoint. */
     private Map<String, Object> buildOpenAccessRequest(HttpServletRequest req) {
         Map<String, Object> queryMap = new HashMap<>();
-        queryMap.put("Target Service", req.getRequestURI()); // real path (decision 4)
+        queryMap.put("Target Service", req.getRequestURI()); // real path
         if (req instanceof BufferedRequestWrapper buffered && buffered.getBody().length > 0) {
             try {
                 JsonNode parsed = json.readTree(buffered.getBody());

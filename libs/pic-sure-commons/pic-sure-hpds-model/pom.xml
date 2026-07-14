@@ -36,5 +36,12 @@
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <!-- Version matches the assertj.version managed by spring-boot-dependencies ${spring-boot.version}, used elsewhere in this reactor. -->
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>3.27.6</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

@@ -15,19 +15,18 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * FIX 1 (critical, defense-in-depth): {@link InboundIdentityHeaderSanitizingFilter} is registered UNCONDITIONALLY in
- * {@code ObservabilityConfig} -- unlike {@code IdentityPropagationFilter}, which only runs as part of the DB-free auth chain when
- * {@code picsure.gateway.security.auth-enabled=true}. These tests exercise the filter standalone, which is exactly the dangerous scenario
- * this fix closes: auth-enabled=false (so none of the gated auth-chain filters run at all) but WildFly may still be configured with
- * {@code GATEWAY_OWNS_AUTH=true} and trust these headers. Even then, this filter must strip them.
+ * {@code ObservabilityConfig} as an independent trust boundary, separate from {@code IdentityPropagationFilter} in the always-on DB-free
+ * auth chain. These tests exercise the filter standalone: even if the auth chain were ever bypassed or misconfigured, or WildFly is
+ * nonetheless configured to trust these headers directly from the gateway, this filter must still strip them.
  */
 class InboundIdentityHeaderSanitizingFilterTest {
 
     private final InboundIdentityHeaderSanitizingFilter filter = new InboundIdentityHeaderSanitizingFilter();
 
     @Test
-    void stripsAllFiveClientSuppliedIdentityHeadersRegardlessOfAuthEnabled() throws Exception {
-        // The dangerous case: a client tries to spoof an elevated identity directly, with no auth-chain filter in front of
-        // this one to stop it (auth-enabled=false -> BufferingFilter/OpenAccessFilter/.../IdentityPropagationFilter never run).
+    void stripsAllFiveClientSuppliedIdentityHeadersUnconditionally() throws Exception {
+        // The dangerous case: a client tries to spoof an elevated identity directly, with no other filter in front of
+        // this one to stop it.
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader(GatewayUserResolver.HEADER_USER_ID, "spoofed-id");
         request.addHeader(GatewayUserResolver.HEADER_USER_SUBJECT, "spoofed-subject");

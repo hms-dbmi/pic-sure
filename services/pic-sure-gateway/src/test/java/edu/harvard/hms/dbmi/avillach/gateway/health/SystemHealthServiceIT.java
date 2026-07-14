@@ -30,9 +30,9 @@ class SystemHealthServiceIT {
     static void start() {
         // http2PlainDisabled avoids a known JDK HttpClient <-> WireMock(Jetty) h2c upgrade bug that manifests as
         // "RST_STREAM: Stream cancelled" when RestClient's default JDK-backed request factory is used.
-        actuatorUp = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
-        loggingUp = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
-        down = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        actuatorUp = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        loggingUp = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        down = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         actuatorUp.start();
         loggingUp.start();
         down.start();
@@ -52,9 +52,9 @@ class SystemHealthServiceIT {
     void aggregatesDeepActuatorAndJavalinHealthAndOneDownDegradesIt() {
         DownstreamHealthProperties props = new DownstreamHealthProperties(
             List.of(
-                new MonitoredDownstream("psama", "http://localhost:" + actuatorUp.port(), null, null, null, false, 200, true),
-                new MonitoredDownstream("logging", "http://localhost:" + loggingUp.port(), "/health", null, null, false, 200, false),
-                new MonitoredDownstream("hpds", "http://localhost:" + down.port(), null, null, null, false, 200, true)
+                new MonitoredDownstream("psama", "http://127.0.0.1:" + actuatorUp.port(), null, null, null, false, 200, true),
+                new MonitoredDownstream("logging", "http://127.0.0.1:" + loggingUp.port(), "/health", null, null, false, 200, false),
+                new MonitoredDownstream("hpds", "http://127.0.0.1:" + down.port(), null, null, null, false, 200, true)
             ), 500, 1000, null
         );
 

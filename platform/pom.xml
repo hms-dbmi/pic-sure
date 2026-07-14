@@ -22,7 +22,6 @@
         <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
         <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
         <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
-        <pic-sure-api-data.version>3.0.0</pic-sure-api-data.version>
         <pic-sure-operations-service.version>3.0.0</pic-sure-operations-service.version>
         <pic-sure-hpds-query-service.version>3.0.0</pic-sure-hpds-query-service.version>
         <!-- Shared third-party pins not governed by the Spring BOMs -->
@@ -71,11 +70,6 @@
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
                 <artifactId>pic-sure-spring-commons</artifactId>
                 <version>${pic-sure-spring-commons.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-                <artifactId>pic-sure-api-data</artifactId>
-                <version>${pic-sure-api-data.version}</version>
             </dependency>
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>

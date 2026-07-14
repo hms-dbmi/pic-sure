@@ -54,7 +54,7 @@ class OperationsClientTest {
     void savePostsToInternalQueriesAndReturnsPicsureId() {
         UUID id = UUID.randomUUID();
         ops.stubFor(
-            post(urlEqualTo("/internal/queries")).willReturn(
+            post(urlEqualTo("/operations/internal/queries")).willReturn(
                 aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":\"" + id + "\"}")
             )
         );
@@ -64,7 +64,7 @@ class OperationsClientTest {
 
         assertThat(result).isEqualTo(id);
         ops.verify(
-            postRequestedFor(urlEqualTo("/internal/queries")).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
+            postRequestedFor(urlEqualTo("/operations/internal/queries")).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
                 .withRequestBody(
                     equalToJson("{\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}")
                 )
@@ -74,7 +74,7 @@ class OperationsClientTest {
     @Test
     void saveMalformedResponseThrowsBadGateway() {
         ops.stubFor(
-            post(urlEqualTo("/internal/queries"))
+            post(urlEqualTo("/operations/internal/queries"))
                 .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":null}"))
         );
 
@@ -84,7 +84,7 @@ class OperationsClientTest {
 
     @Test
     void saveServerErrorThrowsBadGateway() {
-        ops.stubFor(post(urlEqualTo("/internal/queries")).willReturn(aResponse().withStatus(500)));
+        ops.stubFor(post(urlEqualTo("/operations/internal/queries")).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "v1", null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
@@ -94,7 +94,7 @@ class OperationsClientTest {
     void getReturnsStoredQuery() {
         UUID id = UUID.randomUUID();
         ops.stubFor(
-            get(urlEqualTo("/internal/queries/" + id)).willReturn(
+            get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
                 okJson(
                     "{\"picsureId\":\"" + id
                         + "\",\"query\":\"{}\",\"resourceResultId\":\"r-1\",\"status\":\"COMPLETE\",\"version\":\"v1\",\"metadata\":\"YWJj\"}"
@@ -105,13 +105,15 @@ class OperationsClientTest {
         StoredQuery result = client().get(id);
 
         assertThat(result).isEqualTo(new StoredQuery(id, "{}", "r-1", "COMPLETE", "v1", "YWJj"));
-        ops.verify(getRequestedFor(urlEqualTo("/internal/queries/" + id)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token")));
+        ops.verify(
+            getRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
+        );
     }
 
     @Test
     void getNotFoundThrowsPicsureExceptionNotFound() {
         UUID id = UUID.randomUUID();
-        ops.stubFor(get(urlEqualTo("/internal/queries/" + id)).willReturn(aResponse().withStatus(404)));
+        ops.stubFor(get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(404)));
 
         assertThatThrownBy(() -> client().get(id))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -120,7 +122,7 @@ class OperationsClientTest {
     @Test
     void getServerErrorThrowsBadGateway() {
         UUID id = UUID.randomUUID();
-        ops.stubFor(get(urlEqualTo("/internal/queries/" + id)).willReturn(aResponse().withStatus(503)));
+        ops.stubFor(get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(503)));
 
         assertThatThrownBy(() -> client().get(id))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
@@ -129,12 +131,13 @@ class OperationsClientTest {
     @Test
     void updatePatchesInternalQueries() {
         UUID id = UUID.randomUUID();
-        ops.stubFor(patch(urlEqualTo("/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
 
         client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null));
 
         ops.verify(
-            patchRequestedFor(urlEqualTo("/internal/queries/" + id)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
+            patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id))
+                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
                 .withRequestBody(equalToJson("{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null}"))
         );
     }
@@ -142,64 +145,9 @@ class OperationsClientTest {
     @Test
     void updateServerErrorThrowsBadGateway() {
         UUID id = UUID.randomUUID();
-        ops.stubFor(patch(urlEqualTo("/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
+        ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null)))
-            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
-    }
-
-    @Test
-    void findByCommonAreaUUIDReturnsStoredQuery() {
-        UUID id = UUID.randomUUID();
-        UUID commonAreaUUID = UUID.randomUUID();
-        ops.stubFor(
-            get(urlEqualTo("/internal/queries/by-common-area/" + commonAreaUUID)).willReturn(
-                okJson(
-                    "{\"picsureId\":\"" + id
-                        + "\",\"query\":\"{}\",\"resourceResultId\":null,\"status\":\"QUEUED\",\"version\":\"v1\",\"metadata\":null}"
-                )
-            )
-        );
-
-        StoredQuery result = client().findByCommonAreaUUID(commonAreaUUID);
-
-        assertThat(result).isEqualTo(new StoredQuery(id, "{}", null, "QUEUED", "v1", null));
-    }
-
-    @Test
-    void findByCommonAreaUUIDServerErrorThrowsBadGateway() {
-        UUID commonAreaUUID = UUID.randomUUID();
-        ops.stubFor(get(urlEqualTo("/internal/queries/by-common-area/" + commonAreaUUID)).willReturn(aResponse().withStatus(500)));
-
-        assertThatThrownBy(() -> client().findByCommonAreaUUID(commonAreaUUID))
-            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
-    }
-
-    @Test
-    void findSitesByDomainReturnsCodes() {
-        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/harvard.edu")).willReturn(okJson("[\"HARVARD\"]")));
-
-        java.util.List<String> result = client().findSitesByDomain("harvard.edu");
-
-        assertThat(result).containsExactly("HARVARD");
-        ops.verify(
-            getRequestedFor(urlEqualTo("/internal/sites/by-domain/harvard.edu"))
-                .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-        );
-    }
-
-    @Test
-    void findSitesByDomainEmptyWhenNoMatch() {
-        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/nowhere.com")).willReturn(okJson("[]")));
-
-        assertThat(client().findSitesByDomain("nowhere.com")).isEmpty();
-    }
-
-    @Test
-    void findSitesByDomainServerErrorThrowsBadGateway() {
-        ops.stubFor(get(urlEqualTo("/internal/sites/by-domain/harvard.edu")).willReturn(aResponse().withStatus(500)));
-
-        assertThatThrownBy(() -> client().findSitesByDomain("harvard.edu"))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 }

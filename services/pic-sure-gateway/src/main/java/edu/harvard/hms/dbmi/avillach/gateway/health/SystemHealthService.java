@@ -19,8 +19,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Pings each configured downstream in parallel, dedups by resolved URL, and rolls the results up into an aggregate RUNNING/DEGRADED verdict
- * (spec 3.8). One ping per service (no cascade): each service's own deep {@code /actuator/health} already covers its dependencies, so the
+ * Pings each configured downstream in parallel, dedups by resolved URL, and rolls the results up into an aggregate RUNNING/DEGRADED
+ * verdict. One ping per service (no cascade): each service's own deep {@code /actuator/health} already covers its dependencies, so the
  * gateway does not double-probe a backend another service fronts. Downstreams that resolve to the same URL (e.g. hpds-open / hpds-auth
  * collapsing onto a single HPDS instance in an AIO deployment) are probed once and the result is fanned back out to every name sharing that
  * URL.

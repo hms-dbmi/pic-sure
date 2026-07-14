@@ -1,2 +1,2 @@
-# Local profile: run the gateway standalone against locally reachable backends, e.g.
+# Local profile: point HPDS_QUERY_SERVICE_URL at a locally reachable query-service, e.g.
 #   HPDS_QUERY_SERVICE_URL=http://localhost:8081 java -jar target/pic-sure-gateway-*.jar --spring.profiles.active=local

@@ -9,7 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import edu.harvard.hms.dbmi.avillach.gateway.health.DownstreamHealthProperties;
 import edu.harvard.hms.dbmi.avillach.gateway.health.SystemHealthService;
 
-/** Proves HealthConfig registers the Task-9 beans so the /system/status controller and the actuator composite can consume them. */
+/** Proves HealthConfig registers the deep-health beans so the /system/status controller and the actuator composite can consume them. */
 @SpringBootTest
 class HealthConfigTest {
 

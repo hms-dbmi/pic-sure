@@ -2,8 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import org.springframework.stereotype.Component;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.NamedDataset;
-import edu.harvard.hms.dbmi.avillach.data.entity.Query;
+import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 /**
  * Translates between the {@code pic-sure-api-data} {@link NamedDataset} entity and this service's DTOs. Pure field mapping -- the

@@ -19,8 +19,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Proves the Phase-6 {@code ActuatorSecurityConfig} chain (order 0) and the pre-existing {@link WebSecurityConfig} main chain (order 10)
- * coexist on operations-service: the actuator chain owns {@code /actuator/**} (shallow health open, detail/prometheus gated by
+ * Proves the {@code ActuatorSecurityConfig} chain (order 0) and the pre-existing {@link WebSecurityConfig} main chain (order 10) coexist on
+ * operations-service: the actuator chain owns {@code /actuator/**} (shallow health open, detail/prometheus gated by
  * {@code X-Application-Token}) while the main chain's {@code SUPER_ADMIN} rule on {@code /configuration/admin/**} is untouched.
  *
  * <p>{@code src/test/resources/application.yml} is a self-contained test config (H2 datasource, etc.) that Spring Boot's classpath config
@@ -80,7 +80,7 @@ class ActuatorSecurityConfigTest {
     /** Coexistence: the main chain's SUPER_ADMIN gate on /configuration/admin/** must be unaffected by the actuator chain. */
     @Test
     void adminEndpointStillRequiresSuperAdminAlongsideActuatorChain() throws Exception {
-        mockMvc.perform(post("/configuration/admin/").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post("/configuration/admin").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isForbidden());
     }
 }

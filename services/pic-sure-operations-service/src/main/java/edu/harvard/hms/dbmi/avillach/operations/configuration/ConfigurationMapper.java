@@ -2,7 +2,6 @@ package edu.harvard.hms.dbmi.avillach.operations.configuration;
 
 import org.springframework.stereotype.Component;
 
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
 
 /**
  * Translates between the {@code pic-sure-api-data} {@link Configuration} entity and this service's DTOs. Replicates the partial-update

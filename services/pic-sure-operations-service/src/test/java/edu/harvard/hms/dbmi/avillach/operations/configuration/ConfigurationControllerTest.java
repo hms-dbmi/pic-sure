@@ -19,8 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 
 /**
  * Full-context MockMvc test: exercises the real {@link edu.harvard.hms.dbmi.avillach.operations.config.WebSecurityConfig} filter chain (not
@@ -45,7 +43,7 @@ class ConfigurationControllerTest {
     void publicListWorksUnauthenticated() throws Exception {
         repo.save(new Configuration().setName("feature-x").setKind("ui"));
 
-        mockMvc.perform(get("/configuration/")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+        mockMvc.perform(get("/configuration")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
             .andExpect(jsonPath("$[0].name").value("feature-x"));
     }
 
@@ -54,7 +52,7 @@ class ConfigurationControllerTest {
         repo.save(new Configuration().setName("feature-x").setKind("ui"));
         repo.save(new Configuration().setName("feature-y").setKind("backend"));
 
-        mockMvc.perform(get("/configuration/").param("kind", "ui")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+        mockMvc.perform(get("/configuration").param("kind", "ui")).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
             .andExpect(jsonPath("$[0].kind").value("ui"));
     }
 
@@ -62,7 +60,7 @@ class ConfigurationControllerTest {
     void publicGetByUuidWorksUnauthenticated() throws Exception {
         Configuration saved = repo.save(new Configuration().setName("feature-x").setKind("ui"));
 
-        mockMvc.perform(get("/configuration/{id}/", saved.getUuid())).andExpect(status().isOk())
+        mockMvc.perform(get("/configuration/{id}", saved.getUuid())).andExpect(status().isOk())
             .andExpect(jsonPath("$.name").value("feature-x"));
     }
 
@@ -70,19 +68,19 @@ class ConfigurationControllerTest {
     void publicGetByNameWorksUnauthenticated() throws Exception {
         repo.save(new Configuration().setName("feature-x").setKind("ui"));
 
-        mockMvc.perform(get("/configuration/{id}/", "feature-x")).andExpect(status().isOk()).andExpect(jsonPath("$.kind").value("ui"));
+        mockMvc.perform(get("/configuration/{id}", "feature-x")).andExpect(status().isOk()).andExpect(jsonPath("$.kind").value("ui"));
     }
 
     @Test
     void publicGetUnknownIdentifierReturns404() throws Exception {
-        mockMvc.perform(get("/configuration/{id}/", "does-not-exist")).andExpect(status().isNotFound())
+        mockMvc.perform(get("/configuration/{id}", "does-not-exist")).andExpect(status().isNotFound())
             .andExpect(jsonPath("$.errorType").value("not_found"));
     }
 
     @Test
     void adminCreateWithoutSuperAdminIsForbidden() throws Exception {
         mockMvc.perform(
-            post("/configuration/admin/").contentType(MediaType.APPLICATION_JSON)
+            post("/configuration/admin").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\",\"value\":\"true\"}")
         ).andExpect(status().isForbidden());
     }
@@ -90,7 +88,7 @@ class ConfigurationControllerTest {
     @Test
     void adminCreateAsPlainAuthenticatedUserIsForbidden() throws Exception {
         mockMvc.perform(
-            post("/configuration/admin/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "USER").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\",\"value\":\"true\"}")
         ).andExpect(status().isForbidden());
@@ -99,7 +97,7 @@ class ConfigurationControllerTest {
     @Test
     void adminCreateAsSuperAdminSucceedsWith200AndBody() throws Exception {
         mockMvc.perform(
-            post("/configuration/admin/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\",\"value\":\"true\",\"description\":\"desc\"}")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("A")).andExpect(jsonPath("$.uuid").exists());
@@ -108,7 +106,7 @@ class ConfigurationControllerTest {
     @Test
     void adminCreateMissingRequiredFieldReturns400() throws Exception {
         mockMvc.perform(
-            post("/configuration/admin/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\"}")
         ).andExpect(status().isBadRequest());
@@ -119,7 +117,7 @@ class ConfigurationControllerTest {
         repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
 
         mockMvc.perform(
-            post("/configuration/admin/").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            post("/configuration/admin").header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"A\",\"kind\":\"ui\",\"value\":\"false\"}")
         ).andExpect(status().isConflict()).andExpect(jsonPath("$.errorType").value("conflict"));
@@ -130,7 +128,7 @@ class ConfigurationControllerTest {
         Configuration saved = repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
 
         mockMvc.perform(
-            patch("/configuration/admin/{id}/", saved.getUuid()).contentType(MediaType.APPLICATION_JSON).content("{\"value\":\"false\"}")
+            patch("/configuration/admin/{id}", saved.getUuid()).contentType(MediaType.APPLICATION_JSON).content("{\"value\":\"false\"}")
         ).andExpect(status().isForbidden());
     }
 
@@ -139,7 +137,7 @@ class ConfigurationControllerTest {
         Configuration saved = repo.save(new Configuration().setName("A").setKind("ui").setValue("true").setDescription("old"));
 
         mockMvc.perform(
-            patch("/configuration/admin/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            patch("/configuration/admin/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"value\":\"false\"}")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.value").value("false")).andExpect(jsonPath("$.description").value("old"));
@@ -150,7 +148,7 @@ class ConfigurationControllerTest {
         Configuration saved = repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
 
         mockMvc.perform(
-            patch("/configuration/admin/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            patch("/configuration/admin/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"uuid\":\"" + UUID.randomUUID() + "\",\"value\":\"false\"}")
         ).andExpect(status().isBadRequest());
@@ -159,7 +157,7 @@ class ConfigurationControllerTest {
     @Test
     void adminUpdateMissingReturns404() throws Exception {
         mockMvc.perform(
-            patch("/configuration/admin/{id}/", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            patch("/configuration/admin/{id}", UUID.randomUUID()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"value\":\"false\"}")
         ).andExpect(status().isNotFound());
@@ -169,7 +167,7 @@ class ConfigurationControllerTest {
     void adminDeleteWithoutSuperAdminIsForbidden() throws Exception {
         Configuration saved = repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
 
-        mockMvc.perform(delete("/configuration/admin/{id}/", saved.getUuid())).andExpect(status().isForbidden());
+        mockMvc.perform(delete("/configuration/admin/{id}", saved.getUuid())).andExpect(status().isForbidden());
     }
 
     @Test
@@ -177,7 +175,7 @@ class ConfigurationControllerTest {
         Configuration saved = repo.save(new Configuration().setName("A").setKind("ui").setValue("true"));
 
         mockMvc.perform(
-            delete("/configuration/admin/{id}/", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
+            delete("/configuration/admin/{id}", saved.getUuid()).header(GatewayUserResolver.HEADER_USER_ID, "auth0|abc")
                 .header(GatewayUserResolver.HEADER_USER_PRIVILEGES, "SUPER_ADMIN")
         ).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("A"));
     }

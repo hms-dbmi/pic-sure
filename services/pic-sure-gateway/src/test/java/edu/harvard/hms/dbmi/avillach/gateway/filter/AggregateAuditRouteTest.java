@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 
 /**
- * Reconciles the pic-sure-hpds-query-service aggregate open path against the gateway's audit route table (Task 9): the legacy WAR's v1
+ * Reconciles the pic-sure-hpds-query-service aggregate open path against the gateway's audit route table: the legacy WAR's v1
  * {@code AggregateDataSharingResourceRS} emitted a bespoke inline {@code aggregate.query_sync} audit event, while its v3 sibling emitted
  * NONE at all (the missing-audit gap). Neither is ported -- the query-service performs no audit emission of its own; instead, both
  * {@code /hpds/open/query/sync} (v1) and {@code /hpds/open/v3/query/sync} (v3) are audited identically, at this single gateway chokepoint,

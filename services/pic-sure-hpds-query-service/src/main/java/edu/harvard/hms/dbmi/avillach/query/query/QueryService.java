@@ -13,14 +13,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
@@ -46,24 +49,29 @@ public class QueryService {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * Lenient mapper used ONLY to deserialize a stored v1 {@code query} node in {@link #tryTranslate}: unknown fields on a stored row that
+     * predate the current v1 {@code Query} model must not abort translation, so this mapper (unlike {@link #MAPPER}) does not fail on
+     * unknown properties. Never used for anything else in this class.
+     */
+    private static final ObjectMapper V1_QUERY_MAPPER =
+        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     private static final String CURRENT_VERSION = "3";
 
     private final OperationsClient operationsClient;
     private final ResourceWebClient hpds;
     private final HpdsBackendSelector selector;
-    private final SiteParsingService sites;
 
-    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector, SiteParsingService sites) {
+    public QueryService(OperationsClient operationsClient, ResourceWebClient hpds, HpdsBackendSelector selector) {
         this.operationsClient = operationsClient;
         this.hpds = hpds;
         this.selector = selector;
-        this.sites = sites;
     }
 
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
     }
 
-    // --- create / sync (Task 9) ---
+    // --- create / sync ---
 
     public QueryStatus query(String backend, QueryRequest req) {
         return create(backend, req, false);
@@ -71,13 +79,6 @@ public class QueryService {
 
     public QueryStatus queryV3(String backend, QueryRequest req) {
         return create(backend, req, true);
-    }
-
-    public QueryStatus institutionalQuery(String backend, FederatedQueryRequest req, String email, boolean v3) {
-        String siteCode = sites.parseSiteOfOrigin(email).orElse("Unknown");
-        req.setInstitutionOfOrigin(siteCode);
-        req.setRequesterEmail(email);
-        return create(backend, req, v3);
     }
 
     private QueryStatus create(String backend, QueryRequest req, boolean v3) {
@@ -88,7 +89,7 @@ public class QueryService {
 
         QueryStatus results = hpds.query(target, req); // HPDS call first (parity: query() calls HPDS then persists)
         String version = v3 ? CURRENT_VERSION : null;
-        String metadataBase64 = buildMetadataBase64(req, results);
+        String metadataBase64 = buildMetadataBase64(results);
 
         UUID picsureId = operationsClient.save(
             new SaveQueryRequest(
@@ -106,12 +107,12 @@ public class QueryService {
         return results;
     }
 
-    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource, boolean v3) {
+    public QuerySyncResponse querySync(String backend, QueryRequest req, String requestSource) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-        HpdsTarget target = selector.select(backend, v3);
-        String version = v3 ? CURRENT_VERSION : null;
+        HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
+        String version = CURRENT_VERSION;
 
         // persist FIRST (parity: sync persists then calls HPDS)
         UUID picsureId = operationsClient.save(new SaveQueryRequest(serializeQuery(req), null, null, version, null));
@@ -124,18 +125,10 @@ public class QueryService {
     }
 
     /** Port of copyQuery's metadata assembly (PicsureQueryService.java:380-419) minus Resource + AuditContext. */
-    private String buildMetadataBase64(QueryRequest req, QueryStatus response) {
+    private String buildMetadataBase64(QueryStatus response) {
         Map<String, Object> meta = response.getResultMetadata();
         if (meta == null) {
             meta = new HashMap<>();
-        }
-        if (req instanceof FederatedQueryRequest gic) {
-            meta.put("commonAreaUUID", gic.getCommonAreaUUID());
-            meta.put("site", gic.getInstitutionOfOrigin());
-            // DataSharingStatus.Unknown by name: this module has no dependency on pic-sure-api-data's entity package
-            // (DB-free), so the GIC sharing-status marker is carried as its enum-name string instead of the enum type.
-            meta.put("sharingStatus", "Unknown");
-            meta.put("requesterEmail", gic.getRequesterEmail());
         }
         response.setResultMetadata(meta);
         if (meta.isEmpty()) {
@@ -166,7 +159,7 @@ public class QueryService {
         return status == null ? null : status.name();
     }
 
-    // --- read ops with uniform stored-version dispatch (Task 10 / decision 9 fix) ---
+    // --- read ops with uniform stored-version dispatch ---
 
     public QueryStatus queryStatus(String backend, UUID picsureId, QueryRequest req) {
         StoredQuery stored = load(picsureId);
@@ -216,13 +209,13 @@ public class QueryService {
         }
     }
 
-    // --- metadata (Task 11, DB-only, no HPDS) ---
+    // --- metadata (DB-only, no HPDS) ---
 
     public QueryStatus queryMetadata(UUID id) {
         if (id == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query id");
         }
-        StoredQuery stored = loadForMetadata(id);
+        StoredQuery stored = load(id);
 
         QueryStatus response = new QueryStatus();
         response.setPicsureResultId(stored.picsureId());
@@ -232,7 +225,7 @@ public class QueryService {
 
         Map<String, Object> metadata = new HashMap<>();
         try {
-            metadata.put("queryJson", stored.query() == null ? null : MAPPER.readValue(stored.query(), Object.class));
+            metadata.put("queryJson", buildQueryJson(stored));
             metadata.put("queryResultMetadata", decodeMetadata(stored.metadata()));
         } catch (JsonProcessingException e) {
             logger.warn("Unable to read stored query/metadata for {}", id, e);
@@ -241,31 +234,58 @@ public class QueryService {
         return response;
     }
 
-    /** Accepts EITHER a picsureId or a GIC commonAreaUUID, matching the legacy queryMetadata's dual lookup. */
-    private StoredQuery loadForMetadata(UUID id) {
-        try {
-            return operationsClient.get(id);
-        } catch (PicsureException primary) {
-            if (primary.getStatus() != HttpStatus.NOT_FOUND) {
-                throw primary;
-            }
-            StoredQuery byCommonArea;
-            try {
-                byCommonArea = operationsClient.findByCommonAreaUUID(id);
-            } catch (PicsureException fallbackFailure) {
-                throw primary; // surface the original, clean NOT_FOUND rather than the fallback call's error shape
-            }
-            if (byCommonArea == null) {
-                throw primary;
-            }
-            return byCommonArea;
-        }
-    }
-
     private static String decodeMetadata(String base64Metadata) {
         if (base64Metadata == null) {
             return null;
         }
         return new String(Base64.getDecoder().decode(base64Metadata), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The stored-query body for the {@code /metadata} response. For a v3 row (or a null body) this is the raw parsed JSON, byte-for-byte as
+     * before. For a v1 row it is the same {@code QueryRequest} wrapper with its nested {@code query} translated to the v3 shape, so clients
+     * see one shape regardless of when the query was stored. Any translation failure falls back to the untranslated body (never an error);
+     * a genuinely unparseable body still propagates {@link JsonProcessingException} to preserve the prior "queryJson absent" behavior.
+     */
+    Object buildQueryJson(StoredQuery stored) throws JsonProcessingException {
+        String json = stored.query();
+        if (json == null) {
+            return null;
+        }
+        if (!isV3(stored)) {
+            JsonNode translated = tryTranslate(json);
+            if (translated != null) {
+                // Normalize to the same Map shape the v3/raw path returns, so queryJson has one type regardless of stored version.
+                return MAPPER.convertValue(translated, Object.class);
+            }
+        }
+        return MAPPER.readValue(json, Object.class);
+    }
+
+    /**
+     * Attempts to translate a stored v1 {@code QueryRequest} wrapper: parse it, deserialize its {@code query} node as a v1 {@code Query},
+     * translate to v3, and re-embed. Returns {@code null} (caller falls back to the raw body) when the body is not a wrapper object, has no
+     * object-valued {@code query} node, or cannot be translated
+     * ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any Jackson error). Never throws.
+     */
+    JsonNode tryTranslate(String json) {
+        try {
+            JsonNode root = MAPPER.readTree(json);
+            if (!(root instanceof ObjectNode wrapper)) {
+                return null;
+            }
+            JsonNode queryNode = wrapper.get("query");
+            if (queryNode == null || !queryNode.isObject()) {
+                return null;
+            }
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 =
+                V1_QUERY_MAPPER.treeToValue(queryNode, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
+            edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query v3 = QueryTranslator.translate(v1);
+            wrapper.set("query", MAPPER.valueToTree(v3));
+            return wrapper;
+        } catch (Exception e) {
+            logger.warn("Unable to translate stored v1 query to v3; returning it untranslated", e);
+            return null;
+        }
     }
 }

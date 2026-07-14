@@ -20,15 +20,15 @@ import jakarta.servlet.http.HttpServletResponse;
  * headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) from every
  * inbound CLIENT request before anything downstream -- routing, the auth chain, or the WildFly proxy -- can ever see a client-supplied
  * value. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides these headers from the client,
- * but it is one of the DB-free auth-chain filters gated behind {@code picsure.gateway.security.auth-enabled} (false by default). If that
- * switch is off while WildFly is nonetheless configured with {@code GATEWAY_OWNS_AUTH=true} (trusting these headers from the gateway), a
- * client's own {@code X-User-Id}/{@code X-User-Privileges}/etc. would pass through the gateway untouched and be trusted directly by
- * WildFly's {@code GatewayHeaderFilter} -- an identity/privilege-spoofing hole. This filter closes that hole unconditionally, independent
- * of the auth-enabled switch. <p> Runs at {@link org.springframework.core.Ordered#HIGHEST_PRECEDENCE} {@code + 2}: right after the commons
- * {@code RequestIdFilter} (+0) and {@code AccessLogFilter} (+1), and before the DB-free auth chain (order 10+) when it is enabled. When the
- * auth chain IS enabled, {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and
- * sets the gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names
- * -- so normal propagation of resolved identity is unaffected by this filter running first.
+ * but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed, misconfigured, or WildFly is
+ * nonetheless configured to trust these headers directly from the gateway (its {@code GatewayHeaderFilter}), a client's own
+ * {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing hole.
+ * This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at
+ * {@link org.springframework.core.Ordered#HIGHEST_PRECEDENCE} {@code + 2}: right after the commons {@code RequestIdFilter} (+0) and
+ * {@code AccessLogFilter} (+1), and before the DB-free auth chain (order 10+).
+ * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets the
+ * gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
+ * normal propagation of resolved identity is unaffected by this filter running first.
  */
 public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter {
 

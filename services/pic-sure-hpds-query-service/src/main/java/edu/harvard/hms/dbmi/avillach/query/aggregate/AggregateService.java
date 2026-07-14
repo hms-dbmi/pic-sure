@@ -34,7 +34,7 @@ import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
  * obfuscation dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression
  * rule. Stores no {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS
  * dispatch to {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader}
- * (dead code in the WAR -- dropped) or perform inline audit logging (gateway-only, Task 10 elsewhere).
+ * (dead code in the WAR -- dropped) or perform inline audit logging (handled in the gateway).
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the exact 10-type allow-list from the WAR; a type not on it is rejected with
  * a 400 rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold/variance
@@ -80,9 +80,10 @@ public class AggregateService {
      * unchanged, exactly as the WAR's async {@code query()} did (it had no allow-list; that guard existed only on {@code querySync}).
      *
      * <p><b>Consent-scoping fix (I6):</b> persistence + HPDS dispatch are delegated to {@link QueryService} (the module's DB-free create
-     * flow), so the STORED query is the REWRITTEN one. Every later status/result/signed-url/metadata call -- served by the generic
-     * {@code /hpds/{backend}} controller off the stored query -- therefore operates on the safe, consent-scoped query rather than the raw
-     * submission. This closes the gap where an unwired open async path dispatched the raw query with no consent-scoping.
+     * flow), so the STORED query is the REWRITTEN one. Every later status/result/signed-url/metadata call -- served by the v3 read ingress
+     * ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the stored query --
+     * therefore operates on the safe, consent-scoped query rather than the raw submission. This closes the gap where an unwired open async
+     * path dispatched the raw query with no consent-scoping.
      */
     public QueryStatus query(QueryRequest req, AggregateVariant variant) {
         checkQuery(req);

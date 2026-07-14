@@ -30,7 +30,7 @@ class QueryAuthFetcherTest {
     static void start() {
         // http2PlainDisabled avoids a known JDK HttpClient <-> WireMock(Jetty) h2c upgrade bug that manifests as
         // "RST_STREAM: Stream cancelled" when RestClient's default JDK-backed request factory is used.
-        qs = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        qs = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         qs.start();
     }
 
@@ -40,29 +40,31 @@ class QueryAuthFetcherTest {
     }
 
     private QueryAuthFetcher fetcher() {
-        return new QueryAuthFetcher(RestClient.builder().build(), "http://localhost:" + qs.port(), "internal-secret");
+        return new QueryAuthFetcher(RestClient.builder().build(), "http://127.0.0.1:" + qs.port(), "internal-secret");
     }
 
     @Test
     void fetchesStoredQueryForResultPathAndSendsInternalToken() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/abc-123/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"stored\\\":true}\"}")));
+        qs.stubFor(
+            get(urlEqualTo("/operations/internal/queries/abc-123/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"stored\\\":true}\"}"))
+        );
         assertThat(fetcher().queryJsonForPath("/query/abc-123/result")).contains("{\"stored\":true}");
         qs.verify(
-            getRequestedFor(urlEqualTo("/internal/queries/abc-123/dispatch"))
+            getRequestedFor(urlEqualTo("/operations/internal/queries/abc-123/dispatch"))
                 .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("internal-secret"))
         );
     }
 
     @Test
     void failsClosedOn403AsForbiddenDeny() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/forbidden/dispatch")).willReturn(forbidden()));
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/forbidden/dispatch")).willReturn(forbidden()));
         assertThatThrownBy(() -> fetcher().queryJsonForPath("/query/forbidden/result")).isInstanceOf(PicsureException.class)
             .extracting(e -> ((PicsureException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
     }
 
     @Test
     void fetchesStoredQueryForV3SignedUrlPath() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/q9/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"v3\\\":1}\"}")));
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/q9/dispatch")).willReturn(okJson("{\"queryJson\":\"{\\\"v3\\\":1}\"}")));
         assertThat(fetcher().queryJsonForPath("/v3/query/q9/signed-url")).contains("{\"v3\":1}");
     }
 
@@ -74,21 +76,21 @@ class QueryAuthFetcherTest {
 
     @Test
     void failsClosedOn404AsNotFound() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/missing/dispatch")).willReturn(notFound()));
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/missing/dispatch")).willReturn(notFound()));
         assertThatThrownBy(() -> fetcher().queryJsonForPath("/query/missing/result")).isInstanceOf(PicsureException.class)
             .extracting(e -> ((PicsureException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
     void failsClosedOnUpstream500AsBadGateway() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/boom/dispatch")).willReturn(serverError()));
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/boom/dispatch")).willReturn(serverError()));
         assertThatThrownBy(() -> fetcher().queryJsonForPath("/query/boom/result")).isInstanceOf(PicsureException.class)
             .extracting(e -> ((PicsureException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
     }
 
     @Test
     void failsClosedOnEmptyBodyAsBadGateway() {
-        qs.stubFor(get(urlEqualTo("/internal/queries/empty/dispatch")).willReturn(okJson("{\"queryJson\":\"\"}")));
+        qs.stubFor(get(urlEqualTo("/operations/internal/queries/empty/dispatch")).willReturn(okJson("{\"queryJson\":\"\"}")));
         assertThatThrownBy(() -> fetcher().queryJsonForPath("/query/empty/result")).isInstanceOf(PicsureException.class)
             .extracting(e -> ((PicsureException) e).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
     }

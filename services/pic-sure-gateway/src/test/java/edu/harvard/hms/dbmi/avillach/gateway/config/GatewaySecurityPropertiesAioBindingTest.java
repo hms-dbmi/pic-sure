@@ -6,15 +6,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 
 /**
- * Pins the AIO profile override (Part C of Task 14): under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names
- * rather than the empty base defaults.
+ * Pins the AIO profile override: under the {@code aio} profile, PSAMA URLs resolve to the AIO Docker-network DNS names rather than the
+ * empty base defaults.
  */
 @SpringBootTest
 @ActiveProfiles("aio")
-@TestPropertySource(properties = "picsure.gateway.security.auth-enabled=true")
 class GatewaySecurityPropertiesAioBindingTest {
 
     @Autowired
@@ -28,12 +26,5 @@ class GatewaySecurityPropertiesAioBindingTest {
     @Test
     void openAccessValidateUrlResolvesToAioPsamaDns() {
         assertThat(props.openAccessValidateUrl()).isEqualTo("http://psama:8090/auth/open/validate");
-    }
-
-    @Test
-    void gatewayOwnsQueryReadAuthDefaultsTrueUnderAioProfile() {
-        // Phase 4: the aio profile flips the master query-read-auth flag to true (the gateway now owns
-        // result/signed-url auth), while the base application.yml default stays false.
-        assertThat(props.gatewayOwnsQueryReadAuth()).isTrue();
     }
 }

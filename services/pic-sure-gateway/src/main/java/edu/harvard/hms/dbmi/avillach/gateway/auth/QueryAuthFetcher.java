@@ -13,9 +13,10 @@ import org.springframework.web.client.RestClientResponseException;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from the query service's gateway-only dispatch endpoint
- * (§4.3.1), purely as the PSAMA introspection payload — NO database access (decision 8). Sends the mandatory internal dispatch token
- * (X-PIC-SURE-INTERNAL-TOKEN, S-M4). Fail-closed: ANY error (incl. 403) denies the request. Dormant during the Phase 2 interim (Task 5).
+ * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from operations-service's gateway-only
+ * {@code /operations/internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape —
+ * NO database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY
+ * error (incl. 403) denies the request.
  */
 public class QueryAuthFetcher {
 
@@ -47,11 +48,11 @@ public class QueryAuthFetcher {
     private String fetchDispatch(String picsureId) {
         DispatchResponse resp;
         try {
-            resp = http.get().uri(queryServiceBaseUrl + "/internal/queries/{id}/dispatch", picsureId)
+            resp = http.get().uri(queryServiceBaseUrl + "/operations/internal/queries/{id}/dispatch", picsureId)
                 .header(INTERNAL_TOKEN_HEADER, internalToken).retrieve().body(DispatchResponse.class);
         } catch (RestClientResponseException e) {
             int status = e.getStatusCode().value();
-            // honest status (decision 10) + fail-closed (decision 8):
+            // honest status + fail-closed:
             if (status == 404) {
                 throw new PicsureException(HttpStatus.NOT_FOUND, "query_not_found", "No stored query for id " + picsureId);
             }

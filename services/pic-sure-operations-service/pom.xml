@@ -36,7 +36,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- Phase 6: registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
+        <!-- Registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
@@ -46,11 +46,6 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
-        <!-- In-reactor: jakarta entities/repositories (Query/Configuration/NamedDataset/Site). -->
-        <dependency>
-            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-            <artifactId>pic-sure-api-data</artifactId>
-        </dependency>
         <!-- GatewayUser/GatewayUserResolver, PicsureException, GatewayExceptionAdvice, RequestIdFilter. -->
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>

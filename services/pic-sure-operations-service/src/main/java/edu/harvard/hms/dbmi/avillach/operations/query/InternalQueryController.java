@@ -64,9 +64,4 @@ public class InternalQueryController {
         body.put("queryJson", service.dispatchQueryJson(picsureId));
         return body;
     }
-
-    @GetMapping("/by-common-area/{commonAreaUUID}")
-    public StoredQuery byCommonArea(@PathVariable("commonAreaUUID") UUID commonAreaUUID) {
-        return service.findByCommonAreaUUID(commonAreaUUID);
-    }
 }

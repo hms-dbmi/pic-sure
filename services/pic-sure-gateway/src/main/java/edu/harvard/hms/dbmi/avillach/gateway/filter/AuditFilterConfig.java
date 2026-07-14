@@ -5,23 +5,20 @@ import java.util.regex.Pattern;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
+import edu.harvard.hms.dbmi.avillach.commons.audit.AuditLoggingFilter;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRoute;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditRouteTable;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayAuthScope;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.GatewayModeResolver;
-import edu.harvard.hms.dbmi.avillach.gateway.config.GatewayAuthActiveCondition;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingClientFactory;
 
 /**
  * Wires the audit-emission filter: {@link LoggingClient} (env-driven, no-op when unconfigured), the verified route table (mirrors the
  * legacy WAR {@code AuditLoggingFilter.java:55-65}, minus the removed {@code PROXY} row -- there is no {@code /proxy} prefix in the new
- * per-service scheme), and the {@link GatewayAuditLoggingFilter} registration itself at order 60, the outermost emitter on the way out of
- * the chain (after {@code IdentityPropagationFilter} at 50 in {@code SecurityConfig}).
+ * per-service scheme), and the {@link AuditLoggingFilter} registration itself at order 60, the outermost emitter on the way out of the
+ * chain (after {@code IdentityPropagationFilter} at 50 in {@code SecurityConfig}).
  */
 @Configuration
 public class AuditFilterConfig {
@@ -52,15 +49,12 @@ public class AuditFilterConfig {
     }
 
     @Bean
-    @Conditional(GatewayAuthActiveCondition.class)
-    public FilterRegistrationBean<GatewayAuditLoggingFilter> auditLoggingFilter(
-        LoggingClient client, AuditRouteTable routes, AuditContext audit, GatewayAuthScope scope, GatewayModeResolver modeResolver
-    ) {
+    public FilterRegistrationBean<AuditLoggingFilter> auditLoggingFilter(LoggingClient client, AuditRouteTable routes, AuditContext audit) {
         // VERIFIED skip-list (AuditLoggingFilter.java:122-127): ends-with /system/status, /openapi.json (base
         // class); contains /info/, /bin/continuous, /logging (was /proxy/pic-sure-logging/ -- no /proxy prefix in
         // the new scheme). Gateway-local /actuator, /openapi, /swagger-ui added on top (net-new concerns).
-        GatewayAuditLoggingFilter filter = new GatewayAuditLoggingFilter(
-            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui"), scope
+        AuditLoggingFilter filter = new AuditLoggingFilter(
+            client, routes, audit, List.of("/info/", "/bin/continuous", "/logging", "/actuator", "/openapi", "/swagger-ui")
         );
         var registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(60); // outermost emitter on the way out

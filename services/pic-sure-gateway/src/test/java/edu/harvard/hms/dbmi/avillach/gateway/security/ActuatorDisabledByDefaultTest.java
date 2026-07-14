@@ -13,11 +13,10 @@ import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 
 /**
- * Locks in the security posture the actuator change rests on: with NO {@code PICSURE_ACTUATOR_EXPOSURE} set,
- * {@code management.endpoints.web.exposure.include} resolves to the sentinel {@code none} (see application.yml), so every
- * {@code /actuator/**} endpoint is unmapped (404) -- nothing is exposed to the world by default. This branch has no legacy WildFly
- * catch-all, so an unexposed {@code /actuator/*} 404s naturally (no guard route is needed, unlike the pre-consolidation branch). The public
- * {@code /system/status} basic health check is a {@code RouterFunction}, not an actuator endpoint, so it stays available. The
+ * Locks in the security posture the whole actuator change rests on: with NO {@code PICSURE_ACTUATOR_EXPOSURE} set,
+ * {@code management.endpoints.web.exposure.include} resolves to the no-match sentinel {@code none} (see application.yml), so every {@code /actuator/**} endpoint is
+ * unmapped (404) -- nothing is exposed to the world by default. The public {@code /system/status} basic health check is a
+ * {@code RouterFunction}, not an actuator endpoint, so it stays available regardless. AIO opts back in via gateway.env; the
  * enabled-and-gated behavior is proven by {@link ActuatorSecurityIntegrationTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -42,7 +41,7 @@ class ActuatorDisabledByDefaultTest {
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + path;
+        return "http://127.0.0.1:" + port + path;
     }
 
     @Test

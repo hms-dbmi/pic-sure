@@ -29,7 +29,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- Phase 6: registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
+        <!-- Registers /actuator/prometheus (PrometheusScrapeEndpoint), gated by ActuatorSecurityConfig. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
@@ -52,6 +52,11 @@
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-api-model</artifactId>
+        </dependency>
+        <!-- v1/v3 query models + QueryTranslator (used by queryMetadata to convert stored v1 bodies to v3). -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
+            <artifactId>pic-sure-hpds-model</artifactId>
         </dependency>
 
         <!-- Pooled RestClient backing (HPDS + operations-service HTTP clients). Version managed by the

@@ -1,4 +1,6 @@
-# AIO profile: services are reachable by Docker DNS on the shared `picsure` network.
+# AIO profile: query-service, operations-service, and PSAMA are reachable by Docker DNS
+# on the shared `picsure` network. HPDS_QUERY_SERVICE_URL and OPERATIONS_SERVICE_URL may
+# still override (see application.yml for defaults).
 
 # PSAMA introspection endpoints. Env vars still override (BDC sets its own). The
 # service token stays env-only.
@@ -7,21 +9,18 @@ picsure:
     security:
       introspection-url: ${TOKEN_INTROSPECTION_URL:http://psama:8090/auth/token/inspect}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:http://psama:8090/auth/open/validate}
-      # Phase 4: the gateway now owns result/signed-url auth for the AIO deploy (QueryAuthFetcher dispatch is live,
-      # repointed at operations-service). The base application.yml default stays false; only this profile flips it.
-      gateway-owns-query-read-auth: ${GATEWAY_OWNS_QUERY_READ_AUTH:true}
-    # Phase 3 (Task 13) — deep-health downstream list the gateway aggregates into
+    # Deep-health downstream list the gateway aggregates into
     # /system/status and /actuator/health. AIO service DNS on the picsure network.
     # PSAMA uses the transitional introspection-ping (active:false = reachable) until
-    # its Actuator lands (Task 4); HPDS/dictionary report DOWN until their Actuator
-    # (Tasks 5/6). visualization + logging already expose health today.
+    # its Actuator lands; HPDS/dictionary report DOWN until their Actuator arrives.
+    # visualization + logging already expose health today.
     health:
       connect-timeout-ms: 2000
       read-timeout-ms: 3000
       application-token: ${TOKEN_INTROSPECTION_TOKEN:}
       downstreams:
         - name: psama
-          # PSAMA now ships Actuator (Task 4); use its real deep /auth/actuator/health
+          # PSAMA now ships Actuator; use its real deep /auth/actuator/health
           # (db indicator). context-path is /auth. The transitional introspection-ping
           # (POST /auth/token/inspect, {}, app token) is retained in git history as the
           # fallback if a PSAMA deploy ever lags the actuator rollout.
@@ -46,7 +45,7 @@ picsure:
           require-status-up: true
         - name: operations-service
           base-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
-          health-path: /actuator/health
+          health-path: /operations/actuator/health
           require-status-up: true
         - name: query-service
           base-url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}

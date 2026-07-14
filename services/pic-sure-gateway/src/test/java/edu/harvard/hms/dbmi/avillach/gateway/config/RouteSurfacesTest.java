@@ -29,12 +29,12 @@ class RouteSurfacesTest {
         // /loggingAdmin must NOT match owned prefix /logging
         assertThat(surfaces.isOwned("/loggingAdmin")).isFalse();
         assertThat(surfaces.isOwned("/loggingAdmin/x")).isFalse();
-        assertThat(surfaces.isOwned("/datasets")).isFalse(); // vs /dataset
+        assertThat(surfaces.isOwned("/operationsx")).isFalse(); // vs /operations
         assertThat(surfaces.isOwned("/hpdsx")).isFalse(); // vs /hpds
     }
 
     @Test
-    void catchAllIsEverythingNotOwned() {
+    void unownedIsEverythingNotOwned() {
         assertThat(surfaces.isCatchAll("/picsure/query/sync")).isTrue();
         assertThat(surfaces.isCatchAll("/v3/search/abc")).isTrue();
         assertThat(surfaces.isCatchAll("/hpds/auth/v3/query/sync")).isFalse();

@@ -28,8 +28,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * {@link #querySync} (the obfuscated sync path + the internal CROSS_COUNT lookup) and {@link #binContinuous} (visualization binning). The
  * async query-lifecycle calls ({@code /query}, {@code /query/{id}/status}, {@code /query/{id}/result}, {@code /query/format},
  * {@code /info}) are NOT proxied through this client: the open async submit is routed through {@code QueryService} (DB-free persistence +
- * dispatch, see {@link AggregateService#query}), and every subsequent read op is served by the generic {@code /hpds/{backend}} controller
- * off the stored (already consent-scoped) query.
+ * dispatch, see {@link AggregateService#query}), and every subsequent read op is served by the v3 read ingress
+ * ({@code /hpds/{backend}/v3/...}, {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}) off the stored (already
+ * consent-scoped) query.
  *
  * <p>Non-2xx responses and I/O failures surface as {@link HpdsCommunicationException} (mapped to 502 by
  * {@code edu.harvard.hms.dbmi.avillach.query.error.GlobalExceptionHandler}), mirroring {@code ResourceWebClient}'s error-handling

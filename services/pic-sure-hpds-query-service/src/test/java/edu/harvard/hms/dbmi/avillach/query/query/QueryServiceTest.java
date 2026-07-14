@@ -1,21 +1,25 @@
 package edu.harvard.hms.dbmi.avillach.query.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
-import edu.harvard.dbmi.avillach.domain.FederatedQueryRequest;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -35,10 +39,9 @@ class QueryServiceTest {
 
     OperationsClient operationsClient = mock(OperationsClient.class);
     ResourceWebClient hpds = mock(ResourceWebClient.class);
-    SiteParsingService sites = mock(SiteParsingService.class);
     HpdsProperties props = props();
     HpdsBackendSelector selector = new HpdsBackendSelector(props);
-    QueryService service = new QueryService(operationsClient, hpds, selector, sites);
+    QueryService service = new QueryService(operationsClient, hpds, selector);
 
     private static HpdsProperties props() {
         HpdsProperties p = new HpdsProperties();
@@ -61,7 +64,7 @@ class QueryServiceTest {
         return s;
     }
 
-    // --- create (Task 9) ---
+    // --- create ---
 
     @Test
     void createPersistsViaOperationsClientAndTranslatesIds() {
@@ -114,24 +117,7 @@ class QueryServiceTest {
         assertThat(out.getResourceID()).isEqualTo(request.getResourceUUID());
     }
 
-    @Test
-    void institutionalQuerySetsSiteAndEmailBeforeCreating() {
-        UUID picsureId = UUID.randomUUID();
-        FederatedQueryRequest request = new FederatedQueryRequest();
-        request.setQuery("q");
-        request.setResourceUUID(UUID.randomUUID());
-        when(sites.parseSiteOfOrigin("alice@harvard.edu")).thenReturn(java.util.Optional.of("HARVARD"));
-        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        service.institutionalQuery("auth", request, "alice@harvard.edu", false);
-
-        assertThat(request.getInstitutionOfOrigin()).isEqualTo("HARVARD");
-        assertThat(request.getRequesterEmail()).isEqualTo("alice@harvard.edu");
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.metadata() != null));
-    }
-
-    // --- sync (Task 9) ---
+    // --- sync ---
 
     @Test
     void syncFallsBackToPicsureIdWhenNoMetadataHeader() {
@@ -140,7 +126,7 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), null));
 
-        var resp = service.querySync("auth", req(), "UI", false);
+        var resp = service.querySync("auth", req(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
         // resourceResultId persisted = the picsureId when no header (maintain WAR behavior)
@@ -155,12 +141,12 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), "hpds-meta-id"));
 
-        service.querySync("auth", req(), "UI", false);
+        service.querySync("auth", req(), "UI");
 
         verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
     }
 
-    // --- read ops (Task 10) ---
+    // --- read ops ---
 
     @Test
     void unknownQueryIdThrowsNotFound() {
@@ -233,7 +219,7 @@ class QueryServiceTest {
         assertThat(out.getResourceID()).isEqualTo(resourceUuid);
     }
 
-    // --- metadata (Task 11) ---
+    // --- metadata ---
 
     @Test
     void metadataBuildsResultMetadataShapeWithoutCallingHpds() {
@@ -253,34 +239,99 @@ class QueryServiceTest {
     }
 
     @Test
-    void metadataFallsBackToCommonAreaLookup() {
+    void metadataUnknownIdThrowsNotFound() {
         UUID id = UUID.randomUUID();
-        StoredQuery stored =
-            new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":\"q\"}", null, null, null, null);
-        when(operationsClient.get(id)).thenThrow(
-            new edu.harvard.hms.dbmi.avillach.commons.error.PicsureException(
-                org.springframework.http.HttpStatus.NOT_FOUND, "not_found", "not found"
-            )
-        );
-        when(operationsClient.findByCommonAreaUUID(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "nope"));
 
-        QueryStatus out = service.queryMetadata(id);
+        assertThatThrownBy(() -> service.queryMetadata(id))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
 
-        assertThat(out.getResultMetadata()).containsKey("queryJson");
-        assertThat(out.getResultMetadata()).containsKey("queryResultMetadata");
+        verify(operationsClient).get(id); // the one lookup queryMetadata is allowed to make
+        verifyNoMoreInteractions(operationsClient); // pins that no second (e.g. common-area) lookup is attempted
+    }
+
+    /**
+     * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it: it parses the
+     * stored blob into a plain {@code Map} via {@code MAPPER.readValue(..., Object.class)}, so {@code "@type"} is just another map key and
+     * any value — known, unknown, or garbage — parses fine. That's why this test would still pass if the blob's {@code "@type"} were
+     * replaced with a nonsense value: it pins the parse path, not the subtype registry. The subtype-registry fallback (via
+     * {@code QueryRequest}'s {@code defaultImpl}) is separately pinned by
+     * {@code QueryRequestTest.shouldDeserializeRemovedFederatedTypeAsGeneralQueryRequest} in pic-sure-api-model.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataReadsALegacyFederatedStoredRow() {
+        UUID id = UUID.randomUUID();
+        String legacyBlob =
+            "{\"@type\":\"FederatedQueryRequest\"," + "\"query\":{\"expectedResultType\":\"COUNT\"}," + "\"commonAreaUUID\":\""
+                + UUID.randomUUID() + "\"," + "\"institutionOfOrigin\":\"BCH\"," + "\"requesterEmail\":\"alice@harvard.edu\"}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, legacyBlob, "rr-legacy", "AVAILABLE", "3", null));
+
+        QueryStatus result = service.queryMetadata(id);
+
+        Map<String, Object> resultMetadata = result.getResultMetadata();
+        Map<String, Object> queryJson = (Map<String, Object>) resultMetadata.get("queryJson");
+        assertThat(queryJson).isNotNull();
+        assertThat(queryJson).containsKey("query");
+        assertThat(result.getPicsureResultId()).isEqualTo(id);
     }
 
     @Test
-    void metadataUnknownIdThrowsNotFound() {
+    @SuppressWarnings("unchecked")
+    void metadataTranslatesStoredV1QueryToV3Shape() {
         UUID id = UUID.randomUUID();
-        when(operationsClient.get(id)).thenThrow(
-            new edu.harvard.hms.dbmi.avillach.commons.error.PicsureException(
-                org.springframework.http.HttpStatus.NOT_FOUND, "not_found", "not found"
-            )
-        );
-        when(operationsClient.findByCommonAreaUUID(id)).thenReturn(null);
+        String v1Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
+            + "\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
 
-        org.junit.jupiter.api.Assertions
-            .assertThrows(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class, () -> service.queryMetadata(id));
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        assertThat(queryJson).isNotNull();
+        assertThat(queryJson).containsKey("resourceUUID"); // wrapper preserved
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        assertThat(inner).containsKey("phenotypicClause"); // v3 field present
+        assertThat(inner).doesNotContainKey("categoryFilters"); // v1 field gone
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataFallsBackToUntranslatedOnUntranslatableV1Row() {
+        UUID id = UUID.randomUUID();
+        // two non-empty variantInfoFilters groups -> UntranslatableQueryException -> fall back to raw
+        String v1Blob =
+            "{\"query\":{\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}," + "\"variantInfoFilters\":["
+                + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"A\"]},\"numericVariantInfoFilters\":{}},"
+                + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
+
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        assertThat(inner).containsKey("variantInfoFilters"); // untranslated v1 body preserved
+        assertThat(inner).containsKey("categoryFilters"); // raw v1 body returned in full, not partially translated
+        assertThat(inner).doesNotContainKey("phenotypicClause"); // no translation output leaked in
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataLeavesV3StoredRowUntranslated() {
+        UUID id = UUID.randomUUID();
+        String v3Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
+            + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
+            + "\"conceptPath\":\"\\\\x\\\\\"},\"genomicFilters\":[]}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Blob, "rr-1", "AVAILABLE", "3", null));
+
+        QueryStatus out = service.queryMetadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
+        // non-null structural assertion: a wrongly-applied v1 translation would produce a different/empty clause,
+        // so asserting the exact conceptPath survives discriminates "left alone" from "translated".
+        assertThat(inner.get("phenotypicClause")).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clause = (Map<String, Object>) inner.get("phenotypicClause");
+        assertThat(clause.get("conceptPath")).isEqualTo("\\x\\");
     }
 }

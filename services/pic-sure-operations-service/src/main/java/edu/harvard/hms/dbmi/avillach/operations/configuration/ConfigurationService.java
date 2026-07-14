@@ -10,8 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
-import edu.harvard.hms.dbmi.avillach.data.entity.Configuration;
-import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
 
 /**
  * Ports the legacy WildFly {@code ConfigurationService}. Preserved behaviors: (1) UUID-or-name lookup ({@link #getByIdentifier(String)}) --
@@ -19,8 +17,8 @@ import edu.harvard.hms.dbmi.avillach.data.repository.ConfigurationRepository;
  * {@code findByName} match. (2) name+kind uniqueness on create and update via {@code findByNameAndKind}, excluding the row being updated.
  * (3) partial PATCH via {@link ConfigurationMapper#applyPatch}.
  *
- * <p>Behavior upgrades to honest statuses (decision 10): not-found -> 404, duplicate name+kind -> 409. Both are expressed as
- * {@link PicsureException} -- the actual {@code pic-sure-spring-commons} built for this monorepo ships only that one public error class (no
+ * <p>Behavior upgrades to honest statuses: not-found -> 404, duplicate name+kind -> 409. Both are expressed as {@link PicsureException} --
+ * the actual {@code pic-sure-spring-commons} built for this monorepo ships only that one public error class (no
  * {@code PicsureNotFoundException} subclass), so 404 is carried the same way as 409: via the status code on {@link PicsureException}, not
  * the exception's Java type.
  *

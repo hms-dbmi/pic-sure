@@ -13,17 +13,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * The v1 aggregate/obfuscation ingress: {@code POST /hpds/open/query/sync} and {@code POST /hpds/open/query}. Direct port of
- * {@code AggregateDataSharingResourceRS}'s {@code querySync}/{@code query} entry points (no inline audit -- Task 9: the gateway audits this
- * path, see {@code AuditRouteTable}). Open-access: no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here --
+ * {@code AggregateDataSharingResourceRS}'s {@code querySync}/{@code query} entry points (no inline audit -- the gateway audits this path,
+ * see {@code AuditRouteTable}). Open-access: no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here --
  * {@code WebSecurityConfig} already requires an authenticated caller for all of {@code /hpds/**} (the "open"/"auth" distinction is about
  * which HPDS backend answers the query and whether its data is public, not about API-level authentication).
  *
- * <p><b>Coexistence with {@code HpdsQueryV1Controller}:</b> that controller maps the generic, path-variable {@code /hpds/{backend}/query}
- * and {@code /hpds/{backend}/query/sync} (any backend, including literally {@code "open"}). This controller maps the LITERAL
- * {@code /hpds/open/query} and {@code /hpds/open/query/sync}. Spring MVC prefers a literal (no-variable) mapping over a variable one for
- * the same request, so those two open-path submissions are dispatched here (consent-scoped / obfuscated), while
- * {@code /hpds/auth/query[/sync]} -- and the remaining open-path read endpoints ({@code /hpds/open/query/{id}/status}, {@code /result},
- * {@code /signed-url}, {@code /metadata}) -- still flow through the generic controller unmodified.
+ * <p><b>{@code /hpds/open/query[/sync]} routing:</b> the generic v1 ingress ({@code /hpds/{backend}/query[/sync]} for any backend) was
+ * removed, so {@code /hpds/auth/query[/sync]} no longer exists at all. {@code /hpds/open/query} and {@code /hpds/open/query/sync} are
+ * served ONLY by this controller's literal mappings (consent-scoped / obfuscated). The remaining open-path read endpoints
+ * ({@code /hpds/open/v3/query/{id}/status}, {@code /result}, {@code /signed-url}, {@code /metadata}) flow through
+ * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller} (the generic v3 ingress) instead.
  *
  * <p>Two open submissions are intercepted: {@code query/sync} (the only endpoint the WAR ever obfuscated -- see {@link AggregateService}'s
  * Javadoc) and {@code query} (the async submit, which the WAR consent-scoped via {@code changeQueryToOpenCrossCount} for CROSS_COUNT before

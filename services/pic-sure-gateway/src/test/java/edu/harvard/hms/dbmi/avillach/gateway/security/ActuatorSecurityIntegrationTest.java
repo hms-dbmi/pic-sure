@@ -21,16 +21,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Task 7: full-context proof that the Phase-6 actuator chain (order 0) and the gateway's Phase-2 permit-all main chain (order 10) coexist
- * end-to-end -- health stays open (never 401) and shallow without a token, component detail and {@code /actuator/prometheus} are gated by
+ * Full-context proof that the token-gated actuator chain (order 0) and the gateway's permit-all main chain (order 10) coexist end-to-end --
+ * health stays open (never 401) and shallow without a token, component detail and {@code /actuator/prometheus} are gated by
  * {@code X-Application-Token}. Deep health indicators may report UP or DOWN in this isolated context (no live PSAMA/downstreams are
  * configured on the {@code local} profile) -- what matters is that the status code is never 401 and detail visibility tracks the token.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureObservability // prometheus export is disabled by default in @SpringBootTest contexts
 @ActiveProfiles("local")
-// Actuator is OFF BY DEFAULT (exposure defaults to the no-match sentinel 'none' in application.yml); this test
-// exercises the security gating, so it explicitly enables the endpoints and the when_authorized detail behavior AIO turns on.
+// Actuator is OFF BY DEFAULT (the no-match sentinel 'none' exposure in application.yml); this test exercises the security gating, so it
+// explicitly enables the endpoints and the when_authorized detail behavior the AIO deployment turns on.
 @TestPropertySource(
     properties = {"management.endpoints.web.exposure.include=health,info,prometheus,metrics",
         "management.endpoint.health.show-details=when_authorized", "picsure.actuator.require-token=true",
@@ -57,7 +57,7 @@ class ActuatorSecurityIntegrationTest {
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + path;
+        return "http://127.0.0.1:" + port + path;
     }
 
     @Test

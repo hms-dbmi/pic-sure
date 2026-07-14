@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Header-name contract between the gateway's identity/introspection filters (which set these headers on the way in) and the WAR's
- * GatewayHeaderFilter (which rebuilds the SecurityContext from them, Task 17).
+ * GatewayHeaderFilter (which rebuilds the SecurityContext from them).
  */
 public final class GatewayUserResolver {
 

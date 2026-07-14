@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -21,10 +22,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 /**
- * Phase 3 (Task 1): the explicit {@code /logging/**} route forwards to the logging service with the leading {@code /logging} segment
- * stripped (the logging service serves its API at root — {@code /audit}, {@code /health}). This replaces the legacy
- * {@code /proxy/pic-sure-logging} relay. The request must reach the logging stub, NOT the WildFly catch-all — proving the higher-priority
- * route (order 100) wins.
+ * The explicit {@code /logging/**} route forwards to the logging service with the leading {@code /logging} segment stripped (the logging
+ * service serves its API at root — {@code /audit}, {@code /health}). This replaces the legacy {@code /proxy/pic-sure-logging} relay. The
+ * request must reach the logging stub via the explicit route (order 100); there is no catch-all fallback.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class LoggingRouteTest {
@@ -33,7 +33,7 @@ class LoggingRouteTest {
 
     @DynamicPropertySource
     static void loggingUrl(DynamicPropertyRegistry registry) {
-        loggingStub = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        loggingStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         loggingStub.start();
         registry.add("LOGGING_URL", loggingStub::baseUrl);
     }
@@ -53,9 +53,23 @@ class LoggingRouteTest {
     @Autowired
     private TestRestTemplate rest;
 
+
+    @LocalServerPort
+    int port;
+
+    /**
+     * Dial the loopback ADDRESS, never the name. {@code localhost} resolves to {@code ::1} before {@code 127.0.0.1} on macOS, while these
+     * test servers bind the IPv4 wildcard -- so an unrelated local process holding the same port number on {@code [::]} can answer instead,
+     * and the test fails with a bewildering status from a server it never meant to contact. Relative {@code TestRestTemplate} URLs go
+     * through {@code LocalHostUriTemplateHandler}, which hardcodes the name {@code localhost}; absolute URLs bypass it entirely.
+     */
+    private String url(String path) {
+        return "http://127.0.0.1:" + port + path;
+    }
+
     @Test
     void forwardsLoggingPathToLoggingServiceWithPrefixStripped() {
-        ResponseEntity<String> response = rest.getForEntity("/logging/audit", String.class);
+        ResponseEntity<String> response = rest.getForEntity(url("/logging/audit"), String.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo("logging-ok");

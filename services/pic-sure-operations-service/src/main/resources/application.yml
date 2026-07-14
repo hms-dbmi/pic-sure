@@ -14,7 +14,7 @@ spring:
       ddl-auto: none
       naming:
         # CRITICAL / LOAD-BEARING: Spring Boot's default SpringPhysicalNamingStrategy snake_cases identifiers even when
-        # pic-sure-api-data's entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
+        # the JPA entities give an explicit camelCase @Column/@JoinColumn name (e.g. "queryId" -> "query_id",
         # "resourceResultId" -> "resource_result_id"). The real production schema is camelCase throughout, not snake_case.
         # Without this override, Hibernate silently generates SQL that references columns which do not exist -- every query
         # against the real database breaks. Hibernate's own PhysicalNamingStrategyStandardImpl passes names through
@@ -27,7 +27,7 @@ picsure:
     # and any future hpds-query-service caller). Fail-closed: left blank, InternalTokenFilter rejects every
     # /internal/** request rather than treating an unconfigured secret as "wide open".
     internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
-  # Phase 6: the X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
+  # The X-Application-Token gate for /actuator/** (ActuatorSecurityConfig + the shared
   # ActuatorSecurityHelper in pic-sure-spring-commons). Shallow health/liveness/readiness stay open regardless.
   actuator:
     require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
@@ -36,6 +36,8 @@ picsure:
 
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /operations
 
 management:
   endpoints:
@@ -51,12 +53,12 @@ management:
       probes:
         enabled: true # /actuator/health/liveness stays shallow-open
       group:
-        # Phase 6: explicit liveness group (mirrors the gateway's) -- pins /actuator/health/liveness to the app's
+        # Explicit liveness group (mirrors the gateway's) -- pins /actuator/health/liveness to the app's
         # own process state so it never depends on the datasource or auto-registration nuances of probes.enabled.
         liveness:
           include: livenessState
         # Deep health: readiness is only reported UP once the datasource is actually reachable, not merely once the
-        # process is running (mirrors the Phase-3 gateway's liveness/readiness split, adapted here for a service that --
+        # process is running (mirrors the gateway's liveness/readiness split, adapted here for a service that --
         # unlike the gateway -- owns a real database dependency).
         readiness:
           include: readinessState,db

@@ -1,15 +1,15 @@
 package edu.harvard.hms.dbmi.avillach.gateway.health;
 
 /**
- * Backward-compatible replacement for the WAR's SystemService {@code /system/status}. Plain-text, unauthenticated (allow-listed in Task 3),
- * throttled to one real deep check per window with a cached last result to avoid a DoS via the deep probes (spec 3.8).
+ * Backward-compatible replacement for the WAR's SystemService {@code /system/status}. Plain-text, unauthenticated (on the introspection
+ * allow-list), throttled to one real deep check per window with a cached last result to avoid a DoS via the deep probes.
  *
- * <p> Deliberately <em>not</em> a {@code @RestController}/{@code @GetMapping}: this monorepo's Phase-1 catch-all gateway route
- * ({@code Path=/**} in application.yml) is registered as a {@code RouterFunction} bean, and Spring wires {@code RouterFunctionMapping} at
- * order -1 -- ahead of {@code RequestMappingHandlerMapping} (order 0). An annotated controller mapping here would be silently overridden
- * and proxied to WildFly instead of answering locally. See {@link edu.harvard.hms.dbmi.avillach.gateway.config.HealthConfig} for the
- * higher-precedence {@code RouterFunction} that actually exposes this at {@code GET /system/status}. (Actuator's own endpoints are
- * unaffected: {@code WebMvcEndpointHandlerMapping} is order -100, ahead of the gateway route.)
+ * <p> Deliberately <em>not</em> a {@code @RestController}/{@code @GetMapping}: the gateway's route-backed {@code RouterFunction} beans are
+ * registered via {@code RouterFunctionMapping}, which Spring wires at order -1 -- ahead of {@code RequestMappingHandlerMapping} (order 0).
+ * An annotated controller mapping here would be silently overridden by any same-path {@code RouterFunction}. See
+ * {@link edu.harvard.hms.dbmi.avillach.gateway.config.HealthConfig} for the higher-precedence {@code RouterFunction} that actually exposes
+ * this at {@code GET /system/status}. (Actuator's own endpoints are unaffected: {@code WebMvcEndpointHandlerMapping} is order -100, ahead
+ * of {@code RouterFunctionMapping}.)
  */
 public class SystemStatusController {
 

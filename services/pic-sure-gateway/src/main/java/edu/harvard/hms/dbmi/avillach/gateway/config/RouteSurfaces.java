@@ -3,9 +3,8 @@ package edu.harvard.hms.dbmi.avillach.gateway.config;
 import java.util.List;
 
 /**
- * Classifies a request path as a gateway-OWNED route surface (a direct route to a new backend with no WildFly counterpart) or the legacy
- * catch-all surface (forwarded to WildFly). Used by the route drift-guard test to assert every configured non-catch-all route is covered by
- * the default owned prefixes.
+ * Classifies a request path as a gateway-OWNED route surface (a direct route to a backend) or unowned (unmatched, and so 404s -- there is
+ * no catch-all route). Used by the route drift-guard test to assert every configured route is covered by the default owned prefixes.
  *
  * <p>Matching is SEGMENT-SAFE: a prefix matches only on an exact equal or a following {@code /} boundary ({@code equals(prefix)} or
  * {@code startsWith(prefix + "/")}) — never a bare {@code startsWith}. So {@code /logging} covers {@code /logging} and {@code /logging/x}
@@ -15,7 +14,7 @@ import java.util.List;
  * matrix-parameter (e.g. {@code /hpds;x=y}), encoded-slash ({@code %2F}) and double-slash ({@code //}) evasion ONLY because Spring
  * Security's default {@link org.springframework.security.web.firewall.StrictHttpFirewall} rejects those requests BEFORE the auth filters
  * run — so a path that reaches this matcher has already been normalized/blocked upstream. A future custom {@code HttpFirewall} that relaxes
- * those defaults would reopen the seam (a request could then present a raw URI that this segment-safe match reads as catch-all/owned
+ * those defaults would reopen the seam (a request could then present a raw URI that this segment-safe match reads as unowned/owned
  * differently than the backend resolves it); revisit this matching if the firewall is ever relaxed.
  */
 public final class RouteSurfaces {
@@ -44,7 +43,7 @@ public final class RouteSurfaces {
         return false;
     }
 
-    /** True iff {@code path} is on the legacy catch-all surface (everything not gateway-owned). */
+    /** True iff {@code path} is unowned (everything not on a gateway-owned route surface -- unmatched paths 404). */
     public boolean isCatchAll(String path) {
         return !isOwned(path);
     }

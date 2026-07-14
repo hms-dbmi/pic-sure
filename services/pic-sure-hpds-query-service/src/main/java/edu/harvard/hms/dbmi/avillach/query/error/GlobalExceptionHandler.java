@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
@@ -23,9 +24,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
  * resolves the most specific handler for its own {@link #unknown} catch-all, regardless of whichever advice bean Spring happens to consult
  * first -- {@code GatewayExceptionAdvice}'s equivalent handler (if consulted first) produces the identical response.
  *
- * <p>Adds two mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 (decision 10 -- HPDS is upstream
- * infrastructure; the legacy WAR returned 500 for this case, which was never an honest status), and any other unmapped exception -&gt; 500,
- * both sharing the same commons error body shape.
+ * <p>Adds three mappings the commons base does not have: {@link HpdsCommunicationException} -&gt; 502 (HPDS is upstream infrastructure; the
+ * legacy WAR returned 500 for this case, which was never an honest status), {@link NoResourceFoundException} -&gt; 404 (route absence for
+ * removed v1 generic ingress), and any other unmapped exception -&gt; 500, all sharing the same commons error body shape.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -40,6 +41,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HpdsCommunicationException.class)
     public ResponseEntity<Map<String, Object>> hpdsUnavailable(HpdsCommunicationException e) {
         return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
+    }
+
+    /**
+     * Route absence must surface as an honest 404, not fall into the {@link #unknown} 500 catch-all. This matters since the legacy v1 query
+     * ingress ({@code /hpds/{backend}/query/**}) was removed: callers still submitting to those routes must see "gone", not "server error".
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> noRoute(NoResourceFoundException e) {
+        return body(HttpStatus.NOT_FOUND, "not_found", "No such resource: " + e.getResourcePath());
     }
 
     @ExceptionHandler(Exception.class)

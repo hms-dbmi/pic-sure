@@ -1,9 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.operations;
 
-import java.util.List;
 import java.util.UUID;
 
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
@@ -25,8 +23,8 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  *
  * <p>A persistence failure must never be swallowed: any 5xx, timeout, or malformed response from operations-service is surfaced as a
  * {@link PicsureException} (BAD_GATEWAY or GATEWAY_TIMEOUT) rather than returning a null/partial result. Only {@link #get(UUID)} has a
- * documented 404 contract (NOT_FOUND); a 404 from {@link #update(UUID, UpdateQueryRequest)} or {@link #findByCommonAreaUUID(UUID)} falls
- * into the generic bad-gateway handling below since no NOT_FOUND semantics are specified for those calls yet.
+ * documented 404 contract (NOT_FOUND); a 404 from {@link #update(UUID, UpdateQueryRequest)} falls into the generic bad-gateway handling
+ * below, since no NOT_FOUND semantics are specified for that call yet.
  *
  * <p>NOT a {@code @Component}: it is registered exactly once, by {@code OperationsClientConfig}, wired to the specific
  * {@code operationsRestClient} bean -- the context also contains a second, differently-configured {@code RestClient} bean for HPDS (see
@@ -34,8 +32,7 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  */
 public class OperationsClient {
 
-    private static final String QUERIES_PATH = "/internal/queries";
-    private static final String SITES_PATH = "/internal/sites";
+    private static final String QUERIES_PATH = "/operations/internal/queries";
 
     private final RestClient http;
 
@@ -43,7 +40,7 @@ public class OperationsClient {
         this.http = http;
     }
 
-    /** {@code POST /internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
+    /** {@code POST /operations/internal/queries} -&gt; 201 {@code { "picsureId": "<uuid>" } }. */
     public UUID save(SaveQueryRequest request) {
         SaveQueryResponse response =
             execute(() -> http.post().uri(QUERIES_PATH).body(request).retrieve().body(SaveQueryResponse.class), "save");
@@ -53,7 +50,7 @@ public class OperationsClient {
         return response.picsureId();
     }
 
-    /** {@code GET /internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
+    /** {@code GET /operations/internal/queries/{id}} -&gt; 200 {@link StoredQuery}; 404 -&gt; {@link PicsureException} NOT_FOUND. */
     public StoredQuery get(UUID picsureId) {
         try {
             return http.get().uri(QUERIES_PATH + "/{id}", picsureId).retrieve().body(StoredQuery.class);
@@ -66,40 +63,12 @@ public class OperationsClient {
         }
     }
 
-    /** {@code PATCH /internal/queries/{id}}; null fields on {@code request} mean "leave unchanged". */
+    /** {@code PATCH /operations/internal/queries/{id}}; null fields on {@code request} mean "leave unchanged". */
     public void update(UUID picsureId, UpdateQueryRequest request) {
         execute(() -> {
             http.patch().uri(QUERIES_PATH + "/{id}", picsureId).body(request).retrieve().toBodilessEntity();
             return null;
         }, "update");
-    }
-
-    /** {@code GET /internal/queries/by-common-area/{uuid}} -&gt; 200 {@link StoredQuery}. */
-    public StoredQuery findByCommonAreaUUID(UUID commonAreaUUID) {
-        return execute(
-            () -> http.get().uri(QUERIES_PATH + "/by-common-area/{uuid}", commonAreaUUID).retrieve().body(StoredQuery.class),
-            "findByCommonAreaUUID"
-        );
-    }
-
-    /**
-     * {@code GET /internal/sites/by-domain/{domain}} -&gt; 200 a JSON array of site codes (empty array when no site is registered for that
-     * domain). Backs {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService}: since this module owns no database (not even for
-     * the small institutional/GIC site-of-origin reference table), the site lookup goes over HTTP to operations-service exactly like query
-     * persistence does, rather than reintroducing a local {@code SiteRepository}/JPA dependency.
-     *
-     * <p><b>Note:</b> this endpoint does not exist on pic-sure-operations-service yet (as of this module's Query-lifecycle task); it is a
-     * documented follow-up for whoever builds operations-service's Site surface (mirroring its existing Configuration/NamedDataset/Query
-     * surfaces). Until then this call will fail with a mapped {@link PicsureException} (502/504), which
-     * {@link edu.harvard.hms.dbmi.avillach.query.query.SiteParsingService} treats as "no site match" -- consistent with the GIC
-     * site-of-origin feature not being exercised by the AIO deployment yet.
-     */
-    public List<String> findSitesByDomain(String domain) {
-        return execute(
-            () -> http.get().uri(SITES_PATH + "/by-domain/{domain}", domain).retrieve()
-                .body(new ParameterizedTypeReference<List<String>>() {}),
-            "findSitesByDomain"
-        );
     }
 
     private <T> T execute(java.util.function.Supplier<T> call, String operation) {
@@ -122,7 +91,7 @@ public class OperationsClient {
         );
     }
 
-    /** Shape of the {@code POST /internal/queries} response body: {@code { "picsureId": "<uuid>" } }. */
+    /** Shape of the {@code POST /operations/internal/queries} response body: {@code { "picsureId": "<uuid>" } }. */
     private record SaveQueryResponse(UUID picsureId) {
     }
 }

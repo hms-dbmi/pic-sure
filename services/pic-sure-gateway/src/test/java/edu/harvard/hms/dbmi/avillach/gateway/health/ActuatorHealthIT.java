@@ -34,8 +34,8 @@ class ActuatorHealthIT {
 
     @BeforeAll
     static void start() {
-        hpds = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
-        psama = new WireMockServer(options().dynamicPort().http2PlainDisabled(true));
+        hpds = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        psama = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         hpds.start();
         psama.start();
         hpds.stubFor(get(urlEqualTo("/actuator/health")).willReturn(okJson("{\"status\":\"UP\"}")));
@@ -51,10 +51,10 @@ class ActuatorHealthIT {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry r) {
         r.add("picsure.gateway.health.downstreams[0].name", () -> "hpds");
-        r.add("picsure.gateway.health.downstreams[0].base-url", () -> "http://localhost:" + hpds.port());
+        r.add("picsure.gateway.health.downstreams[0].base-url", () -> "http://127.0.0.1:" + hpds.port());
         r.add("picsure.gateway.health.downstreams[0].require-status-up", () -> "true");
         r.add("picsure.gateway.health.downstreams[1].name", () -> "psama");
-        r.add("picsure.gateway.health.downstreams[1].base-url", () -> "http://localhost:" + psama.port());
+        r.add("picsure.gateway.health.downstreams[1].base-url", () -> "http://127.0.0.1:" + psama.port());
         r.add("picsure.gateway.health.downstreams[1].require-status-up", () -> "true");
     }
 

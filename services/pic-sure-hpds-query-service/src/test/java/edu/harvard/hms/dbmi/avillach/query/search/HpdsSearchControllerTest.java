@@ -36,7 +36,7 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Full-context MockMvc coverage of {@code /hpds/{backend}[/v3]/search/**}. Search is NOT versioned downstream (Task 14 / the ported
+ * Full-context MockMvc coverage of {@code /hpds/{backend}[/v3]/search/**}. Search is NOT versioned downstream (matching the ported
  * {@code PicsureSearchService}): both the v1 and v3 ingress paths for a given backend must land on the SAME non-{@code /v3} HPDS URL.
  * {@code auth} and {@code open} are pointed at distinct paths on one WireMock instance so backend selection is verifiable without running
  * two servers.
