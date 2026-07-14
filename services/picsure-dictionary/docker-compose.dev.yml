@@ -1,0 +1,30 @@
+# Use for local development. This file will create the "dictionary" network.
+# The Production file expects the network to already exist.
+version: '3.3'
+
+services:
+  dictionary-db:
+    container_name: dictionary-db
+    image: postgres:16-alpine
+    volumes:
+      - picsure-search:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    env_file: .env
+    networks:
+      - dictionary
+  dictionary-api:
+    container_name: dictionary-api
+    image: avillach/dictionary-api:latest
+    build: .
+    depends_on:
+      - dictionary-db
+    restart: always
+    env_file: .env
+    networks:
+      - dictionary
+
+volumes:
+  picsure-search:
+
+networks:
+  dictionary:
