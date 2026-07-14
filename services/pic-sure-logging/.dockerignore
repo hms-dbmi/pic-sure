@@ -1,0 +1,11 @@
+.git
+target/*
+!target/pic-sure-logging-*.jar
+*.md
+docker-compose.yml
+.idea/
+*.iml
+.DS_Store
+.claude/
+.env
+.env.*
