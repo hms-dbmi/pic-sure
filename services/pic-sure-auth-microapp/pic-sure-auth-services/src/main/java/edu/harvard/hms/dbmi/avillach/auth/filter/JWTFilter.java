@@ -1,0 +1,263 @@
+package edu.harvard.hms.dbmi.avillach.auth.filter;
+
+import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
+import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
+import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
+import edu.harvard.hms.dbmi.avillach.auth.model.CustomApplicationDetails;
+import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.CustomUserDetailService;
+import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
+import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
+import edu.harvard.hms.dbmi.avillach.auth.utils.JWTUtil;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.annotation.Order;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+
+/**
+ * The main gate for PSAMA that filters all incoming requests against PSAMA. <h3>Design Logic</h3> <ul> <li>All incoming requests pass
+ * through this filter.</li> <li>To pass this filter, the incoming request needs a valid bearer token in its HTTP Authorization Header to
+ * represent a valid identity behind the token. </li> <li>In some cases, the incoming request doesn't need to hold a token. For example,
+ * when the request is to the <code>authentication</code> endpoint, <code>swagger.json</code>, or <code>swagger.html</code>.</li> </ul>
+ */
+
+@Component
+@Order(1)
+public class JWTFilter extends OncePerRequestFilter {
+
+    private final static Logger logger = LoggerFactory.getLogger(JWTFilter.class);
+
+    private final TOSService tosService;
+
+    private final String userClaimId;
+
+    private final JWTUtil jwtUtil;
+    private final CustomUserDetailService customUserDetailService;
+
+    @Autowired
+    public JWTFilter(
+        TOSService tosService, @Value("${application.user.id.claim}") String userClaimId, JWTUtil jwtUtil,
+        CustomUserDetailService customUserDetailService
+    ) {
+        this.tosService = tosService;
+        this.userClaimId = userClaimId;
+        this.jwtUtil = jwtUtil;
+        this.customUserDetailService = customUserDetailService;
+    }
+
+    /**
+     * Filter that performs authentication and authorization checks based on the provided request headers. The filter checks for the
+     * presence of the "Authorization" header and validates the token. It sets the appropriate security context based on the type of token
+     * (long-term token or PSAMA application token) and performs the necessary checks to ensure that the user or application is authorized
+     * to access the requested resource. This filter is called by the configured security filter chain in the SecurityConfig class.
+     *
+     * @param request the HttpServletRequest object
+     * @param response the HttpServletResponse object
+     * @param filterChain the FilterChain object
+     * @throws IOException if an I/O error occurs during the execution of the filter
+     */
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
+        throws IOException, ServletException {
+        // Get headers from the request
+        String authorizationHeader = request.getHeader("Authorization");
+
+        if (!StringUtils.isNotBlank(authorizationHeader)) {
+            // If the header is not present, we allow the request to pass through
+            // without any authentication or authorization checks
+            filterChain.doFilter(request, response);
+        } else {
+            String token = authorizationHeader.substring(6).trim();
+            Jws<Claims> jws;
+            try {
+                jws = this.jwtUtil.parseToken(token);
+            } catch (Exception e) {
+                logger.error("Failed to parse JWT token.", e);
+                sendAuthFailure(request, "invalid_token", e.getMessage());
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token.");
+                return;
+            }
+            String userId = jws.getPayload().get(this.userClaimId, String.class);
+
+            if (userId.startsWith(AuthNaming.LONG_TERM_TOKEN_PREFIX)) {
+                // For profile information, we do indeed allow a long-term token to be a valid token.
+                if (request.getRequestURI().startsWith("/auth/user/me")) {
+                    String realClaimsSubject = jws.getPayload().getSubject().substring(AuthNaming.LONG_TERM_TOKEN_PREFIX.length() + 1);
+
+                    setSecurityContextForUser(request, response, realClaimsSubject);
+                } else {
+                    logger.error("the long term token with subject, {}, cannot access to PSAMA.", userId);
+                    sendAuthFailure(request, "long_term_token_rejected", "Long term token on non-/me endpoint");
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Long term tokens cannot be used to access to PSAMA.");
+                }
+            } else if (userId.startsWith(AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX)) {
+                logger.info("User Authentication Starts with {}", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX);
+
+                // Check if the user is attempting to access the correct introspection endpoint. If not reject the request,
+                // log an error indicating the user's token may be being used by a malicious actor.
+                if (!request.getRequestURI().endsWith("token/inspect") && !request.getRequestURI().endsWith("open/validate")) {
+                    logger.error("{} attempted to perform request {} token may be compromised.", userId, request.getRequestURI());
+                    sendAuthFailure(request, "compromised_token", "App token on wrong endpoint");
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User is deactivated");
+                }
+
+                String applicationId = userId.split("\\|")[1];
+                logger.info("Application ID: {}", applicationId);
+
+                // Create custom application details. Will be used to set the correct security context.
+                CustomApplicationDetails customApplicationDetails =
+                    (CustomApplicationDetails) this.customUserDetailService.loadUserByUsername("application:" + applicationId);
+                if (customApplicationDetails.getApplication() == null) {
+                    logger.error("Cannot find an application by userId: {}", applicationId);
+                    sendAuthFailure(request, "application_not_found", "No application for ID: " + applicationId);
+                    response.sendError(
+                        HttpServletResponse.SC_UNAUTHORIZED, "Your token doesn't contain valid identical information, please contact admin."
+                    );
+                    return;
+                }
+
+                Application application = customApplicationDetails.getApplication();
+
+                if (!application.getToken().equals(token)) {
+                    logger.error(
+                        "filter() incoming application token - {} - is not the same as record, might because the token has been refreshed. Subject: {}",
+                        token, userId
+                    );
+                    sendAuthFailure(request, "token_mismatch", "Application token does not match record");
+                    response.sendError(
+                        HttpServletResponse.SC_UNAUTHORIZED,
+                        "Your token has been inactivated, please contact admin to grab you the latest one."
+                    );
+                }
+
+                // This is the application token that is being used to authenticate the user by other applications
+                // Set the security context for the application
+                setSecurityContextForApplication(request, customApplicationDetails);
+            } else {
+                logger.info("UserID: {} is not a long term token and not a PSAMA application token.", userId);
+                // Authenticate as User
+                setSecurityContextForUser(request, response, jws.getPayload().getSubject());
+            }
+
+            filterChain.doFilter(request, response);
+        }
+    }
+
+    private void setSecurityContextForApplication(HttpServletRequest request, CustomApplicationDetails authenticatedApplication) {
+        logger.debug("Setting security context for application: {}", authenticatedApplication.getApplication().getName());
+        UsernamePasswordAuthenticationToken authentication =
+            new UsernamePasswordAuthenticationToken(authenticatedApplication, null, authenticatedApplication.getAuthorities());
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        logger.debug(
+            "Created authenticationToken object {} for application: {}", authentication, authenticatedApplication.getApplication().getName()
+        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+    }
+
+    /**
+     * Sets the security context for the given user. This method is responsible for validating the user claims. It checks if the user is
+     * active, ensuring the user has accepted the terms of service (if enabled), validating user roles and privileges, and setting the user
+     * object as an attribute in the security context.
+     *
+     * @param request the HttpServletRequest object
+     * @param response the HttpServletResponse object
+     * @param realClaimsSubject the subject of the user's claims in the JWT token
+     */
+    private void setSecurityContextForUser(HttpServletRequest request, HttpServletResponse response, String realClaimsSubject) {
+        logger.debug("Setting security context for user: {}", realClaimsSubject);
+
+        CustomUserDetails authenticatedUser = (CustomUserDetails) this.customUserDetailService.loadUserByUsername(realClaimsSubject);
+
+        if (authenticatedUser == null) {
+            logger.error("Cannot validate user claims, based on information stored in the JWT token.");
+            sendAuthFailure(request, "invalid_token", "Cannot validate user claims");
+            throw new IllegalArgumentException("Cannot validate user claims, based on information stored in the JWT token.");
+        }
+
+        logger.debug("User with email: {} is found.", authenticatedUser.getUser().getEmail());
+
+        if (!authenticatedUser.getUser().isActive()) {
+            logger.warn("User with ID: {} is deactivated.", authenticatedUser.getUser().getUuid());
+            sendAuthFailure(request, "user_deactivated", "User is deactivated");
+            throw new NotAuthorizedException("User is deactivated");
+        }
+
+        logger.debug("User with ID: {} is active.", authenticatedUser.getUser().getUuid());
+        logger.debug("Checking if user has accepted the latest terms of service.");
+
+        if (
+            !request.getRequestURI().endsWith("/tos/accept") && !tosService.hasUserAcceptedLatest(authenticatedUser.getUser().getSubject())
+        ) {
+            logger.info("User with ID: {} has not accepted the latest terms of service.", authenticatedUser.getUser().getUuid());
+            sendAuthFailure(request, "tos_not_accepted", "User must accept terms of service");
+            // If user has not accepted terms of service and is attempted to get information other than the terms of service, don't
+            // authenticate
+            try {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "User must accept terms of service");
+                // Return early to prevent setting up security context
+                return;
+            } catch (IOException e) {
+                logger.error("Failed to send response.", e);
+            }
+        }
+
+        Set<Role> userRoles = authenticatedUser.getUser().getRoles();
+        if (
+            userRoles == null || userRoles.isEmpty() || userRoles.stream().allMatch(role -> CollectionUtils.isEmpty(role.getPrivileges()))
+        ) {
+            logger.error("User doesn't have any roles or privileges.");
+            sendAuthFailure(request, "no_roles_or_privileges", "User has no roles or privileges");
+            try {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User doesn't have any roles or privileges.");
+                // Return early to prevent setting up security context
+                return;
+            } catch (IOException e) {
+                logger.error("Failed to send response.", e);
+            }
+        }
+
+        logger.debug(
+            "User with email {} has privileges {}.", authenticatedUser.getUser().getEmail(),
+            authenticatedUser.getUser().getTotalPrivilege().stream().map(Privilege::getName).collect(Collectors.joining(","))
+        );
+        UsernamePasswordAuthenticationToken authentication =
+            new UsernamePasswordAuthenticationToken(authenticatedUser, null, authenticatedUser.getAuthorities());
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // Populate AuditAttributes for the AuditLoggingFilter to include in its event.
+        // user_id and user_email are read from SecurityContext by the filter directly.
+        AuditAttributes.putMetadata(request, "auth_result", "success");
+    }
+
+    private void sendAuthFailure(HttpServletRequest request, String reason, String message) {
+        AuditAttributes.putMetadata(request, "auth_result", "failure");
+        AuditAttributes.putMetadata(request, "auth_failure_reason", reason);
+        if (message != null) {
+            AuditAttributes.putMetadata(request, "auth_failure_message", message);
+        }
+    }
+
+}

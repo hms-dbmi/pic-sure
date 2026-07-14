@@ -1,0 +1,12 @@
+# This class can be used to interact with the CacheController in the PSAMA API
+# The CacheController must be enable in the application.properties file
+# You can enable it by setting the following property:
+# app.cache.inspect.enabled=true
+# If you are using a environment variable to set the property, you can set it like this:
+# CACHE_INSPECT_ENABLED=true
+
+### GET /cache - Get a list of all caches in the application
+GET https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/psama/cache
+
+### GET /cache/{cacheName} - Get the contents of a specific cache
+GET https://dev.picsure.biodatacatalyst.nhlbi.nih.gov/psama/cache/mergedRulesCache

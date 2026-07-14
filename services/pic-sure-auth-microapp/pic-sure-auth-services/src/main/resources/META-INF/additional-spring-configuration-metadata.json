@@ -1,0 +1,178 @@
+{
+  "properties": [
+    {
+      "name": "application.client.id",
+      "type": "java.lang.String",
+      "description": "Description for application.client.id."
+    },
+    {
+      "name": "application.client.secret",
+      "type": "java.lang.String",
+      "description": "Description for application.client.secret."
+    },
+    {
+      "name": "application.client.secret.base64",
+      "type": "java.lang.String",
+      "description": "Description for application.client.secret.base64."
+    },
+    {
+      "name": "application.user.id.claim",
+      "type": "java.lang.String",
+      "description": "Description for application.user.id.claim."
+    },
+    {
+      "name": "application.tos.enabled",
+      "type": "java.lang.String",
+      "description": "Description for application.tos.enabled."
+    },
+    {
+      "name": "application.system.name",
+      "type": "java.lang.String",
+      "description": "Description for application.system.name."
+    },
+    {
+      "name": "application.template.path",
+      "type": "java.lang.String",
+      "description": "Description for application.template.path."
+    },
+    {
+      "name": "application.access.grant.email.subject",
+      "type": "java.lang.String",
+      "description": "Description for application.access.grant.email.subject."
+    },
+    {
+      "name": "application.user.activation.reply.to",
+      "type": "java.lang.String",
+      "description": "Description for application.user.activation.reply.to."
+    },
+    {
+      "name": "application.admin.users",
+      "type": "java.lang.String",
+      "description": "Description for application.admin.users."
+    },
+    {
+      "name": "application.idp.provider",
+      "type": "java.lang.String",
+      "description": "Description for application.idp.provider."
+    },
+    {
+      "name": "application.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for application.idp.provider.uri."
+    },
+    {
+      "name": "fence.client.id",
+      "type": "java.lang.String",
+      "description": "Description for fence.client.id."
+    },
+    {
+      "name": "fence.client.secret",
+      "type": "java.lang.String",
+      "description": "Description for fence.client.secret."
+    },
+    {
+      "name": "fence.redirect.url",
+      "type": "java.lang.String",
+      "description": "Description for fence.redirect.url."
+    },
+    {
+      "name": "fence.consent.group.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for fence.consent.group.concept.path."
+    },
+    {
+      "name": "fence.standard.access.rules",
+      "type": "java.lang.String",
+      "description": "Description for fence.standard.access.rules."
+    },
+    {
+      "name": "fence.harmonized.consent.group.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for fence.harmonized.consent.group.concept.path."
+    },
+    {
+      "name": "application.token.expiration.time",
+      "type": "java.lang.String",
+      "description": "Description for application.token.expiration.time."
+    },
+    {
+      "name": "application.long.term.token.expiration.time",
+      "type": "java.lang.String",
+      "description": "Description for application.long.term.token.expiration.time."
+    },
+    {
+      "name": "application.default.uuid",
+      "type": "java.lang.String",
+      "description": "Description for application.default.uuid."
+    },
+    {
+      "name": "fence.parent.consent.group.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for fence.parent.consent.group.concept.path."
+    },
+    {
+      "name": "fence.topmed.consent.group.concept.path",
+      "type": "java.lang.String",
+      "description": "Description for fence.topmed.consent.group.concept.path."
+    },
+    {
+      "name": "fence.allowed.query.types",
+      "type": "java.lang.String",
+      "description": "Description for fence.allowed.query.types."
+    },
+    {
+      "name": "a4.okta.client.id",
+      "type": "java.lang.String",
+      "description": "Description for okta.client.id."
+    },
+    {
+      "name": "a4.okta.client.secret",
+      "type": "java.lang.String",
+      "description": "Description for okta.client.secret."
+    },
+    {
+      "name": "a4.okta.connection.id",
+      "type": "java.lang.String",
+      "description": "Description for okta.connection.id."
+    },
+    {
+      "name": "fence.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "If set to true, the Fence IDP provider is enabled."
+    },
+    {
+      "name": "open.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "If set to true, the Open IDP provider is enabled."
+    },
+    {
+      "name": "auth0.host",
+      "type": "java.lang.String",
+      "description": "Description for auth0.host."
+    },
+    {
+      "name": "auth0.denied.email.enabled",
+      "type": "java.lang.String",
+      "description": "Description for auth0.denied.email.enabled."
+    },
+    {
+      "name": "fence.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for fence.idp.provider.uri."
+    },
+    {
+      "name": "a4.okta.idp.provider.is.enabled",
+      "type": "java.lang.String",
+      "description": "Description for a4.okta.idp.provider.is.enabled."
+    },
+    {
+      "name": "a4.okta.idp.provider.uri",
+      "type": "java.lang.String",
+      "description": "Description for a4.okta.idp.provider.uri."
+    },
+    {
+      "name": "application.max.session.length",
+      "type": "java.lang.String",
+      "description": "If a user has been signed in for this length of time they will be logged out."
+    }
+  ] }
