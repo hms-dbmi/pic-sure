@@ -68,6 +68,7 @@ class PsamaIntrospectionFilterTest {
 
         BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/query/sync");
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, "OPEN_ACCESS:localhost");
+        req.setAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         FilterChain chain = mock(FilterChain.class);
@@ -77,6 +78,47 @@ class PsamaIntrospectionFilterTest {
         verify(chain).doFilter(eq(req), any());
         verify(resp, never()).setStatus(401);
         verifyNoInteractions(client);
+    }
+
+    @Test
+    void openAccessGrantAttributeAloneForwardsWithoutBearerToken() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/query/sync");
+        req.setAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verify(resp, never()).setStatus(401);
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void userIdAttributeWithoutOpenAccessGrantDoesNotBypassIntrospection() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        // Some hypothetical earlier filter resolved an identity WITHOUT an open-access grant; introspection must still run.
+        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/query");
+        req.setAttribute(GatewayUserResolver.HEADER_USER_ID, "some-internal-identity");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(401);
+        verify(chain, never()).doFilter(any(), any());
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "missing_token");
     }
 
     @Test

@@ -31,6 +31,13 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 public class OpenAccessFilter extends OncePerRequestFilter {
 
+    /**
+     * Set to {@link Boolean#TRUE} only by this filter, only after PSAMA grants the open-access validate. This — not the user-id attribute,
+     * which other identity sources may legitimately set — is the one signal {@code PsamaIntrospectionFilter} accepts to skip token
+     * introspection.
+     */
+    public static final String ATTR_OPEN_ACCESS_GRANTED = OpenAccessFilter.class.getName() + ".granted";
+
     private final PsamaClient psama;
     private final AuditContext audit;
     private final ObjectMapper json;
@@ -67,6 +74,7 @@ public class OpenAccessFilter extends OncePerRequestFilter {
             return;
         }
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, hostMarker);
+        req.setAttribute(ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
         audit.put("auth_result", "success");
         audit.put("auth_action", "open_access.granted");
         chain.doFilter(req, resp);

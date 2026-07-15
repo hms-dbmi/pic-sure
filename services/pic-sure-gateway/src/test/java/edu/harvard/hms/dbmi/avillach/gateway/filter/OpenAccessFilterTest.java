@@ -69,6 +69,32 @@ class OpenAccessFilterTest {
     }
 
     @Test
+    void grantSetsDedicatedOpenAccessGrantAttribute() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null);
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void deniedRequestDoesNotSetOpenAccessGrantAttribute() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(false);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        BufferedRequestWrapper req = wrap(null);
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        assertThat(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED)).isNull();
+    }
+
+    @Test
     void enabledOpenAccessFalseValidationReturns401() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(false);

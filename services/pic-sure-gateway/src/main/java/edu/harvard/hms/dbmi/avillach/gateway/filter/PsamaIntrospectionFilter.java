@@ -125,8 +125,9 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         }
 
         // OpenAccessFilter (order 20) already authenticated this no-bearer request via PSAMA's open-access
-        // validate and stashed the OPEN_ACCESS:<host> user id; demanding a Bearer token here would veto that grant.
-        if (req.getAttribute(GatewayUserResolver.HEADER_USER_ID) != null) {
+        // validate; demanding a Bearer token here would veto that grant. Only its dedicated grant attribute
+        // skips introspection -- a user-id attribute alone (any other identity source) must still be introspected.
+        if (Boolean.TRUE.equals(req.getAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED))) {
             chain.doFilter(req, resp);
             return;
         }
