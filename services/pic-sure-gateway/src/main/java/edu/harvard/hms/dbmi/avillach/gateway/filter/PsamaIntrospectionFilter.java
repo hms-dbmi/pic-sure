@@ -124,6 +124,13 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             }
         }
 
+        // OpenAccessFilter (order 20) already authenticated this no-bearer request via PSAMA's open-access
+        // validate and stashed the OPEN_ACCESS:<host> user id; demanding a Bearer token here would veto that grant.
+        if (req.getAttribute(GatewayUserResolver.HEADER_USER_ID) != null) {
+            chain.doFilter(req, resp);
+            return;
+        }
+
         String authz = req.getHeader("Authorization");
         if (authz == null || authz.isBlank()) {
             denied(resp, "missing_token", "No authorization header found.");

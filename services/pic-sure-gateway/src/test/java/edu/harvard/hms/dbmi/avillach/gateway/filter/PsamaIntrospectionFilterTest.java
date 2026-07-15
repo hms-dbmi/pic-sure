@@ -60,6 +60,26 @@ class PsamaIntrospectionFilterTest {
     }
 
     @Test
+    void forwardsRequestAlreadyGrantedByOpenAccessFilterWithoutBearerToken() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/query/sync");
+        req.setAttribute(GatewayUserResolver.HEADER_USER_ID, "OPEN_ACCESS:localhost");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verify(chain).doFilter(eq(req), any());
+        verify(resp, never()).setStatus(401);
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void onActiveTokenStoresClaimsIncludingPrivilegesAndForwards() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
