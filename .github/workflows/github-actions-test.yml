@@ -1,6 +1,9 @@
 name: Maven Run Tests
 
-on: [ push ]
+on:
+  pull_request:
+  push:
+    branches: [pic_sure_api_mono_repo, pic_sure_api_rewrite, main]
 
 jobs:
   build:
@@ -13,6 +16,7 @@ jobs:
         with:
           java-version: '25'
           distribution: 'temurin'
+          cache: maven
       - name: Test with Maven
         run: mvn --update-snapshots test
         env:
