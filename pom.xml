@@ -98,9 +98,19 @@
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
-<!--                    TODO: Should the modules inherit spring-boot-starter-parent? Why don't they? -->
-                    <!-- Pinned here because modules do not inherit spring-boot-starter-parent. -->
+                    <!-- Pinned AND bound here because modules do not inherit
+                         spring-boot-starter-parent (which normally supplies the
+                         repackage binding): without this, modules that declare the
+                         plugin with no <executions> produce plain, non-executable
+                         jars ("no main manifest attribute" at docker run). -->
                     <version>${spring-boot.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
                 <plugin>
                     <groupId>com.diffplug.spotless</groupId>
