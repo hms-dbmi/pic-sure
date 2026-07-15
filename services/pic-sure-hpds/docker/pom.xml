@@ -14,29 +14,10 @@
 
 	<build>
 		<plugins>
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>exec-maven-plugin</artifactId>
-				<version>1.6.0</version>
-				<executions>
-					<execution>
-						<id>get-last-git-commit</id>
-						<goals>
-							<goal>exec</goal>
-						</goals>
-						<phase>package</phase>
-						<configuration>
-							<executable>git</executable>
-							<arguments>
-								<argument>log</argument>
-								<argument>-1</argument>
-								<argument>--pretty=format:%h</argument>
-							</arguments>
-							<outputFile>${basedir}/src/main/resources/gitCommit.properties</outputFile>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
+			<!-- The old get-last-git-commit exec step was removed: it required a git
+			     binary inside the Maven build container (the retired hpds-build image
+			     provided one), and its gitCommit.properties output is git-ignored and
+			     consumed by nothing. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-resources-plugin</artifactId>
