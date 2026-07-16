@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+		<artifactId>pic-sure-api</artifactId>
+		<version>${revision}</version>
+		<relativePath>../../pom.xml</relativePath>
+	</parent>
+	<artifactId>pic-sure-common</artifactId>
+	<packaging>pom</packaging>
+	<name>pic-sure-common</name>
+	<modules>
+		<module>pic-sure-api-model</module>
+		<module>pic-sure-hpds-model</module>
+    </modules>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>io.swagger.core.v3</groupId>
+				<artifactId>swagger-annotations</artifactId>
+				<version>2.2.40</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.19.4</version>
+			</dependency>
+			<dependency>
+				<groupId>org.slf4j</groupId>
+				<artifactId>slf4j-api</artifactId>
+				<version>2.0.17</version>
+			</dependency>
+			<dependency>
+				<groupId>org.junit.jupiter</groupId>
+				<artifactId>junit-jupiter</artifactId>
+				<version>5.12.2</version>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+  </dependencyManagement>
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub HMS-DBMI Apache Maven Packages</name>
+      <url>https://maven.pkg.github.com/hms-dbmi/pic-sure-common</url>
+    </repository>
+  </distributionManagement>
+</project>

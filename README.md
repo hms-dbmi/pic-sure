@@ -1,55 +1,51 @@
-[![Swagger Validator](https://img.shields.io/swagger/valid/3.0?specUrl=https://nhanes-dev.hms.harvard.edu/picsure/openapi.json)](https://app.gitbook.com/o/HwwUMljKAspjFDq5CK7G/s/meNaViOuPB9U832fUSEa/pic-sure-api)
-[![GitBook](https://img.shields.io/badge/GitBook-PIC&#8209;SURE-brightgreen)](https://pic-sure.gitbook.io/pic-sure/)
-[![GitHub Wiki](https://img.shields.io/badge/GitHub%20Wiki-PIC&#8209;SURE%20Home-blueviolet)](https://github.com/hms-dbmi/pic-sure/wiki)
+# pic-sure (monorepo)
 
-# PIC-SURE API
+Maven monorepo for the PIC-SURE API platform. A Spring Cloud Gateway front door plus focused Spring Boot services replace the WildFly-deployed `pic-sure-api-war` and its resource modules; the legacy WildFly code is removed as part of this migration.
 
-This is the git repository for version 2+ of the PIC-SURE API.
+## Layout
 
-## Pre-requisites
+```
+pic-sure/                       root pom — PARENT + aggregator
+│                               edu.harvard.hms.dbmi.avillach:pic-sure-api:${revision}
+├── platform/                   pic-sure-bom — the single version catalog (STANDALONE; no parent)
+├── libs/
+│   ├── pic-sure-commons/       pic-sure-common aggregator (subtree of hms-dbmi/pic-sure-common)
+│   │   ├── pic-sure-api-model/     domain DTOs   (pkg edu.harvard.dbmi.avillach.{domain,util})
+│   │   └── pic-sure-hpds-model/    HPDS query model (groupId …avillach.hpds)
+│   └── pic-sure-logging-client/ audit/logging client (groupId edu.harvard.dbmi.avillach)
+└── services/
+    ├── pic-sure-gateway/            Spring Cloud Gateway MVC front door (routing, auth/audit, health)
+    ├── pic-sure-operations-service/ config / dataset / query-persistence API
+    └── pic-sure-hpds-query-service/ HPDS query + search + aggregate obfuscation
+```
 
-* Java 11
-* Before contributing code, please set up our git hook:
-  `cp code-formatting/pre-commit.sh .git/hooks/pre-commit`
-    * To skip formatting on a block of code, wrap in `spotless:off`, `spotless:on` comments
+## Version strategy
+
+| Line | Meaning |
+|---|---|
+| `3.0.0` (`${revision}`) | The monorepo line — Java 25, everything in the new reactor. Never publish it from the sibling repos. |
+| `1.x` | Frozen Java 11 releases previously published for the shared libs (e.g. `pic-sure-api-model:1.0.0`, `pic-sure-logging-client:1.0.0`). Immutable — the frozen and `3.0.0` lines must never share a coordinate+version. |
+
+Versions are CI-friendly (`${revision}` + `flatten-maven-plugin`). Dependency versions come from the `platform` BOM (`pic-sure-bom`), which imports the Spring Boot 3.5.x and Spring Cloud 2025.0.x BOMs. Internal modules inherit everything through the root parent; **external consumers import the published `pic-sure-bom` directly** instead of inheriting the parent (see `platform/README.md`).
+
+> The BOM is standalone (no `<parent>`) by design — the root parent imports it, so a back-reference would create a model-resolution cycle. Its `spring-boot.version` / `spring-cloud.version` properties are duplicated from the root pom; bump both files in lockstep.
+
+## Toolchain
+
+**Java 25 is the standard and is enforced** (maven-enforcer requires JDK 25 at build time, compiler `--release 25`). `.sdkmanrc` pins `25.0.3-tem` (`sdk env` to activate).
 
 ## Build
-The build consists of the following top level maven modules:
-*  pic-sure-api-data - for anything database related
-*  pic-sure-api-war - the actual packaged web application
-*  pic-sure-api-wildfly - a fully configured wildfly environment which serves as an example configuration as well as an integration testing environment.
-*  pic-sure-resources - the API that resources must implement to become PIC-SURE compatible as well as any resources we choose to develop(HAIL, i2b2, gNOME, etc)
 
-To build the entire project, change directory to the projects top level, and execute:
+```bash
+# whole reactor (platform + libs + services)
+mvn verify
 
-```shell
-  mvn clean install
+# just the gateway (and what it needs)
+mvn -pl services/pic-sure-gateway -am verify
 ```
 
-This command will run all tests, with the included WildFly server.
+Formatting: Spotless (Eclipse formatter, config inherited from the root) — `mvn spotless:apply`.
 
-## Deployment
+## Migration
 
-In order to run the app for development you need to set the following environment variables:
-
-PIC_SURE_CLIENT_SECRET - This can be anything you want for testing, foo, bar, just set it to something.
-PIC_SURE_USER_ID_CLAIM - This should be "email" 
-
-To run the app for development, go into the pic-sure-api-wildfly folder and use this:
-
-```shell
-  mvn wildfly:run && mvn wildfly:shutdown
-```
-
-This will start the app with the console output in your terminal session and CTRL-C will kill it correctly.
-
-If you wish to debug your tests from Eclipse, use `mvnDebug clean install` and connect your debugger.
-
-If you wish to debug your services while the tests run, set the `suspend=n` to `suspend=y` in 
-the wildfly-maven-plugin configuration in the pom file for pic-sure-api-wildfly on the line that looks like:
-
-```pom
-<java-opt>-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005</java-opt>
-```
-
-Both of these will pause the build allowing you to connect your debuggers.
+Design docs and the implementation plan live under `docs/superpowers/`. This migration is tracked under Jira epic ALS-10463 and is delivered as a stack of sequential, independently-green PRs — reviewed and merged bottom-up onto the rewrite integration branch. The legacy WildFly modules (`pic-sure-api-war`, `pic-sure-api-data`, `pic-sure-util`, `pic-sure-resources`) are removed in the final PR of the stack.
