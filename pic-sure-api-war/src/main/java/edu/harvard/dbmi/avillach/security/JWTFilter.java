@@ -71,6 +71,9 @@ class PathRule {
 @Provider
 @Priority(Priorities.AUTHENTICATION)
 public class JWTFilter implements ContainerRequestFilter {
+
+    static final String API_KEY_HEADER = "X-PICSURE-API-Key";
+
     private final Logger logger = LoggerFactory.getLogger(JWTFilter.class);
     private static final List<PathRule> EXCLUDED_PATHS = Arrays.asList(
         new PathRule("\\/openapi\\.json$"),
@@ -434,6 +437,12 @@ public class JWTFilter implements ContainerRequestFilter {
         // There is no user associated with open access request. In order to provide traceability,
         // we set the username to OPEN_ACCESS:<request IP>
         requestMap.put("ipAddress", "OPEN_ACCESS:" + requestContext.getUriInfo().getRequestUri().getHost());
+        // PSAMA verifies the key when its enforcement flag is on and ignores the field otherwise;
+        // the key is a secret and must never be logged here
+        String apiKey = requestContext.getHeaderString(API_KEY_HEADER);
+        if (StringUtils.isNotBlank(apiKey)) {
+            requestMap.put("apiKey", apiKey);
+        }
         ObjectMapper json = PicSureWarInit.objectMapper;
 
         StringEntity entity = null;

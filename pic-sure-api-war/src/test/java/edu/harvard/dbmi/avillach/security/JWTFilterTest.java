@@ -404,4 +404,56 @@ public class JWTFilterTest {
         );
     }
 
+    private ContainerRequestContext openAccessRequestContext() {
+        when(picSureWarInit.isOpenAccessEnabled()).thenReturn(true);
+        when(picSureWarInit.getOpenAccessValidateUrl()).thenReturn("http://localhost:" + port + "/open/validate");
+        stubFor(
+            post(urlEqualTo("/open/validate"))
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("true"))
+        );
+
+        ContainerRequestContext ctx = createRequestContext();
+        when(ctx.getUriInfo().getPath()).thenReturn("/query/sync");
+        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.POST);
+        when(ctx.getUriInfo().getRequestUri()).thenReturn(java.net.URI.create("http://localhost/query/sync"));
+        when(ctx.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn(null);
+        when(ctx.getEntityStream()).thenReturn(new ByteArrayInputStream("{}".getBytes()));
+        return ctx;
+    }
+
+    @Test
+    public void testOpenAccessForwardsApiKeyHeaderToValidateEndpoint() throws IOException {
+        ContainerRequestContext ctx = openAccessRequestContext();
+        when(ctx.getHeaderString(JWTFilter.API_KEY_HEADER)).thenReturn("picsure_testKeyValue123");
+
+        filter.filter(ctx);
+
+        verify(
+            postRequestedFor(urlEqualTo("/open/validate"))
+                .withRequestBody(matchingJsonPath("$.apiKey", matching("picsure_testKeyValue123")))
+                .withRequestBody(matchingJsonPath("$.request.['Target Service']", matching("/query/sync")))
+        );
+        verify(ctx).setProperty("username", "OPEN_ACCESS:localhost");
+    }
+
+    @Test
+    public void testOpenAccessOmitsApiKeyFieldWhenHeaderAbsent() throws IOException {
+        ContainerRequestContext ctx = openAccessRequestContext();
+
+        filter.filter(ctx);
+
+        verify(postRequestedFor(urlEqualTo("/open/validate")).withRequestBody(notMatching("(?s).*\"apiKey\".*")));
+        verify(ctx).setProperty("username", "OPEN_ACCESS:localhost");
+    }
+
+    @Test
+    public void testOpenAccessBlankApiKeyHeaderOmitted() throws IOException {
+        ContainerRequestContext ctx = openAccessRequestContext();
+        when(ctx.getHeaderString(JWTFilter.API_KEY_HEADER)).thenReturn("   ");
+
+        filter.filter(ctx);
+
+        verify(postRequestedFor(urlEqualTo("/open/validate")).withRequestBody(notMatching("(?s).*\"apiKey\".*")));
+    }
+
 }
