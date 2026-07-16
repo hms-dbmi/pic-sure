@@ -71,7 +71,6 @@ public class QueryService {
     public record QuerySyncResponse(byte[] body, String queryMetadata) {
     }
 
-    // --- create / sync ---
 
     public QueryStatus query(String backend, QueryRequest req) {
         return create(backend, req, false);
