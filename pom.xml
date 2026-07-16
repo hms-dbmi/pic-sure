@@ -9,6 +9,8 @@
     <name>pic-sure-api</name>
     <modules>
         <module>platform</module>
+        <module>libs/pic-sure-commons</module>
+        <module>libs/pic-sure-logging-client</module>
     </modules>
     <properties>
         <revision>3.0.0</revision>
