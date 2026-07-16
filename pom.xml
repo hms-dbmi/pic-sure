@@ -111,7 +111,7 @@
                     <configuration>
                         <java>
                             <eclipse>
-                                <version>4.26</version>
+                                <version>4.35</version>
                                 <file>${maven.multiModuleProjectDirectory}/code-formatting/eclipse-formatter.xml</file>
                             </eclipse>
                             <toggleOffOn/>
