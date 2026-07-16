@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+        <artifactId>pic-sure-api</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>pic-sure-gateway</artifactId>
+    <packaging>jar</packaging>
+    <name>pic-sure-gateway</name>
+    <description>Spring Cloud Gateway MVC front door for PIC-SURE</description>
+
+    <dependencies>
+        <!-- SC 2025.0.x rename of spring-cloud-starter-gateway-mvc -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway-server-webmvc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- commons: AuditContext, AuditLoggingFilter base, AuditRouteTable/AuditRoute, GatewayUserResolver,
+             RequestIdFilter, PicsureException + base @ControllerAdvice -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+        </dependency>
+        <!-- audit emission -->
+        <dependency>
+            <groupId>edu.harvard.dbmi.avillach</groupId>
+            <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- This module has no failsafe plugin (no other module does either), so its WireMock *IT tests
+                 (e.g. SystemHealthServiceIT) are plain, fast, self-contained JUnit tests, not real
+                 integration-test-phase tests. Extend surefire's default includes with **/*IT.java so they still
+                 run under `mvn test` instead of silently never executing. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

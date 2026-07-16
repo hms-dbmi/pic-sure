@@ -1,0 +1,54 @@
+# AIO profile: query-service, operations-service, and PSAMA are reachable by Docker DNS
+# on the shared `picsure` network. HPDS_QUERY_SERVICE_URL and OPERATIONS_SERVICE_URL may
+# still override (see application.yml for defaults).
+
+# PSAMA is reachable by Docker DNS on the `picsure` network. These match WildFly's
+# java:global/token_introspection_url and openAccessValidateUrl in standalone.xml.
+# Env vars still override (BDC sets its own). The service token stays env-only.
+picsure:
+  gateway:
+    security:
+      introspection-url: ${TOKEN_INTROSPECTION_URL:http://psama:8090/auth/token/inspect}
+      open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:http://psama:8090/auth/open/validate}
+    # Deep-health downstream list the gateway aggregates into
+    # /system/status and /actuator/health. AIO service DNS on the picsure network.
+    # PSAMA uses the transitional introspection-ping (active:false = reachable) until
+    # its Actuator lands; HPDS/dictionary report DOWN until their Actuator arrives.
+    # visualization + logging already expose health today.
+    health:
+      connect-timeout-ms: 2000
+      read-timeout-ms: 3000
+      application-token: ${TOKEN_INTROSPECTION_TOKEN:}
+      downstreams:
+        - name: psama
+          # PSAMA now ships Actuator; use its real deep /auth/actuator/health
+          # (db indicator). context-path is /auth. The transitional introspection-ping
+          # (POST /auth/token/inspect, {}, app token) is retained in git history as the
+          # fallback if a PSAMA deploy ever lags the actuator rollout.
+          base-url: ${PSAMA_URL:http://psama:8090}
+          health-path: /auth/actuator/health
+          require-status-up: true
+        - name: visualization
+          base-url: ${VISUALIZATION_URL:http://visualization}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: logging
+          base-url: ${LOGGING_HEALTH_URL:http://pic-sure-logging}
+          health-path: /health
+          require-status-up: false
+        - name: hpds
+          base-url: ${HPDS_URL:http://hpds:8080}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: dictionary
+          base-url: ${DICTIONARY_URL:http://dictionary-api}
+          health-path: /actuator/health
+          require-status-up: true
+        - name: operations-service
+          base-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+          health-path: /operations/actuator/health
+          require-status-up: true
+        - name: query-service
+          base-url: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
+          health-path: /actuator/health
+          require-status-up: true

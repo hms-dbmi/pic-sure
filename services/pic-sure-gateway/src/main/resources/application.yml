@@ -1,0 +1,137 @@
+spring:
+  application:
+    name: pic-sure-gateway
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          routes:
+            # Explicit clean-prefix route for the logging service, replacing the
+            # legacy /proxy/pic-sure-logging relay. StripPrefix=1 drops the leading /logging segment
+            # because the logging service (Javalin) serves its API at root (/audit,
+            # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
+            # on the introspection allow-list, so it is not authenticated.
+            # /dictionary, /uploader, and /visualization are AUTHENTICATED (not on the
+            # allow-list): the introspection filter runs on the pre-strip public path
+            # (Target Service = /dictionary/x), which the PSAMA access-rule
+            # migrations now authorize (^/dictionary(/.*)?$ / ^/uploader(/.*)?$ /
+            # ^/visualization(/.*)?$). Same StripPrefix=1 as /logging (dictionary-api,
+            # uploader, and the visualization container all serve their APIs at root).
+            # /hpds is handled separately below (query-service ingress).
+            - id: logging
+              uri: ${LOGGING_URL:http://pic-sure-logging}
+              order: 100
+              predicates:
+                - Path=/logging/**
+              filters:
+                - StripPrefix=1
+            - id: dictionary
+              uri: ${DICTIONARY_URL:http://dictionary-api}
+              order: 100
+              predicates:
+                - Path=/dictionary/**
+              filters:
+                - StripPrefix=1
+            - id: uploader
+              uri: ${UPLOADER_URL:http://uploader:8080}
+              order: 100
+              predicates:
+                - Path=/uploader/**
+              filters:
+                - StripPrefix=1
+            - id: visualization
+              uri: ${VISUALIZATION_URL:http://visualization}
+              order: 100
+              predicates:
+                - Path=/visualization/**
+              filters:
+                - StripPrefix=1
+            # Query-service and operations-service ingress. Unlike the routes
+            # above, these serve at the VERBATIM public path — NO StripPrefix. /hpds/{auth,open}[/v3]/query|search
+            # is served entirely by the DB-free query-service, which selects auth/open from the path itself.
+            # /operations/** is served by operations-service, the sole DB owner (also home to
+            # the internal query dispatch API PsamaIntrospectionFilter/QueryAuthFetcher calls for result/signed-url
+            # auth). /operations/configuration/** carries a public-GET carve-out for the introspection filter itself
+            # (see PsamaIntrospectionFilter#isPublicConfigurationRead) — everything else (POST/PATCH/DELETE, all
+            # /operations/configuration/admin/**, and all of /operations/dataset/**) is introspected as usual by the
+            # always-on auth chain.
+            - id: hpds
+              uri: ${HPDS_QUERY_SERVICE_URL:http://pic-sure-hpds-query-service:8080}
+              order: 100
+              predicates:
+                - Path=/hpds/**
+            - id: operations
+              uri: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
+              order: 100
+              predicates:
+                - Path=/operations/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # OFF BY DEFAULT: the default 'none' is a sentinel that matches no endpoint, so nothing under /actuator/**
+        # is reachable (404). (An EMPTY include is NOT off -- Spring Boot then falls back to its built-in default of
+        # exposing health.) AIO's gateway.env sets PICSURE_ACTUATOR_EXPOSURE=health,info to turn it on; the public
+        # /system/status check (a RouterFunction, not an actuator endpoint) stays available regardless.
+        # prometheus/metrics are added via this same env var when the monitoring (M2) rollout lands -- no code change.
+        include: ${PICSURE_ACTUATOR_EXPOSURE:none}
+  endpoint:
+    health:
+      show-details: ${PICSURE_ACTUATOR_DETAILS:never} # default never; when_authorized (set in AIO) gates detail behind the X-Application-Token
+      probes:
+        enabled: true # /actuator/health/liveness stays shallow-open
+      group:
+        liveness:
+          include: livenessState # pin liveness to the app's own state; downstreams
+          # (registered as the "downstreams" top-level contributor) must never flip
+          # this probe DOWN -- deploy/container healthchecks poll this endpoint.
+  health:
+    defaults:
+      enabled: true
+  metrics:
+    distribution:
+      # Publish client-observable latency percentiles per route for the pass-through
+      # baseline and ongoing comparison (visible at /actuator/prometheus and
+      # /actuator/metrics/http.server.requests).
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+      percentiles-histogram:
+        http.server.requests: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+server:
+  port: 8080
+
+# DB-free auth/audit chain -- always enforced; every request goes through PSAMA introspection.
+# Secrets come from the environment (gateway.env); non-secret defaults are here.
+picsure:
+  # The shared X-Application-Token gate for THIS service's own /actuator/** endpoints (see
+  # ActuatorSecurityConfig / the shared ActuatorSecurityHelper in pic-sure-spring-commons). Distinct from
+  # picsure.gateway.health.application-token below, which is the Bearer token the gateway sends OUTBOUND when
+  # probing downstreams' deep health -- same env-driven pattern, deliberately separate secrets/purposes.
+  actuator:
+    require-token: ${PICSURE_ACTUATOR_REQUIRE_TOKEN:true}
+    token: ${PICSURE_APPLICATION_TOKEN:}
+    header-name: X-Application-Token
+  gateway:
+    security:
+      open-access-enabled: ${GATEWAY_OPEN_ACCESS_ENABLED:false}
+      user-id-claim: sub
+      max-body-bytes: ${GATEWAY_AUTH_MAX_BODY_BYTES:10485760}
+      introspection-url: ${TOKEN_INTROSPECTION_URL:}
+      open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
+      service-token: ${TOKEN_INTROSPECTION_TOKEN:}
+      query-service-url: ${HPDS_QUERY_SERVICE_URL:}
+      operations-service-url: ${OPERATIONS_SERVICE_URL:}
+      query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
+      # Allowed list of prefixes that do not require authentication. The logging service has its own access key
+      # for security. The other paths are publicly available.
+      allow-list-prefixes:
+        - /logging
+        - /actuator
+        - /openapi
+        - /swagger-ui
