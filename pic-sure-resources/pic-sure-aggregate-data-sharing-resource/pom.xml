@@ -81,7 +81,7 @@
 		</dependency>
 		<dependency>
 			<groupId>com.github.tomakehurst</groupId>
-			<artifactId>wiremock-standalone</artifactId>
+			<artifactId>wiremock-jre8</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -89,6 +89,11 @@
 			<artifactId>jersey-common</artifactId>
 			<scope>test</scope>
 		</dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
 		<dependency>
 			<groupId>edu.harvard.dbmi.avillach</groupId>
 			<artifactId>pic-sure-logging-client</artifactId>

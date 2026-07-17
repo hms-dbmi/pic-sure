@@ -1,9 +1,10 @@
 package edu.harvard.dbmi.avillach.service;
 
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
-import org.junit.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class LoggingClientProducerTest {
 
@@ -15,7 +16,7 @@ public class LoggingClientProducerTest {
         LoggingClient client = producer.loggingClient();
 
         assertNotNull(client);
-        assertFalse("Should be no-op when JNDI bindings are missing", client.isEnabled());
+        assertFalse(client.isEnabled(), "Should be no-op when JNDI bindings are missing");
     }
 
     @Test

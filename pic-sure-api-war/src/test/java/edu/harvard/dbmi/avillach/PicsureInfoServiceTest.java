@@ -8,24 +8,27 @@ import edu.harvard.dbmi.avillach.service.PicsureInfoService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.*;
 
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class PicsureInfoServiceTest extends BaseServiceTest {
 
     private UUID resourceId = UUID.randomUUID();
@@ -42,7 +45,7 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
     @Mock
     private ResourceWebClient webClient = mock(ResourceWebClient.class);
 
-    @Before
+    @BeforeEach
     public void setUp() {
         ResourceInfo results = new ResourceInfo();
         Resource testResource = new Resource().setName("A Mock Resource");
@@ -64,38 +67,45 @@ public class PicsureInfoServiceTest extends BaseServiceTest {
         Map<String, String> clientCredentials = new HashMap<String, String>();
         infoRequest.setResourceCredentials(clientCredentials);
 
-        //Should fail with a nonexistent id
+        // Should fail with a nonexistent id
         try {
             ResourceInfo info = infoService.info(UUID.randomUUID(), infoRequest, null);
             fail();
-        } catch (ProtocolException e){
+        } catch (ProtocolException e) {
             assertNotNull(e.getContent());
-            assertTrue("Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'", e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND));        }
+            assertTrue(
+                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND),
+                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'"
+            );
+        }
 
-        //Should fail without the url in the resource
+        // Should fail without the url in the resource
         try {
             ResourceInfo info = infoService.info(resourceId, infoRequest, null);
             fail();
-        } catch (ApplicationException e){
+        } catch (ApplicationException e) {
             assertNotNull(e.getContent());
-            assertEquals("Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString());
+            assertEquals(
+                ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString(),
+                "Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'"
+            );
         }
         when(mockResource.getResourceRSPath()).thenReturn("resourceRsPath");
 
         ResourceInfo responseInfo = infoService.info(resourceId, infoRequest, null);
-        assertNotNull("Resource response should not be null", responseInfo);
+        assertNotNull(responseInfo, "Resource response should not be null");
 
-        //Should also work without clientCredentials
+        // Should also work without clientCredentials
         responseInfo = infoService.info(resourceId, null, null);
-        assertNotNull("Resource response should not be null", responseInfo);
+        assertNotNull(responseInfo, "Resource response should not be null");
     }
 
     @Test
     public void testResourcesEndpoint() {
-        //Should give a UUID list of all resources
+        // Should give a UUID list of all resources
         Map<UUID, String> resourceList = infoService.resources(null);
-        assertNotNull("Resource listing should not be null", resourceList);
-        assertEquals("Resource listing should only have 1 entry", 1, resourceList.size());
-        assertSame("Resource listing should be UUID of our mocked resource", resourceId, resourceList.keySet().iterator().next());
+        assertNotNull(resourceList, "Resource listing should not be null");
+        assertEquals(1, resourceList.size(), "Resource listing should only have 1 entry");
+        assertSame(resourceId, resourceList.keySet().iterator().next(), "Resource listing should be UUID of our mocked resource");
     }
 }

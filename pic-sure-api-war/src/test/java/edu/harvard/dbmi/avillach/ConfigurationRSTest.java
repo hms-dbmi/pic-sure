@@ -1,7 +1,8 @@
 package edu.harvard.dbmi.avillach;
 
+import org.junit.jupiter.api.Test;
+
 import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
-import org.junit.Test;
 
 import javax.annotation.security.PermitAll;
 import javax.annotation.security.RolesAllowed;
@@ -10,16 +11,16 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.UUID;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigurationRSTest {
     private final String SUPER_ADMIN = "SUPER_ADMIN";
 
     private void assertRolesAllowed(Method method, String role) {
         RolesAllowed annotation = method.getAnnotation(RolesAllowed.class);
-        assertNotNull("@RolesAllowed missing on " + method.getName(), annotation);
-        assertTrue(role + " role missing on " + method.getName(), Arrays.asList(annotation.value()).contains(role));
+        assertNotNull(annotation, "@RolesAllowed missing on " + method.getName());
+        assertTrue(Arrays.asList(annotation.value()).contains(role), role + " role missing on " + method.getName());
     }
 
     // These unit tests only guard against accidental removal during refactor & they are not an E2E test of the functionality
@@ -37,7 +38,7 @@ public class ConfigurationRSTest {
 
     private void assertPermitAll(Method method) {
         PermitAll permitAll = method.getAnnotation(PermitAll.class);
-        assertNotNull(method.getName() + " must have @PermitAll annotation", permitAll);
+        assertNotNull(permitAll, method.getName() + " must have @PermitAll annotation");
     }
 
     @Test

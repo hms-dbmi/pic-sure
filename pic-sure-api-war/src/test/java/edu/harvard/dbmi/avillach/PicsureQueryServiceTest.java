@@ -1,9 +1,9 @@
 package edu.harvard.dbmi.avillach;
 
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -20,16 +20,16 @@ import javax.ws.rs.core.Response;
 
 import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.mockito.stubbing.Answer;
 
 import edu.harvard.dbmi.avillach.data.entity.Query;
@@ -43,7 +43,8 @@ import edu.harvard.dbmi.avillach.service.AuditContext;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class PicsureQueryServiceTest extends BaseServiceTest {
 
     private UUID resourceId;
@@ -70,7 +71,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
     @Mock
     private AuditContext auditContext = mock(AuditContext.class);
 
-    @Before
+    @BeforeEach
     public void setUp() {
         resourceId = UUID.randomUUID();
         queryString = "queryDoesntMatterForTest";
@@ -111,8 +112,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA,
-                e.getContent().toString()
+                ProtocolException.MISSING_DATA, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_DATA + "'"
             );
         }
     }
@@ -135,8 +136,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID,
-                e.getContent().toString()
+                ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'"
             );
         }
 
@@ -159,8 +160,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertTrue(
-                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'",
-                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND)
+                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND),
+                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'"
             );
         }
 
@@ -176,24 +177,24 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         dataQueryRequest.setQuery(queryString);
 
         QueryStatus result = queryService.query(dataQueryRequest, null);
-        assertNotNull("Status should not be null", result.getStatus());
-        assertNotNull("Resource result id should not be null", result.getResourceResultId());
-        assertNotNull("Picsure result id should not be null", result.getPicsureResultId());
+        assertNotNull(result.getStatus(), "Status should not be null");
+        assertNotNull(result.getResourceResultId(), "Resource result id should not be null");
+        assertNotNull(result.getPicsureResultId(), "Picsure result id should not be null");
         // Since there was no resource result id, it should be the same as the picsure
         // result id
         assertEquals(
-            "Resource result id and Picsure result id should match in case of no resource result id", result.getResourceResultId(),
-            result.getPicsureResultId().toString()
+            result.getResourceResultId(), result.getPicsureResultId().toString(),
+            "Resource result id and Picsure result id should match in case of no resource result id"
         );
 
         // Make sure the query is persisted
-        assertNotNull("Query Entity should have been persisted", queryEntity);
-        assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
+        assertNotNull(queryEntity, "Query Entity should have been persisted");
+        assertEquals(queryEntity.getResource(), mockResource, "QueryEntity should be linked to resource");
 
-        assertTrue("Query Entity should have query stored", queryEntity.getQuery().contains(queryString));
+        assertTrue(queryEntity.getQuery().contains(queryString), "Query Entity should have query stored");
         assertEquals(
-            "Resource result id and Picsure result id should match in case of no resource result id", queryEntity.getResourceResultId(),
-            queryEntity.getUuid().toString()
+            queryEntity.getResourceResultId(), queryEntity.getUuid().toString(),
+            "Resource result id and Picsure result id should match in case of no resource result id"
         );
 
     }
@@ -210,8 +211,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'", ProtocolException.MISSING_QUERY_ID,
-                e.getContent().toString()
+                ProtocolException.MISSING_QUERY_ID, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'"
             );
         }
 
@@ -231,8 +232,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertTrue(
-                "Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'",
-                e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND)
+                e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND),
+                "Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'"
             );
         }
 
@@ -261,13 +262,13 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         // This one should work
         QueryStatus result = queryService.queryStatus(queryId, statusRequest, null);
         // These fields are set by the method
-        assertNotNull("Result should not be null", result);
-        assertEquals("Picsure ResultId should match", queryId, result.getPicsureResultId());
-        assertEquals("Resource Id should match", resourceId, result.getResourceID());
-        assertNotNull("Start time should not be null", result.getStartTime());
+        assertNotNull(result, "Result should not be null");
+        assertEquals(queryId, result.getPicsureResultId(), "Picsure ResultId should match");
+        assertEquals(resourceId, result.getResourceID(), "Resource Id should match");
+        assertNotNull(result.getStartTime(), "Start time should not be null");
 
         // Make sure info was saved to the query entity
-        assertEquals("Query status should have been updated", PicSureStatus.AVAILABLE, queryEntity.getStatus());
+        assertEquals(PicSureStatus.AVAILABLE, queryEntity.getStatus(), "Query status should have been updated");
     }
 
     @Test
@@ -283,8 +284,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'", ProtocolException.MISSING_QUERY_ID,
-                e.getContent().toString()
+                ProtocolException.MISSING_QUERY_ID, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_QUERY_ID + "'"
             );
         }
 
@@ -303,8 +304,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertTrue(
-                "Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'",
-                e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND)
+                e.getContent().toString().contains(ProtocolException.QUERY_NOT_FOUND),
+                "Error message should say '" + ProtocolException.QUERY_NOT_FOUND + "'"
             );
         }
 
@@ -335,7 +336,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
         // This one should work
         Response result = queryService.queryResult(queryId, resultRequest, null);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
     }
 
     @Test
@@ -348,8 +349,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA,
-                e.getContent().toString()
+                ProtocolException.MISSING_DATA, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_DATA + "'"
             );
         }
 
@@ -372,8 +373,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID,
-                e.getContent().toString()
+                ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'"
             );
         }
 
@@ -395,8 +396,8 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         } catch (ApplicationException e) {
             assertNotNull(e.getContent());
             assertTrue(
-                "Error message should say '" + ApplicationException.MISSING_RESOURCE + "'",
-                e.getContent().toString().contains(ApplicationException.MISSING_RESOURCE)
+                e.getContent().toString().contains(ApplicationException.MISSING_RESOURCE),
+                "Error message should say '" + ApplicationException.MISSING_RESOURCE + "'"
             );
         }
 
@@ -437,16 +438,16 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         // Test correct request
         dataQueryRequest.setResourceUUID(resourceId);
         Response result = queryService.querySync(dataQueryRequest, null);
-        assertNotNull("Result should not be null", result.getStatus());
+        assertNotNull(result.getStatus(), "Result should not be null");
 
         // Make sure the query is persisted
-        assertNotNull("Query Entity should have been persisted", queryEntity);
-        assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
+        assertNotNull(queryEntity, "Query Entity should have been persisted");
+        assertEquals(queryEntity.getResource(), mockResource, "QueryEntity should be linked to resource");
 
-        assertTrue("Query Entity should have query stored", queryEntity.getQuery().contains(queryString));
+        assertTrue(queryEntity.getQuery().contains(queryString), "Query Entity should have query stored");
         assertEquals(
-            "Resource result id and Picsure result id should match in case of no resource result id", queryId.toString(),
-            queryEntity.getResourceResultId()
+            queryId.toString(), queryEntity.getResourceResultId(),
+            "Resource result id and Picsure result id should match in case of no resource result id"
         );
 
     }
@@ -472,7 +473,7 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
 
         QueryStatus status = queryService.queryMetadata(query.getUuid(), null);
         String actual = (String) status.getResultMetadata().get("queryResultMetadata");
-        Assert.assertEquals(metaData, actual);
+        assertEquals(metaData, actual);
     }
 
     @Test
@@ -516,14 +517,14 @@ public class PicsureQueryServiceTest extends BaseServiceTest {
         // Test correct request
         dataQueryRequest.setResourceUUID(resourceId);
         Response result = queryService.querySync(dataQueryRequest, null);
-        assertNotNull("Result should not be null", result.getStatus());
+        assertNotNull(result.getStatus(), "Result should not be null");
 
         // Make sure the query is persisted
-        assertNotNull("Query Entity should have been persisted", queryEntity);
-        assertEquals("QueryEntity should be linked to resource", queryEntity.getResource(), mockResource);
+        assertNotNull(queryEntity, "Query Entity should have been persisted");
+        assertEquals(queryEntity.getResource(), mockResource, "QueryEntity should be linked to resource");
 
-        assertTrue("Query Entity should have query stored", queryEntity.getQuery().contains(queryString));
-        assertEquals("Resource result id should match returned header", resultId, queryEntity.getResourceResultId());
+        assertTrue(queryEntity.getQuery().contains(queryString), "Query Entity should have query stored");
+        assertEquals(resultId, queryEntity.getResourceResultId(), "Resource result id should match returned header");
 
     }
 

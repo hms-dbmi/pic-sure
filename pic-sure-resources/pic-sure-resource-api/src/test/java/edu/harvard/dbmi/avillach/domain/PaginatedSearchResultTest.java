@@ -1,11 +1,13 @@
 package edu.harvard.dbmi.avillach.domain;
 
+import org.junit.jupiter.api.Test;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.Test;
-import static org.junit.Assert.*;
 
 import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class PaginatedSearchResultTest {
 

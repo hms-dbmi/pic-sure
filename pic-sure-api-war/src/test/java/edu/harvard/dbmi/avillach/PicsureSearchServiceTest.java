@@ -7,34 +7,38 @@ import edu.harvard.dbmi.avillach.service.PicsureSearchService;
 import edu.harvard.dbmi.avillach.service.ResourceWebClient;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
-import org.junit.Before;
-import org.junit.Test;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.UUID;
 
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import org.junit.runner.RunWith;
 
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class PicsureSearchServiceTest extends BaseServiceTest {
 
     private UUID resourceId = UUID.randomUUID();
@@ -54,7 +58,7 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
     @Mock
     private AuditContext auditContext = mock(AuditContext.class);
 
-    @Before
+    @BeforeEach
     public void setUp() {
         SearchResults results = new SearchResults();
         when(resourceRepo.getById(resourceId)).thenReturn(mockResource);
@@ -76,8 +80,8 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         } catch (ApplicationException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'", ApplicationException.MISSING_RESOURCE_PATH,
-                e.getContent().toString()
+                ApplicationException.MISSING_RESOURCE_PATH, e.getContent().toString(),
+                "Error message should say '" + ApplicationException.MISSING_RESOURCE_PATH + "'"
             );
         }
 
@@ -90,8 +94,8 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_DATA + "'", ProtocolException.MISSING_DATA,
-                e.getContent().toString()
+                ProtocolException.MISSING_DATA, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_DATA + "'"
             );
         }
 
@@ -102,8 +106,8 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertEquals(
-                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'", ProtocolException.MISSING_RESOURCE_ID,
-                e.getContent().toString()
+                ProtocolException.MISSING_RESOURCE_ID, e.getContent().toString(),
+                "Error message should say '" + ProtocolException.MISSING_RESOURCE_ID + "'"
             );
 
         }
@@ -115,19 +119,19 @@ public class PicsureSearchServiceTest extends BaseServiceTest {
         } catch (ProtocolException e) {
             assertNotNull(e.getContent());
             assertTrue(
-                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'",
-                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND)
+                e.getContent().toString().contains(ProtocolException.RESOURCE_NOT_FOUND),
+                "Error message should say '" + ProtocolException.RESOURCE_NOT_FOUND + "'"
             );
         }
 
         // This should work
         SearchResults results = searchService.search(resourceId, searchQueryRequest, null);
-        assertNotNull("SearchResults should not be null", results);
+        assertNotNull(results, "SearchResults should not be null");
 
         // There should also be no problem if the resourceCredentials are null
         searchQueryRequest.setResourceCredentials(null);
         results = searchService.search(resourceId, searchQueryRequest, null);
-        assertNotNull("SearchResults should not be null", results);
+        assertNotNull(results, "SearchResults should not be null");
     }
 
     @Test

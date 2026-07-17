@@ -1,11 +1,14 @@
 package edu.harvard.dbmi.avillach.service;
 
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -13,14 +16,14 @@ import static org.mockito.Mockito.doThrow;
 
 import java.util.*;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.data.entity.Configuration;
 import edu.harvard.dbmi.avillach.data.repository.ConfigurationRepository;
 import edu.harvard.dbmi.avillach.data.request.ConfigurationRequest;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class ConfigurationServiceTest {
     private final String testName = "FEATURE_FLAG_X";
     private final String testKind = "ui";
@@ -67,7 +70,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional with the configurations
         assertTrue(response.isPresent());
-        assertEquals("correct number of configurations returned", 2, response.get().size());
+        assertEquals(2, response.get().size(), "correct number of configurations returned");
     }
 
     @Test
@@ -85,7 +88,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional with all configurations
         assertTrue(response.isPresent());
-        assertEquals("correct number of configurations returned", 2, response.get().size());
+        assertEquals(2, response.get().size(), "correct number of configurations returned");
     }
 
     @Test
@@ -114,7 +117,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("correct configuration returned", configId, response.get().getUuid());
+        assertEquals(configId, response.get().getUuid(), "correct configuration returned");
     }
 
     @Test
@@ -130,7 +133,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("correct configuration returned", testName, response.get().getName());
+        assertEquals(testName, response.get().getName(), "correct configuration returned");
     }
 
     @Test
@@ -198,10 +201,10 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("name is saved", testName, response.get().getName());
-        assertEquals("kind is saved", testKind, response.get().getKind());
-        assertEquals("value is saved", testValue, response.get().getValue());
-        assertEquals("description is saved", testDescription, response.get().getDescription());
+        assertEquals(testName, response.get().getName(), "name is saved");
+        assertEquals(testKind, response.get().getKind(), "kind is saved");
+        assertEquals(testValue, response.get().getValue(), "value is saved");
+        assertEquals(testDescription, response.get().getDescription(), "description is saved");
     }
 
     @Test
@@ -249,7 +252,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new value is saved", newValue, response.get().getValue());
+        assertEquals(newValue, response.get().getValue(), "new value is saved");
     }
 
     @Test
@@ -268,7 +271,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new name is saved", newName, response.get().getName());
+        assertEquals(newName, response.get().getName(), "new name is saved");
     }
 
 
@@ -287,7 +290,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new delete requested date is saved", true, response.get().getMarkForDelete());
+        assertEquals(true, response.get().getMarkForDelete(), "new delete requested date is saved");
     }
 
     @Test
@@ -333,7 +336,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new kind is saved", newKind, response.get().getKind());
+        assertEquals(newKind, response.get().getKind(), "new kind is saved");
     }
 
     @Test
@@ -352,7 +355,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new description is saved", newDescription, response.get().getDescription());
+        assertEquals(newDescription, response.get().getDescription(), "new description is saved");
     }
 
     @Test
@@ -399,7 +402,7 @@ public class ConfigurationServiceTest {
 
         // Then return a non-empty optional with the deleted configuration
         assertTrue(response.isPresent());
-        assertEquals("correct configuration returned", configId, response.get().getUuid());
+        assertEquals(configId, response.get().getUuid(), "correct configuration returned");
     }
 
     @Test

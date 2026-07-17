@@ -5,20 +5,23 @@ import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import edu.harvard.dbmi.avillach.util.exception.ResourceInterfaceException;
 import org.glassfish.jersey.message.internal.OutboundJaxrsResponse;
 import org.glassfish.jersey.message.internal.OutboundMessageContext;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
-
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -53,11 +56,12 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
     private final static int port = 40000;
     private final static String testURL = "http://localhost:40000/";
 
-    @Rule
-    public WireMockClassRule wireMockRule = new WireMockClassRule(port);
+    @org.junit.jupiter.api.extension.RegisterExtension
+    public WireMockExtension wireMockRule = WireMockExtension.newInstance().options(WireMockConfiguration.options().port(port)).build();
 
-    @Before
+    @BeforeEach
     public void setup() throws IOException {
+        com.github.tomakehurst.wiremock.client.WireMock.configureFor(port);
         mockProperties = mock(ApplicationProperties.class);
         when(mockProperties.getTargetResourceId()).thenReturn("f0317fa9-0945-4390-993a-840416e97d13");
         when(mockProperties.getTargetPicsureObfuscationThreshold()).thenReturn(10);
@@ -76,8 +80,7 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
         // Stub for study consents which is now called for every CROSS_COUNT query
         wireMockRule.stubFor(
-            post(urlEqualTo("/search"))
-                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+            post(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
                 .willReturn(aResponse().withStatus(200).withBody("{\"results\": {\"phenotypes\": {}}}"))
         );
 
@@ -318,14 +321,16 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         return originalRequest;
     }
 
-    @Test(expected = ProtocolException.class)
+    @Test
     public void testMissingExpectedResultType() throws IOException {
-        GeneralQueryRequest request = getTestQuery();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
-        queryMap.remove("expectedResultType");
-        request.setQuery(queryMap);
-        subject.querySync(request);
+        assertThrows(ProtocolException.class, () -> {
+            GeneralQueryRequest request = getTestQuery();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> queryMap = (Map<String, Object>) request.getQuery();
+            queryMap.remove("expectedResultType");
+            request.setQuery(queryMap);
+            subject.querySync(request);
+        });
     }
 
     @Test
@@ -333,19 +338,16 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         // Mock /search for consents
         // We need to escape backslashes for Java string literals and JSON
         // JSON: "\\PHENO\\CONSENT1\\" -> Java String: "\"\\\\PHENO\\\\CONSENT1\\\\\""
-        String consentResponseJson = "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
+        String consentResponseJson =
+            "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
 
         wireMockRule.stubFor(
-            post(urlEqualTo("/search"))
-                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+            post(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
                 .willReturn(aResponse().withStatus(200).withBody(consentResponseJson))
         );
 
         // Mock /query/sync
-        wireMockRule.stubFor(
-            post(urlEqualTo("/query/sync"))
-                .willReturn(aResponse().withStatus(200).withBody("{}"))
-        );
+        wireMockRule.stubFor(post(urlEqualTo("/query/sync")).willReturn(aResponse().withStatus(200).withBody("{}")));
 
         GeneralQueryRequest request = getTestQuery();
         @SuppressWarnings("unchecked")
@@ -357,29 +359,27 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         subject.querySync(request);
 
         // Verify /query/sync called with modified body
-        verify(postRequestedFor(urlEqualTo("/query/sync"))
-            .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT1")))
-            .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT2")))
-            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
+        verify(
+            postRequestedFor(urlEqualTo("/query/sync"))
+                .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT1")))
+                .withRequestBody(matchingJsonPath("$.query.crossCountFields", containing("CONSENT2")))
+                .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
         );
     }
 
     @Test
     public void testCrossCountQueryModifiesRequestV3() throws IOException {
         // Mock /search for consents
-        String consentResponseJson = "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
+        String consentResponseJson =
+            "{\"results\": {\"phenotypes\": {\"\\\\PHENO\\\\CONSENT1\\\\\": {}, \"\\\\PHENO\\\\CONSENT2\\\\\": {}}}}";
 
         wireMockRule.stubFor(
-            post(urlEqualTo("/search"))
-                .withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
+            post(urlEqualTo("/search")).withRequestBody(matchingJsonPath("$.query", containing("_studies_consents")))
                 .willReturn(aResponse().withStatus(200).withBody(consentResponseJson))
         );
 
         // Mock /v3/query/sync (V3 appends /v3 prefix to path in getHttpResponse)
-        wireMockRule.stubFor(
-            post(urlEqualTo("/v3/query/sync"))
-                .willReturn(aResponse().withStatus(200).withBody("{}"))
-        );
+        wireMockRule.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(aResponse().withStatus(200).withBody("{}")));
 
         GeneralQueryRequest request = getTestQuery();
         @SuppressWarnings("unchecked")
@@ -390,19 +390,16 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
         subjectV3.querySync(request);
 
         // Verify /v3/query/sync called with modified body using "select"
-        verify(postRequestedFor(urlEqualTo("/v3/query/sync"))
-            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT1")))
-            .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT2")))
-            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
+        verify(
+            postRequestedFor(urlEqualTo("/v3/query/sync")).withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT1")))
+                .withRequestBody(matchingJsonPath("$.query.select", containing("CONSENT2")))
+                .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("CROSS_COUNT")))
         );
     }
 
     @Test
     public void testOtherQueryTypeDoesNotModifyRequest() throws IOException {
-        wireMockRule.stubFor(
-            post(urlEqualTo("/query/sync"))
-                .willReturn(aResponse().withStatus(200).withBody("100"))
-        );
+        wireMockRule.stubFor(post(urlEqualTo("/query/sync")).willReturn(aResponse().withStatus(200).withBody("100")));
 
         GeneralQueryRequest request = getTestQuery();
         @SuppressWarnings("unchecked")
@@ -413,9 +410,9 @@ public class AggregateDataSharingResourceRSAcceptanceTests {
 
         subject.querySync(request);
 
-        verify(postRequestedFor(urlEqualTo("/query/sync"))
-            .withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
-            .withRequestBody(notMatching(".*crossCountFields.*"))
+        verify(
+            postRequestedFor(urlEqualTo("/query/sync")).withRequestBody(matchingJsonPath("$.query.expectedResultType", equalTo("COUNT")))
+                .withRequestBody(notMatching(".*crossCountFields.*"))
         );
     }
 

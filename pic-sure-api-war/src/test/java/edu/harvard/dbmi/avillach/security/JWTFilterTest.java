@@ -1,7 +1,9 @@
 package edu.harvard.dbmi.avillach.security;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
@@ -21,15 +23,17 @@ import javax.ws.rs.core.Request;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentCaptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tomakehurst.wiremock.junit.WireMockRule;
 
 import edu.harvard.dbmi.avillach.PicSureWarInit;
+
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import edu.harvard.dbmi.avillach.data.entity.Query;
 import edu.harvard.dbmi.avillach.data.entity.Resource;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
@@ -43,8 +47,8 @@ public class JWTFilterTest {
 
     private static final UUID RESOURCE_UUID = UUID.fromString("30ef4941-9656-4b47-af80-528f2b98cf17");
 
-    @Rule
-    public WireMockRule wireMockRule = new WireMockRule(0);
+    @RegisterExtension
+    public WireMockExtension wireMockRule = WireMockExtension.newInstance().options(WireMockConfiguration.options().port(0)).build();
 
     private int port;
 
@@ -52,9 +56,10 @@ public class JWTFilterTest {
 
     private JWTFilter filter;
 
-    @Before
+    @BeforeEach
     public void setup() {
-        port = wireMockRule.port();
+        port = wireMockRule.getPort();
+        com.github.tomakehurst.wiremock.client.WireMock.configureFor(port);
         picSureWarInit = mock(PicSureWarInit.class);
         when(picSureWarInit.getToken_introspection_token()).thenReturn("INTROSPECTION_TOKEN");
         when(picSureWarInit.getToken_introspection_url()).thenReturn("http://localhost:" + port + "/introspection_endpoint");
@@ -91,7 +96,7 @@ public class JWTFilterTest {
 
     private Resource basicResource() {
         Resource resource = mock(Resource.class);
-        when(resource.getResourceRSPath()).thenReturn("http://localhost:" + wireMockRule.port() + "/resource");
+        when(resource.getResourceRSPath()).thenReturn("http://localhost:" + wireMockRule.getPort() + "/resource");
         when(resource.getToken()).thenReturn("RESOURCE_TOKEN");
         when(resource.getUuid()).thenReturn(RESOURCE_UUID);
 
@@ -167,23 +172,29 @@ public class JWTFilterTest {
         assertEquals(0, exceptions.size());
     }
 
-    @Test(expected = NotAuthorizedException.class)
+    @Test
     public void testExcludedFilterPaths_config_invalidPathsHitNoAuthException() throws IOException {
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/SOME_FLA%G");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        assertThrows(NotAuthorizedException.class, () -> {
+            ContainerRequestContext ctx = createRequestContext();
+            when(ctx.getUriInfo().getPath()).thenReturn("/configuration/SOME_FLA%G");
+            when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
 
-        filter.filter(ctx);
+            filter.filter(ctx);
+            // Test passes if NotAuthorizedException is thrown
+        });
         // Test passes if NotAuthorizedException is thrown
     }
 
-    @Test(expected = NotAuthorizedException.class)
+    @Test
     public void testExcludedFilterPaths_config_blockedAdminPathHitsNoAuthException() throws IOException {
-        ContainerRequestContext ctx = createRequestContext();
-        when(ctx.getUriInfo().getPath()).thenReturn("/configuration/admin");
-        when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
+        assertThrows(NotAuthorizedException.class, () -> {
+            ContainerRequestContext ctx = createRequestContext();
+            when(ctx.getUriInfo().getPath()).thenReturn("/configuration/admin");
+            when(ctx.getRequest().getMethod()).thenReturn(HttpMethod.GET);
 
-        filter.filter(ctx);
+            filter.filter(ctx);
+            // Test passes if NotAuthorizedException is thrown
+        });
         // Test passes if NotAuthorizedException is thrown
     }
 
@@ -203,7 +214,7 @@ public class JWTFilterTest {
         verify(
             postRequestedFor(urlEqualTo("/introspection_endpoint"))
                 .withRequestBody(matchingJsonPath("$.request.['Target Service']", matching("/query/sync")))
-                .withRequestBody(matchingJsonPath("$.request.['query']", matchingJsonPath("query", matching("test"))))
+                .withRequestBody(matchingJsonPath("$.request.query.query", equalTo("test")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
     }
@@ -224,7 +235,7 @@ public class JWTFilterTest {
         verify(
             postRequestedFor(urlEqualTo("/introspection_endpoint"))
                 .withRequestBody(matchingJsonPath("$.request.['Target Service']", matching("/query")))
-                .withRequestBody(matchingJsonPath("$.request.['query']", matchingJsonPath("query", matching("test"))))
+                .withRequestBody(matchingJsonPath("$.request.query.query", equalTo("test")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
     }
@@ -250,7 +261,7 @@ public class JWTFilterTest {
                 .withRequestBody(
                     matchingJsonPath("$.request.['Target Service']", matching("/query/e830138f-2943-4661-90ae-da053bd94a18/result"))
                 ).withRequestBody(matchingJsonPath("$.request.query", equalToJson(query.getQuery())))
-                .withRequestBody(matchingJsonPath("$.request.formattedQuery", equalToJson("{\"formatted\":\"query\"}")))
+                .withRequestBody(matchingJsonPath("$.request.formattedQuery", equalTo("{\"formatted\":\"query\"}")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
     }
@@ -276,7 +287,7 @@ public class JWTFilterTest {
                 .withRequestBody(
                     matchingJsonPath("$.request.['Target Service']", matching("/query/e830138f-2943-4661-90ae-da053bd94a18/result/"))
                 ).withRequestBody(matchingJsonPath("$.request.query", equalToJson(query.getQuery())))
-                .withRequestBody(matchingJsonPath("$.request.formattedQuery", equalToJson("{\"formatted\":\"query\"}")))
+                .withRequestBody(matchingJsonPath("$.request.formattedQuery", equalTo("{\"formatted\":\"query\"}")))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
     }
@@ -332,7 +343,7 @@ public class JWTFilterTest {
 
         Map<?, ?> finalRequestBody = mapper.readValue(currentBody[0], Map.class);
         Object query = finalRequestBody.get("query");
-        assertTrue("PSAMA's updated query must be stored as a nested object, not a re-escaped JSON string", query instanceof Map);
+        assertTrue(query instanceof Map, "PSAMA's updated query must be stored as a nested object, not a re-escaped JSON string");
         assertEquals(updatedQuery, query);
     }
 
@@ -398,8 +409,8 @@ public class JWTFilterTest {
         verify(
             postRequestedFor(urlEqualTo("/introspection_endpoint"))
                 .withRequestBody(matchingJsonPath("$.request.['Target Service']", matching("/query")))
-                .withRequestBody(matchingJsonPath("$.request.['query']", matchingJsonPath("query", matching("test"))))
-                .withRequestBody(matchingJsonPath("$.request.['query']", notMatching("resourceCredentials")))
+                .withRequestBody(matchingJsonPath("$.request.query.query", equalTo("test")))
+                .withRequestBody(notMatching(".*resourceCredentials.*"))
                 .withRequestBody(matchingJsonPath("$.token", matching("USER_TOKEN")))
         );
     }

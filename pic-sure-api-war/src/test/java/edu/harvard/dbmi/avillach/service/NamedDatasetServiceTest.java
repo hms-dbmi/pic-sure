@@ -1,11 +1,14 @@
 package edu.harvard.dbmi.avillach.service;
 
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,8 +20,7 @@ import java.util.UUID;
 import java.util.HashMap;
 import java.util.Optional;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.data.entity.NamedDataset;
 import edu.harvard.dbmi.avillach.data.entity.Query;
@@ -26,7 +28,8 @@ import edu.harvard.dbmi.avillach.data.repository.NamedDatasetRepository;
 import edu.harvard.dbmi.avillach.data.repository.QueryRepository;
 import edu.harvard.dbmi.avillach.data.request.NamedDatasetRequest;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class NamedDatasetServiceTest {
     private String user = "test.user@email.com";
     private String testName = "test name";
@@ -40,14 +43,14 @@ public class NamedDatasetServiceTest {
     @Mock
     private QueryRepository queryRepo = mock(QueryRepository.class);
 
-    private Query makeQuery(UUID id){
+    private Query makeQuery(UUID id) {
         Query query = new Query();
         query.setUuid(id);
         query.setQuery("{}");
         return query;
     }
 
-    private NamedDataset makeNamedDataset(UUID id, Query query){
+    private NamedDataset makeNamedDataset(UUID id, Query query) {
         NamedDataset dataset = new NamedDataset();
         dataset.setUuid(id);
         dataset.setUser(user);
@@ -57,7 +60,7 @@ public class NamedDatasetServiceTest {
         return dataset;
     }
 
-    private NamedDatasetRequest makeNamedDatasetRequest(UUID queryId){
+    private NamedDatasetRequest makeNamedDatasetRequest(UUID queryId) {
         NamedDatasetRequest request = new NamedDatasetRequest();
         request.setName(testName);
         request.setQueryId(queryId);
@@ -76,7 +79,7 @@ public class NamedDatasetServiceTest {
 
         // When the request is recieved
         Optional<List<NamedDataset>> response = namedDatasetService.getNamedDatasets(user);
-        
+
         // Then return a non-empty optional
         assertTrue(response.isPresent());
     }
@@ -152,9 +155,9 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("related user is saved", user, response.get().getUser());
-        assertEquals("related name is saved", testName, response.get().getName());
-        assertEquals("related query is saved", queryId, response.get().getQuery().getUuid());
+        assertEquals(user, response.get().getUser(), "related user is saved");
+        assertEquals(testName, response.get().getName(), "related name is saved");
+        assertEquals(queryId, response.get().getQuery().getUuid(), "related query is saved");
     }
 
     @Test
@@ -175,7 +178,7 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("related metadata is saved", testValue, response.get().getMetadata().get(testKey));
+        assertEquals(testValue, response.get().getMetadata().get(testKey), "related metadata is saved");
     }
 
     @Test
@@ -225,7 +228,7 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new name id is saved", newName, response.get().getName());
+        assertEquals(newName, response.get().getName(), "new name id is saved");
     }
 
     @Test
@@ -244,7 +247,7 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new archive state is retained", true, response.get().getArchived());
+        assertEquals(true, response.get().getArchived(), "new archive state is retained");
     }
 
     @Test
@@ -270,7 +273,7 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new metadata is retained", testValue, response.get().getMetadata().get(testKey));
+        assertEquals(testValue, response.get().getMetadata().get(testKey), "new metadata is retained");
     }
 
     @Test
@@ -292,9 +295,9 @@ public class NamedDatasetServiceTest {
 
         // Then return a non-empty optional
         assertTrue(response.isPresent());
-        assertEquals("new query id is saved", newQueryId, response.get().getQuery().getUuid());
+        assertEquals(newQueryId, response.get().getQuery().getUuid(), "new query id is saved");
     }
-    
+
     @Test
     public void updateNamedDataset_noNamedDatasetWithId() {
         // Given there is no named dataset in the database with this id

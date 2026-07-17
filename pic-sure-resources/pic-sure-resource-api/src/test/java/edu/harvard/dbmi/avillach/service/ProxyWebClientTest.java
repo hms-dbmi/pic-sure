@@ -8,15 +8,21 @@ import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.client.HttpClient;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
@@ -29,9 +35,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
-import static org.junit.Assert.*;
-
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class ProxyWebClientTest {
 
     @Mock
@@ -67,7 +72,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.postProxy("foo", "/my/cool/path", "{}", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
     }
 
     @Test
@@ -85,7 +90,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
     }
 
     @Test
@@ -152,8 +157,7 @@ public class ProxyWebClientTest {
         Mockito.when(client.execute(Mockito.argThat(request -> {
             if (request instanceof HttpPost) {
                 HttpPost post = (HttpPost) request;
-                return post.getFirstHeader("x-session-id") != null
-                    && "sess-abc-123".equals(post.getFirstHeader("x-session-id").getValue());
+                return post.getFirstHeader("x-session-id") != null && "sess-abc-123".equals(post.getFirstHeader("x-session-id").getValue());
             }
             return false;
         }))).thenReturn(response);
@@ -225,7 +229,7 @@ public class ProxyWebClientTest {
         params.put("site", List.of("bch"));
         Response actual = subject.postProxy("foo", "/my/cool/path", "{}", params, null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
     }
 
     @Test
@@ -241,7 +245,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
         // Small responses should be buffered as a byte array
         assertTrue(actual.getEntity() instanceof byte[]);
     }
@@ -260,7 +264,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
         // Large responses should use StreamingOutput for true chunked streaming
         assertTrue(actual.getEntity() instanceof StreamingOutput);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -282,7 +286,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
         // Unknown content length (-1) should use StreamingOutput to be safe
         assertTrue(actual.getEntity() instanceof StreamingOutput);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -304,7 +308,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
         assertEquals("application/json", actual.getMediaType().toString());
     }
 
@@ -322,7 +326,7 @@ public class ProxyWebClientTest {
 
         Response actual = subject.getProxy("bar", "/my/cool/path", new MultivaluedHashMap<>(), null);
 
-        Assert.assertEquals(200, actual.getStatus());
+        Assertions.assertEquals(200, actual.getStatus());
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, actual.getMediaType().toString());
     }
 }

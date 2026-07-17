@@ -2,16 +2,19 @@ package edu.harvard.dbmi.avillach.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.exception.ApplicationException;
 import edu.harvard.dbmi.avillach.util.exception.ProtocolException;
 import org.glassfish.jersey.internal.RuntimeDelegateImpl;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.RuntimeDelegate;
@@ -20,9 +23,14 @@ import java.util.Map;
 import java.util.UUID;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@RunWith(MockitoJUnitRunner.class)
+@MockitoSettings(strictness = Strictness.WARN)
+@ExtendWith(MockitoExtension.class)
 public class ResourceWebClientTest {
 
     private final static ObjectMapper json = new ObjectMapper();
@@ -31,10 +39,10 @@ public class ResourceWebClientTest {
     private final static String testURL = "http://localhost:" + port;
     private final ResourceWebClient cut = new ResourceWebClient();
 
-    @Rule
-    public WireMockClassRule wireMockRule = new WireMockClassRule(port);
+    @RegisterExtension
+    public WireMockExtension wireMockRule = WireMockExtension.newInstance().options(WireMockConfiguration.options().port(port)).build();
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() {
 
         // Need to be able to throw exceptions without container so we can verify correct errors are being thrown
@@ -83,7 +91,7 @@ public class ResourceWebClientTest {
         // Assuming everything goes right
         // queryRequest.setTargetURL(targetURL);
         ResourceInfo result = cut.info(testURL, queryRequest);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlEqualTo("/info")).willReturn(aResponse().withStatus(500)));
@@ -180,7 +188,7 @@ public class ResourceWebClientTest {
 
         // request.setTargetURL(targetURL);
         SearchResults result = cut.search(testURL, request);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlEqualTo("/search")).willReturn(aResponse().withStatus(500)));
@@ -254,7 +262,7 @@ public class ResourceWebClientTest {
 
         // Everything goes correctly
         QueryStatus result = cut.query(testURL, request);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlEqualTo("/query")).willReturn(aResponse().withStatus(500)));
@@ -286,7 +294,6 @@ public class ResourceWebClientTest {
     public void testQueryResult() throws JsonProcessingException {
         String testId = "230048";
         byte[] mockResult = new byte[] {};
-
 
 
         wireMockRule.stubFor(any(urlMatching("/query/.*/result")).willReturn(aResponse().withStatus(200).withBody(mockResult)));
@@ -332,10 +339,10 @@ public class ResourceWebClientTest {
 
         // Everything should work here
         Response result = cut.queryResult(testURL, testId, queryRequest);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
         // String resultContent = IOUtils.toString((InputStream) result.getEntity(), "UTF-8");
         byte[] resultContent = (byte[]) result.getEntity();
-        assertArrayEquals("Result should match " + mockResult, mockResult, resultContent);
+        assertArrayEquals(mockResult, resultContent, "Result should match " + mockResult);
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlMatching("/query/.*/result")).willReturn(aResponse().withStatus(500)));
@@ -396,17 +403,16 @@ public class ResourceWebClientTest {
         // }
 
 
-
         // queryRequest.setTargetURL(targetURL);
 
         // Everything should work here
         QueryStatus result = cut.queryStatus(testURL, testId, queryRequest);
-        assertNotNull("Result should not be null", result);
+        assertNotNull(result, "Result should not be null");
         // Make sure all necessary fields are present
-        assertNotNull("Duration should not be null", result.getDuration());
-        assertNotNull("Expiration should not be null", result.getExpiration());
-        assertNotNull("ResourceStatus should not be null", result.getResourceStatus());
-        assertNotNull("Status should not be null", result.getStatus());
+        assertNotNull(result.getDuration(), "Duration should not be null");
+        assertNotNull(result.getExpiration(), "Expiration should not be null");
+        assertNotNull(result.getResourceStatus(), "ResourceStatus should not be null");
+        assertNotNull(result.getStatus(), "Status should not be null");
 
         // What if the resource has a problem?
         wireMockRule.stubFor(any(urlMatching("/query/.*/status")).willReturn(aResponse().withStatus(500)));

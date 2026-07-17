@@ -3,13 +3,13 @@ package edu.harvard.hms.dbmi.avillach;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.client.WireMock;
-import com.github.tomakehurst.wiremock.junit.WireMockClassRule;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 
 /**
  * Prettier interface for mocking a http response. Only supports POST rn.
  */
 public class ProxyPostEndpointMocker {
-    private WireMockClassRule rule;
+    private WireMockExtension rule;
 
     private String responseBody;
 
@@ -20,7 +20,7 @@ public class ProxyPostEndpointMocker {
     private String path;
 
 
-    public static ProxyPostEndpointMocker start(WireMockClassRule rule) {
+    public static ProxyPostEndpointMocker start(WireMockExtension rule) {
         ProxyPostEndpointMocker mock = new ProxyPostEndpointMocker();
         mock.rule = rule;
         return mock;
@@ -47,12 +47,9 @@ public class ProxyPostEndpointMocker {
     }
 
     public void commit() {
-        rule.stubFor(WireMock.post(WireMock.urlEqualTo(path))
-            .withRequestBody(WireMock.equalToJson(requestBody))
-            .willReturn(WireMock.aResponse()
-                .withStatus(status)
-                .withBody(responseBody)
-            )
+        rule.stubFor(
+            WireMock.post(WireMock.urlEqualTo(path)).withRequestBody(WireMock.equalToJson(requestBody))
+                .willReturn(WireMock.aResponse().withStatus(status).withBody(responseBody))
         );
     }
 

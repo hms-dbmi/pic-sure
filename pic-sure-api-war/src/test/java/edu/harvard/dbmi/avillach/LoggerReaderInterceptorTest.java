@@ -6,56 +6,47 @@ import org.apache.cxf.message.Exchange;
 import org.apache.cxf.message.ExchangeImpl;
 import org.apache.cxf.message.Message;
 import org.apache.cxf.message.MessageImpl;
-import org.junit.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import javax.ws.rs.ext.ReaderInterceptorContext;
+
 import java.io.IOException;
+
+import org.junit.jupiter.api.Test;
 import java.io.InputStream;
 import java.util.HashMap;
 
 
 import org.apache.cxf.jaxrs.impl.ReaderInterceptorContextImpl;
 
-import static org.junit.Assert.*;
-
 public class LoggerReaderInterceptorTest {
 
     private LoggerReaderInterceptor cut = new LoggerReaderInterceptor();
 
     @Test
-    public void testCredentialsRedacted() throws IOException{
+    public void testCredentialsRedacted() throws IOException {
 
-        //Different pieces of a query
-        String resourceCredentials = "resourceCredentials\": " +
-                "{ \"IRCT_BEARER_TOKEN\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU\"}";
+        // Different pieces of a query
+        String resourceCredentials = "resourceCredentials\": "
+            + "{ \"IRCT_BEARER_TOKEN\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0fGF2bGJvdEBkYm1pLmhtcy5oYXJ2YXJkLmVkdSIsImVtYWlsIjoiYXZsYm90QGRibWkuaG1zLmhhcnZhcmQuZWR1In0.51TYsm-uw2VtI8aGawdggbGdCSrPJvjtvzafd2Ii9NU\"}";
 
-        String query = "query\": " +
-                "{  " +
-                "\"select\": [" +
-                "        {" +
-                "            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}" +
-                "        }," +
-                "        {" +
-                "            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}" +
-                "        }," +
-                "        {" +
-                "            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}" +
-                "        }" +
-                "    ]," +
-                "    \"where\": [  " +
-                "{   \"predicate\": \"CONTAINS\", " +
-                "\"field\": " +
-                "{  \"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male/\",  " +
-                "\"dataType\": \"STRING\" " +
-                "},  " +
-                "\"fields\": " +
-                "{ \"ENOUNTER\": \"YES\" } " +
-                "} ]" +
-                "}";
+        String query = "query\": " + "{  " + "\"select\": [" + "        {"
+            + "            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male\", \"dataType\":\"STRING\"}"
+            + "        }," + "        {"
+            + "            \"alias\": \"gender\", \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/SEX/female\", \"dataType\":\"STRING\"}"
+            + "        }," + "        {"
+            + "            \"alias\": \"age\",    \"field\": {\"pui\": \"/nhanes/Demo/demographics/demographics/AGE\", \"dataType\":\"STRING\"}"
+            + "        }" + "    ]," + "    \"where\": [  " + "{   \"predicate\": \"CONTAINS\", " + "\"field\": "
+            + "{  \"pui\": \"/nhanes/Demo/demographics/demographics/SEX/male/\",  " + "\"dataType\": \"STRING\" " + "},  " + "\"fields\": "
+            + "{ \"ENOUNTER\": \"YES\" } " + "} ]" + "}";
 
         String resourceUUID = "\"resourceUUID\" : \"{{resourceUUID}}\"";
 
-        //Assemble pieces into different test queries
+        // Assemble pieces into different test queries
         String order1 = "{ " + resourceUUID + "," + query + ", " + resourceCredentials + "}";
         String order2 = "{ " + query + "," + resourceCredentials + ", " + resourceUUID + "}";
         String credentialsOnly = "{" + resourceCredentials + "}";
@@ -63,18 +54,18 @@ public class LoggerReaderInterceptorTest {
         String nested2 = "{ " + resourceCredentials + "," + "query:" + nested1 + ", " + resourceUUID + "}";
 
 
-        //Mocking turned out to be a mess so let's just do this this dumb way
+        // Mocking turned out to be a mess so let's just do this this dumb way
         Message message = new MessageImpl();
         Exchange ex = new ExchangeImpl();
         ex.put("jaxrs.filter.properties", new HashMap<String, String>());
         message.setExchange(ex);
 
-        //Put the test string into a stream and stuff it in a context to test
+        // Put the test string into a stream and stuff it in a context to test
         InputStream stream = IOUtils.toInputStream(order1, "UTF-8");
-        ReaderInterceptorContext context = new ReaderInterceptorContextImpl(null, null, null, stream,message, null);
+        ReaderInterceptorContext context = new ReaderInterceptorContextImpl(null, null, null, stream, message, null);
         cut.aroundReadFrom(context);
 
-        //See if it's done what we want
+        // See if it's done what we want
         Object result = context.getProperty("requestContent");
         assertNotNull(result);
         String resultString = result.toString();
@@ -84,9 +75,9 @@ public class LoggerReaderInterceptorTest {
         assertFalse(resultString.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
         assertTrue(resultString.contains("RESOURCE_CREDENTIALS_REDACTED"));
 
-        //Make sure order isn't an issue
+        // Make sure order isn't an issue
         stream = IOUtils.toInputStream(order2, "UTF-8");
-        context = new ReaderInterceptorContextImpl(null, null, null, stream,message, null);
+        context = new ReaderInterceptorContextImpl(null, null, null, stream, message, null);
         cut.aroundReadFrom(context);
 
         result = context.getProperty("requestContent");
@@ -98,9 +89,9 @@ public class LoggerReaderInterceptorTest {
         assertFalse(resultString.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
         assertTrue(resultString.contains("RESOURCE_CREDENTIALS_REDACTED"));
 
-        //What if there's nothing in there but credentials
+        // What if there's nothing in there but credentials
         stream = IOUtils.toInputStream(credentialsOnly, "UTF-8");
-        context = new ReaderInterceptorContextImpl(null, null, null, stream,message, null);
+        context = new ReaderInterceptorContextImpl(null, null, null, stream, message, null);
         cut.aroundReadFrom(context);
 
         result = context.getProperty("requestContent");
@@ -112,9 +103,9 @@ public class LoggerReaderInterceptorTest {
         assertFalse(resultString.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"));
         assertTrue(resultString.contains("RESOURCE_CREDENTIALS_REDACTED"));
 
-        //What if it's nested?
+        // What if it's nested?
         stream = IOUtils.toInputStream(nested1, "UTF-8");
-        context = new ReaderInterceptorContextImpl(null, null, null, stream,message, null);
+        context = new ReaderInterceptorContextImpl(null, null, null, stream, message, null);
         cut.aroundReadFrom(context);
 
         result = context.getProperty("requestContent");
@@ -127,9 +118,9 @@ public class LoggerReaderInterceptorTest {
         assertTrue(resultString.contains("RESOURCE_CREDENTIALS_REDACTED"));
         assertEquals(2, StringUtils.countMatches(resultString, "RESOURCE_CREDENTIALS_REDACTED"));
 
-        //What if it's nested two layers deep??
+        // What if it's nested two layers deep??
         stream = IOUtils.toInputStream(nested2, "UTF-8");
-        context = new ReaderInterceptorContextImpl(null, null, null, stream,message, null);
+        context = new ReaderInterceptorContextImpl(null, null, null, stream, message, null);
         cut.aroundReadFrom(context);
 
         result = context.getProperty("requestContent");
