@@ -27,6 +27,9 @@ public final class LoggingEvent {
     @JsonProperty("client_type")
     private final String clientType;
 
+    @JsonProperty("caller")
+    private final String caller;
+
     @JsonProperty("session_id")
     private final String sessionId;
 
@@ -43,6 +46,7 @@ public final class LoggingEvent {
         this.eventType = builder.eventType;
         this.action = builder.action;
         this.clientType = builder.clientType;
+        this.caller = builder.caller;
         this.sessionId = builder.sessionId;
         this.request = builder.request;
         this.metadata = builder.metadata != null ? Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata)) : null;
@@ -55,6 +59,7 @@ public final class LoggingEvent {
         this.eventType = null;
         this.action = null;
         this.clientType = null;
+        this.caller = null;
         this.sessionId = null;
         this.request = null;
         this.metadata = null;
@@ -71,6 +76,10 @@ public final class LoggingEvent {
 
     public String getClientType() {
         return clientType;
+    }
+
+    public String getCaller() {
+        return caller;
     }
 
     public String getSessionId() {
@@ -106,6 +115,7 @@ public final class LoggingEvent {
         private final String eventType;
         private String action;
         private String clientType;
+        private String caller;
         private String sessionId;
         private RequestInfo request;
         private Map<String, Object> metadata;
@@ -122,6 +132,11 @@ public final class LoggingEvent {
 
         public Builder clientType(String clientType) {
             this.clientType = clientType;
+            return this;
+        }
+
+        public Builder caller(String caller) {
+            this.caller = caller;
             return this;
         }
 
@@ -161,13 +176,13 @@ public final class LoggingEvent {
      * apply config defaults.
      */
     LoggingEvent withClientType(String clientType) {
-        return LoggingEvent.builder(this.eventType).action(this.action).clientType(clientType).sessionId(this.sessionId)
+        return LoggingEvent.builder(this.eventType).action(this.action).clientType(clientType).caller(this.caller).sessionId(this.sessionId)
             .request(this.request).metadata(this.metadata).error(this.error).build();
     }
 
     @Override
     public String toString() {
-        return "LoggingEvent{eventType='" + eventType + "', action='" + action + "', clientType='" + clientType + "', sessionId='"
-            + sessionId + "'}";
+        return "LoggingEvent{eventType='" + eventType + "', action='" + action + "', clientType='" + clientType + "', caller='" + caller
+            + "', sessionId='" + sessionId + "'}";
     }
 }

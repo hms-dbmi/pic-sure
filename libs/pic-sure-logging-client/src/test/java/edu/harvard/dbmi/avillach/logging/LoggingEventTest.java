@@ -24,6 +24,14 @@ class LoggingEventTest {
     }
 
     @Test
+    void serializesCaller() {
+        LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").caller("PYTHON_ADAPTER").build();
+
+        JsonNode json = mapper.valueToTree(event);
+        assertEquals("PYTHON_ADAPTER", json.get("caller").asText());
+    }
+
+    @Test
     void omitsNullFields() {
         LoggingEvent event = LoggingEvent.builder("LOGIN").action("attempt").build();
 
@@ -31,6 +39,7 @@ class LoggingEventTest {
         assertTrue(json.has("event_type"));
         assertTrue(json.has("action"));
         assertFalse(json.has("client_type"));
+        assertFalse(json.has("caller"));
         assertFalse(json.has("request"));
         assertFalse(json.has("metadata"));
         assertFalse(json.has("error"));
@@ -131,7 +140,7 @@ class LoggingEventTest {
 
     @Test
     void deserializesFromServerFormat() throws Exception {
-        String json = "{\"event_type\":\"QUERY\",\"action\":\"execute\",\"client_type\":\"api\","
+        String json = "{\"event_type\":\"QUERY\",\"action\":\"execute\",\"client_type\":\"api\",\"caller\":\"PYTHON_ADAPTER\","
             + "\"request\":{\"method\":\"POST\",\"url\":\"/query\",\"src_ip\":\"127.0.0.1\",\"status\":200}}";
 
         LoggingEvent event = mapper.readValue(json, LoggingEvent.class);
@@ -139,6 +148,7 @@ class LoggingEventTest {
         assertEquals("QUERY", event.getEventType());
         assertEquals("execute", event.getAction());
         assertEquals("api", event.getClientType());
+        assertEquals("PYTHON_ADAPTER", event.getCaller());
         assertNotNull(event.getRequest());
         assertEquals("POST", event.getRequest().getMethod());
         assertEquals("/query", event.getRequest().getUrl());
@@ -200,6 +210,15 @@ class LoggingEventTest {
         LoggingEvent copy = original.withClientType("api");
 
         assertEquals("sess-123", copy.getSessionId());
+        assertEquals("api", copy.getClientType());
+    }
+
+    @Test
+    void withClientTypePreservesCaller() {
+        LoggingEvent original = LoggingEvent.builder("QUERY").action("execute").caller("PYTHON_ADAPTER").build();
+        LoggingEvent copy = original.withClientType("api");
+
+        assertEquals("PYTHON_ADAPTER", copy.getCaller());
         assertEquals("api", copy.getClientType());
     }
 
