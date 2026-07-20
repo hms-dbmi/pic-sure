@@ -36,7 +36,7 @@ class PsamaIntrospectionFilterTest {
 
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext ctx, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
-            client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
+            client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging")
         );
     }
 

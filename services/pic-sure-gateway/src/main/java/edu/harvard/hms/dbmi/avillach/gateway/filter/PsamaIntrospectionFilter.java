@@ -64,18 +64,15 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     private final ObjectMapper json;
     private final QueryAuthFetcher queryAuthFetcher;
     private final List<String> allowListPrefixes;
-    private final String userIdClaim;
 
     public PsamaIntrospectionFilter(
-        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, List<String> allowListPrefixes,
-        String userIdClaim
+        PsamaClient psama, AuditContext audit, ObjectMapper json, QueryAuthFetcher queryAuthFetcher, List<String> allowListPrefixes
     ) {
         this.psama = psama;
         this.audit = audit;
         this.json = json;
         this.queryAuthFetcher = queryAuthFetcher;
         this.allowListPrefixes = List.copyOf(allowListPrefixes);
-        this.userIdClaim = userIdClaim;
     }
 
     @Override
