@@ -41,7 +41,7 @@ public class QueryPersistenceService {
     @Transactional
     public UUID save(SaveQueryRequest req) {
         Query entity = new Query();
-        entity.setQuery(req.query());
+        entity.setQuery(stripResourceCredentials(req.query()));
         entity.setResourceResultId(req.resourceResultId());
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
@@ -99,9 +99,30 @@ public class QueryPersistenceService {
 
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
-            entity.getUuid(), entity.getQuery(), entity.getResourceResultId(),
+            entity.getUuid(), stripResourceCredentials(entity.getQuery()), entity.getResourceResultId(),
             entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata())
         );
+    }
+
+    /**
+     * SECURITY: {@code resourceCredentials} must never be persisted (writers now strip before sending) nor returned to any internal reader
+     * -- this covers rows stored before writers stripped. Bodies without the field pass through byte-identical; malformed JSON passes
+     * through unchanged (it cannot carry a parseable credentials field, and dispatch already nulls it).
+     */
+    private static String stripResourceCredentials(String json) {
+        if (json == null || json.isBlank()) {
+            return json;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(json);
+            if (node instanceof ObjectNode obj && obj.has("resourceCredentials")) {
+                obj.remove("resourceCredentials");
+                return MAPPER.writeValueAsString(node);
+            }
+            return json;
+        } catch (JsonProcessingException e) {
+            return json;
+        }
     }
 
     private static PicSureStatus parseStatus(String status) {

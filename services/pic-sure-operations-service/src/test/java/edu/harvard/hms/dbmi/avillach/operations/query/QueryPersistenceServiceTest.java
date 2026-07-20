@@ -86,6 +86,32 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
+    void saveStripsResourceCredentialsBeforePersisting() {
+        UUID picsureId = service.save(
+            new SaveQueryRequest(
+                "{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}", null, "QUEUED", null, null
+            )
+        );
+        entityManager.flush();
+        entityManager.clear();
+
+        Query entity = repo.findById(picsureId).orElseThrow();
+        assertThat(entity.getQuery()).doesNotContain("resourceCredentials").doesNotContain("secret").contains("\"query\":\"q\"");
+    }
+
+    @Test
+    void getStripsResourceCredentialsFromRowsStoredBeforeWritersStripped() {
+        Query legacy = new Query();
+        legacy.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
+        UUID picsureId = repo.save(legacy).getUuid();
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery stored = service.get(picsureId);
+        assertThat(stored.query()).doesNotContain("resourceCredentials").doesNotContain("secret").contains("\"query\":\"q\"");
+    }
+
+    @Test
     void dispatchStripsResourceCredentialsAndReturnsAString() {
         UUID picsureId = service.save(
             new SaveQueryRequest(

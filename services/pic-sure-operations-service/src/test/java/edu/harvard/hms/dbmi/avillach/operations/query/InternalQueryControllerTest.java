@@ -116,6 +116,20 @@ class InternalQueryControllerTest {
     }
 
     @Test
+    void getStripsResourceCredentialsLikeDispatchDoes() throws Exception {
+        // the full GET must not be a credential side door around dispatch's stripping
+        Query saved = new Query();
+        saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
+        saved = queryRepo.save(saved);
+
+        mockMvc.perform(get("/internal/queries/{picsureId}", saved.getUuid()).header(InternalTokenFilter.HEADER, validToken))
+            .andExpect(status().isOk()).andExpect(
+                result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain("secret")
+                    .doesNotContain("resourceCredentials")
+            );
+    }
+
+    @Test
     void dispatchReturnsQueryJsonWithResourceCredentialsStripped() throws Exception {
         Query saved = new Query();
         saved.setQuery("{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}");
