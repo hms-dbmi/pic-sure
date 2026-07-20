@@ -94,6 +94,13 @@ public class QueryTranslator {
         return groups;
     }
 
+    /**
+     * Expands a v1 any-record-of list into one {@code ANY_RECORD_OF} filter per path, OR'd together, rather than collapsing the list to a
+     * single "highest level" concept path. Collapsing (suggested in review, since v3 HPDS matches all concepts below an ANY_RECORD_OF path)
+     * is only equivalent when the list happens to be an ancestor plus its own descendants; v1 lists can contain unrelated branches, where a
+     * single-path collapse would change results. The full expansion is faithful in both cases, at the cost of some redundancy in the
+     * ancestor+descendants case.
+     */
     private static PhenotypicClause anyRecordOfClause(List<String> paths) {
         List<PhenotypicClause> filters = new ArrayList<>();
         for (String path : paths) {
