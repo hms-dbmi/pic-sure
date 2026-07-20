@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.operations.query;
 
+import java.sql.Date;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -46,6 +47,7 @@ public class QueryPersistenceService {
         entity.setStatus(parseStatus(req.status()));
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
+        entity.setStartTime(new Date(System.currentTimeMillis())); // server-owned, like the legacy WAR's create path
         return repo.save(entity).getUuid();
     }
 
@@ -58,7 +60,11 @@ public class QueryPersistenceService {
     public void update(UUID picsureId, UpdateQueryRequest req) {
         Query entity = load(picsureId);
         if (req.status() != null) {
-            entity.setStatus(parseStatus(req.status()));
+            PicSureStatus newStatus = parseStatus(req.status());
+            if (newStatus == PicSureStatus.AVAILABLE && entity.getReadyTime() == null) {
+                entity.setReadyTime(new Date(System.currentTimeMillis())); // first AVAILABLE transition, like the legacy WAR
+            }
+            entity.setStatus(newStatus);
         }
         if (req.resourceResultId() != null) {
             entity.setResourceResultId(req.resourceResultId());
@@ -100,8 +106,13 @@ public class QueryPersistenceService {
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
             entity.getUuid(), stripResourceCredentials(entity.getQuery()), entity.getResourceResultId(),
-            entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata())
+            entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata()),
+            toEpochMillis(entity.getStartTime()), toEpochMillis(entity.getReadyTime())
         );
+    }
+
+    private static Long toEpochMillis(Date date) {
+        return date == null ? null : date.getTime();
     }
 
     /**

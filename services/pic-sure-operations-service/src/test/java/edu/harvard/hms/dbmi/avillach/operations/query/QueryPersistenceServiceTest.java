@@ -86,6 +86,47 @@ class QueryPersistenceServiceTest {
     }
 
     @Test
+    void saveStampsStartTimeAndFirstAvailableTransitionStampsReadyTime() {
+        UUID picsureId = service.save(new SaveQueryRequest("{}", null, "QUEUED", null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery afterSave = service.get(picsureId);
+        assertThat(afterSave.startTime()).isNotNull();
+        assertThat(afterSave.readyTime()).isNull();
+
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery ready = service.get(picsureId);
+        assertThat(ready.startTime()).isEqualTo(afterSave.startTime());
+        assertThat(ready.readyTime()).isNotNull();
+
+        // a later status update must not move the original readyTime
+        service.update(picsureId, new UpdateQueryRequest("AVAILABLE", "rr-later", null));
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(service.get(picsureId).readyTime()).isEqualTo(ready.readyTime());
+    }
+
+    @Test
+    void timingFieldsOnMigratedRowsRoundTripThroughGet() {
+        // rows migrated from the legacy schema already carry timing; the internal API must return it
+        Query legacy = new Query();
+        legacy.setQuery("{}");
+        legacy.setStartTime(java.sql.Date.valueOf("2024-01-02"));
+        legacy.setReadyTime(java.sql.Date.valueOf("2024-01-03"));
+        UUID picsureId = repo.save(legacy).getUuid();
+        entityManager.flush();
+        entityManager.clear();
+
+        StoredQuery stored = service.get(picsureId);
+        assertThat(stored.startTime()).isEqualTo(java.sql.Date.valueOf("2024-01-02").getTime());
+        assertThat(stored.readyTime()).isEqualTo(java.sql.Date.valueOf("2024-01-03").getTime());
+    }
+
+    @Test
     void saveStripsResourceCredentialsBeforePersisting() {
         UUID picsureId = service.save(
             new SaveQueryRequest(
