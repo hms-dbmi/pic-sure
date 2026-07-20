@@ -109,6 +109,43 @@ class AuditLoggingFilterTest {
         assertThat(event.getRequest().getReferrer()).isEqualTo("https://picsure.example.org/explore");
     }
 
+    void srcIpIsTheRightmostXffEntrySoAClientSuppliedLeadingEntryIsNeverUsed() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        // A client can send its own X-Forwarded-For; the trusted front proxy APPENDS the address it
+        // actually saw, so only the rightmost entry is trustworthy.
+        request.addHeader("X-Forwarded-For", "6.6.6.6, 203.0.113.9");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("203.0.113.9");
+    }
+
+    @Test
+    void srcIpFallsBackToRemoteAddrWithoutAnXffHeader() throws Exception {
+        LoggingClient client = mock(LoggingClient.class);
+        when(client.isEnabled()).thenReturn(true);
+        AuditLoggingFilter filter = new AuditLoggingFilter(client, routes, new AuditContext(), List.of());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/query/sync");
+        request.setRemoteAddr("192.0.2.44");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        ArgumentCaptor<LoggingEvent> eventCaptor = ArgumentCaptor.forClass(LoggingEvent.class);
+        verify(client, times(1)).send(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRequest().getSrcIp()).isEqualTo("192.0.2.44");
+    }
+
     @Test
     void doesNotEmitWhenTheRequestIsSkipped() throws Exception {
         LoggingClient client = mock(LoggingClient.class);

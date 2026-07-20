@@ -18,15 +18,18 @@ import jakarta.servlet.http.HttpServletResponse;
 /**
  * Defense-in-depth, registered UNCONDITIONALLY (see {@code ObservabilityConfig}): strips the five gateway-owned {@code X-User-*} identity
  * headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) and
- * {@link GatewayUserResolver#HEADER_ACCESS_TYPE} from every inbound CLIENT request before anything downstream -- routing, the auth chain,
- * or the WildFly proxy -- can ever see a client-supplied value. <p>
- * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides these headers from the client, but this
- * filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed, misconfigured, or WildFly is
- * nonetheless configured to trust these headers directly from the gateway (its {@code GatewayHeaderFilter}), a client's own
- * {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing hole.
- * This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at
- * {@link org.springframework.core.Ordered#HIGHEST_PRECEDENCE} {@code + 2}: right after the commons {@code RequestIdFilter} (+0) and
- * {@code AccessLogFilter} (+1), and before the DB-free auth chain (order 10+).
+ * {@link GatewayUserResolver#HEADER_ACCESS_TYPE}, the spoofable source-address headers {@code X-Real-IP} and {@code Forwarded}, and the
+ * service-to-service {@code X-PIC-SURE-INTERNAL-TOKEN} (a client-presented internal token must never transit the gateway) from every
+ * inbound CLIENT request before anything downstream -- routing, the auth chain, or proxied services -- can ever see a client-supplied
+ * value. <p> {@code X-Forwarded-For} is deliberately NOT stripped: the trusted front proxy legitimately appends to it, and consumers
+ * ({@code AuditLoggingFilter}) take the RIGHTMOST entry -- the nearest trusted hop -- rather than the client-forgeable leftmost one.
+ * {@code X-Session-Id}, {@code X-Client-Type}, and {@code request-source} are also deliberately left unstripped: they are intentionally
+ * client-supplied telemetry, never authorization inputs. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter}
+ * already hides the identity headers from the client, but this filter exists as an independent trust boundary: even if the DB-free auth
+ * chain were ever bypassed or misconfigured, a client's own {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through
+ * untouched -- that would be an identity/privilege-spoofing hole. This filter closes that hole unconditionally, independent of anything the
+ * auth chain does. <p> Runs at {@link org.springframework.core.Ordered#HIGHEST_PRECEDENCE} {@code + 2}: right after the commons
+ * {@code RequestIdFilter} (+0) and {@code AccessLogFilter} (+1), and before the DB-free auth chain (order 10+).
  * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} (order 50) still runs afterward and sets the
  * gateway-resolved values on its own wrapper, which never falls through to the (already-sanitized) client request for these names -- so
  * normal propagation of resolved identity is unaffected by this filter running first.
@@ -41,10 +44,14 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
 
     static class SanitizedIdentityHeadersRequest extends HttpServletRequestWrapper {
 
-        /** Gateway-owned identity headers: always hidden from the raw client request, regardless of name casing. */
+        /**
+         * Gateway-owned identity headers, spoofable source-address headers, and the internal service token: always hidden from the raw
+         * client request, regardless of name casing.
+         */
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
-            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, GatewayUserResolver.HEADER_ACCESS_TYPE
+            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, "X-Real-IP", "Forwarded",
+            "X-PIC-SURE-INTERNAL-TOKEN", GatewayUserResolver.HEADER_ACCESS_TYPE
         );
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {
