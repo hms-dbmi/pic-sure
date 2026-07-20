@@ -225,6 +225,13 @@ public class AuthorizationService {
 
                     // This is an HPDS query inside a PIC-SURE query
                     Map queryMap = (Map) ((Map) requestBody).get("query");
+                    if (queryMap == null) {
+                        // Non-query request bodies (e.g. {Target Service=/operations/...}) carry no
+                        // query for a consent rule to evaluate: deny by this rule rather than NPE
+                        // into a 500, which the gateway would surface as a 502.
+                        failedRules.add(accessRule);
+                        continue;
+                    }
                     Object queryObject = queryMap.get("query");
                     Query query;
 
