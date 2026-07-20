@@ -21,6 +21,17 @@ public class UserClaims {
     private String era_commons_id;
     private String preferred_username;
     private String user_permission_group;
+    // Replaces federated_identities_ial2 for our team.
+    // See: NIH-Auth-Services/CIT-IAM-RAS/issues/564
+    private String user_mapping_id;
+
+    public String getUser_mapping_id() {
+        return user_mapping_id;
+    }
+
+    public void setUser_mapping_id(String user_mapping_id) {
+        this.user_mapping_id = user_mapping_id;
+    }
 
     public String getUuid() {
         return uuid;
@@ -101,7 +112,7 @@ public class UserClaims {
     public void setUser_permission_group(String user_permission_group) {
         this.user_permission_group = user_permission_group;
     }
-    
+
     public HashMap<String, Object> toHashMap() {
         HashMap<String, Object> map = new HashMap<>();
         if (uuid != null) map.put("uuid", uuid);

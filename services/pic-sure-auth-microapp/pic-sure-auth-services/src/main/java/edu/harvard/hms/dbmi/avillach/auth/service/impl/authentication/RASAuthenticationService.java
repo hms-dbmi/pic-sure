@@ -39,24 +39,20 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     /**
      * Constructor for the RASAuthenticationService
      *
-     * @param userService      The user service
+     * @param userService The user service
      * @param idp_provider_uri The IDP provider URI
-     * @param connectionId     The connection ID
-     * @param clientId         The client ID
-     * @param clientSecret     The client secret
+     * @param connectionId The connection ID
+     * @param clientId The client ID
+     * @param clientSecret The client secret
      */
     @Autowired
-    public RASAuthenticationService(UserService userService,
-                                    RestClientUtil restClientUtil,
-                                    @Value("${ras.okta.idp.provider.is.enabled}") boolean isEnabled,
-                                    @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri,
-                                    @Value("${ras.okta.connection.id}") String connectionId,
-                                    @Value("${ras.okta.client.id}") String clientId,
-                                    @Value("${ras.okta.client.secret}") String clientSecret,
-                                    @Value("${ras.passport.issuer}") String rasPassportIssuer,
-                                    RoleService roleService,
-                                    RASPassPortService rasPassPortService,
-                                    ConnectionWebService connectionService, CacheEvictionService cacheEvictionService) {
+    public RASAuthenticationService(
+        UserService userService, RestClientUtil restClientUtil, @Value("${ras.okta.idp.provider.is.enabled}") boolean isEnabled,
+        @Value("${ras.okta.idp.provider.uri}") String idp_provider_uri, @Value("${ras.okta.connection.id}") String connectionId,
+        @Value("${ras.okta.client.id}") String clientId, @Value("${ras.okta.client.secret}") String clientSecret,
+        @Value("${ras.passport.issuer}") String rasPassportIssuer, RoleService roleService, RASPassPortService rasPassPortService,
+        ConnectionWebService connectionService, CacheEvictionService cacheEvictionService
+    ) {
         super(idp_provider_uri, clientId, clientSecret, restClientUtil);
 
         this.userService = userService;
@@ -75,11 +71,10 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     }
 
     /**
-     * Authenticate the user using the code provided by the IDP. This code is exchanged for an access token.
-     * The access token is then used to introspect the user. The user is then loaded from the database.
-     * If the user does not exist, we will reject their login attempt.
+     * Authenticate the user using the code provided by the IDP. This code is exchanged for an access token. The access token is then used
+     * to introspect the user. The user is then loaded from the database. If the user does not exist, we will reject their login attempt.
      *
-     * @param host        The host of the request
+     * @param host The host of the request
      * @param authRequest The request body
      * @return The response from the authentication attempt
      */
@@ -97,13 +92,19 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         if (introspectResponse == null) {
-            logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse, authRequest.get("code"));
+            logger.info(
+                "LOGIN FAILED ___ USER NOT AUTHENTICATED ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
+                authRequest.get("code")
+            );
             return null;
         }
 
         Optional<User> initializedUser = initializeUser(introspectResponse);
         if (initializedUser.isEmpty()) {
-            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse, authRequest.get("code"));
+            logger.info(
+                "LOGIN FAILED ___ COULD NOT CREATE USER ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
+                authRequest.get("code")
+            );
             return null;
         }
 
@@ -117,10 +118,12 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
         if (responseMap != null) {
             responseMap.put("oktaIdToken", idToken);
-            logger.info("LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
-                    user.getSubject(), user.getUuid().toString(),
-                    user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                    responseMap.get("expirationDate"), authRequest.get("code"));
+            logger.info(
+                "LOGIN SUCCESS ___ USER {}:{} ___ WITH ROLES ___ {} ___ AUTHORIZATION WILL EXPIRE AT  ___ {} ___ CODE {}",
+                user.getSubject(), user.getUuid().toString(),
+                user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
+                responseMap.get("expirationDate"), authRequest.get("code")
+            );
         }
 
         return responseMap;
@@ -134,14 +137,19 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         if (rasPassPortService.isExpired(rasPassport.get())) {
-            logger.error("validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(), authRequest.get("code"));
+            logger.error(
+                "validateRASPassport() LOGIN FAILED ___ PASSPORT IS EXPIRED ___ USER: {} ___ CODE {}", user.getSubject(),
+                authRequest.get("code")
+            );
             return Optional.empty();
         }
 
         if (!rasPassport.get().getIss().equals(this.rasPassportIssuer)) {
-            logger.error("validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ " +
-                         "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
-                    user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code"));
+            logger.error(
+                "validateRASPassport() LOGIN FAILED ___ PASSPORT ISSUER IS NOT CORRECT ___ USER: {} ___ "
+                    + "EXPECTED ISSUER {} ___ ACTUAL ISSUER {} ___ CODE {}",
+                user.getSubject(), this.rasPassportIssuer, rasPassport.get().getIss(), authRequest.get("code")
+            );
             return Optional.empty();
         }
         return rasPassport;
@@ -149,18 +157,19 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
 
     protected User updateRasUserRoles(String code, User user, Passport rasPassport) {
         logger.info("RAS PASSPORT FOUND ___ USER: {} ___ PASSPORT: {} ___ CODE {}", user.getSubject(), rasPassport, code);
-        Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1).filter(Optional::isPresent).collect(Collectors.toSet());
+        Set<Optional<Ga4ghPassportV1>> ga4ghPassports = rasPassport.getGa4ghPassportV1().stream().map(JWTUtil::parseGa4ghPassportV1)
+            .filter(Optional::isPresent).collect(Collectors.toSet());
         Set<RasDbgapPermission> dbgapPermissions = this.rasPassPortService.ga4ghPassportToRasDbgapPermissions(ga4ghPassports);
         Set<String> dbgapRoleNames = this.roleService.getRoleNamesForDbgapPermissions(dbgapPermissions);
         user = userService.updateUserRoles(user, dbgapRoleNames);
 
         Set<String> userConsentStrings = dbgapPermissions.stream()
-                .map(permission -> permission.getPhsId() + "." + permission.getConsentGroup()).collect(Collectors.toSet());
+            .map(permission -> permission.getPhsId() + "." + permission.getConsentGroup()).collect(Collectors.toSet());
         user = userService.updateUserConsents(user, userConsentStrings);
-        logger.debug("USER {} ROLES UPDATED {} ___ CODE {}",
-                user.getSubject(),
-                user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).toArray(),
-                code);
+        logger.debug(
+            "USER {} ROLES UPDATED {} ___ CODE {}", user.getSubject(),
+            user.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).toArray(), code
+        );
         return user;
     }
 
@@ -182,9 +191,9 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     /**
      * Create user claims to return to the client
      *
-     * @param user               The user
+     * @param user The user
      * @param introspectResponse The OKTA introspect response
-     * @param rasPassport        The RAS passport
+     * @param rasPassport The RAS passport
      * @return The user claims as a HashMap
      */
     private UserClaims buildUserClaims(User user, JsonNode introspectResponse, Passport rasPassport) {
@@ -198,6 +207,10 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         userClaims.setPreferred_username(introspectResponse.get("preferred_username").asText());
         userClaims.setUser_permission_group(extractPermissionGroupFromPassport(rasPassport));
         userClaims.setRoles(userService.addRoleClaims(user));
+
+        if (introspectResponse.has("user_mapping_id") && !introspectResponse.get("user_mapping_id").isNull()) {
+            userClaims.setUser_mapping_id(introspectResponse.get("user_mapping_id").asText());
+        }
 
         return userClaims;
     }
@@ -219,8 +232,8 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     }
 
     /**
-     * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's
-     * role and other information.
+     * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's role and other
+     * information.
      *
      * @param user The user
      * @return The user metadata as an ObjectNode
