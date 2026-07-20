@@ -5,11 +5,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.operations.error.PicsureExceptions;
 
 /**
  * Ports the legacy WildFly {@code ConfigurationService}. Preserved behaviors: (1) UUID-or-name lookup ({@link #getByIdentifier(String)}) --
@@ -107,13 +107,12 @@ public class ConfigurationService {
         return repo.findByName(identifier).stream().findFirst();
     }
 
+    /** Delegates to the shared {@link PicsureExceptions} factories; only the entity-specific message text lives here. */
     private static PicsureException notFound(String identifier) {
-        return new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Configuration " + identifier + " not found");
+        return PicsureExceptions.notFound("Configuration", identifier);
     }
 
     private static PicsureException conflict(String name, String kind) {
-        return new PicsureException(
-            HttpStatus.CONFLICT, "conflict", "A configuration with name '" + name + "' and kind '" + kind + "' already exists"
-        );
+        return PicsureExceptions.conflict("A configuration with name '" + name + "' and kind '" + kind + "' already exists");
     }
 }
