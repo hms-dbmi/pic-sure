@@ -22,9 +22,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 
 /**
  * Translates a legacy (v1) {@link edu.harvard.hms.dbmi.avillach.hpds.data.query.Query} into the v3 {@link Query} shape. Pure function, no
- * I/O. Faithful to v1 semantics: each any-record-of list is an OR of its paths, and the whole query is an AND of every filter family.
- * Multiple non-empty {@code variantInfoFilters} groups (an OR the flat v3 genomic list cannot express) raise
- * {@link UntranslatableQueryException} rather than being silently merged.
+ * I/O. Preserves the v1 boolean structure: each any-record-of group is an OR of its paths, and the whole query is an AND of every filter
+ * family. One deliberate semantic deviation: any-record-of paths adopt v3 subtree matching (every concept whose path starts with the filter
+ * path), where v1 matched each path as an exact concept lookup, so a non-leaf path now matches its descendants too. Multiple non-empty
+ * {@code variantInfoFilters} groups (an OR the flat v3 genomic list cannot express) raise {@link UntranslatableQueryException} rather than
+ * being silently merged.
  */
 public class QueryTranslator {
 
