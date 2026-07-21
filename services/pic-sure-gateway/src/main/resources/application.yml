@@ -126,7 +126,13 @@ picsure:
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
       query-service-url: ${HPDS_QUERY_SERVICE_URL:}
-      operations-service-url: ${OPERATIONS_SERVICE_URL:}
+      # Same default as the /operations route uri above (and the aio deep-health downstream): this is a
+      # non-secret internal DNS name, not an env-specific secret. It MUST NOT default to empty -- it is the
+      # base URL QueryAuthFetcher GETs for /query/{id}/result and /signed-url authorization, and an empty
+      # value yields a relative URI whose IllegalArgumentException ("URI with undefined scheme") is not a
+      # RestClientException, so it escapes QueryAuthFetcher's fail-closed catches AND the gateway's
+      # PicsureException-only advice, surfacing as a bare 500 on downloads alone.
+      operations-service-url: ${OPERATIONS_SERVICE_URL:http://pic-sure-operations-service:8080}
       query-service-internal-token: ${QUERY_SERVICE_INTERNAL_TOKEN:}
       # Allowed list of prefixes that do not require authentication. The logging service has its own access key
       # for security. The other paths are publicly available.
