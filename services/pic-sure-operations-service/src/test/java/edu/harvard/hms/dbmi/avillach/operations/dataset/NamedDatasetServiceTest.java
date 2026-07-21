@@ -87,7 +87,7 @@ class NamedDatasetServiceTest {
         NamedDatasetDto dto = service.create("alice@example.com", req);
 
         assertThat(dto.name()).isEqualTo("d2");
-        assertThat(dto.queryId()).isEqualTo(queryId);
+        assertThat(dto.query().uuid()).isEqualTo(queryId);
     }
 
     @Test
@@ -162,7 +162,7 @@ class NamedDatasetServiceTest {
         NamedDatasetRequestDto req = new NamedDatasetRequestDto(newQueryId, "d1", false, null);
         NamedDatasetDto dto = service.update("alice@example.com", id, req);
 
-        assertThat(dto.queryId()).isEqualTo(newQueryId);
+        assertThat(dto.query().uuid()).isEqualTo(newQueryId);
     }
 
     @Test

@@ -405,6 +405,37 @@ class PsamaIntrospectionFilterTest {
         assertThat(f.shouldNotFilter(req)).isFalse();
     }
 
+    /**
+     * A dispatch failure that is NOT a PicsureException must still deny with a shaped body. This is the exact production shape of an unset
+     * OPERATIONS_SERVICE_URL: QueryAuthFetcher only converts RestClientException subtypes, so RestClient's IllegalArgumentException("URI
+     * with undefined scheme") used to escape the filter entirely -- and because a servlet filter's exceptions never reach Spring MVC's
+     * exception resolvers, it surfaced as Boot's unshaped 500 on downloads alone.
+     */
+    @Test
+    void deniesWithShapedBodyWhenDispatchFailsWithANonPicsureException() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenThrow(new IllegalArgumentException("URI with undefined scheme"));
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req =
+            wrap("Bearer user-token", "{}".getBytes(), "/hpds/auth/v3/query/47a6655a-5e2a-4785-ac8e-e0f7e41c718f/result");
+        StringWriter written = new StringWriter();
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(new PrintWriter(written, true));
+        FilterChain chain = mock(FilterChain.class);
+
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(502);
+        assertThat(written.toString()).contains("\"errorType\":\"dispatch_failed\"");
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "dispatch_failed");
+        // Fail closed: the request must never reach the downstream route, and PSAMA is never consulted.
+        verify(chain, never()).doFilter(any(), any());
+        verifyNoInteractions(client);
+    }
+
     private static BufferedRequestWrapper wrap(String authHeader, byte[] body, String uri) {
         return wrap(authHeader, body, uri, "POST");
     }

@@ -13,9 +13,6 @@ public record GatewaySecurityProperties(
     List<String> allowListPrefixes, boolean openAccessEnabled, String userIdClaim,
     // GATEWAY_AUTH_MAX_BODY_BYTES -- auth-buffering cap; 413 over it
     int maxBodyBytes, String introspectionUrl, String openAccessValidateUrl, String serviceToken,
-    // HPDS_QUERY_SERVICE_URL -- no longer read by QueryAuthFetcher (dispatch now points at operationsServiceUrl
-    // below), kept because the same env var also feeds the /hpds/** route and query-service health entry.
-    String queryServiceUrl,
     // OPERATIONS_SERVICE_URL -- for QueryAuthFetcher dispatch (dispatch lives on operations-service,
     // the sole DB owner)
     String operationsServiceUrl,
