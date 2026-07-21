@@ -13,8 +13,16 @@ import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 public class NamedDatasetMapper {
 
     public NamedDatasetDto toDto(NamedDataset e) {
-        return new NamedDatasetDto(
-            e.getUuid(), e.getName(), e.getQuery() == null ? null : e.getQuery().getUuid(), e.getArchived(), e.getMetadata()
+        return new NamedDatasetDto(e.getUuid(), e.getUser(), e.getName(), toQueryDto(e.getQuery()), e.getArchived(), e.getMetadata());
+    }
+
+    /** {@code startTime} is converted to epoch millis here -- see {@link NamedDatasetQueryDto} for why the wire type is a number. */
+    private NamedDatasetQueryDto toQueryDto(Query q) {
+        if (q == null) {
+            return null;
+        }
+        return new NamedDatasetQueryDto(
+            q.getUuid(), q.getQuery(), q.getStartTime() == null ? null : q.getStartTime().getTime(), q.getStatus()
         );
     }
 
