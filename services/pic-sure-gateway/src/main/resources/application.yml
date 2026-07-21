@@ -125,7 +125,6 @@ picsure:
       introspection-url: ${TOKEN_INTROSPECTION_URL:}
       open-access-validate-url: ${OPEN_ACCESS_VALIDATE_URL:}
       service-token: ${TOKEN_INTROSPECTION_TOKEN:}
-      query-service-url: ${HPDS_QUERY_SERVICE_URL:}
       # Same default as the /operations route uri above (and the aio deep-health downstream): this is a
       # non-secret internal DNS name, not an env-specific secret. It MUST NOT default to empty -- it is the
       # base URL QueryAuthFetcher GETs for /query/{id}/result and /signed-url authorization, and an empty
