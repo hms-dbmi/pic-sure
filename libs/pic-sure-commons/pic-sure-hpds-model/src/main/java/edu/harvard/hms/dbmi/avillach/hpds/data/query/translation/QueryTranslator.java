@@ -95,21 +95,34 @@ public class QueryTranslator {
     }
 
     /**
-     * Expands a v1 any-record-of list into one {@code ANY_RECORD_OF} filter per path, OR'd together, rather than collapsing the list to a
-     * single "highest level" concept path. Collapsing (suggested in review, since v3 HPDS matches all concepts below an ANY_RECORD_OF path)
-     * is only equivalent when the list happens to be an ancestor plus its own descendants; v1 lists can contain unrelated branches, where a
-     * single-path collapse would change results. The full expansion is faithful in both cases, at the cost of some redundancy in the
-     * ancestor+descendants case.
+     * Emits one {@code ANY_RECORD_OF} filter per maximal path in the group, OR'd together (adopted from review, ramari16 on PR #265). v3
+     * HPDS evaluates {@code ANY_RECORD_OF} by matching every concept whose path starts with the filter path, so a path that starts with
+     * another listed path matches a subset of what that other path matches and can be dropped without changing the result. An ancestor plus
+     * its own descendants collapses to just the ancestor; unrelated branches all survive. Domination is the same raw
+     * {@link String#startsWith} relation the v3 evaluator uses, which keeps the collapse exact even where string prefix and path-segment
+     * ancestry disagree.
      */
     private static PhenotypicClause anyRecordOfClause(List<String> paths) {
         List<PhenotypicClause> filters = new ArrayList<>();
-        for (String path : paths) {
+        for (String path : maximalPrefixes(paths)) {
             filters.add(new PhenotypicFilter(PhenotypicFilterType.ANY_RECORD_OF, path, null, null, null, false));
         }
         if (filters.size() == 1) {
             return filters.get(0);
         }
         return new PhenotypicSubquery(false, filters, Operator.OR);
+    }
+
+    private static List<String> maximalPrefixes(List<String> paths) {
+        LinkedHashSet<String> distinct = new LinkedHashSet<>(paths);
+        List<String> maximal = new ArrayList<>();
+        for (String path : distinct) {
+            boolean dominated = distinct.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other));
+            if (!dominated) {
+                maximal.add(path);
+            }
+        }
+        return maximal;
     }
 
     private static List<GenomicFilter> buildGenomicFilters(edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1)
