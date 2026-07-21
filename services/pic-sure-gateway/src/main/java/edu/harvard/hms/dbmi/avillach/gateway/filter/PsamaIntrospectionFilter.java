@@ -154,6 +154,19 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
             // QueryAuthFetcher fail-closed: honest status + additive error body.
             mapPicsureException(resp, e);
             return;
+        } catch (Exception e) {
+            // Same posture as the introspect call below. QueryAuthFetcher documents "ANY error denies the
+            // request", but it only converts RestClientException subtypes -- a misconfigured dispatch base URL
+            // raises IllegalArgumentException("URI with undefined scheme"), which is neither that nor a
+            // PicsureException. Nothing downstream can catch it either: an exception thrown in a servlet filter
+            // never reaches Spring MVC's exception resolvers, so without this it escapes to Boot's unshaped
+            // {timestamp,status,error,path} 500 -- which is how an empty OPERATIONS_SERVICE_URL presented as
+            // "downloads are broken" with the cause nowhere in the response.
+            log.error("Query dispatch failed for {}", path, e);
+            audit.put("auth_result", "failure");
+            audit.put("auth_failure_reason", "dispatch_failed");
+            GatewayErrors.write(resp, HttpStatus.BAD_GATEWAY, "dispatch_failed", "Query authorization lookup failed.");
+            return;
         }
 
         IntrospectionResponse intro;
