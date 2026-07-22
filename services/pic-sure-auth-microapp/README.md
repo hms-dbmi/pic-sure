@@ -40,20 +40,7 @@ These are the terms of service.
 </script>
 ```
 
-#### Email templates configuration
-
-PSAMA has mechanism of sending various emails to the users and admins depending of the action.
-MailService.class is responsible for compiling Mustache templates and populating it with required information based on parameters. There are few settings configured in standalone.xml for that.
-
-Email Template Path is where email templates could be stored, so that it can be configured per stack if needed.
-```
-<simple name="java:global/templatePath" value="${env.TEMPLATE_PATH:/usr/local/shared/applications/}"/>
-```
-Email Template Path can be mapped as a volume in a container, so that application can discover it, where directory matching the one from standalone.xml:
-```    
-volumes:
-    - $PWD/config/psama/emailTemplates:/usr/local/shared/applications
-```
+#### Email notification configuration
 
 Denied Email Enabled is flag to enable sending email to admin if user has not been added to system and trying to login.
 ```

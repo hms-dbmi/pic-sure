@@ -11,12 +11,12 @@ spring:
             # because the logging service (Javalin) serves its API at root (/audit,
             # /health, /info) — mirroring the old /proxy relay's prefix strip. /logging is
             # on the introspection allow-list, so it is not authenticated.
-            # /dictionary, /uploader, and /visualization are AUTHENTICATED (not on the
+            # /dictionary and /visualization are AUTHENTICATED (not on the
             # allow-list): the introspection filter runs on the pre-strip public path
             # (Target Service = /dictionary/x), which the PSAMA access-rule
-            # migrations now authorize (^/dictionary(/.*)?$ / ^/uploader(/.*)?$ /
-            # ^/visualization(/.*)?$). Same StripPrefix=1 as /logging (dictionary-api,
-            # uploader, and the visualization container all serve their APIs at root).
+            # migrations now authorize (^/dictionary(/.*)?$ / ^/visualization(/.*)?$).
+            # Same StripPrefix=1 as /logging (dictionary-api and the visualization
+            # container both serve their APIs at root).
             # /hpds is handled separately below (query-service ingress).
             - id: logging
               uri: ${LOGGING_URL:http://pic-sure-logging}
@@ -30,13 +30,6 @@ spring:
               order: 100
               predicates:
                 - Path=/dictionary/**
-              filters:
-                - StripPrefix=1
-            - id: uploader
-              uri: ${UPLOADER_URL:http://uploader:8080}
-              order: 100
-              predicates:
-                - Path=/uploader/**
               filters:
                 - StripPrefix=1
             - id: visualization
