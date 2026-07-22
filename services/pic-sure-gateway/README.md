@@ -1,6 +1,6 @@
 # pic-sure-gateway
 
-Spring Cloud Gateway MVC (servlet) front door for PIC-SURE. Static, per-service routes forward to `logging`, `dictionary`, `uploader`,
+Spring Cloud Gateway MVC (servlet) front door for PIC-SURE. Static, per-service routes forward to `logging`, `dictionary`,
 `visualization`, `hpds` (query-service), `configuration`, and `dataset` (operations-service) — see `application.yml` for the full route
 table. The gateway owns query-read authorization end to end: it authenticates via PSAMA introspection, audits requests, and buffers/dispatches
 as needed. There is no catch-all route; any path that doesn't match a configured route 404s.

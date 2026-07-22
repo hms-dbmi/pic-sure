@@ -21,7 +21,6 @@ pic-sure/                       root pom — PARENT + aggregator
 │   ├── pic-sure-auth-microapp/         reactor module (imported from hms-dbmi/pic-sure-auth-microapp)
 │   ├── pic-sure-logging/               reactor module (imported from hms-dbmi/PIC-SURE-Logging)
 │   ├── picsure-dictionary/             reactor module (imported from hms-dbmi/picsure-dictionary)
-│   ├── pic-sure-services/              reactor modules (info-service + uploader)
 │   └── pic-sure-visualization-service/ reactor module (imported from hms-dbmi/PIC-SURE-Visualization)
 ├── pic-sure-shadow-reconciler/ reactor module (parity verification tooling)
 └── pic-sure-legacy/            QUARANTINED — WildFly WAR, Java 11/javax, own parent pom,
@@ -45,7 +44,6 @@ pic-sure-legacy remains QUARANTINED: own parent POM/JDK, builds independently, n
 | services/pic-sure-auth-microapp | reactor | 25 | PIC-SURE Auth Micro-App Build - Jenkinsfile / PIC-SURE Auth Micro App Build | done |
 | services/pic-sure-logging | reactor | 25 (Javalin) | PIC-SURE Logging Build and Deploy / PIC-SURE Logging Build | done |
 | services/picsure-dictionary | reactor | 25 | PIC-SURE Dictionary API Build and Deploy (+3 DB jobs) / PIC-SURE Dictionary Build | done |
-| services/pic-sure-services | reactor | 25 | PIC-SURE Build and Deploy Uploader / — | done |
 | services/pic-sure-visualization-service | reactor | 25 | PIC-SURE Visualization Build and Deploy / PIC-SURE Visualization Build | done |
 | pic-sure-legacy/ | quarantined | 11 | PIC-SURE-API Build / PIC-SURE API Build | decommission (rewrite Phase 7) |
 
