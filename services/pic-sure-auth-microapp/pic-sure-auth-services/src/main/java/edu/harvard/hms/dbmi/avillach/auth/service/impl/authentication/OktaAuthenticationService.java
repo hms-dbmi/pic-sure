@@ -9,7 +9,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
-import java.util.List;
 import java.util.Objects;
 
 public class OktaAuthenticationService {
@@ -95,38 +94,6 @@ public class OktaAuthenticationService {
         String oktaIntrospectUrl = "https://" + this.idp_provider_uri + "/oauth2/default/v1/introspect";
         String payload = "token_type_hint=access_token&token=" + accessToken;
         return doOktaRequest(oktaIntrospectUrl, payload);
-    }
-
-    /**
-     * Retrieve the claims associated with an Okta access token from the OIDC userinfo endpoint.
-     *
-     * @param userToken The response from Okta's token endpoint
-     * @return The userinfo response as a JsonNode, or null when it cannot be retrieved
-     */
-    protected JsonNode retrieveUserInfo(JsonNode userToken) {
-        if (userToken == null) {
-            logger.error("retrieveUserInfo() cannot call OKTA userinfo endpoint because the token response is null");
-            return null;
-        }
-
-        JsonNode accessTokenNode = userToken.get("access_token");
-        if (accessTokenNode == null || accessTokenNode.isNull()) {
-            logger.error("retrieveUserInfo() cannot call OKTA userinfo endpoint because the access token is missing");
-            return null;
-        }
-
-        String oktaUserInfoUrl = "https://" + this.idp_provider_uri + "/oauth2/default/v1/userinfo";
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessTokenNode.asText());
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-
-        try {
-            ResponseEntity<String> response = this.restClientUtil.retrieveGetResponse(oktaUserInfoUrl, headers);
-            return new ObjectMapper().readTree(Objects.requireNonNull(response.getBody()));
-        } catch (Exception ex) {
-            logger.error("retrieveUserInfo() failed to call OKTA userinfo endpoint: {}", ex.getMessage());
-            return null;
-        }
     }
 
 }

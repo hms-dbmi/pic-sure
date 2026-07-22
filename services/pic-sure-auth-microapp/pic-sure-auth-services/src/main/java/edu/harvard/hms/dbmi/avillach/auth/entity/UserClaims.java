@@ -125,6 +125,7 @@ public class UserClaims {
         if (era_commons_id != null) map.put("era_commons_id", era_commons_id);
         if (preferred_username != null) map.put("preferred_username", preferred_username);
         if (user_permission_group != null) map.put("user_permission_group", user_permission_group);
+        if (user_mapping_id != null) map.put("user_mapping_id", user_mapping_id);
         return map;
     }
 }

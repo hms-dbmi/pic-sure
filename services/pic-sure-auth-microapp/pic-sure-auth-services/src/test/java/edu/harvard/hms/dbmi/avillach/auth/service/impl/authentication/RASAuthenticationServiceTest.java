@@ -112,19 +112,15 @@ public class RASAuthenticationServiceTest {
         String payload = "token_type_hint=access_token&token=" + testAccessToken;
         String redirectUri = "https://" + testDomain + "/login/loading";
         String queryString = "grant_type=authorization_code" + "&code=" + code + "&redirect_uri=" + redirectUri;
-        String introspectionResponse = "{\"active\":true,\"client_id\":\"test_client_id\",\"user_mapping_id\":\"mapping-123\"}";
-        String userInfoResponse = "{\"sub\":\"example_email@test.com\",\"userid\":\"test_userid\",\"preferred_username\":\"testuser\","
-            + "\"email\":\"okta_email@test.com\",\"firstName\":\"Test\",\"lastName\":\"User\"," + "\"passport_jwt_v11\":\""
-            + exampleRasPassport + "\"}";
+        String introspectionResponse = "{\"active\":true,\"client_id\":\"test_client_id\",\"user_mapping_id\":\"mapping-123\","
+            + "\"sub\":\"example_email@test.com\",\"userid\":\"test_userid\",\"preferred_username\":\"testuser\","
+            + "\"email\":\"okta_email@test.com\",\"firstName\":\"Test\",\"lastName\":\"User\",\"passport_jwt_v11\":\"" + exampleRasPassport
+            + "\"}";
 
         // token exchange
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(queryString))).thenReturn(ResponseEntity.ok(data));
         // introspect
         when(restClientUtil.retrievePostResponse(anyString(), any(), eq(payload))).thenReturn(ResponseEntity.ok(introspectionResponse));
-        // userinfo
-        when(restClientUtil.retrieveGetResponse(eq("https://test.com/oauth2/default/v1/userinfo"), any(HttpHeaders.class)))
-            .thenReturn(ResponseEntity.ok(userInfoResponse));
-
         doNothing().when(cacheEvictionService).evictCache(any(User.class));
 
         User user = createTestUser();
@@ -146,6 +142,7 @@ public class RASAuthenticationServiceTest {
         assertEquals("RAS", capturedClaims.getIdp());
         assertEquals("https://ncbi.nlm.nih.gov/gap", capturedClaims.getUser_permission_group());
         assertEquals("mapping-123", capturedClaims.getUser_mapping_id());
+        assertEquals("mapping-123", capturedClaims.toHashMap().get("user_mapping_id"));
 
         ArgumentCaptor<JsonNode> userDataCaptor = ArgumentCaptor.forClass(JsonNode.class);
         verify(userService).createRasUser(userDataCaptor.capture(), any(Connection.class));
@@ -153,9 +150,7 @@ public class RASAuthenticationServiceTest {
         assertEquals("mapping-123", userDataCaptor.getValue().get("user_mapping_id").asText());
         assertEquals("test_userid", userDataCaptor.getValue().get("userid").asText());
 
-        ArgumentCaptor<HttpHeaders> headersCaptor = ArgumentCaptor.forClass(HttpHeaders.class);
-        verify(restClientUtil).retrieveGetResponse(eq("https://test.com/oauth2/default/v1/userinfo"), headersCaptor.capture());
-        assertEquals("Bearer " + testAccessToken, headersCaptor.getValue().getFirst(HttpHeaders.AUTHORIZATION));
+        verify(restClientUtil, never()).retrieveGetResponse(anyString(), any(HttpHeaders.class));
     }
 
     @Test
@@ -180,21 +175,6 @@ public class RASAuthenticationServiceTest {
         verifyNoInteractions(userService);
         verify(restClientUtil, never()).retrieveGetResponse(anyString(), any(HttpHeaders.class));
         assertTrue(hasLogMessage("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM"));
-    }
-
-    @Test
-    public void testAuthorizationCodeFlow_UserInfoFailureRejectsBeforeLoadingUser() {
-        String fullIntrospectionResponse = "{\"active\":true,\"sub\":\"example_email@test.com\",\"userid\":\"test_userid\","
-            + "\"preferred_username\":\"testuser\",\"passport_jwt_v11\":\"" + exampleRasPassport + "\"}";
-        mockTokenAndIntrospectionResponses(fullIntrospectionResponse);
-        when(restClientUtil.retrieveGetResponse(eq("https://test.com/oauth2/default/v1/userinfo"), any(HttpHeaders.class)))
-            .thenThrow(new RuntimeException("userinfo unavailable"));
-
-        HashMap<String, String> authenticate = rasAuthenticationService.authenticate(authRequest, testDomain);
-
-        assertNull(authenticate);
-        verifyNoInteractions(userService);
-        assertTrue(hasLogMessage("LOGIN FAILED ___ OKTA USERINFO REQUEST FAILED"));
     }
 
     @Test

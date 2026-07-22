@@ -106,29 +106,18 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             return null;
         }
 
-        JsonNode userInfoResponse = retrieveUserInfo(userToken);
-        if (userInfoResponse == null) {
-            logger.info("LOGIN FAILED ___ OKTA USERINFO REQUEST FAILED ___ CODE {}", authRequest.get("code"));
-            return null;
-        }
-        if (!userInfoResponse.isObject() || !userInfoResponse.hasNonNull("sub")) {
-            logger.info("LOGIN FAILED ___ OKTA USERINFO RESPONSE IS MISSING SUBJECT ___ CODE {}", authRequest.get("code"));
-            return null;
-        }
-
-        JsonNode userData = mergeIntrospectionAndUserInfo(introspectResponse, userInfoResponse);
-        Optional<User> initializedUser = initializeUser(userData);
+        Optional<User> initializedUser = initializeUser(introspectResponse);
         if (initializedUser.isEmpty()) {
-            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA USER DATA ___ CODE {}", authRequest.get("code"));
+            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA INTROSPECTION DATA ___ CODE {}", authRequest.get("code"));
             return null;
         }
 
         User user = initializedUser.get();
-        Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, userData, user);
+        Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, introspectResponse, user);
         if (rasPassport.isEmpty()) return null;
         user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
-        setUserPassport(authRequest, userData, user);
-        UserClaims userClaims = buildUserClaims(user, userData, rasPassport.get());
+        setUserPassport(authRequest, introspectResponse, user);
+        UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
 
         HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
 
@@ -163,12 +152,6 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         return true;
-    }
-
-    private JsonNode mergeIntrospectionAndUserInfo(JsonNode introspectResponse, JsonNode userInfoResponse) {
-        ObjectNode userData = ((ObjectNode) introspectResponse).deepCopy();
-        userData.setAll((ObjectNode) userInfoResponse);
-        return userData;
     }
 
     private Optional<Passport> extractAndVerifyPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {
