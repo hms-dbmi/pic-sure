@@ -82,12 +82,15 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
     public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
         logger.info("RAS OKTA LOGIN ATTEMPT ___ CODE {}", authRequest.get("code"));
 
+        JsonNode userToken = null;
         JsonNode introspectResponse = null;
         String idToken = null;
         if (authRequest.containsKey("code") && StringUtils.isNotBlank(authRequest.get("code"))) {
-            JsonNode userToken = handleCodeTokenExchange(host, authRequest.get("code"));
+            userToken = handleCodeTokenExchange(host, authRequest.get("code"));
             introspectResponse = introspectToken(userToken);
-            idToken = userToken.get("id_token").asText();
+            if (userToken != null && userToken.hasNonNull("id_token")) {
+                idToken = userToken.get("id_token").asText();
+            }
             logger.debug("RAS OKTA LOGIN ATTEMPT ___ INTROSPECTION RESPONSE {}", introspectResponse);
         }
 
@@ -99,21 +102,34 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
             return null;
         }
 
-        Optional<User> initializedUser = initializeUser(introspectResponse);
+        if (!isActiveIntrospectionResponse(introspectResponse, authRequest.get("code"))) {
+            return null;
+        }
+
+        JsonNode userInfoResponse = retrieveUserInfo(userToken);
+        if (userInfoResponse == null) {
+            logger.info("LOGIN FAILED ___ OKTA USERINFO REQUEST FAILED ___ CODE {}", authRequest.get("code"));
+            return null;
+        }
+        if (!userInfoResponse.isObject() || !userInfoResponse.hasNonNull("sub")) {
+            logger.info("LOGIN FAILED ___ OKTA USERINFO RESPONSE IS MISSING SUBJECT ___ CODE {}", authRequest.get("code"));
+            return null;
+        }
+
+        JsonNode userData = mergeIntrospectionAndUserInfo(introspectResponse, userInfoResponse);
+        Optional<User> initializedUser = initializeUser(userData);
         if (initializedUser.isEmpty()) {
-            logger.info(
-                "LOGIN FAILED ___ COULD NOT CREATE USER ___ INTROSPECTION RESPONSE {} ___ CODE {}", introspectResponse,
-                authRequest.get("code")
-            );
+            logger.info("LOGIN FAILED ___ COULD NOT CREATE USER FROM OKTA USER DATA ___ CODE {}", authRequest.get("code"));
             return null;
         }
 
         User user = initializedUser.get();
-        Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, introspectResponse, user);
+        Optional<Passport> rasPassport = extractAndVerifyPassport(authRequest, userData, user);
         if (rasPassport.isEmpty()) return null;
         user = updateRasUserRoles(authRequest.get("code"), user, rasPassport.get());
-        setUserPassport(authRequest, introspectResponse, user);
-        UserClaims userClaims = buildUserClaims(user, introspectResponse, rasPassport.get());
+        setUserPassport(authRequest, userData, user);
+        UserClaims userClaims = buildUserClaims(user, userData, rasPassport.get());
+
         HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
 
         if (responseMap != null) {
@@ -127,6 +143,32 @@ public class RASAuthenticationService extends OktaAuthenticationService implemen
         }
 
         return responseMap;
+    }
+
+    private boolean isActiveIntrospectionResponse(JsonNode introspectResponse, String code) {
+        if (!introspectResponse.has("active") || introspectResponse.get("active").isNull()) {
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION RESPONSE IS MISSING ACTIVE CLAIM ___ CODE {}", code);
+            return false;
+        }
+
+        JsonNode activeClaim = introspectResponse.get("active");
+        if (!activeClaim.isBoolean()) {
+            logger.info("LOGIN FAILED ___ OKTA INTROSPECTION ACTIVE CLAIM IS NOT BOOLEAN ___ VALUE {} ___ CODE {}", activeClaim, code);
+            return false;
+        }
+
+        if (!activeClaim.booleanValue()) {
+            logger.info("LOGIN FAILED ___ OKTA ACCESS TOKEN IS INACTIVE ___ CODE {}", code);
+            return false;
+        }
+
+        return true;
+    }
+
+    private JsonNode mergeIntrospectionAndUserInfo(JsonNode introspectResponse, JsonNode userInfoResponse) {
+        ObjectNode userData = ((ObjectNode) introspectResponse).deepCopy();
+        userData.setAll((ObjectNode) userInfoResponse);
+        return userData;
     }
 
     private Optional<Passport> extractAndVerifyPassport(Map<String, String> authRequest, JsonNode introspectResponse, User user) {

@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
 import java.util.Objects;
 
 public class OktaAuthenticationService {
@@ -28,11 +29,11 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Exchange the code for an access token. This is a call to the OKTA token endpoint.
-     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#token">Token</a>
+     * Exchange the code for an access token. This is a call to the OKTA token endpoint. Documentation: <a
+     * href="https://developer.okta.com/docs/reference/api/oidc/#token">Token</a>
      *
      * @param host The UriInfo object from the JAX-RS context
-     * @param code    The code to exchange
+     * @param code The code to exchange
      * @return The response from the token endpoint as a JsonNode
      */
     protected JsonNode handleCodeTokenExchange(String host, String code) {
@@ -44,11 +45,10 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Perform a request to the OKTA API using the provided URL and parameters. The request will be a POST request.
-     * It is using Authorization Basic authentication. The client ID and client secret are base64 encoded and sent
-     * in the Authorization header.
+     * Perform a request to the OKTA API using the provided URL and parameters. The request will be a POST request. It is using
+     * Authorization Basic authentication. The client ID and client secret are base64 encoded and sent in the Authorization header.
      *
-     * @param requestUrl    The URL to call
+     * @param requestUrl The URL to call
      * @param requestParams The parameters to send
      * @return The response from the OKTA API as a JsonNode
      */
@@ -71,8 +71,8 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Introspect the token to get the user's email address. This is a call to the OKTA introspect endpoint.
-     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#introspect">/introspect</a>
+     * Introspect the token to get the user's email address. This is a call to the OKTA introspect endpoint. Documentation: <a
+     * href="https://developer.okta.com/docs/reference/api/oidc/#introspect">/introspect</a>
      *
      * @param userToken The token to introspect
      * @return The response from the introspect endpoint as a JsonNode
@@ -95,6 +95,38 @@ public class OktaAuthenticationService {
         String oktaIntrospectUrl = "https://" + this.idp_provider_uri + "/oauth2/default/v1/introspect";
         String payload = "token_type_hint=access_token&token=" + accessToken;
         return doOktaRequest(oktaIntrospectUrl, payload);
+    }
+
+    /**
+     * Retrieve the claims associated with an Okta access token from the OIDC userinfo endpoint.
+     *
+     * @param userToken The response from Okta's token endpoint
+     * @return The userinfo response as a JsonNode, or null when it cannot be retrieved
+     */
+    protected JsonNode retrieveUserInfo(JsonNode userToken) {
+        if (userToken == null) {
+            logger.error("retrieveUserInfo() cannot call OKTA userinfo endpoint because the token response is null");
+            return null;
+        }
+
+        JsonNode accessTokenNode = userToken.get("access_token");
+        if (accessTokenNode == null || accessTokenNode.isNull()) {
+            logger.error("retrieveUserInfo() cannot call OKTA userinfo endpoint because the access token is missing");
+            return null;
+        }
+
+        String oktaUserInfoUrl = "https://" + this.idp_provider_uri + "/oauth2/default/v1/userinfo";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessTokenNode.asText());
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        try {
+            ResponseEntity<String> response = this.restClientUtil.retrieveGetResponse(oktaUserInfoUrl, headers);
+            return new ObjectMapper().readTree(Objects.requireNonNull(response.getBody()));
+        } catch (Exception ex) {
+            logger.error("retrieveUserInfo() failed to call OKTA userinfo endpoint: {}", ex.getMessage());
+            return null;
+        }
     }
 
 }
