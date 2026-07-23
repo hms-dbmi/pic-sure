@@ -11,6 +11,7 @@ public interface ResultWriter {
     void writeHeader(String[] data);
 
     void writeEntity(Collection<String[]> data);
+
     void writeMultiValueEntity(Collection<List<List<String>>> data);
 
     File getFile();

@@ -31,17 +31,15 @@ class PatientProcessorTest {
         q.setPicSureId("frank");
         q.setExpectedResultType(ResultType.PATIENTS);
         AsyncResult writeToThis = Mockito.mock(AsyncResult.class);
-        Mockito.when(abstractProcessor.getPatientSubsetForQuery(q))
-            .thenReturn(new TreeSet<>(List.of(1, 2, 42)));
+        Mockito.when(abstractProcessor.getPatientSubsetForQuery(q)).thenReturn(new TreeSet<>(List.of(1, 2, 42)));
 
         subject.runQuery(q, writeToThis);
 
-        Mockito.verify(writeToThis, Mockito.times(1))
-            .appendResults(Mockito.argThat(strings ->
-                strings.size() == 3 &&
-                strings.get(0)[0].equals("1") &&
-                strings.get(1)[0].equals("2") &&
-                strings.get(2)[0].equals("42"))
-            );
+        Mockito.verify(writeToThis, Mockito.times(1)).appendResults(
+            Mockito.argThat(
+                strings -> strings.size() == 3 && strings.get(0)[0].equals("1") && strings.get(1)[0].equals("2")
+                    && strings.get(2)[0].equals("42")
+            )
+        );
     }
 }

@@ -13,7 +13,9 @@ public class ConceptTest {
 
     @Test
     public void jsonSerialization() throws JsonProcessingException {
-        Concept[] concepts = new Concept[]{new Concept("\\demographics\\age\\", "age", "AGE", null, "patient age", Map.of("drs_uri", "[\"a-drs.uri\", \"another-drs.uri\"]"))};
+        Concept[] concepts = new Concept[] {new Concept(
+            "\\demographics\\age\\", "age", "AGE", null, "patient age", Map.of("drs_uri", "[\"a-drs.uri\", \"another-drs.uri\"]")
+        )};
         ObjectMapper objectMapper = new ObjectMapper();
 
         String serialized = objectMapper.writeValueAsString(concepts);

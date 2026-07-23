@@ -24,7 +24,7 @@ public class PatientProcessor implements HpdsProcessor {
 
     @Override
     public String[] getHeaderRow(Query query) {
-        return new String[]{"PATIENT_NUM"};
+        return new String[] {"PATIENT_NUM"};
     }
 
     @Override
@@ -32,9 +32,8 @@ public class PatientProcessor implements HpdsProcessor {
         LOG.info("Pulling results for query {}", query.getId());
         // floating all this in memory is a bit gross, but the whole list of
         // patient IDs was already there, so I don't feel too bad
-        List<String[]> allPatients = abstractProcessor.getPatientSubsetForQuery(query).stream()
-            .map(patient -> new String[]{patient.toString()})
-            .toList();
+        List<String[]> allPatients =
+            abstractProcessor.getPatientSubsetForQuery(query).stream().map(patient -> new String[] {patient.toString()}).toList();
         LOG.info("Writing results for query {}", query.getId());
         asyncResult.appendResults(allPatients);
         LOG.info("Completed query {}", query.getId());

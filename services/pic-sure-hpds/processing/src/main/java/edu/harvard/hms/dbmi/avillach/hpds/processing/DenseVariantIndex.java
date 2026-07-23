@@ -57,8 +57,7 @@ public class DenseVariantIndex extends VariantIndex {
     public Set<String> mapToVariantSpec(String[] variantIndex) {
         ConcurrentHashMap<String, String> setMap = new ConcurrentHashMap<>(variantIndexMask.length / 10);
         for (int i = 0; i < variantIndexMask.length; i++) {
-            if (variantIndexMask[i])
-                setMap.put(variantIndex[i], "");
+            if (variantIndexMask[i]) setMap.put(variantIndex[i], "");
         }
         return setMap.keySet();
     }

@@ -4,15 +4,16 @@ import java.io.*;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-public class FileBackedJavaIndexedStorage <K, V extends Serializable> extends FileBackedByteIndexedStorage<K, V> {
+public class FileBackedJavaIndexedStorage<K, V extends Serializable> extends FileBackedByteIndexedStorage<K, V> {
     public FileBackedJavaIndexedStorage(Class<K> keyClass, Class<V> valueClass, File storageFile) throws FileNotFoundException {
         super(keyClass, valueClass, storageFile);
     }
 
     protected ByteArrayOutputStream writeObject(V value) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(out);
-             ObjectOutputStream oos = new ObjectOutputStream(gzipOutputStream)) {
+        try (
+            GZIPOutputStream gzipOutputStream = new GZIPOutputStream(out); ObjectOutputStream oos = new ObjectOutputStream(gzipOutputStream)
+        ) {
             oos.writeObject(value);
             oos.flush();
         }

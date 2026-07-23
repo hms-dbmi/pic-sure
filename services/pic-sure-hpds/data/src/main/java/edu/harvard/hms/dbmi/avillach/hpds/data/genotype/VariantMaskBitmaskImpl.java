@@ -36,7 +36,7 @@ public class VariantMaskBitmaskImpl implements VariantMask {
     public VariantMask intersection(VariantMask variantMask) {
         if (variantMask instanceof VariantMaskBitmaskImpl) {
             return intersection((VariantMaskBitmaskImpl) variantMask);
-        } else if (variantMask instanceof  VariantMaskSparseImpl) {
+        } else if (variantMask instanceof VariantMaskSparseImpl) {
             return variantMask.intersection(this);
         } else {
             throw new RuntimeException("Unknown VariantMask implementation");
@@ -47,7 +47,7 @@ public class VariantMaskBitmaskImpl implements VariantMask {
     public VariantMask union(VariantMask variantMask) {
         if (variantMask instanceof VariantMaskBitmaskImpl) {
             return union((VariantMaskBitmaskImpl) variantMask);
-        } else if (variantMask instanceof  VariantMaskSparseImpl) {
+        } else if (variantMask instanceof VariantMaskSparseImpl) {
             return variantMask.union(this);
         } else {
             throw new RuntimeException("Unknown VariantMask implementation");
@@ -67,8 +67,8 @@ public class VariantMaskBitmaskImpl implements VariantMask {
     @Override
     public Set<Integer> patientMaskToPatientIdSet(List<String> patientIds) {
         Set<Integer> ids = new HashSet<>();
-        for(int x = 0;x < bitmask.bitLength()-4;x++) {
-            if(testBit(x)) {
+        for (int x = 0; x < bitmask.bitLength() - 4; x++) {
+            if (testBit(x)) {
                 String patientId = patientIds.get(x).trim();
                 ids.add(Integer.parseInt(patientId));
             }
@@ -86,6 +86,7 @@ public class VariantMaskBitmaskImpl implements VariantMask {
     private VariantMask union(VariantMaskBitmaskImpl variantMaskBitmask) {
         return new VariantMaskBitmaskImpl(variantMaskBitmask.bitmask.or(this.bitmask));
     }
+
     private VariantMask intersection(VariantMaskBitmaskImpl variantMaskBitmask) {
         // we could consider using a sparse variant index here if we are ever going to be storing the
         // result of this anywhere
@@ -107,8 +108,6 @@ public class VariantMaskBitmaskImpl implements VariantMask {
 
     @Override
     public String toString() {
-        return "VariantMaskBitmaskImpl{" +
-                "bitmask=" + bitmask.toString() +
-                '}';
+        return "VariantMaskBitmaskImpl{" + "bitmask=" + bitmask.toString() + '}';
     }
 }

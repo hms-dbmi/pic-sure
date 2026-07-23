@@ -67,6 +67,7 @@ public class PaginatorTest {
             paginator.paginate(values, 0, 20);
         });
     }
+
     @Test
     public void paginate_invalidPageNegative() {
         assertThrows(IllegalArgumentException.class, () -> {

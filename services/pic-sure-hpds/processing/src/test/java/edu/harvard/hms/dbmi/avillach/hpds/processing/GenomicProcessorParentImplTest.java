@@ -32,9 +32,7 @@ class GenomicProcessorParentImplTest {
 
     @BeforeEach
     public void setup() {
-        parentProcessor = new GenomicProcessorParentImpl(List.of(
-                mockProcessor1, mockProcessor2, mockProcessor3
-        ));
+        parentProcessor = new GenomicProcessorParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3));
     }
 
     @Test
@@ -46,6 +44,7 @@ class GenomicProcessorParentImplTest {
                 mockProcessor1, mockProcessor2, mockProcessor3
         ));
     }
+
     @Test
     public void patientIdInit_patientsDiffer_exception() {
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
@@ -62,18 +61,23 @@ class GenomicProcessorParentImplTest {
     @Test
     public void getPatientMask_validResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000111", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000111", 2))));
 
         VariantMask patientMask = parentProcessor.getPatientMask(distributableQuery).block();
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("110111100111", 2));
         assertEquals(expectedPatientMask, patientMask);
     }
+
     @Test
     public void getPatientMask_oneNode_returnPatients() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110110000011", 2))));
         parentProcessor = new GenomicProcessorParentImpl(List.of(mockProcessor1));
 
         VariantMask patientMask = parentProcessor.getPatientMask(distributableQuery).block();

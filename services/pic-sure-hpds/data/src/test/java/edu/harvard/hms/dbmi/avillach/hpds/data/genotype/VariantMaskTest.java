@@ -17,6 +17,7 @@ public class VariantMaskTest {
 
         assertEquals(expected, mask1.intersection(mask2));
     }
+
     @Test
     public void intersection_bitmaskVsSparse() {
         // this is essentially a mask for patients 0, 2, 3, 7 (there is 11 padding on both ends)
@@ -26,6 +27,7 @@ public class VariantMaskTest {
 
         assertEquals(expected, mask1.intersection(mask2));
     }
+
     @Test
     public void intersection_sparseVsBitmask() {
         VariantMask mask1 = new VariantMaskSparseImpl(Set.of(4, 7));

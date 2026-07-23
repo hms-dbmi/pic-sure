@@ -25,16 +25,14 @@ public class VariantMaskSparseImpl implements VariantMask {
 
     @Override
     public VariantMask intersection(VariantMask variantMask) {
-        return new VariantMaskSparseImpl(this.patientIndexes.stream()
-                .filter(variantMask::testBit)
-                .collect(Collectors.toSet()));
+        return new VariantMaskSparseImpl(this.patientIndexes.stream().filter(variantMask::testBit).collect(Collectors.toSet()));
     }
 
     @Override
     public VariantMask union(VariantMask variantMask) {
         if (variantMask instanceof VariantMaskBitmaskImpl) {
             return union((VariantMaskBitmaskImpl) variantMask);
-        } else if (variantMask instanceof  VariantMaskSparseImpl) {
+        } else if (variantMask instanceof VariantMaskSparseImpl) {
             return union((VariantMaskSparseImpl) variantMask);
         } else {
             throw new RuntimeException("Unknown VariantMask implementation");
@@ -53,11 +51,7 @@ public class VariantMaskSparseImpl implements VariantMask {
 
     @Override
     public Set<Integer> patientMaskToPatientIdSet(List<String> patientIds) {
-        return patientIndexes.stream()
-                .map(patientIds::get)
-                .map(String::trim)
-                .map(Integer::parseInt)
-                .collect(Collectors.toSet());
+        return patientIndexes.stream().map(patientIds::get).map(String::trim).map(Integer::parseInt).collect(Collectors.toSet());
     }
 
     @Override

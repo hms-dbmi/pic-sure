@@ -8,8 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Reads {@link AuditEvent} annotations from controller methods and sets
- * the event type and action as request attributes for the {@link AuditLoggingFilter}.
+ * Reads {@link AuditEvent} annotations from controller methods and sets the event type and action as request attributes for the
+ * {@link AuditLoggingFilter}.
  */
 public class AuditInterceptor implements HandlerInterceptor {
 

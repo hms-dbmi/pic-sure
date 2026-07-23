@@ -11,7 +11,7 @@ import org.springframework.context.annotation.PropertySource;
 @PropertySource("classpath:application.properties")
 public class ApplicationConfig {
 
-    @Value( "${hpds.genomicDataDirectory}" )
+    @Value("${hpds.genomicDataDirectory}")
     private String genomicDataDirectory;
 
     @Bean
