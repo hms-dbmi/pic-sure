@@ -6,10 +6,8 @@ import java.util.Map;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Utility for setting audit metadata on the current request.
- * Controllers call {@link #putMetadata} to attach domain-specific context
- * (query_id, result_type, etc.) that the {@link AuditLoggingFilter} merges
- * into the logging event.
+ * Utility for setting audit metadata on the current request. Controllers call {@link #putMetadata} to attach domain-specific context
+ * (query_id, result_type, etc.) that the {@link AuditLoggingFilter} merges into the logging event.
  */
 public final class AuditAttributes {
 
@@ -17,8 +15,7 @@ public final class AuditAttributes {
     public static final String ACTION = "audit.action";
     private static final String METADATA = "audit.metadata";
 
-    private AuditAttributes() {
-    }
+    private AuditAttributes() {}
 
     public static void putMetadata(HttpServletRequest request, String key, Object value) {
         if (request != null && key != null && value != null) {

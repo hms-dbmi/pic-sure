@@ -16,8 +16,7 @@ import java.util.List;
 @ConditionalOnProperty("dictionary.host")
 public class DictionaryService {
 
-    public static final ParameterizedTypeReference<List<Concept>> CONCEPT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>() {
-    };
+    public static final ParameterizedTypeReference<List<Concept>> CONCEPT_LIST_TYPE_REFERENCE = new ParameterizedTypeReference<>() {};
     private final String dictionaryHost;
     private final RestTemplate restTemplate;
 
@@ -32,6 +31,9 @@ public class DictionaryService {
     }
 
     public List<Concept> getConcepts(List<String> conceptPaths) {
-        return restTemplate.exchange(dictionaryHost + "/pic-sure-api-2/PICSURE/proxy/dictionary-api/concepts/detail", HttpMethod.POST, new HttpEntity<>(conceptPaths), CONCEPT_LIST_TYPE_REFERENCE).getBody();
+        return restTemplate.exchange(
+            dictionaryHost + "/pic-sure-api-2/PICSURE/proxy/dictionary-api/concepts/detail", HttpMethod.POST,
+            new HttpEntity<>(conceptPaths), CONCEPT_LIST_TYPE_REFERENCE
+        ).getBody();
     }
 }

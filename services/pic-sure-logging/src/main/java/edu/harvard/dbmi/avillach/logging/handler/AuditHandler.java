@@ -21,9 +21,7 @@ public class AuditHandler {
         this.auditLogService = auditLogService;
         this.objectMapper = new ObjectMapper();
         objectMapper.getFactory().setStreamReadConstraints(
-            StreamReadConstraints.builder()
-                .maxNestingDepth(10)
-                .maxStringLength(10_240) // 10KB
+            StreamReadConstraints.builder().maxNestingDepth(10).maxStringLength(10_240) // 10KB
                 .build()
         );
     }

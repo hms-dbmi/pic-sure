@@ -19,6 +19,7 @@ public class DistributableQuery {
     public void addRequiredVariantField(String path) {
         requiredFields.add(path);
     }
+
     public Set<String> getRequiredFields() {
         return requiredFields;
     }
@@ -26,16 +27,20 @@ public class DistributableQuery {
     public void addVariantSpecCategoryFilter(String key, String[] values) {
         categoryFilters.put(key, values);
     }
+
     public Map<String, String[]> getCategoryFilters() {
         return categoryFilters;
     }
 
     public DistributableQuery setVariantInfoFilters(Collection<Query.VariantInfoFilter> variantInfoFilters) {
         this.variantInfoFilters = variantInfoFilters.stream()
-                .filter(variantInfoFilter -> !variantInfoFilter.categoryVariantInfoFilters.isEmpty() || !variantInfoFilter.numericVariantInfoFilters.isEmpty())
-                .collect(Collectors.toList());
+            .filter(
+                variantInfoFilter -> !variantInfoFilter.categoryVariantInfoFilters.isEmpty()
+                    || !variantInfoFilter.numericVariantInfoFilters.isEmpty()
+            ).collect(Collectors.toList());
         return this;
     }
+
     public List<Query.VariantInfoFilter> getVariantInfoFilters() {
         return new ArrayList<>(variantInfoFilters);
     }

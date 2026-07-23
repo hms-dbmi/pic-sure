@@ -11,11 +11,7 @@ public class InfoHandler {
     private final InfoResponse response;
 
     public InfoHandler() {
-        this.response = new InfoResponse(
-            UUID.nameUUIDFromBytes(":)".getBytes()),
-            "Logging Service",
-            List.of()
-        );
+        this.response = new InfoResponse(UUID.nameUUIDFromBytes(":)".getBytes()), "Logging Service", List.of());
     }
 
     public void handle(Context ctx) {

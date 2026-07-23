@@ -7,7 +7,7 @@ import java.io.*;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-public abstract class FileBackedJsonIndexStorage <K, V extends Serializable> extends FileBackedByteIndexedStorage<K, V> {
+public abstract class FileBackedJsonIndexStorage<K, V extends Serializable> extends FileBackedByteIndexedStorage<K, V> {
     private static final long serialVersionUID = -1086729119489479152L;
 
     protected transient ObjectMapper objectMapper = new ObjectMapper();

@@ -41,13 +41,13 @@ public class SparseVariantIndex extends VariantIndex {
     }
 
     /**
-     * Converts a set of variant IDs to a set of String representations of variant spec. This implementation looks
-     * wonky, but performs much better than other more obvious approaches (ex: Collectors.toSet()) on large sets.
+     * Converts a set of variant IDs to a set of String representations of variant spec. This implementation looks wonky, but performs much
+     * better than other more obvious approaches (ex: Collectors.toSet()) on large sets.
      */
     @Override
     public Set<String> mapToVariantSpec(String[] variantIndex) {
         ConcurrentHashMap<String, String> setMap = new ConcurrentHashMap<>(variantIds.size());
-        variantIds.stream().parallel().forEach(index-> setMap.put(variantIndex[index], ""));
+        variantIds.stream().parallel().forEach(index -> setMap.put(variantIndex[index], ""));
         return setMap.keySet();
     }
 

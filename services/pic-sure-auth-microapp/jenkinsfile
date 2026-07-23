@@ -41,11 +41,11 @@ pipeline {
           docker run --rm \
             -v "$DOCKER_CONFIG_DIR/jenkins_home/workspace/$JOB_NAME/:/app" \
             -v maven_m2_cache:/root/.m2 \
-            -w /app \
+            -w /app/services/pic-sure-auth-microapp \
             maven:3.9-amazoncorretto-25 \
             sh -lc "mvn clean install -B -T 1C -DskipTests"
 
-          ls -lah pic-sure-auth-services/target || true
+          ls -lah services/pic-sure-auth-microapp/pic-sure-auth-services/target || true
         '''
       }
     }
@@ -54,7 +54,7 @@ pipeline {
       steps {
         sh '''
           set -euo pipefail
-          docker build ${DOCKER_BUILD_ARGS} -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+          docker build ${DOCKER_BUILD_ARGS} -t "${IMAGE_NAME}:${IMAGE_TAG}" services/pic-sure-auth-microapp
           docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${IMAGE_NAME}:${LATEST_TAG}"
         '''
       }

@@ -3,9 +3,8 @@ package edu.harvard.dbmi.avillach.dictionary.util;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.json.JSONArray;
-import org.json.JSONException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -26,13 +25,19 @@ public class JsonBlobParser {
 
     public List<String> parseValues(String valuesArr) {
         try {
+            JsonNode arr = objectMapper.readTree(valuesArr);
+            if (!arr.isArray()) {
+                return List.of();
+            }
             ArrayList<String> vals = new ArrayList<>();
-            JSONArray arr = new JSONArray(valuesArr);
-            for (int i = 0; i < arr.length(); i++) {
-                vals.add(arr.getString(i));
+            for (JsonNode node : arr) {
+                if (!node.isTextual()) {
+                    return List.of();
+                }
+                vals.add(node.asText());
             }
             return vals;
-        } catch (JSONException ex) {
+        } catch (JsonProcessingException ex) {
             return List.of();
         }
     }
@@ -43,20 +48,19 @@ public class JsonBlobParser {
 
     protected Double parseFromIndex(String valuesArr, int index) {
         try {
-            JSONArray arr = new JSONArray(valuesArr);
-            if (arr.length() != 2) {
+            JsonNode arr = objectMapper.readTree(valuesArr);
+            if (!arr.isArray() || arr.size() != 2) {
                 return 0D;
             }
-            Object raw = arr.get(index);
-            return switch (raw) {
-                case Double d -> d;
-                case Integer i -> i.doubleValue();
-                case BigDecimal d -> d.doubleValue();
-                case BigInteger i -> i.doubleValue();
-                case String s -> Double.parseDouble(s);
-                default -> 0D;
-            };
-        } catch (JSONException ex) {
+            JsonNode raw = arr.get(index);
+            if (raw.isNumber()) {
+                return raw.doubleValue();
+            }
+            if (raw.isTextual()) {
+                return Double.parseDouble(raw.asText());
+            }
+            return 0D;
+        } catch (JsonProcessingException ex) {
             log.warn("Invalid json array for values: ", ex);
             return 0D;
         } catch (NumberFormatException ex) {

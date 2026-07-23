@@ -39,19 +39,20 @@ public class GenomicProcessorPatientMergingParentImplTest {
 
     @BeforeEach
     public void setup() {
-        patientMergingParent = new GenomicProcessorPatientMergingParentImpl(List.of(
-                mockProcessor1, mockProcessor2, mockProcessor3
-        ));
+        patientMergingParent = new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1, mockProcessor2, mockProcessor3));
     }
 
     @Test
     public void getPatientMask_validResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110001100011", 2))));
         when(mockProcessor2.getPatientIds()).thenReturn(List.of("5", "6", "7", "8", "9", "10", "11", "12"));
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2))));
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
         VariantMask patientMask = patientMergingParent.getPatientMask(distributableQuery).block();
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("11000100011000011011", 2));
@@ -61,11 +62,14 @@ public class GenomicProcessorPatientMergingParentImplTest {
     @Test
     public void getPatientMask_noPatientResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000011", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("110000000011", 2))));
         when(mockProcessor2.getPatientIds()).thenReturn(List.of("5", "6", "7", "8", "9", "10", "11", "12"));
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000011", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000011", 2))));
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
         VariantMask patientMask = patientMergingParent.getPatientMask(distributableQuery).block();
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("11000000000000011011", 2));
@@ -75,11 +79,14 @@ public class GenomicProcessorPatientMergingParentImplTest {
     @Test
     public void getPatientMask_emptyResponses_returnMerged() {
         DistributableQuery distributableQuery = new DistributableQuery();
-        when(mockProcessor1.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
+        when(mockProcessor1.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11011011", 2))));
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
-        when(mockProcessor2.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("1111", 2))));
+        when(mockProcessor2.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("1111", 2))));
         when(mockProcessor2.getPatientIds()).thenReturn(List.of());
-        when(mockProcessor3.getPatientMask(distributableQuery)).thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2))));
+        when(mockProcessor3.getPatientMask(distributableQuery))
+            .thenReturn(Mono.just(new VariantMaskBitmaskImpl(new BigInteger("11000111", 2))));
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("5", "6", "7", "8"));
         VariantMask patientMask = patientMergingParent.getPatientMask(distributableQuery).block();
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("110001011011", 2));
@@ -98,6 +105,7 @@ public class GenomicProcessorPatientMergingParentImplTest {
 
         assertFalse(output.getOut().contains("duplicate patients found in patient partitions"));
     }
+
     @Test
     public void patientIdInit_invalidPatients_warnMessage(CapturedOutput output) {
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
@@ -110,6 +118,7 @@ public class GenomicProcessorPatientMergingParentImplTest {
 
         assertTrue(output.getOut().contains("1 duplicate patients found in patient partitions"));
     }
+
     @Test
     public void patientIdInit_multipleInvalidPatients_warnMessage(CapturedOutput output) {
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "42", "99"));
@@ -156,12 +165,9 @@ public class GenomicProcessorPatientMergingParentImplTest {
     @Test
     public void getMasks_validEmptyResponses_returnEmpty() {
         String path = "chr21,5032061,A,Z,LOC102723996,missense_variant";
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
-        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
-        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
+        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
+        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
 
         Optional<VariableVariantMasks> masks = patientMergingParent.getMasks(path, new VariantBucketHolder<>());
         assertEquals(Optional.of(new VariableVariantMasks()), masks);
@@ -170,12 +176,9 @@ public class GenomicProcessorPatientMergingParentImplTest {
     @Test
     public void getMasks_validEmptyAndNullResponses_returnEmpty() {
         String path = "chr21,5032061,A,Z,LOC102723996,missense_variant";
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
-        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(new VariableVariantMasks()));
-        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
+        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(new VariableVariantMasks()));
+        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
 
         Optional<VariableVariantMasks> masks = patientMergingParent.getMasks(path, new VariantBucketHolder<>());
         assertEquals(Optional.of(new VariableVariantMasks()), masks);
@@ -197,18 +200,16 @@ public class GenomicProcessorPatientMergingParentImplTest {
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
 
 
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks1));
-        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks2));
-        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks3));
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks1));
+        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks2));
+        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks3));
 
         Optional<VariableVariantMasks> masks = patientMergingParent.getMasks(path, new VariantBucketHolder<>());
 
         VariantMask expectedPatientMask = new VariantMaskBitmaskImpl(new BigInteger("11000100011000011011", 2));
         assertEquals(expectedPatientMask, masks.get().heterozygousMask);
     }
+
     @Test
     public void getMasks_validResponsesSinglePartition_returnResult() {
         String path = "chr21,5032061,A,Z,LOC102723996,missense_variant";
@@ -218,10 +219,10 @@ public class GenomicProcessorPatientMergingParentImplTest {
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
 
 
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks1));
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks1));
 
-        Optional<VariableVariantMasks> masks = new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1)).getMasks(path, new VariantBucketHolder<>());
+        Optional<VariableVariantMasks> masks =
+            new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1)).getMasks(path, new VariantBucketHolder<>());
 
         assertEquals(variableVariantMasks1.heterozygousMask, masks.get().heterozygousMask);
     }
@@ -231,10 +232,10 @@ public class GenomicProcessorPatientMergingParentImplTest {
         String path = "chr21,5032061,A,Z,LOC102723996,missense_variant";
 
         when(mockProcessor1.getPatientIds()).thenReturn(List.of("1", "2", "3", "4"));
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
 
-        Optional<VariableVariantMasks> masks = new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1)).getMasks(path, new VariantBucketHolder<>());
+        Optional<VariableVariantMasks> masks =
+            new GenomicProcessorPatientMergingParentImpl(List.of(mockProcessor1)).getMasks(path, new VariantBucketHolder<>());
 
         assertNull(masks.get().heterozygousMask);
     }
@@ -252,12 +253,9 @@ public class GenomicProcessorPatientMergingParentImplTest {
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
 
 
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks1));
-        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.empty());
-        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks3));
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks1));
+        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.empty());
+        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks3));
 
         Optional<VariableVariantMasks> masks = patientMergingParent.getMasks(path, new VariantBucketHolder<>());
 
@@ -280,12 +278,9 @@ public class GenomicProcessorPatientMergingParentImplTest {
         when(mockProcessor3.getPatientIds()).thenReturn(List.of("15", "16", "17", "18"));
 
 
-        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks1));
-        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks2));
-        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class)))
-                .thenReturn(Optional.of(variableVariantMasks3));
+        when(mockProcessor1.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks1));
+        when(mockProcessor2.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks2));
+        when(mockProcessor3.getMasks(eq(path), any(VariantBucketHolder.class))).thenReturn(Optional.of(variableVariantMasks3));
 
         Optional<VariableVariantMasks> masks = patientMergingParent.getMasks(path, new VariantBucketHolder<>());
 

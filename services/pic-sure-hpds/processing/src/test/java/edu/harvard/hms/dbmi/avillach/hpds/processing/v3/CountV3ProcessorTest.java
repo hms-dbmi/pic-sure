@@ -148,9 +148,7 @@ class CountV3ProcessorTest {
         Query query = new Query(List.of(), List.of(), required, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
 
         PhenoCube<Double> cube = new PhenoCube<>(conceptPath, Double.class);
-        cube.setSortedByKey(
-            new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)}
-        );
+        cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)});
 
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 3));
         when(queryExecutor.getDictionary()).thenReturn(Map.of(conceptPath, new ColumnMeta().setName(conceptPath).setCategorical(false)));
