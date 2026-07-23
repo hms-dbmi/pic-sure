@@ -32,7 +32,9 @@ public class GenomicDatasetFinalizer {
             throw new IllegalArgumentException("Path " + genomicDirectory + " does not contain any directories");
         }
         if (chromosomeDirectories.length > 50) {
-            throw new IllegalArgumentException("Number of chromosome partitions exceeds maximum of 50 (" + chromosomeDirectories.length + ")");
+            throw new IllegalArgumentException(
+                "Number of chromosome partitions exceeds maximum of 50 (" + chromosomeDirectories.length + ")"
+            );
         }
         sem = new Semaphore(maxThreads);
     }
@@ -50,10 +52,9 @@ public class GenomicDatasetFinalizer {
                         String bucketIndexFilename = bucketIndexDirectory + "BucketIndexBySample.javabin";
                         log.info("creating new " + bucketIndexFilename);
                         try (
-                                FileOutputStream fos = new FileOutputStream(bucketIndexFilename);
-                                GZIPOutputStream gzos = new GZIPOutputStream(fos);
-                                ObjectOutputStream oos = new ObjectOutputStream(gzos);
-                        ){
+                            FileOutputStream fos = new FileOutputStream(bucketIndexFilename); GZIPOutputStream gzos =
+                                new GZIPOutputStream(fos); ObjectOutputStream oos = new ObjectOutputStream(gzos);
+                        ) {
                             oos.writeObject(bucketIndexBySample);
                             oos.flush();
                         }

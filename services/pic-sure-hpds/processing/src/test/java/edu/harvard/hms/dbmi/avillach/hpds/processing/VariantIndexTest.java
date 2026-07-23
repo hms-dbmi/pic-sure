@@ -27,22 +27,25 @@ public class VariantIndexTest {
         assertEquals(intersection.getClass(), SparseVariantIndex.class);
         assertEquals(Set.of(3, 5), ((SparseVariantIndex) intersection).getVariantIds());
     }
+
     @Test
     public void testDenseVariantUnion() {
-        DenseVariantIndex denseVariantIndex1 = new DenseVariantIndex(new boolean[]{true, false, true, false});
-        DenseVariantIndex denseVariantIndex2 = new DenseVariantIndex(new boolean[]{true, false, false, true});
+        DenseVariantIndex denseVariantIndex1 = new DenseVariantIndex(new boolean[] {true, false, true, false});
+        DenseVariantIndex denseVariantIndex2 = new DenseVariantIndex(new boolean[] {true, false, false, true});
         VariantIndex union = denseVariantIndex1.union(denseVariantIndex2);
         assertEquals(union.getClass(), DenseVariantIndex.class);
-        assertArrayEquals(new boolean[]{true, false, true, true}, ((DenseVariantIndex) union).getVariantIndexMask());
+        assertArrayEquals(new boolean[] {true, false, true, true}, ((DenseVariantIndex) union).getVariantIndexMask());
     }
+
     @Test
     public void testDenseVariantIntersection() {
-        DenseVariantIndex denseVariantIndex1 = new DenseVariantIndex(new boolean[]{true, false, true, false});
-        DenseVariantIndex denseVariantIndex2 = new DenseVariantIndex(new boolean[]{true, false, false, true});
+        DenseVariantIndex denseVariantIndex1 = new DenseVariantIndex(new boolean[] {true, false, true, false});
+        DenseVariantIndex denseVariantIndex2 = new DenseVariantIndex(new boolean[] {true, false, false, true});
         VariantIndex intersection = denseVariantIndex1.intersection(denseVariantIndex2);
         assertEquals(intersection.getClass(), DenseVariantIndex.class);
-        assertArrayEquals(new boolean[]{true, false, false, false}, ((DenseVariantIndex) intersection).getVariantIndexMask());
+        assertArrayEquals(new boolean[] {true, false, false, false}, ((DenseVariantIndex) intersection).getVariantIndexMask());
     }
+
     @Test
     public void testSparseAndDenseUnion() {
         SparseVariantIndex sparseVariantIndex1 = new SparseVariantIndex(Set.of(0, 2));
@@ -51,6 +54,7 @@ public class VariantIndexTest {
         assertEquals(union.getClass(), DenseVariantIndex.class);
         assertArrayEquals(new boolean[] {true, true, true, false}, ((DenseVariantIndex) union).getVariantIndexMask());
     }
+
     @Test
     public void testSparseAndDenseIntersection() {
         SparseVariantIndex sparseVariantIndex1 = new SparseVariantIndex(Set.of(0, 2));

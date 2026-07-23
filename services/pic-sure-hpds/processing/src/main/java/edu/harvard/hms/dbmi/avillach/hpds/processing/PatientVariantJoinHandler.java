@@ -24,16 +24,15 @@ public class PatientVariantJoinHandler {
         this.variantService = variantService;
     }
 
-    public VariantMask getPatientIdsForIntersectionOfVariantSets(Set<Integer> patientSubset,
-                                                                        VariantIndex intersectionOfInfoFilters) {
+    public VariantMask getPatientIdsForIntersectionOfVariantSets(Set<Integer> patientSubset, VariantIndex intersectionOfInfoFilters) {
 
-        if(!intersectionOfInfoFilters.isEmpty()) {
+        if (!intersectionOfInfoFilters.isEmpty()) {
             Set<Integer> patientsInScope;
             // todo: don't do this every time
-            Set<Integer> patientIds = Arrays.asList(
-                    variantService.getPatientIds()).stream().map((String id)->{
-                return Integer.parseInt(id);}).collect(Collectors.toSet());
-            if(patientSubset != null) {
+            Set<Integer> patientIds = Arrays.asList(variantService.getPatientIds()).stream().map((String id) -> {
+                return Integer.parseInt(id);
+            }).collect(Collectors.toSet());
+            if (patientSubset != null) {
                 patientsInScope = Sets.intersection(patientIds, patientSubset);
             } else {
                 // for now, null means there were no phenotypic filters and all patients are eligible
@@ -51,27 +50,28 @@ public class PatientVariantJoinHandler {
 
             Set<String> variantsInScope = intersectionOfInfoFilters.mapToVariantSpec(variantService.getVariantIndex());
 
-            /*// todo: determine ideal ratio to bother with this
-            if (patientsInScope.size() < variantService.getPatientIds().length) {
-                variantsInScope = variantService.filterVariantSetForPatientSet(variantsInScope, patientsInScope);
-            }*/
-            Collection<List<String>> values = variantsInScope.stream()
-                    .collect(Collectors.groupingByConcurrent((variantSpec) -> {
-                        return new VariantSpec(variantSpec).metadata.offset / 1000;
-                    })).values();
+            /*
+             * // todo: determine ideal ratio to bother with this if (patientsInScope.size() < variantService.getPatientIds().length) {
+             * variantsInScope = variantService.filterVariantSetForPatientSet(variantsInScope, patientsInScope); }
+             */
+            Collection<List<String>> values = variantsInScope.stream().collect(Collectors.groupingByConcurrent((variantSpec) -> {
+                return new VariantSpec(variantSpec).metadata.offset / 1000;
+            })).values();
             ArrayList<List<String>> variantBucketsInScope = new ArrayList<List<String>>(values);
 
 
-            //don't error on small result sets (make sure we have at least one element in each partition)
+            // don't error on small result sets (make sure we have at least one element in each partition)
             int partitionSize = variantBucketsInScope.size() / Runtime.getRuntime().availableProcessors();
-            List<List<List<String>>> variantBucketPartitions = Lists.partition(variantBucketsInScope, partitionSize > 0 ? partitionSize : 1);
+            List<List<List<String>>> variantBucketPartitions =
+                Lists.partition(variantBucketsInScope, partitionSize > 0 ? partitionSize : 1);
 
-            log.debug("found " + variantBucketsInScope.size() + " buckets and partitioned those into " + variantBucketPartitions.size() + " groups");
+            log.debug(
+                "found " + variantBucketsInScope.size() + " buckets and partitioned those into " + variantBucketPartitions.size()
+                    + " groups"
+            );
 
             VariantMask patientsInScopeMask = new VariantMaskBitmaskImpl(createMaskForPatientSet(patientsInScope));
-            for(int x = 0;
-                x < variantBucketPartitions.size() /*&& matchingPatients[0].bitCount() < patientsInScopeSize + 4*/;
-                x++) {
+            for (int x = 0; x < variantBucketPartitions.size() /* && matchingPatients[0].bitCount() < patientsInScopeSize + 4 */; x++) {
                 List<List<String>> variantBuckets = variantBucketPartitions.get(x);
                 variantBuckets.parallelStream().forEach(variantBucket -> {
                     VariantBucketHolder<VariableVariantMasks> bucketCache = new VariantBucketHolder<>();
@@ -82,12 +82,12 @@ public class PatientVariantJoinHandler {
                             VariantMask heterozygousMask = masks.heterozygousMask;
                             VariantMask homozygousMask = masks.homozygousMask;
                             if (heterozygousMask != null) {
-                                synchronized(matchingPatients) {
+                                synchronized (matchingPatients) {
                                     matchingPatients[0] = matchingPatients[0].union(heterozygousMask);
                                 }
                             }
                             if (homozygousMask != null) {
-                                synchronized(matchingPatients) {
+                                synchronized (matchingPatients) {
                                     matchingPatients[0] = matchingPatients[0].union(homozygousMask);
                                 }
                             }
@@ -95,12 +95,15 @@ public class PatientVariantJoinHandler {
                     });
                     if (!missingVariants.isEmpty()) {
                         log.debug(missingVariants.size() + " variant masks not found");
-                        log.debug("Variants missing masks: " + Joiner.on(",").join( missingVariants.subList(0, Math.min(100, missingVariants.size()))));
+                        log.debug(
+                            "Variants missing masks: "
+                                + Joiner.on(",").join(missingVariants.subList(0, Math.min(100, missingVariants.size())))
+                        );
                     }
                 });
             }
             return matchingPatients[0].intersection(patientsInScopeMask);
-        }else {
+        } else {
             // This will happen regularly, for example if someone is searching for a gene that is not on this partition
             log.debug("No matches found for info filters.");
             return new VariantMaskSparseImpl(Set.of());
@@ -111,15 +114,15 @@ public class PatientVariantJoinHandler {
     public BigInteger createMaskForPatientSet(Set<Integer> patientSet) {
         Set<Integer> patientSubset = patientSet;
         if (patientSet == null) {
-            patientSubset = Arrays.asList(
-                    variantService.getPatientIds()).stream().map((String id)->{
-                return Integer.parseInt(id);}).collect(Collectors.toSet());
+            patientSubset = Arrays.asList(variantService.getPatientIds()).stream().map((String id) -> {
+                return Integer.parseInt(id);
+            }).collect(Collectors.toSet());
         }
-        StringBuilder builder = new StringBuilder("11"); //variant bitmasks are bookended with '11'
+        StringBuilder builder = new StringBuilder("11"); // variant bitmasks are bookended with '11'
 
         for (int i = variantService.getPatientIds().length - 1; i >= 0; i--) {
             Integer idInt = Integer.parseInt(variantService.getPatientIds()[i]);
-            if(patientSubset.contains(idInt)){
+            if (patientSubset.contains(idInt)) {
                 builder.append("1");
             } else {
                 builder.append("0");

@@ -8,31 +8,16 @@ import java.util.Map;
 import java.util.function.Function;
 
 public record AppConfig(
-    String auditApiKey,
-    String app,
-    String platform,
-    String environment,
-    String hostname,
-    int port,
-    String allowedOrigin,
+    String auditApiKey, String app, String platform, String environment, String hostname, int port, String allowedOrigin,
     Map<String, String> jwtClaimMapping
 ) {
 
     private static final Map<String, String> DEFAULT_JWT_CLAIM_MAPPING = Map.ofEntries(
-        Map.entry("sub", "subject"),
-        Map.entry("email", "user_email"),
-        Map.entry("name", "user_name"),
-        Map.entry("userid", "user_id"),
-        Map.entry("preferred_username", "preferred_username"),
-        Map.entry("org", "user_org"),
-        Map.entry("country_name", "user_country_name"),
-        Map.entry("nih_ico", "nih_ico"),
-        Map.entry("eRA_commons_id", "eRA_commons_id"),
-        Map.entry("user_permission_group", "user_permission_group"),
-        Map.entry("uuid", "uuid"),
-        Map.entry("roles", "roles"),
-        Map.entry("idp", "user_id_provider"),
-        Map.entry("cadr_name", "cadr_name")
+        Map.entry("sub", "subject"), Map.entry("email", "user_email"), Map.entry("name", "user_name"), Map.entry("userid", "user_id"),
+        Map.entry("preferred_username", "preferred_username"), Map.entry("org", "user_org"), Map.entry("country_name", "user_country_name"),
+        Map.entry("nih_ico", "nih_ico"), Map.entry("eRA_commons_id", "eRA_commons_id"),
+        Map.entry("user_permission_group", "user_permission_group"), Map.entry("uuid", "uuid"), Map.entry("roles", "roles"),
+        Map.entry("idp", "user_id_provider"), Map.entry("cadr_name", "cadr_name")
     );
 
     public static AppConfig fromEnvironment() {

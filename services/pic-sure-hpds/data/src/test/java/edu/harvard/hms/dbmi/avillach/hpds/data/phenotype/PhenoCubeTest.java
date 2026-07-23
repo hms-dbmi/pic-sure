@@ -11,12 +11,8 @@ class PhenoCubeTest {
 
     @Test
     void shouldGetValuesForKeys() {
-        KeyAndValue[] sortedByKey = {
-            new KeyAndValue<>(1, "a"),
-            new KeyAndValue<>(1, "b"),
-            new KeyAndValue<>(2, "c"),
-            new KeyAndValue<>(3, "d"),
-        };
+        KeyAndValue[] sortedByKey =
+            {new KeyAndValue<>(1, "a"), new KeyAndValue<>(1, "b"), new KeyAndValue<>(2, "c"), new KeyAndValue<>(3, "d"),};
         PhenoCube<String> subject = new PhenoCube<>("phill the phenocube", String.class);
         subject.setSortedByKey(sortedByKey);
 

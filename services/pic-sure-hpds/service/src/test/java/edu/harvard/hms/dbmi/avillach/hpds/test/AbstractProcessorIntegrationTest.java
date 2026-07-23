@@ -54,7 +54,7 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
 
@@ -70,7 +70,7 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996", "LOC101928576"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996", "LOC101928576"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
 
@@ -83,7 +83,7 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
         query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)));
@@ -104,10 +104,7 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validCategoricalPhenotypicQuery() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Finnish"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish"}));
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(102, idList.size());
     }
@@ -115,26 +112,17 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validMultipleValueCategoricalPhenotypicQuery() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Finnish"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish"}));
         Set<Integer> finnishIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(102, finnishIdList.size());
 
         query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Colombian"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Colombian"}));
         Set<Integer> columbianIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(153, columbianIdList.size());
 
         query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Finnish", "Colombian"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish", "Colombian"}));
         Set<Integer> bothIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(255, bothIdList.size());
         assertEquals(Sets.union(finnishIdList, columbianIdList), bothIdList);
@@ -143,26 +131,22 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validMultipleCategoricalPhenotypicQuery() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Finnish"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish"}));
         Set<Integer> finnishIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(102, finnishIdList.size());
 
         query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"female"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\SEX\\", new String[] {"female"}));
         Set<Integer> femaleIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(2330, femaleIdList.size());
 
         query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\POPULATION NAME\\",
-                new String[] {"Finnish"},
-                "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"female"}
-        ));
+        query.setCategoryFilters(
+            Map.of(
+                "\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish"}, "\\open_access-1000Genomes\\data\\SEX\\",
+                new String[] {"female"}
+            )
+        );
         Set<Integer> bothIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(64, bothIdList.size());
         assertEquals(Sets.intersection(finnishIdList, femaleIdList), bothIdList);
@@ -171,26 +155,18 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validMultiplePhenotypicQuery() {
         Query query = new Query();
-        query.setNumericFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)
-        ));
+        query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)));
         Set<Integer> ageIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(562, ageIdList.size());
 
         query = new Query();
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}
-        ));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}));
         Set<Integer> sexIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(2648, sexIdList.size());
 
         query = new Query();
-        query.setNumericFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)
-        ));
-        query.setCategoryFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}
-        ));
+        query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)));
+        query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}));
         Set<Integer> bothIdList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(269, bothIdList.size());
         assertEquals(Sets.intersection(ageIdList, sexIdList), bothIdList);
@@ -199,22 +175,20 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validMultipleNumericPhenotypicQuery() {
         Query query = new Query();
-        query.setNumericFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)
-        ));
+        query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)));
         Set<Integer> ageIdList = abstractProcessor.getPatientSubsetForQuery(query);
 
         query = new Query();
-        query.setNumericFilters(Map.of(
-                "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\", new Filter.DoubleFilter(180.0, null)
-        ));
+        query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\", new Filter.DoubleFilter(180.0, null)));
         Set<Integer> heightIdList = abstractProcessor.getPatientSubsetForQuery(query);
 
         query = new Query();
-        query.setNumericFilters(Map.of(
+        query.setNumericFilters(
+            Map.of(
                 "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0),
                 "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\", new Filter.DoubleFilter(180.0, null)
-        ));
+            )
+        );
         Set<Integer> bothIdList = abstractProcessor.getPatientSubsetForQuery(query);
 
         assertEquals(Sets.intersection(ageIdList, heightIdList), bothIdList);
@@ -250,15 +224,16 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_invalidVariantSpecQuery() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of("chr21,5061,AAAA,GGGG", new String[]{"0/1", "1/1"}));
+        query.setCategoryFilters(Map.of("chr21,5061,AAAA,GGGG", new String[] {"0/1", "1/1"}));
 
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(0, idList.size());
     }
+
     @Test
     public void getPatientSubsetForQuery_validRequiredVariantOldFormatCategoryFilter() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[]{"0/1", "1/1"}));
+        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[] {"0/1", "1/1"}));
 
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(8, idList.size());
@@ -267,7 +242,7 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validRequiredVariantOldFormatCategoryFilterHomozygous() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[]{"1/1"}));
+        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[] {"1/1"}));
 
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(3, idList.size());
@@ -276,7 +251,7 @@ public class AbstractProcessorIntegrationTest {
     @Test
     public void getPatientSubsetForQuery_validRequiredVariantOldFormatCategoryFilterHeterozygous() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[]{"0/1"}));
+        query.setCategoryFilters(Map.of("chr21,5032061,A,G", new String[] {"0/1"}));
 
         Set<Integer> idList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(5, idList.size());
@@ -314,11 +289,17 @@ public class AbstractProcessorIntegrationTest {
         assertEquals(1126, anyRecordOfList.size());
 
         query = new Query();
-        query.setAnyRecordOf(List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"));
+        query.setAnyRecordOf(
+            List.of(
+                "\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\",
+                "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+            )
+        );
 
-       anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
+        anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(4978, anyRecordOfList.size());
     }
+
     public void getPatientSubsetForQuery_validAnyRecordOfAndCategoryQuery() {
         Query query = new Query();
         query.setCategoryFilters(Map.of("\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Yoruba"}));
@@ -341,21 +322,29 @@ public class AbstractProcessorIntegrationTest {
 
         assertEquals(Sets.intersection(yorubaIdList, anyRecordOf), bothIdList);
     }
+
     @Test
     public void getPatientSubsetForQuery_validAnyRecordOfMultiQuery() {
         Query query = new Query();
-        query.setAnyRecordOfMulti(List.of(
-                List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\")
-        ));
+        query.setAnyRecordOfMulti(
+            List.of(
+                List.of(
+                    "\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\",
+                    "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\"
+                )
+            )
+        );
 
         Set<Integer> anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(4978, anyRecordOfList.size());
 
         query = new Query();
-        query.setAnyRecordOfMulti(List.of(
+        query.setAnyRecordOfMulti(
+            List.of(
                 List.of("\\open_access-1000Genomes\\data\\THE HUMAN GENOME STRUCTURAL VARIATION CONSORTIUM\\"),
                 List.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", "\\open_access-1000Genomes\\data\\SYNTHETIC_SEX\\")
-        ));
+            )
+        );
 
         anyRecordOfList = abstractProcessor.getPatientSubsetForQuery(query);
         assertEquals(1126, anyRecordOfList.size());
@@ -367,7 +356,7 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
 
@@ -381,19 +370,20 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"NOTAGENE"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"NOTAGENE"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
 
         Collection<String> variantList = abstractProcessor.getVariantList(query);
         assertEquals(0, variantList.size());
     }
+
     @Test
     public void getVariantList_validGeneWithMultipleVariantQuery() {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996", "LOC101928576"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996", "LOC101928576"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
 
@@ -407,7 +397,7 @@ public class AbstractProcessorIntegrationTest {
         Query query = new Query();
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[]{"LOC102723996"});
+        variantInfoFilter.categoryVariantInfoFilters = Map.of("Gene_with_variant", new String[] {"LOC102723996"});
         variantInfoFilters.add(variantInfoFilter);
         query.setVariantInfoFilters(variantInfoFilters);
         query.setNumericFilters(Map.of("\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new Filter.DoubleFilter(35.0, 45.0)));

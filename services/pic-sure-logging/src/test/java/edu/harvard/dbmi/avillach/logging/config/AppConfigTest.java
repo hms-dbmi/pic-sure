@@ -41,8 +41,7 @@ class AppConfigTest {
     @Test
     void missingApiKeyFails() {
         Map<String, String> env = new HashMap<>();
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
@@ -50,8 +49,7 @@ class AppConfigTest {
     void blankApiKeyFails() {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "   ");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("LOGGING_API_KEY"));
     }
 
@@ -60,8 +58,7 @@ class AppConfigTest {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "not-a-number");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("PORT"));
     }
 
@@ -70,8 +67,7 @@ class AppConfigTest {
         Map<String, String> env = new HashMap<>();
         env.put("LOGGING_API_KEY", "test-key");
         env.put("PORT", "99999");
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("PORT"));
     }
 
@@ -123,8 +119,7 @@ class AppConfigTest {
         env.put("LOGGING_API_KEY", "test-key");
         env.put("JWT_CLAIM_MAPPING", "not-json");
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-            () -> AppConfig.fromEnvironment(envWith(env)));
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> AppConfig.fromEnvironment(envWith(env)));
         assertTrue(ex.getMessage().contains("JWT_CLAIM_MAPPING"));
     }
 }

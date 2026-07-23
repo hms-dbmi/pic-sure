@@ -33,15 +33,16 @@ public class VcfInputFile implements Comparable<VcfInputFile> {
     public VcfInputFile(File vcfFile, boolean gzipped) {
         fileName = vcfFile.getName();
         log.info("Processing VCF file:  " + fileName);
-        try{
-            Reader reader = new InputStreamReader( gzipped ? new GZIPInputStream(new FileInputStream(vcfFile)) : new FileInputStream(vcfFile));
+        try {
+            Reader reader =
+                new InputStreamReader(gzipped ? new GZIPInputStream(new FileInputStream(vcfFile)) : new FileInputStream(vcfFile));
             parser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter('\t').withSkipHeaderRecord(false));
 
             iterator = parser.iterator();
-            while(iterator.hasNext()) {
+            while (iterator.hasNext()) {
                 CSVRecord csvRecord = iterator.next();
-                //skip all header rows
-                if(csvRecord.get(0).startsWith("#")) {
+                // skip all header rows
+                if (csvRecord.get(0).startsWith("#")) {
                     continue;
                 }
 
@@ -52,7 +53,7 @@ public class VcfInputFile implements Comparable<VcfInputFile> {
                 break;
             }
 
-        }catch(IOException e) {
+        } catch (IOException e) {
             log.error("Error processing VCF file: " + vcfFile.getName(), e);
         }
 
@@ -64,8 +65,8 @@ public class VcfInputFile implements Comparable<VcfInputFile> {
 
     void nextVariant() {
         CSVRecord csvRecord = iterator.next();
-        //skip all header rows
-        if(csvRecord.get(0).startsWith("#")) {
+        // skip all header rows
+        if (csvRecord.get(0).startsWith("#")) {
             return;
         }
 
@@ -76,12 +77,12 @@ public class VcfInputFile implements Comparable<VcfInputFile> {
     }
 
     /**
-     * These files will be sorted by the current variant spec.  We need to make sure they are never actually
-     * equal values (since the TreeSet used to keep them sorted enforces uniqueness)
+     * These files will be sorted by the current variant spec. We need to make sure they are never actually equal values (since the TreeSet
+     * used to keep them sorted enforces uniqueness)
      */
     @Override
     public int compareTo(VcfInputFile arg0) {
-        return (currentVariantSpec + iterator.toString()).compareTo(arg0.currentVariantSpec  + arg0.iterator.toString());
+        return (currentVariantSpec + iterator.toString()).compareTo(arg0.currentVariantSpec + arg0.iterator.toString());
     }
 
 

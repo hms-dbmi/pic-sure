@@ -11,13 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JwtDecodeServiceTest {
 
-    private static final Map<String, String> DEFAULT_MAPPING = Map.of(
-        "sub", "subject",
-        "email", "user_email",
-        "name", "user_name",
-        "roles", "roles",
-        "logged_in", "logged_in"
-    );
+    private static final Map<String, String> DEFAULT_MAPPING =
+        Map.of("sub", "subject", "email", "user_email", "name", "user_name", "roles", "roles", "logged_in", "logged_in");
 
     private JwtDecodeService service;
 
@@ -28,11 +23,7 @@ class JwtDecodeServiceTest {
 
     @Test
     void validTokenExtractsClaims() {
-        String token = TestJwtBuilder.buildToken(Map.of(
-            "sub", "user123",
-            "email", "user@example.com",
-            "name", "John Doe"
-        ));
+        String token = TestJwtBuilder.buildToken(Map.of("sub", "user123", "email", "user@example.com", "name", "John Doe"));
 
         Map<String, Object> result = service.extractClaims("Bearer " + token);
 
@@ -86,9 +77,7 @@ class JwtDecodeServiceTest {
 
     @Test
     void arrayRolesPreservedAsList() {
-        String token = TestJwtBuilder.buildToken(Map.of(
-            "roles", List.of("ADMIN", "USER")
-        ));
+        String token = TestJwtBuilder.buildToken(Map.of("roles", List.of("ADMIN", "USER")));
 
         Map<String, Object> result = service.extractClaims("Bearer " + token);
 
@@ -99,9 +88,7 @@ class JwtDecodeServiceTest {
 
     @Test
     void booleanLoggedInPreserved() {
-        String token = TestJwtBuilder.buildToken(Map.of(
-            "logged_in", true
-        ));
+        String token = TestJwtBuilder.buildToken(Map.of("logged_in", true));
 
         Map<String, Object> result = service.extractClaims("Bearer " + token);
         assertEquals(true, result.get("logged_in"));
@@ -109,10 +96,7 @@ class JwtDecodeServiceTest {
 
     @Test
     void expiredTokenStillDecodes() {
-        String token = TestJwtBuilder.buildExpiredToken(Map.of(
-            "sub", "user123",
-            "email", "user@example.com"
-        ));
+        String token = TestJwtBuilder.buildExpiredToken(Map.of("sub", "user123", "email", "user@example.com"));
 
         Map<String, Object> result = service.extractClaims("Bearer " + token);
         assertEquals("user123", result.get("subject"));
@@ -121,15 +105,9 @@ class JwtDecodeServiceTest {
 
     @Test
     void customClaimMapping() {
-        JwtDecodeService customService = new JwtDecodeService(Map.of(
-            "custom_id", "my_id",
-            "custom_email", "my_email"
-        ));
+        JwtDecodeService customService = new JwtDecodeService(Map.of("custom_id", "my_id", "custom_email", "my_email"));
 
-        String token = TestJwtBuilder.buildToken(Map.of(
-            "custom_id", "abc",
-            "custom_email", "test@test.com"
-        ));
+        String token = TestJwtBuilder.buildToken(Map.of("custom_id", "abc", "custom_email", "test@test.com"));
 
         Map<String, Object> result = customService.extractClaims("Bearer " + token);
         assertEquals("abc", result.get("my_id"));

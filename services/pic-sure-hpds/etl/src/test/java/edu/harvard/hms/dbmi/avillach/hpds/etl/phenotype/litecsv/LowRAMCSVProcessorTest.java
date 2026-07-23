@@ -165,8 +165,8 @@ class LowRAMCSVProcessorTest {
         Path csvPath = Path.of(testDir.getAbsolutePath(), "test.csv");
         Files.writeString(csvPath, content);
         LowRAMLoadingStore store = new LowRAMLoadingStore(
-                testDir.getAbsolutePath() + "/allObservationsTemp.javabin", testDir.getAbsolutePath() + "/columnMeta.javabin",
-                testDir.getAbsolutePath() + "/allObservationsStore.javabin", "TEST_KEY"
+            testDir.getAbsolutePath() + "/allObservationsTemp.javabin", testDir.getAbsolutePath() + "/columnMeta.javabin",
+            testDir.getAbsolutePath() + "/allObservationsStore.javabin", "TEST_KEY"
         );
 
         CSVConfig csvConfig = new CSVConfig();
@@ -182,8 +182,10 @@ class LowRAMCSVProcessorTest {
 
         Crypto.loadKey("TEST_KEY", TEST_KEY_PATH);
         store.saveStore();
-        List<Meta> expectedMetas =
-                List.of(new CategoricalMeta("\\TEST_DATASET_NAME\\foo\\1\\", 2, 2, List.of("lav", "val")), new NumericMeta("\\TEST_DATASET_NAME\\foo\\2\\", 2, 2, 0.0, 99.0));
+        List<Meta> expectedMetas = List.of(
+            new CategoricalMeta("\\TEST_DATASET_NAME\\foo\\1\\", 2, 2, List.of("lav", "val")),
+            new NumericMeta("\\TEST_DATASET_NAME\\foo\\2\\", 2, 2, 0.0, 99.0)
+        );
         verifyStoreMeta(expectedMetas, testDir.getAbsolutePath() + "/columnMeta.javabin");
     }
 

@@ -44,7 +44,9 @@ public class GenomicProcessorConfig {
         // assumed for now that all first level directories contain a genomic dataset for a group of studies
         File[] directories = new File(hpdsGenomicDataDirectory).listFiles(File::isDirectory);
         if (directories.length > 10) {
-            throw new IllegalArgumentException("Number of genomic partitions by studies exceeds maximum of 10 (" + directories.length + ")");
+            throw new IllegalArgumentException(
+                "Number of genomic partitions by studies exceeds maximum of 10 (" + directories.length + ")"
+            );
         }
 
         List<GenomicProcessor> studyGroupedGenomicProcessors = new ArrayList<>();
@@ -60,15 +62,14 @@ public class GenomicProcessorConfig {
     private static List<GenomicProcessor> getGenomicProcessors(File directory) {
         File[] secondLevelDirectories = directory.listFiles(File::isDirectory);
         if (secondLevelDirectories.length > 50) {
-            throw new IllegalArgumentException("Number of chromosome partitions exceeds maximum of 50 (" + secondLevelDirectories.length + ")");
+            throw new IllegalArgumentException(
+                "Number of chromosome partitions exceeds maximum of 50 (" + secondLevelDirectories.length + ")"
+            );
         }
 
-        return Flux.fromArray(secondLevelDirectories)
-                .flatMap(i -> Mono.fromCallable(() -> {
-                    return (GenomicProcessor) new GenomicProcessorNodeImpl(i.getAbsolutePath() + "/");
-                }).subscribeOn(Schedulers.boundedElastic()))
-                .collectList()
-                .block();
+        return Flux.fromArray(secondLevelDirectories).flatMap(i -> Mono.fromCallable(() -> {
+            return (GenomicProcessor) new GenomicProcessorNodeImpl(i.getAbsolutePath() + "/");
+        }).subscribeOn(Schedulers.boundedElastic())).collectList().block();
     }
 
     @Bean(name = "localPatientOnlyDistributedGenomicProcessor")
@@ -77,7 +78,9 @@ public class GenomicProcessorConfig {
         // assumed for now that all first level directories contain a genomic dataset for a group of studies
         File[] directories = new File(hpdsGenomicDataDirectory).listFiles(File::isDirectory);
         if (directories.length > 10) {
-            throw new IllegalArgumentException("Number of genomic partitions by studies exceeds maximum of 10 (" + directories.length + ")");
+            throw new IllegalArgumentException(
+                "Number of genomic partitions by studies exceeds maximum of 10 (" + directories.length + ")"
+            );
         }
 
         List<GenomicProcessor> studyGroupedGenomicProcessors = new ArrayList<>();
@@ -94,9 +97,10 @@ public class GenomicProcessorConfig {
     @ConditionalOnProperty(prefix = "hpds.genomicProcessor", name = "impl", havingValue = "remote")
     public GenomicProcessor remoteGenomicProcessor(@Value("${hpds.genomicProcessor.remoteHosts}") List<String> remoteHosts) {
         List<GenomicProcessor> genomicProcessors = Flux.fromIterable(remoteHosts)
-                .flatMap(remoteHost -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorRestClient(remoteHost)).subscribeOn(Schedulers.boundedElastic()))
-                .collectList()
-                .block();
+            .flatMap(
+                remoteHost -> Mono.fromCallable(() -> (GenomicProcessor) new GenomicProcessorRestClient(remoteHost))
+                    .subscribeOn(Schedulers.boundedElastic())
+            ).collectList().block();
         // todo: validate remote processors are valid
         return new GenomicProcessorParentImpl(genomicProcessors);
     }

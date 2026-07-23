@@ -15,18 +15,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Contract pin for the Javalin-native {@code GET /health} route (Phase 3 Task 8).
  *
- * <p>The gateway's system-status aggregation probes this endpoint directly (this service is
- * Javalin, not Spring Boot, so there is no Actuator {@code status:UP} body here). The contract
- * being pinned is: {@code 200 {"status":"healthy"}} when ready, {@code 503 {"status":"starting"}}
- * otherwise. This test exists so a future refactor of {@code App}/{@code HealthHandler} cannot
- * silently change that contract without a test failing.
+ * <p>The gateway's system-status aggregation probes this endpoint directly (this service is Javalin, not Spring Boot, so there is no
+ * Actuator {@code status:UP} body here). The contract being pinned is: {@code 200 {"status":"healthy"}} when ready, {@code 503
+ * {"status":"starting"}} otherwise. This test exists so a future refactor of {@code App}/{@code HealthHandler} cannot silently change that
+ * contract without a test failing.
  */
 class HealthRouteTest {
 
     private static AppConfig testConfig() {
         return new AppConfig(
-            "test-api-key", "testapp", "testplatform", "test", "testhost",
-            0, "*",
+            "test-api-key", "testapp", "testplatform", "test", "testhost", 0, "*",
             Map.of("sub", "subject", "email", "user_email", "roles", "roles", "logged_in", "logged_in")
         );
     }

@@ -25,7 +25,9 @@ public class VCFIndexBuilder {
 
     private static final Joiner COMMA_JOINER = Joiner.on(",");
 
-    public VCFIndexBuilder(File vcfPatientMappingFile, File patientUUIDToIdMappingFile, File vcfIndexOutputDirectory, Set<String> validPatientType) {
+    public VCFIndexBuilder(
+        File vcfPatientMappingFile, File patientUUIDToIdMappingFile, File vcfIndexOutputDirectory, Set<String> validPatientType
+    ) {
         this.vcfPatientMappingFile = vcfPatientMappingFile;
         this.patientUUIDToIdMappingFile = patientUUIDToIdMappingFile;
         this.vcfIndexOutputDirectory = vcfIndexOutputDirectory;
@@ -40,12 +42,7 @@ public class VCFIndexBuilder {
         if (!vcfIndexOutputDirectoryFile.isDirectory()) {
             throw new IllegalArgumentException("Argument 3 must be a valid directory");
         }
-        new VCFIndexBuilder(
-                new File(args[0]),
-                new File(args[1]),
-                vcfIndexOutputDirectoryFile,
-                Set.of(args[3].split(","))
-        ).run();
+        new VCFIndexBuilder(new File(args[0]), new File(args[1]), vcfIndexOutputDirectoryFile, Set.of(args[3].split(","))).run();
     }
 
     private void run() {
@@ -53,28 +50,22 @@ public class VCFIndexBuilder {
         patientUUIDToPatientIdMapping = new HashMap<>();
         fileToPatientListMap = new HashMap<>();
         try {
-            Files.lines(patientUUIDToIdMappingFile.toPath())
-                    .skip(1)
-                    .map(l -> l.split(","))
-                    .filter(columns -> columns.length == 2)
-                    .forEach(columns -> {
-                        patientUUIDToPatientIdMapping.put(columns[0], columns[1]);
-                    });
+            Files.lines(patientUUIDToIdMappingFile.toPath()).skip(1).map(l -> l.split(",")).filter(columns -> columns.length == 2)
+                .forEach(columns -> {
+                    patientUUIDToPatientIdMapping.put(columns[0], columns[1]);
+                });
 
-            Files.lines(vcfPatientMappingFile.toPath())
-                    .skip(1)
-                    .map(l -> l.split(","))
-                    .filter(columns -> validPatientTypes.contains(columns[4]))
-                    .forEach(columns -> {
-                        String patientUuid = columns[0];
-                        String vcfFile = columns[1].substring(columns[1].lastIndexOf("/") + 1);
-                        List<String> patientList = Optional.ofNullable(fileToPatientListMap.get(vcfFile)).orElseGet(ArrayList::new);
-                        patientList.add(patientUuid);
+            Files.lines(vcfPatientMappingFile.toPath()).skip(1).map(l -> l.split(","))
+                .filter(columns -> validPatientTypes.contains(columns[4])).forEach(columns -> {
+                    String patientUuid = columns[0];
+                    String vcfFile = columns[1].substring(columns[1].lastIndexOf("/") + 1);
+                    List<String> patientList = Optional.ofNullable(fileToPatientListMap.get(vcfFile)).orElseGet(ArrayList::new);
+                    patientList.add(patientUuid);
 
-                        if (patientUUIDToPatientIdMapping.get(patientUuid) != null) {
-                            fileToPatientListMap.put(vcfFile, patientList);
-                        }
-                    });
+                    if (patientUUIDToPatientIdMapping.get(patientUuid) != null) {
+                        fileToPatientListMap.put(vcfFile, patientList);
+                    }
+                });
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -92,24 +83,23 @@ public class VCFIndexBuilder {
             groupToVcfMapping.put(baseFile, vcfFiles);
         }
 
-        groupToVcfMapping.keySet()
-                .stream()
-                .forEach(vcfGroup -> {
-                    writeVcfIndex(vcfGroup, groupToVcfMapping.get(vcfGroup));
-                });
+        groupToVcfMapping.keySet().stream().forEach(vcfGroup -> {
+            writeVcfIndex(vcfGroup, groupToVcfMapping.get(vcfGroup));
+        });
     }
 
     private void writeVcfIndex(String vcfGroup, List<String> vcfFiles) {
         try {
             FileWriter fileWriter = new FileWriter(vcfIndexOutputDirectory.getAbsolutePath() + "/" + vcfGroup + "-vcfIndex.tsv");
-            fileWriter.write("\"vcf_path\"\t\"chromosome\"\t\"isAnnotated\"\t\"isGzipped\"\t\"sample_ids\"\t\"patient_ids\"\t\"sample_relationship\"\t\"related_sample_ids\"\n");
+            fileWriter.write(
+                "\"vcf_path\"\t\"chromosome\"\t\"isAnnotated\"\t\"isGzipped\"\t\"sample_ids\"\t\"patient_ids\"\t\"sample_relationship\"\t\"related_sample_ids\"\n"
+            );
 
             for (String vcfFile : vcfFiles) {
-                Set<String> validPatientUUIDs = fileToPatientListMap.get(vcfFile)
-                        .stream()
-                        .filter(patientUUIDToPatientIdMapping::containsKey)
-                        .collect(Collectors.toSet());
-                List<String> patentIds = validPatientUUIDs.stream().map(patientUUIDToPatientIdMapping::get).filter(Objects::nonNull).toList();
+                Set<String> validPatientUUIDs = fileToPatientListMap.get(vcfFile).stream()
+                    .filter(patientUUIDToPatientIdMapping::containsKey).collect(Collectors.toSet());
+                List<String> patentIds =
+                    validPatientUUIDs.stream().map(patientUUIDToPatientIdMapping::get).filter(Objects::nonNull).toList();
                 fileWriter.write("\"" + VCF_INDEX_DIRECTORY + "/" + vcfFile + "\"\t\"" + extractChromosome(vcfFile) + "\"\t\"1\"\t\"1\"\t");
                 fileWriter.write("\"" + COMMA_JOINER.join(validPatientUUIDs) + "\"\t\"" + COMMA_JOINER.join(patentIds) + "\"\n");
             }

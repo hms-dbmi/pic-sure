@@ -36,10 +36,12 @@ public class CountProcessorIntegrationTest {
     public void runCategoryCrossCounts_twoFilters() {
         Query query = new Query();
         query.setCrossCountFields(List.of());
-        query.setCategoryFilters(Map.of(
+        query.setCategoryFilters(
+            Map.of(
                 "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male", "female"},
                 "\\open_access-1000Genomes\\data\\POPULATION NAME\\", new String[] {"Finnish"}
-        ));
+            )
+        );
         query.setExpectedResultType(ResultType.CROSS_COUNT);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);
@@ -52,10 +54,9 @@ public class CountProcessorIntegrationTest {
     @Test
     public void runCategoryCrossCounts_snpFilter() {
         Query query = new Query();
-        query.setCategoryFilters(Map.of(
-                "chr21,5032061,A,G", new String[]{"0/1", "1/1"},
-                "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"}
-        ));
+        query.setCategoryFilters(
+            Map.of("chr21,5032061,A,G", new String[] {"0/1", "1/1"}, "\\open_access-1000Genomes\\data\\SEX\\", new String[] {"male"})
+        );
         query.setExpectedResultType(ResultType.CROSS_COUNT);
 
         Map<String, Map<String, Integer>> crossCounts = countProcessor.runCategoryCrossCounts(query);

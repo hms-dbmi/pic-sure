@@ -46,21 +46,15 @@ class LogbackConfigTest {
     @Test
     void configurationLoadsWithoutErrors() {
         List<Status> statusList = context.getStatusManager().getCopyOfStatusList();
-        List<Status> errors = statusList.stream()
-            .filter(s -> s.getLevel() == Status.ERROR)
-            .toList();
-        assertTrue(errors.isEmpty(),
-            "Logback config should load without errors, but got: " + errors);
+        List<Status> errors = statusList.stream().filter(s -> s.getLevel() == Status.ERROR).toList();
+        assertTrue(errors.isEmpty(), "Logback config should load without errors, but got: " + errors);
     }
 
     @Test
     void configurationLoadsWithoutWarnings() {
         List<Status> statusList = context.getStatusManager().getCopyOfStatusList();
-        List<Status> warnings = statusList.stream()
-            .filter(s -> s.getLevel() == Status.WARN)
-            .toList();
-        assertTrue(warnings.isEmpty(),
-            "Logback config should load without warnings, but got: " + warnings);
+        List<Status> warnings = statusList.stream().filter(s -> s.getLevel() == Status.WARN).toList();
+        assertTrue(warnings.isEmpty(), "Logback config should load without warnings, but got: " + warnings);
     }
 
     // --- AUDIT logger appender tests ---
@@ -86,8 +80,7 @@ class LogbackConfigTest {
     void auditFileAppenderTargetsCorrectFile() {
         Logger auditLogger = context.getLogger("AUDIT");
         AsyncAppender asyncAppender = findAppender(auditLogger, "ASYNC_AUDIT_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
         assertEquals(tempDir.resolve("audit.log").toString(), fileAppender.getFile());
     }
 
@@ -95,8 +88,7 @@ class LogbackConfigTest {
     void auditFileAppenderUsesSizeAndTimeRollingPolicy() {
         Logger auditLogger = context.getLogger("AUDIT");
         AsyncAppender asyncAppender = findAppender(auditLogger, "ASYNC_AUDIT_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
         assertInstanceOf(SizeAndTimeBasedRollingPolicy.class, fileAppender.getRollingPolicy());
     }
 
@@ -104,8 +96,7 @@ class LogbackConfigTest {
     void auditFileAppenderHasCorrectMaxHistory() {
         Logger auditLogger = context.getLogger("AUDIT");
         AsyncAppender asyncAppender = findAppender(auditLogger, "ASYNC_AUDIT_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
         SizeAndTimeBasedRollingPolicy<?> policy = (SizeAndTimeBasedRollingPolicy<?>) fileAppender.getRollingPolicy();
         assertEquals(30, policy.getMaxHistory());
     }
@@ -114,12 +105,10 @@ class LogbackConfigTest {
     void auditFileAppenderHasDateAndIndexInPattern() {
         Logger auditLogger = context.getLogger("AUDIT");
         AsyncAppender asyncAppender = findAppender(auditLogger, "ASYNC_AUDIT_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("AUDIT_FILE");
         SizeAndTimeBasedRollingPolicy<?> policy = (SizeAndTimeBasedRollingPolicy<?>) fileAppender.getRollingPolicy();
         String pattern = policy.getFileNamePattern();
-        assertTrue(pattern.contains("audit.%d{yyyy-MM-dd}.%i.log"),
-            "Rolling pattern should include date and index for size+time rotation");
+        assertTrue(pattern.contains("audit.%d{yyyy-MM-dd}.%i.log"), "Rolling pattern should include date and index for size+time rotation");
     }
 
     // --- APP (root) logger appender tests ---
@@ -144,8 +133,7 @@ class LogbackConfigTest {
     void appFileAppenderTargetsCorrectFile() {
         Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
         AsyncAppender asyncAppender = findAppender(rootLogger, "ASYNC_APP_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
         assertEquals(tempDir.resolve("app.log").toString(), fileAppender.getFile());
     }
 
@@ -153,8 +141,7 @@ class LogbackConfigTest {
     void appFileAppenderUsesSizeAndTimeRollingPolicy() {
         Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
         AsyncAppender asyncAppender = findAppender(rootLogger, "ASYNC_APP_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
         assertInstanceOf(SizeAndTimeBasedRollingPolicy.class, fileAppender.getRollingPolicy());
     }
 
@@ -162,8 +149,7 @@ class LogbackConfigTest {
     void appFileAppenderHasCorrectMaxHistory() {
         Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
         AsyncAppender asyncAppender = findAppender(rootLogger, "ASYNC_APP_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
         SizeAndTimeBasedRollingPolicy<?> policy = (SizeAndTimeBasedRollingPolicy<?>) fileAppender.getRollingPolicy();
         assertEquals(30, policy.getMaxHistory());
     }
@@ -172,20 +158,17 @@ class LogbackConfigTest {
     void appFileAppenderHasDateAndIndexInPattern() {
         Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
         AsyncAppender asyncAppender = findAppender(rootLogger, "ASYNC_APP_FILE");
-        RollingFileAppender<ILoggingEvent> fileAppender =
-            (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
+        RollingFileAppender<ILoggingEvent> fileAppender = (RollingFileAppender<ILoggingEvent>) asyncAppender.getAppender("APP_FILE");
         SizeAndTimeBasedRollingPolicy<?> policy = (SizeAndTimeBasedRollingPolicy<?>) fileAppender.getRollingPolicy();
         String pattern = policy.getFileNamePattern();
-        assertTrue(pattern.contains("app.%d{yyyy-MM-dd}.%i.log"),
-            "Rolling pattern should include date and index for size+time rotation");
+        assertTrue(pattern.contains("app.%d{yyyy-MM-dd}.%i.log"), "Rolling pattern should include date and index for size+time rotation");
     }
 
     // --- Functional tests: logs actually get written to files ---
 
     @Test
     void rollingFileAppenderWritesToDisk() throws Exception {
-        LoggerContext defaultContext =
-            (LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
+        LoggerContext defaultContext = (LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
 
         RollingFileAppender<ILoggingEvent> appender = new RollingFileAppender<>();
         appender.setContext(defaultContext);
@@ -219,8 +202,10 @@ class LogbackConfigTest {
         Path testLog = tempDir.resolve("rolling-test.log");
         assertTrue(Files.exists(testLog), "rolling-test.log should be created");
         String content = Files.readString(testLog);
-        assertTrue(content.contains("rolling file test event"),
-            "RollingFileAppender with SizeAndTimeBasedRollingPolicy should write events to disk");
+        assertTrue(
+            content.contains("rolling file test event"),
+            "RollingFileAppender with SizeAndTimeBasedRollingPolicy should write events to disk"
+        );
     }
 
     @Test
@@ -237,8 +222,7 @@ class LogbackConfigTest {
         Path appLog = tempDir.resolve("app.log");
         if (Files.exists(appLog)) {
             String content = Files.readString(appLog);
-            assertFalse(content.contains("secret audit data"),
-                "Audit events should not leak into app.log");
+            assertFalse(content.contains("secret audit data"), "Audit events should not leak into app.log");
         }
     }
 

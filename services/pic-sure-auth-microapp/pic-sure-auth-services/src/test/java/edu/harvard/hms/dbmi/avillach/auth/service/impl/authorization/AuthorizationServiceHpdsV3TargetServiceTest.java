@@ -8,36 +8,25 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for {@link AuthorizationService#isHpdsV3TargetService(String)}.
- * <p>
- * This helper controls when the HPDS-v3 consent-based access rule check is skipped, so it must
- * match clean HPDS-v3 target service paths precisely (segment-aware), without being fooled by
- * substrings like "v30", "v3ish", or paths where "hpds"/"v3" appear in the wrong position.
+ * Unit tests for {@link AuthorizationService#isHpdsV3TargetService(String)}. <p> This helper controls when the HPDS-v3 consent-based access
+ * rule check is skipped, so it must match clean HPDS-v3 target service paths precisely (segment-aware), without being fooled by substrings
+ * like "v30", "v3ish", or paths where "hpds"/"v3" appear in the wrong position.
  */
 class AuthorizationServiceHpdsV3TargetServiceTest {
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "/hpds/auth/v3",
-            "/hpds/auth/v3/query",
-            "/hpds/open/v3",
-            "/hpds/open/v3/query/abc/result",
-            "/hpds/auth/v3/"
-    })
+    @ValueSource(strings = {"/hpds/auth/v3", "/hpds/auth/v3/query", "/hpds/auth/v3/query/abc/result", "/hpds/auth/v3/"})
     void returnsTrueForCleanHpdsV3Paths(String targetService) {
         assertTrue(AuthorizationService.isHpdsV3TargetService(targetService));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-            "/dictionary/v3/hpds",
-            "/hpds/auth/v30/query",
-            "/hpds/auth/v3ish/query",
-            "/hpds/v3/query",
-            "/foo/hpds/auth/v3/query",
+    @ValueSource(
+        strings = {"/dictionary/v3/hpds", "/hpds/auth/v30/query", "/hpds/auth/v3ish/query", "/hpds/v3/query", "/foo/hpds/auth/v3/query",
             "/hpds/auth/v3-query",
-            "/v3/query"
-    })
+            // open-access requests are authorized via a separate endpoint and never reach this method
+            "/hpds/open/v3", "/hpds/open/v3/query/abc/result", "/v3/query"}
+    )
     void returnsFalseForNonMatchingPaths(String targetService) {
         assertFalse(AuthorizationService.isHpdsV3TargetService(targetService));
     }
@@ -73,7 +62,6 @@ class AuthorizationServiceHpdsV3TargetServiceTest {
      * Mirrors the skip condition used in {@link AuthorizationService#passesAccessRuleEvaluation}.
      */
     private static boolean skipsConsentCheck(String targetService) {
-        return targetService != null
-                && (targetService.startsWith("/v3") || AuthorizationService.isHpdsV3TargetService(targetService));
+        return targetService != null && (targetService.startsWith("/v3") || AuthorizationService.isHpdsV3TargetService(targetService));
     }
 }

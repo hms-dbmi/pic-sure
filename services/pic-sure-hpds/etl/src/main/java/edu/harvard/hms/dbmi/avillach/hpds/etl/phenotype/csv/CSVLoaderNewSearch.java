@@ -41,7 +41,8 @@ public class CSVLoaderNewSearch {
     private static void initialLoad() throws IOException {
         Crypto.loadDefaultKey();
         Reader in = new FileReader(HPDS_DIRECTORY + "allConcepts.csv");
-        Iterable<CSVRecord> records = CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024 * 1024));
+        Iterable<CSVRecord> records =
+            CSVFormat.DEFAULT.withSkipHeaderRecord().withFirstRecordAsHeader().parse(new BufferedReader(in, 1024 * 1024));
 
         CSVConfig csvConfig = configLoader.getConfigFor("allConcepts");
         final PhenoCube[] currentConcept = new PhenoCube[1];
@@ -67,10 +68,13 @@ public class CSVLoaderNewSearch {
         String value = isAlpha ? record.get(CSVParserUtil.TEXT_VALUE) : numericValue;
         currentConcept[0] = getPhenoCube(currentConcept[0], conceptPath, isAlpha);
 
-        if (value != null && !value.trim().isEmpty() &&
-            ((isAlpha && currentConcept[0].vType == String.class) || (!isAlpha && currentConcept[0].vType == Double.class))) {
+        if (
+            value != null && !value.trim().isEmpty()
+                && ((isAlpha && currentConcept[0].vType == String.class) || (!isAlpha && currentConcept[0].vType == Double.class))
+        ) {
             value = value.trim();
-            currentConcept[0].setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
+            currentConcept[0]
+                .setColumnWidth(isAlpha ? Math.max(currentConcept[0].getColumnWidth(), value.getBytes().length) : Double.BYTES);
             int patientId = Integer.parseInt(record.get(CSVParserUtil.PATIENT_NUM));
             Date date = null;
             if (record.size() > 4 && record.get(CSVParserUtil.DATETIME) != null && !record.get(CSVParserUtil.DATETIME).isEmpty()) {
