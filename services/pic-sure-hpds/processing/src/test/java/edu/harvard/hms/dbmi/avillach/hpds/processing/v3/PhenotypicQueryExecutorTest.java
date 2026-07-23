@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,16 +24,13 @@ import static org.mockito.Mockito.*;
 class PhenotypicQueryExecutorTest {
 
     @Mock
-    private PhenotypeMetaStore phenotypeMetaStore;
-
-    @Mock
-    private PhenotypicObservationStore phenotypicObservationStore;
+    private PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
     private PhenotypicQueryExecutor phenotypicQueryExecutor;
 
     @BeforeEach
     public void setup() {
-        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypeMetaStore, phenotypicObservationStore);
+        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypicObservationStore);
     }
 
     @Test
@@ -40,7 +38,7 @@ class PhenotypicQueryExecutorTest {
         Query query = new Query(List.of(), List.of(), null, null, ResultType.COUNT, null, null);
 
         Set<Integer> patientIds = Set.of(10, 100, 1000);
-        when(phenotypeMetaStore.getPatientIds()).thenReturn(new TreeSet<>(patientIds));
+        when(phenotypicObservationStore.getPatientIds()).thenReturn(new TreeSet<>(patientIds));
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(patientIds, patientSet);
@@ -167,7 +165,7 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypeMetaStore.getChildConceptPaths("\\open_access-1000Genomes\\"))
+        when(phenotypicObservationStore.getChildConceptPaths("\\open_access-1000Genomes\\"))
             .thenReturn(Set.of(categoricalConceptPath, numericConceptPath));
         List<Integer> numericPatientIds = List.of(2, 3, 5);
         List<Integer> categoricalPatientIds = List.of(10, 100, 1000, 100000);
@@ -193,7 +191,7 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypeMetaStore.getChildConceptPaths("\\open_access-1000Genomes\\")).thenReturn(Set.of());
+        when(phenotypicObservationStore.getChildConceptPaths("\\open_access-1000Genomes\\")).thenReturn(Set.of());
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);

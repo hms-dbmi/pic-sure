@@ -2,9 +2,11 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.util.SetUtils;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,13 +21,10 @@ public class PhenotypicQueryExecutor {
 
     private static Logger log = LoggerFactory.getLogger(PhenotypicQueryExecutor.class);
 
-    private final PhenotypeMetaStore phenotypeMetaStore;
-
-    private final PhenotypicObservationStore phenotypicObservationStore;
+    private final PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
     @Autowired
-    public PhenotypicQueryExecutor(PhenotypeMetaStore phenotypeMetaStore, PhenotypicObservationStore phenotypicObservationStore) {
-        this.phenotypeMetaStore = phenotypeMetaStore;
+    public PhenotypicQueryExecutor(PartitionedPhenotypicObservationStore phenotypicObservationStore) {
         this.phenotypicObservationStore = phenotypicObservationStore;
     }
 
@@ -44,7 +43,7 @@ public class PhenotypicQueryExecutor {
             return evaluatePhenotypicClause(authorizedSubquery);
         } else {
             // if there are no phenotypic queries, return all patients
-            return phenotypeMetaStore.getPatientIds();
+            return phenotypicObservationStore.getPatientIds();
         }
     }
 
@@ -72,7 +71,7 @@ public class PhenotypicQueryExecutor {
     }
 
     private Set<Integer> evaluateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter) {
-        Set<String> matchingConcepts = phenotypeMetaStore.getChildConceptPaths(phenotypicFilter.conceptPath());
+        Set<String> matchingConcepts = phenotypicObservationStore.getChildConceptPaths(phenotypicFilter.conceptPath());
         Set<Integer> ids = new TreeSet<>();
         for (String concept : matchingConcepts) {
             ids.addAll(phenotypicObservationStore.getAllKeys(concept));
@@ -139,11 +138,11 @@ public class PhenotypicQueryExecutor {
     }
 
 
-    public Map<String, ColumnMeta> getMetaStore() {
-        return phenotypeMetaStore.getMetaStore();
+    public Map<String, SummaryColumnMeta> getMetaStore() {
+        return phenotypicObservationStore.getMetaStore();
     }
 
     public Set<Integer> getPatientIds() {
-        return phenotypeMetaStore.getPatientIds();
+        return phenotypicObservationStore.getPatientIds();
     }
 }

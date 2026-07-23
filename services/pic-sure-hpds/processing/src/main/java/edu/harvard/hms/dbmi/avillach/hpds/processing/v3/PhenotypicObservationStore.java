@@ -20,7 +20,6 @@ import java.util.concurrent.ExecutionException;
 /**
  * Class representing a store for phenotypic observations. The store manages caching of PhenoCube objects.
  */
-@Component
 public class PhenotypicObservationStore {
 
     private static final Logger log = LoggerFactory.getLogger(PhenotypicObservationStore.class);
@@ -32,13 +31,10 @@ public class PhenotypicObservationStore {
 
     private final PhenotypeMetaStore phenotypeMetaStore;
 
-    @Autowired
-    public PhenotypicObservationStore(
-        PhenotypeMetaStore phenotypeMetaStore, @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory,
-        @Value("${CACHE_SIZE:100}") int cacheSize
-    ) {
+    public PhenotypicObservationStore(PhenotypeMetaStore phenotypeMetaStore, String hpdsDataDirectory, int cacheSize) {
+        // todo: reconsider cache size
         this.phenotypeMetaStore = phenotypeMetaStore;
-        this.hpdsDataDirectory = hpdsDataDirectory;
+        this.hpdsDataDirectory = hpdsDataDirectory.endsWith("/") ? hpdsDataDirectory : hpdsDataDirectory + "/";
         phenoCubeCache = CacheBuilder.newBuilder().maximumSize(cacheSize).build(new CacheLoader<>() {
             public PhenoCube<?> load(String key) {
                 return loadPhenoCube(key);
@@ -127,5 +123,13 @@ public class PhenotypicObservationStore {
      */
     public Set<String> getCachedKeys() {
         return phenoCubeCache.asMap().keySet();
+    }
+
+    public Set<Integer> getPatientIds() {
+        return phenotypeMetaStore.getPatientIds();
+    }
+
+    public Map<String, ColumnMeta> getMetaStore() {
+        return phenotypeMetaStore.getMetaStore();
     }
 }

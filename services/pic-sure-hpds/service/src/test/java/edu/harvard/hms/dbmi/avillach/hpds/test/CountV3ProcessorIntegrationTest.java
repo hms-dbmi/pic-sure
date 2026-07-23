@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.test;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.test.util.BuildIntegrationTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
@@ -9,8 +10,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.List;
@@ -25,10 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnableAutoConfiguration
 @SpringBootTest(classes = edu.harvard.hms.dbmi.avillach.hpds.service.HpdsApplication.class)
 @ActiveProfiles("integration-test")
+@AutoConfigureMockMvc
 public class CountV3ProcessorIntegrationTest {
 
     @Autowired
     private CountV3Processor countProcessor;
+
+    @MockitoBean
+    private UserRequestContext userRequestContext;
 
     @BeforeAll
     public static void beforeAll() {
@@ -122,9 +129,9 @@ public class CountV3ProcessorIntegrationTest {
     }
 
     /**
-     * With an OR clause the cohort is broader than any single filter's values, so a cross count reports each concept's full
-     * distribution across that cohort: SEX shows female (present via the OR'd POPULATION branch) alongside the called-out male, and
-     * POPULATION shows the populations of the OR'd males alongside the called-out Finnish.
+     * With an OR clause the cohort is broader than any single filter's values, so a cross count reports each concept's full distribution
+     * across that cohort: SEX shows female (present via the OR'd POPULATION branch) alongside the called-out male, and POPULATION shows the
+     * populations of the OR'd males alongside the called-out Finnish.
      */
     @Test
     public void runCategoryCrossCounts_twoFiltersOr_reportsFullCohortDistribution() {

@@ -8,6 +8,7 @@ import com.google.common.collect.ImmutableMap;
 import edu.harvard.dbmi.avillach.domain.*;
 import edu.harvard.dbmi.avillach.util.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.InfoColumnMeta;
@@ -167,7 +168,7 @@ public class PicSureV3Service {
         if (searchJson.getQuery() != null) {
             AuditAttributes.putMetadata(httpRequest, "search_term", searchJson.getQuery().toString());
         }
-        Set<Entry<String, ColumnMeta>> allColumns = queryExecutor.getDictionary().entrySet();
+        Set<Entry<String, SummaryColumnMeta>> allColumns = queryExecutor.getDictionary().entrySet();
 
         // Phenotype Values
         Object phenotypeResults = searchJson.getQuery() != null ? allColumns.stream().filter((entry) -> {

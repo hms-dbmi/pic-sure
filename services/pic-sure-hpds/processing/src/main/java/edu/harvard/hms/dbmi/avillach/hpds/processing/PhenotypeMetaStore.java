@@ -65,7 +65,7 @@ public class PhenotypeMetaStore {
         @Value("${HPDS_DATA_DIRECTORY:/opt/local/hpds/}") String hpdsDataDirectory,
         @Value("${CHILD_CONCEPT_CACHE_SIZE:500}") int childConceptCacheSize
     ) {
-        String columnMetaFile = hpdsDataDirectory + "columnMeta.javabin";
+        String columnMetaFile = hpdsDataDirectory + "/columnMeta.javabin";
         try (ObjectInputStream objectInputStream = new ObjectInputStream(new GZIPInputStream(new FileInputStream(columnMetaFile)))) {
             TreeMap<String, ColumnMeta> _metastore = (TreeMap<String, ColumnMeta>) objectInputStream.readObject();
             TreeMap<String, ColumnMeta> metastoreScrubbed = new TreeMap<>();

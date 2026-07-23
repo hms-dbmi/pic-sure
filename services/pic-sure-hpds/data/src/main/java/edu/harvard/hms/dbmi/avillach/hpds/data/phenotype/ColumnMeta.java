@@ -92,7 +92,7 @@ public class ColumnMeta implements Serializable {
         return this;
     }
 
-    public long getPatientCount() {
+    public int getPatientCount() {
         return patientCount;
     }
 
@@ -105,15 +105,16 @@ public class ColumnMeta implements Serializable {
         return categoryValues;
     }
 
-    public void setCategoryValues(List<String> categoryValues) {
+    public ColumnMeta setCategoryValues(List<String> categoryValues) {
         this.categoryValues = categoryValues;
+        return this;
     }
 
     public Double getMin() {
         return min;
     }
 
-    public ColumnMeta setMin(double min) {
+    public ColumnMeta setMin(Double min) {
         this.min = min;
         return this;
     }
@@ -122,7 +123,7 @@ public class ColumnMeta implements Serializable {
         return max;
     }
 
-    public ColumnMeta setMax(double max) {
+    public ColumnMeta setMax(Double max) {
         this.max = max;
         return this;
     }

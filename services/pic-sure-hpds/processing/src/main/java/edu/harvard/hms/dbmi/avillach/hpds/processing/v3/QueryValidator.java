@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,7 @@ public class QueryValidator {
     }
 
     public void validate(Query query) {
-        Map<String, ColumnMeta> metaStore = phenotypicQueryExecutor.getMetaStore();
+        Map<String, SummaryColumnMeta> metaStore = phenotypicQueryExecutor.getMetaStore();
 
         if (requireAuthorizationFilter) {
             if (query.authorizationFilters().isEmpty()) {

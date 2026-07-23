@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genomic.VariantUtils;
 import edu.harvard.hms.dbmi.avillach.hpds.data.genotype.VariableVariantMasks;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,9 +59,9 @@ public class QueryProcessor implements HpdsProcessor {
 
 
     private ResultStore buildResult(AsyncResult result, Query query, TreeSet<Integer> ids) {
-        List<ColumnMeta> columns =
-            query.getFields().stream().map(abstractProcessor.getDictionary()::get).filter(Objects::nonNull).collect(Collectors.toList());
-        List<String> paths = columns.stream().map(ColumnMeta::getName).collect(Collectors.toList());
+        List<SummaryColumnMeta> columns = query.getFields().stream().map(abstractProcessor.getDictionary()::get).filter(Objects::nonNull)
+            .map(SummaryColumnMeta::new).collect(Collectors.toList());
+        List<String> paths = columns.stream().map(SummaryColumnMeta::getName).collect(Collectors.toList());
         int columnCount = paths.size() + 1;
 
         ArrayList<Integer> columnIndex = abstractProcessor.useResidentCubesFirst(paths, columnCount);

@@ -3,6 +3,7 @@ package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.KeyAndValue;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Operator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
@@ -35,7 +36,7 @@ class CountV3ProcessorTest {
     private QueryExecutor queryExecutor;
 
     @Mock
-    private PhenotypicObservationStore phenotypicObservationStore;
+    private PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
     @BeforeEach
     public void setup() {
@@ -148,12 +149,11 @@ class CountV3ProcessorTest {
         Query query = new Query(List.of(), List.of(), required, List.of(), ResultType.CONTINUOUS_CROSS_COUNT, null, null);
 
         PhenoCube<Double> cube = new PhenoCube<>(conceptPath, Double.class);
-        cube.setSortedByKey(
-            new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)}
-        );
+        cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 18.0), new KeyAndValue<>(2, 19.0), new KeyAndValue<>(3, 19.0)});
 
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 3));
-        when(queryExecutor.getDictionary()).thenReturn(Map.of(conceptPath, new ColumnMeta().setName(conceptPath).setCategorical(false)));
+        when(queryExecutor.getDictionary())
+            .thenReturn(Map.of(conceptPath, new SummaryColumnMeta().setName(conceptPath).setCategorical(false)));
         when(phenotypicObservationStore.getCube(conceptPath)).thenReturn(java.util.Optional.of(cube));
 
         Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);
@@ -203,7 +203,7 @@ class CountV3ProcessorTest {
         // Base set is a partial subset of every category, forcing the per-patient counting path.
         // Only patient 1 (male) and patient 4 (female) are in the cohort, so each category count must be exactly 1.
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 4));
-        when(queryExecutor.getDictionary()).thenReturn(Map.of(sexPath, new ColumnMeta().setName(sexPath).setCategorical(true)));
+        when(queryExecutor.getDictionary()).thenReturn(Map.of(sexPath, new SummaryColumnMeta().setName(sexPath).setCategorical(true)));
         when(phenotypicObservationStore.getCube(sexPath)).thenReturn(Optional.of(cube));
 
         Map<String, Map<String, Integer>> crossCounts = countV3Processor.runCategoryCrossCounts(query);
@@ -226,7 +226,7 @@ class CountV3ProcessorTest {
         cube.setSortedByKey(new KeyAndValue[] {new KeyAndValue<>(1, 15.0), new KeyAndValue<>(2, 40.0), new KeyAndValue<>(3, 65.0)});
 
         when(queryExecutor.getPatientSubsetForQuery(query)).thenReturn(Set.of(1, 2));
-        when(queryExecutor.getDictionary()).thenReturn(Map.of(agePath, new ColumnMeta().setName(agePath).setCategorical(false)));
+        when(queryExecutor.getDictionary()).thenReturn(Map.of(agePath, new SummaryColumnMeta().setName(agePath).setCategorical(false)));
         when(phenotypicObservationStore.getCube(agePath)).thenReturn(Optional.of(cube));
 
         Map<String, Map<Double, Integer>> crossCounts = countV3Processor.runContinuousCrossCounts(query);

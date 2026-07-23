@@ -1,6 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
-import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import org.slf4j.Logger;
@@ -14,7 +14,7 @@ public class PhenotypicFilterValidator {
 
     private static final Logger log = LoggerFactory.getLogger(PhenotypicFilterValidator.class);
 
-    public void validate(PhenotypicFilter phenotypicFilter, Map<String, ColumnMeta> metaStore) {
+    public void validate(PhenotypicFilter phenotypicFilter, Map<String, SummaryColumnMeta> metaStore) {
         switch (phenotypicFilter.phenotypicFilterType()) {
             case FILTER -> validateFilterFilter(phenotypicFilter, metaStore);
             case REQUIRED -> validateRequiredFilter(phenotypicFilter, metaStore);
@@ -22,7 +22,7 @@ public class PhenotypicFilterValidator {
         }
     }
 
-    public void validate(AuthorizationFilter authorizationFilter, Map<String, ColumnMeta> metaStore) {
+    public void validate(AuthorizationFilter authorizationFilter, Map<String, SummaryColumnMeta> metaStore) {
         if (authorizationFilter.values() == null || authorizationFilter.values().isEmpty()) {
             throw new IllegalArgumentException("AuthorizationFilter values cannot be null or empty");
         }
@@ -36,7 +36,7 @@ public class PhenotypicFilterValidator {
         }
     }
 
-    private void validateFilterFilter(PhenotypicFilter phenotypicFilter, Map<String, ColumnMeta> metaStore) {
+    private void validateFilterFilter(PhenotypicFilter phenotypicFilter, Map<String, SummaryColumnMeta> metaStore) {
         if (
             (phenotypicFilter.min() != null || phenotypicFilter.max() != null) && phenotypicFilter.values() != null
                 && !phenotypicFilter.values().isEmpty()
@@ -53,7 +53,7 @@ public class PhenotypicFilterValidator {
         }
     }
 
-    private void validateRequiredFilter(PhenotypicFilter phenotypicFilter, Map<String, ColumnMeta> metaStore) {
+    private void validateRequiredFilter(PhenotypicFilter phenotypicFilter, Map<String, SummaryColumnMeta> metaStore) {
         if (phenotypicFilter.min() != null || phenotypicFilter.max() != null || phenotypicFilter.values() != null) {
             throw new IllegalArgumentException(
                 "Required filter with concept path " + phenotypicFilter.conceptPath() + " cannot have categorical values or min/max set"

@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,14 +28,14 @@ class QueryValidatorTest {
 
     private QueryValidator queryValidator;
 
-    private Map<String, ColumnMeta> metaStore;
+    private Map<String, SummaryColumnMeta> metaStore;
 
 
     @BeforeEach
     public void setup() {
         metaStore = Map.of(
-            "\\study123\\demographics\\sex\\", new ColumnMeta().setCategorical(true), "\\study123\\demographics\\age\\",
-            new ColumnMeta().setCategorical(false).setMin(0).setMax(130)
+            "\\study123\\demographics\\sex\\", new SummaryColumnMeta().setCategorical(true), "\\study123\\demographics\\age\\",
+            new SummaryColumnMeta().setCategorical(false).setMin(0.0).setMax(130.0)
         );
 
         queryValidator = new QueryValidator(phenotypicQueryExecutor, phenotypicFilterValidator, false);
