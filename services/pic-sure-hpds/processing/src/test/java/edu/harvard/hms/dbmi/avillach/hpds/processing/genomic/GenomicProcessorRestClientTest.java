@@ -28,10 +28,8 @@ public class GenomicProcessorRestClientTest {
 
         List<Query.VariantInfoFilter> variantInfoFilters = new ArrayList<>();
         Query.VariantInfoFilter variantInfoFilter = new Query.VariantInfoFilter();
-        variantInfoFilter.categoryVariantInfoFilters = Map.of(
-                "Gene_with_variant", new String[]{"BRCA1"},
-                "Variant_consequence_calculated", new String[]{"splice_donor_variant"}
-        );
+        variantInfoFilter.categoryVariantInfoFilters =
+            Map.of("Gene_with_variant", new String[] {"BRCA1"}, "Variant_consequence_calculated", new String[] {"splice_donor_variant"});
         variantInfoFilters.add(variantInfoFilter);
         distributableQuery.setVariantInfoFilters(variantInfoFilters);
         Set<Integer> patientIds = IntStream.range(53000, 53635).boxed().collect(Collectors.toSet());
@@ -46,6 +44,7 @@ public class GenomicProcessorRestClientTest {
         Set<String> infoStoreColumns = genomicProcessorRestClient.getInfoStoreColumns();
         assertTrue(infoStoreColumns.contains("Variant_consequence_calculated"));
     }
+
     @Test
     public void getInfoStoreValues() {
         Set<String> infoStoreValues = genomicProcessorRestClient.getInfoStoreValues("Variant_consequence_calculated");

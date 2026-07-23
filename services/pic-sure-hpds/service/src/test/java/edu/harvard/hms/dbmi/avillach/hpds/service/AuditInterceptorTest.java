@@ -26,15 +26,12 @@ class AuditInterceptorTest {
     static class TestController {
 
         @AuditEvent(type = "QUERY", action = "query.submitted")
-        public void queryEndpoint() {
-        }
+        public void queryEndpoint() {}
 
         @AuditEvent(type = "DATA_ACCESS", action = "query.result")
-        public void resultEndpoint() {
-        }
+        public void resultEndpoint() {}
 
-        public void unannotatedEndpoint() {
-        }
+        public void unannotatedEndpoint() {}
     }
 
     private HandlerMethod handlerFor(String methodName) throws Exception {

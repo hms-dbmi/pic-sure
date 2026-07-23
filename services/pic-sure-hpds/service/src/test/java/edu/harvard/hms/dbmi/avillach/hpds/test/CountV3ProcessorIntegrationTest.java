@@ -122,9 +122,9 @@ public class CountV3ProcessorIntegrationTest {
     }
 
     /**
-     * With an OR clause the cohort is broader than any single filter's values, so a cross count reports each concept's full
-     * distribution across that cohort: SEX shows female (present via the OR'd POPULATION branch) alongside the called-out male, and
-     * POPULATION shows the populations of the OR'd males alongside the called-out Finnish.
+     * With an OR clause the cohort is broader than any single filter's values, so a cross count reports each concept's full distribution
+     * across that cohort: SEX shows female (present via the OR'd POPULATION branch) alongside the called-out male, and POPULATION shows the
+     * populations of the OR'd males alongside the called-out Finnish.
      */
     @Test
     public void runCategoryCrossCounts_twoFiltersOr_reportsFullCohortDistribution() {

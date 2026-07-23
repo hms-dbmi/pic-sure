@@ -17,25 +17,25 @@ public class VariantMasksSerializationTest {
         VariantMasks variantMasks = new VariantMasks();
 
         StringBuilder homozygousStr = new StringBuilder();
-        for (int i = 0 ; i < 50000; i++) {
+        for (int i = 0; i < 50000; i++) {
             homozygousStr.append(ThreadLocalRandom.current().nextInt(0, 10));
         }
         variantMasks.homozygousMask = new BigInteger(homozygousStr.toString());
 
         StringBuilder heterozygousStr = new StringBuilder();
-        for (int i = 0 ; i < 50000; i++) {
+        for (int i = 0; i < 50000; i++) {
             heterozygousStr.append(ThreadLocalRandom.current().nextInt(0, 10));
         }
         variantMasks.heterozygousMask = new BigInteger(heterozygousStr.toString());
 
         StringBuilder homozygousNoCallStr = new StringBuilder();
-        for (int i = 0 ; i < 50000; i++) {
+        for (int i = 0; i < 50000; i++) {
             homozygousNoCallStr.append(ThreadLocalRandom.current().nextInt(0, 10));
         }
         variantMasks.homozygousNoCallMask = new BigInteger(homozygousNoCallStr.toString());
 
         StringBuilder heterozygousNoCallStr = new StringBuilder();
-        for (int i = 0 ; i < 50000; i++) {
+        for (int i = 0; i < 50000; i++) {
             heterozygousNoCallStr.append(ThreadLocalRandom.current().nextInt(0, 10));
         }
         variantMasks.heterozygousNoCallMask = new BigInteger(heterozygousNoCallStr.toString());

@@ -39,7 +39,7 @@ public class LowRAMMultiCSVLoader {
                         maxChunkSize = Double.parseDouble(parts[1]);
                         log.info("Configured to use a max chunk size of {} GB", maxChunkSize);
                     } catch (NumberFormatException e) {
-                       throw new IllegalArgumentException("Invalid max chunk size " + maxChunkSize);
+                        throw new IllegalArgumentException("Invalid max chunk size " + maxChunkSize);
                     }
                 }
             }

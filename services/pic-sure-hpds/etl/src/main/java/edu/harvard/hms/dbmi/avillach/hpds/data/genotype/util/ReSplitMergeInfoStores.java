@@ -7,14 +7,14 @@ import java.io.IOException;
 
 public class ReSplitMergeInfoStores {
 
-	public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException {
 
-		NewVCFLoader newVCFLoader = new NewVCFLoader();
-		
-		newVCFLoader.splitInfoStoresByColumn();
+        NewVCFLoader newVCFLoader = new NewVCFLoader();
 
-		newVCFLoader.convertInfoStoresToByteIndexed();
+        newVCFLoader.splitInfoStoresByColumn();
 
-	}
+        newVCFLoader.convertInfoStoresToByteIndexed();
+
+    }
 
 }

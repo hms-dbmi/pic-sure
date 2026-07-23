@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 public abstract class VariantIndex {
     public abstract VariantIndex union(VariantIndex variantIndex);
+
     public abstract VariantIndex intersection(VariantIndex variantIndex);
 
     public abstract Set<String> mapToVariantSpec(String[] variantIndex);
@@ -23,9 +24,8 @@ public abstract class VariantIndex {
 
 
     protected VariantIndex intersection(SparseVariantIndex sparseVariantIndex, DenseVariantIndex denseVariantIndex) {
-        Set<Integer> intersection = sparseVariantIndex.getVariantIds().stream()
-                .filter(id -> denseVariantIndex.getVariantIndexMask()[id])
-                .collect(Collectors.toSet());
+        Set<Integer> intersection = sparseVariantIndex.getVariantIds().stream().filter(id -> denseVariantIndex.getVariantIndexMask()[id])
+            .collect(Collectors.toSet());
         return new SparseVariantIndex(intersection);
     }
 

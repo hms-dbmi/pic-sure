@@ -33,10 +33,8 @@ public class SignUrlService {
 
     @Autowired
     public SignUrlService(
-            @Value("${data-export.s3.bucket-name:}") String bucketName,
-            @Value("${data-export.s3.region:us-east-1}") String region,
-            @Value("${data-export.s3.signedUrl-expiry-minutes:60}") int signedUrlExpiryMinutes,
-            LoggingClient loggingClient
+        @Value("${data-export.s3.bucket-name:}") String bucketName, @Value("${data-export.s3.region:us-east-1}") String region,
+        @Value("${data-export.s3.signedUrl-expiry-minutes:60}") int signedUrlExpiryMinutes, LoggingClient loggingClient
     ) {
         this.bucketName = bucketName;
         this.signedUrlExpiryMinutes = signedUrlExpiryMinutes;
@@ -45,19 +43,14 @@ public class SignUrlService {
     }
 
     public void uploadFile(File file, String objectKey) {
-        S3Client s3 = S3Client.builder()
-                .region(this.region)
-                .build();
+        S3Client s3 = S3Client.builder().region(this.region).build();
         putS3Object(s3, bucketName, objectKey, file);
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("DATA_ACCESS")
-                    .action("data.s3.uploaded")
-                    .metadata(Map.of(
-                        "bucket", bucketName,
-                        "object_key", objectKey
-                    ))
-                    .build());
+                loggingClient.send(
+                    LoggingEvent.builder("DATA_ACCESS").action("data.s3.uploaded")
+                        .metadata(Map.of("bucket", bucketName, "object_key", objectKey)).build()
+                );
             } catch (Exception e) {
                 log.warn("Failed to send audit log event", e);
             }
@@ -69,11 +62,7 @@ public class SignUrlService {
     // memory.
     public void putS3Object(S3Client s3, String bucketName, String objectKey, File file) {
         Map<String, String> metadata = new HashMap<>();
-        PutObjectRequest putOb = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(objectKey)
-                .metadata(metadata)
-                .build();
+        PutObjectRequest putOb = PutObjectRequest.builder().bucket(bucketName).key(objectKey).metadata(metadata).build();
 
         s3.putObject(putOb, RequestBody.fromFile(file));
         log.info("Successfully placed " + objectKey + " into bucket " + bucketName);
@@ -82,15 +71,12 @@ public class SignUrlService {
     public String createPresignedGetUrl(String keyName) {
         PresignedGetObjectRequest presignedRequest;
         try (S3Presigner presigner = S3Presigner.builder().region(region).build()) {
-            GetObjectRequest objectRequest = GetObjectRequest.builder()
-                    .bucket(bucketName)
-                    .key(keyName)
-                    .build();
+            GetObjectRequest objectRequest = GetObjectRequest.builder().bucket(bucketName).key(keyName).build();
 
-            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                    .signatureDuration(Duration.ofMinutes(signedUrlExpiryMinutes))  // The URL will expire in 10 minutes.
-                    .getObjectRequest(objectRequest)
-                    .build();
+            GetObjectPresignRequest presignRequest =
+                GetObjectPresignRequest.builder().signatureDuration(Duration.ofMinutes(signedUrlExpiryMinutes)) // The URL will expire in 10
+                                                                                                                // minutes.
+                    .getObjectRequest(objectRequest).build();
 
             presignedRequest = presigner.presignGetObject(presignRequest);
         }

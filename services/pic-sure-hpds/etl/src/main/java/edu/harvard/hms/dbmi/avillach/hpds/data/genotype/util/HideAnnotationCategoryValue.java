@@ -17,29 +17,30 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 
 public class HideAnnotationCategoryValue {
-	protected static LoadingCache<String, PhenoCube<?>> store;
+    protected static LoadingCache<String, PhenoCube<?>> store;
 
-	protected static TreeSet<Integer> allIds;
-	
-	public static void main(String[] args) throws ClassNotFoundException, IOException {
-		String infoStoreToModify = args[0];
-		String valueToScrub = args[1];
-		
-		String infoStoreFilename = "/opt/local/hpds/all/" + infoStoreToModify.trim();
+    protected static TreeSet<Integer> allIds;
 
-		FileInputStream fis = new FileInputStream(infoStoreFilename);
-		GZIPInputStream gis = new GZIPInputStream(fis);
-		ObjectInputStream ois = new ObjectInputStream(gis);
+    public static void main(String[] args) throws ClassNotFoundException, IOException {
+        String infoStoreToModify = args[0];
+        String valueToScrub = args[1];
 
-		FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
-		infoStore.getAllValues().keys().remove(valueToScrub);
+        String infoStoreFilename = "/opt/local/hpds/all/" + infoStoreToModify.trim();
 
-		FileOutputStream fos = new FileOutputStream(infoStoreFilename);
-		GZIPOutputStream gos = new GZIPOutputStream(fos);
-		ObjectOutputStream oos = new ObjectOutputStream(gos);
+        FileInputStream fis = new FileInputStream(infoStoreFilename);
+        GZIPInputStream gis = new GZIPInputStream(fis);
+        ObjectInputStream ois = new ObjectInputStream(gis);
 
-		oos.writeObject(infoStore);
-		oos.flush();oos.close();
-	}
-	
+        FileBackedByteIndexedInfoStore infoStore = (FileBackedByteIndexedInfoStore) ois.readObject();
+        infoStore.getAllValues().keys().remove(valueToScrub);
+
+        FileOutputStream fos = new FileOutputStream(infoStoreFilename);
+        GZIPOutputStream gos = new GZIPOutputStream(fos);
+        ObjectOutputStream oos = new ObjectOutputStream(gos);
+
+        oos.writeObject(infoStore);
+        oos.flush();
+        oos.close();
+    }
+
 }

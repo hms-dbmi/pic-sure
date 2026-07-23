@@ -14,8 +14,7 @@ public class FileBackedStorageVariantIndexImpl extends FileBackedJsonIndexStorag
         super(storageFile);
     }
 
-    private static final TypeReference<Integer[]> typeRef
-            = new TypeReference<Integer[]>() {};
+    private static final TypeReference<Integer[]> typeRef = new TypeReference<Integer[]>() {};
 
     @Override
     public TypeReference<Integer[]> getTypeReference() {

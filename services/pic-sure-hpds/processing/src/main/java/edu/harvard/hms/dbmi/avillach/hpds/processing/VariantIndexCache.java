@@ -35,21 +35,22 @@ public class VariantIndexCache {
     public VariantIndexCache(String[] variantIndex, Map<String, FileBackedByteIndexedInfoStore> infoStores) {
         this.variantIndex = variantIndex;
         this.infoStores = infoStores;
-        this.infoCache = CacheBuilder.newBuilder()
-                .weigher(weigher).maximumWeight(10000000000000L).build(cacheLoader);
+        this.infoCache = CacheBuilder.newBuilder().weigher(weigher).maximumWeight(10000000000000L).build(cacheLoader);
     }
 
     public VariantIndex get(String key) {
         return infoCache.getUnchecked(key);
     }
+
     public VariantIndex get(String column, String key) {
         return infoCache.getUnchecked(columnAndKey(column, key));
     }
+
     private String columnAndKey(String column, String key) {
         return column + COLUMN_AND_KEY_DELIMITER + key;
     }
 
-    private final Weigher<String, VariantIndex> weigher = new Weigher<String, VariantIndex>(){
+    private final Weigher<String, VariantIndex> weigher = new Weigher<String, VariantIndex>() {
         @Override
         public int weigh(String key, VariantIndex value) {
             if (value instanceof DenseVariantIndex) {
@@ -69,16 +70,16 @@ public class VariantIndexCache {
             String[] column_and_value = infoColumn_valueKey.split(COLUMN_AND_KEY_DELIMITER);
             Integer[] variantIndexIntArray = infoStores.get(column_and_value[0]).getAllValues().get(column_and_value[1]);
 
-            if ((double)variantIndexIntArray.length / (double)variantIndex.length < MAX_SPARSE_INDEX_RATIO ) {
+            if ((double) variantIndexIntArray.length / (double) variantIndex.length < MAX_SPARSE_INDEX_RATIO) {
                 Set<Integer> variantIds = new HashSet<>();
-                for(Integer variantIndex : variantIndexIntArray) {
+                for (Integer variantIndex : variantIndexIntArray) {
                     variantIds.add(variantIndex);
                 }
                 return new SparseVariantIndex(variantIds);
             } else {
                 boolean[] variantIndexArray = new boolean[variantIndex.length];
                 int x = 0;
-                for(Integer variantIndex : variantIndexIntArray) {
+                for (Integer variantIndex : variantIndexIntArray) {
                     if (variantIndex >= 0) {
                         variantIndexArray[variantIndex] = true;
                     }

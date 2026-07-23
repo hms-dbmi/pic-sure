@@ -30,12 +30,10 @@ public class ColumnSorter {
         if (infoColumnsOrder.isEmpty()) {
             return new ArrayList<>(columns);
         }
-        return columns.stream()
-            .filter(infoColumnsOrder::containsKey)
-            .sorted((a, b) -> Integer.compare(
-                infoColumnsOrder.getOrDefault(a, Integer.MAX_VALUE),
-                infoColumnsOrder.getOrDefault(b, Integer.MAX_VALUE)
-            ))
-            .collect(Collectors.toList());
+        return columns.stream().filter(infoColumnsOrder::containsKey)
+            .sorted(
+                (a, b) -> Integer
+                    .compare(infoColumnsOrder.getOrDefault(a, Integer.MAX_VALUE), infoColumnsOrder.getOrDefault(b, Integer.MAX_VALUE))
+            ).collect(Collectors.toList());
     }
 }

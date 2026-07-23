@@ -12,7 +12,7 @@ public class TestDataServiceTest {
     FileSystemService fileSystemService;
 
     TestDataService subject;
-    
+
     @Test
     public void shouldCreateTestFileForUpload() {
         fileSystemService = Mockito.mock(FileSystemService.class);

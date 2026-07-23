@@ -99,6 +99,13 @@
                 <artifactId>logstash-logback-encoder</artifactId>
                 <version>${logstash-logback-encoder.version}</version>
             </dependency>
+            <!-- Convergence pin: the auth0 SDK pulls okio 3.5.0 directly but 3.6.0 via its
+                 own OkHttp transitive (dependencyConvergence enforcement, spec §17.4). -->
+            <dependency>
+                <groupId>com.squareup.okio</groupId>
+                <artifactId>okio</artifactId>
+                <version>3.6.0</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
     <distributionManagement>

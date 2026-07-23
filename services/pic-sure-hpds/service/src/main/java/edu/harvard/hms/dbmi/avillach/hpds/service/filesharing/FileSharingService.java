@@ -15,8 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Used for sharing data. Given a query, this service will write
- * phenotypic and genomic data into a directory
+ * Used for sharing data. Given a query, this service will write phenotypic and genomic data into a directory
  */
 @Service
 public class FileSharingService {
@@ -29,8 +28,7 @@ public class FileSharingService {
     private final LoggingClient loggingClient;
 
     public FileSharingService(
-        QueryService queryService, FileSystemService fileWriter,
-        VariantListProcessor variantListProcessor, LoggingClient loggingClient
+        QueryService queryService, FileSystemService fileWriter, VariantListProcessor variantListProcessor, LoggingClient loggingClient
     ) {
         this.queryService = queryService;
         this.fileWriter = fileWriter;
@@ -71,13 +69,10 @@ public class FileSharingService {
     private void sendFileWrittenEvent(String queryId, String dataType) {
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("DATA_ACCESS")
-                    .action("data.file.written")
-                    .metadata(Map.of(
-                        "query_id", queryId,
-                        "data_type", dataType
-                    ))
-                    .build());
+                loggingClient.send(
+                    LoggingEvent.builder("DATA_ACCESS").action("data.file.written")
+                        .metadata(Map.of("query_id", queryId, "data_type", dataType)).build()
+                );
             } catch (Exception e) {
                 LOG.warn("Failed to send audit log event", e);
             }
