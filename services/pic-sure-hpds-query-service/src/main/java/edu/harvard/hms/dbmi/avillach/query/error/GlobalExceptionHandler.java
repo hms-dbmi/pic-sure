@@ -40,6 +40,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HpdsCommunicationException.class)
     public ResponseEntity<Map<String, Object>> hpdsUnavailable(HpdsCommunicationException e) {
+        // The cause is a RestClientException whose message carries the HPDS status and response body (e.g. "403 ...
+        // Resource is locked") -- without logging it here, the 502 is undiagnosable from this service's logs.
+        logger.error("HPDS call failed, returning 502", e);
         return body(HttpStatus.BAD_GATEWAY, "upstream_unavailable", e.getMessage());
     }
 
