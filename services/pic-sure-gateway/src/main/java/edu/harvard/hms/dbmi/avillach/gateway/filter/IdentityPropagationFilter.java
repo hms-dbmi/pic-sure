@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -35,12 +37,30 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
 
     static final String HEADER_REQUEST_ID = "X-Request-Id"; // commons RequestIdFilter owns generation
 
+    private static final Logger log = LoggerFactory.getLogger(IdentityPropagationFilter.class);
+
     public IdentityPropagationFilter() {}
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp, FilterChain chain)
         throws ServletException, IOException {
-        chain.doFilter(new IdentityHeadersRequest(req), resp);
+        IdentityHeadersRequest wrapped = new IdentityHeadersRequest(req);
+        logForwardedIdentity(wrapped);
+        chain.doFilter(wrapped, resp);
+    }
+
+    private static void logForwardedIdentity(IdentityHeadersRequest wrapped) {
+        if (!log.isInfoEnabled()) {
+            return;
+        }
+        String userId = wrapped.overrides.get(GatewayUserResolver.HEADER_USER_ID);
+        String roles = wrapped.overrides.getOrDefault(GatewayUserResolver.HEADER_USER_ROLES, "");
+        String privileges = wrapped.overrides.getOrDefault(GatewayUserResolver.HEADER_USER_PRIVILEGES, "");
+        int privilegeCount = privileges.isEmpty() ? 0 : privileges.split(",").length;
+        log.info(
+            "Forwarding identity headers: user={}, roles=[{}], privileges: count={}, headerBytes={}, names=[{}]", userId, roles,
+            privilegeCount, privileges.length(), privileges
+        );
     }
 
     static class IdentityHeadersRequest extends HttpServletRequestWrapper {
