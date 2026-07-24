@@ -38,6 +38,10 @@ server:
   port: ${SERVER_PORT:8080}
   servlet:
     context-path: /operations
+  # The gateway forwards X-User-Privileges with one PRIV_MANAGED_* name per dbGaP consent; for high-consent users that
+  # single header exceeds Tomcat's default 8KB request-header budget, which rejects the request with a container-level
+  # 400 before any filter runs. Sized for growth as studies onboard.
+  max-http-request-header-size: ${PICSURE_MAX_REQUEST_HEADER_SIZE:64KB}
 
 management:
   endpoints:

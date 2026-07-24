@@ -1,3 +1,9 @@
+# This file SHADOWS src/main/resources/application.yml on the test classpath (same name, test-classes first) --
+# main-config values needed by tests must be mirrored here.
+server:
+  # Mirrors main application.yml; exercised by LargeRequestHeaderTest.
+  max-http-request-header-size: ${PICSURE_MAX_REQUEST_HEADER_SIZE:64KB}
+
 hpds:
   auth-url: http://localhost:1/PIC-SURE
   auth-token: test-auth-token
