@@ -5,9 +5,6 @@ on:
   push:
     branches: [pic_sure_api_mono_repo, pic_sure_api_rewrite, main]
     paths: ['services/pic-sure-auth-microapp/**']
-defaults:
-  run:
-    working-directory: services/pic-sure-auth-microapp
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,6 +17,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Test with Maven
-        run: mvn test
+        run: mvn -B -pl services/pic-sure-auth-microapp/pic-sure-auth-services -am verify
         env:
           GITHUB_TOKEN: ${{ github.token }}
