@@ -56,10 +56,11 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         String userId = wrapped.overrides.get(GatewayUserResolver.HEADER_USER_ID);
         String roles = wrapped.overrides.getOrDefault(GatewayUserResolver.HEADER_USER_ROLES, "");
         String privileges = wrapped.overrides.getOrDefault(GatewayUserResolver.HEADER_USER_PRIVILEGES, "");
+        int roleCount = roles.isEmpty() ? 0 : roles.split(",").length;
         int privilegeCount = privileges.isEmpty() ? 0 : privileges.split(",").length;
         log.info(
-            "Forwarding identity headers: user={}, roles=[{}], privileges: count={}, headerBytes={}, names=[{}]", userId, roles,
-            privilegeCount, privileges.length(), privileges
+            "Forwarding identity headers: user={}, roles: count={}, headerBytes={}, names=[{}], privileges: count={}, headerBytes={}, names=[{}]",
+            userId, roleCount, roles.length(), roles, privilegeCount, privileges.length(), privileges
         );
     }
 
