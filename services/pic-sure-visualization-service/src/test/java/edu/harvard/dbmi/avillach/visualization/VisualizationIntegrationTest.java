@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.visualization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -46,13 +47,15 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withGatewayIdentity_returnsOk() throws Exception {
-        // Access type comes from the gateway-owned X-User-Id header; no hpdsResourceUUID needed (path-routed frontend omits it).
+    void distributions_withAuthorizedAccessType_returnsOk() throws Exception {
+        // Access type comes from the gateway-owned X-Picsure-Access-Type header; no hpdsResourceUUID needed (path-routed frontend omits
+        // it).
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
-                .header("X-User-Id", "test-user").content(body)
+                .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+                .content(body)
         ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
@@ -62,11 +65,15 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withoutGatewayIdentity_isOpenAndReturnsOk() throws Exception {
+    void distributions_withOpenAccessType_returnsOk() throws Exception {
+        // Open-access requests carry the gateway's OPEN_ACCESS:<host> marker in X-User-Id. That marker is non-blank, so
+        // the access type must come from the dedicated header -- reading identity presence would classify this as authorized.
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isOk()).andReturn();
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
+        ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
         assertNotNull(response);
@@ -75,13 +82,25 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_withNoConfiguredUUIDsAndNoBodyUUID_returnsOk() throws Exception {
-        // Production-shape config: AUTH/OPEN_HPDS_RESOURCE_UUID unset and the path-routed frontend sends no body UUID.
-        // resourceUUID is null end-to-end (HPDS ignores the field; audit metadata must tolerate it).
+    void distributions_withoutAccessTypeHeader_returns400() throws Exception {
+        // Fail closed: the header is absent only when the request bypassed the gateway auth chain, so there is no
+        // trustworthy access type. Neither default is safe, so neither is taken.
         String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
 
-        mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body))
-            .andExpect(status().isOk());
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("X-Picsure-Access-Type"));
+    }
+
+    @Test
+    void distributions_withUnrecognizedAccessType_returns400() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
+
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header(GatewayUserResolver.HEADER_ACCESS_TYPE, "superuser")
+                .content(body)
+        ).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -90,8 +109,10 @@ class VisualizationIntegrationTest {
         String body =
             objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
 
-        mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user").content(body))
-            .andExpect(status().isOk());
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
+        ).andExpect(status().isOk());
     }
 
     @Test

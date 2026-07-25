@@ -42,6 +42,12 @@
             <artifactId>pic-sure-api-model</artifactId>
         </dependency>
 
+        <!-- Gateway identity/access-type header-name contract (GatewayUserResolver) -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+        </dependency>
+
         <!-- Audit logging (BOM-managed, 3.0.0 line) -->
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
