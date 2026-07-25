@@ -17,10 +17,11 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Defense-in-depth, registered UNCONDITIONALLY (see {@code ObservabilityConfig}): strips the five gateway-owned {@code X-User-*} identity
- * headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) from every
- * inbound CLIENT request before anything downstream -- routing, the auth chain, or the WildFly proxy -- can ever see a client-supplied
- * value. <p> {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides these headers from the client,
- * but this filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed, misconfigured, or WildFly is
+ * headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES}, {@code _PRIVILEGES}) and
+ * {@link GatewayUserResolver#HEADER_ACCESS_TYPE} from every inbound CLIENT request before anything downstream -- routing, the auth chain,
+ * or the WildFly proxy -- can ever see a client-supplied value. <p>
+ * {@link edu.harvard.hms.dbmi.avillach.gateway.filter.IdentityPropagationFilter} already hides these headers from the client, but this
+ * filter exists as an independent trust boundary: even if the DB-free auth chain were ever bypassed, misconfigured, or WildFly is
  * nonetheless configured to trust these headers directly from the gateway (its {@code GatewayHeaderFilter}), a client's own
  * {@code X-User-Id}/{@code X-User-Privileges}/etc. must never pass through untouched -- that would be an identity/privilege-spoofing hole.
  * This filter closes that hole unconditionally, independent of anything the auth chain does. <p> Runs at
@@ -43,7 +44,7 @@ public class InboundIdentityHeaderSanitizingFilter extends OncePerRequestFilter 
         /** Gateway-owned identity headers: always hidden from the raw client request, regardless of name casing. */
         private static final Set<String> STRIPPED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
-            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES
+            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, GatewayUserResolver.HEADER_ACCESS_TYPE
         );
 
         SanitizedIdentityHeadersRequest(HttpServletRequest request) {

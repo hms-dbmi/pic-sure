@@ -154,6 +154,70 @@ class IdentityPropagationFilterTest {
         );
     }
 
+    // ---- X-Picsure-Access-Type: gateway-owned, same treatment as the X-User-* set ----
+
+    @Test
+    void emitsAccessTypeHeaderFromAttribute() throws Exception {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(GatewayUserResolver.HEADER_USER_ID)).thenReturn("u-1");
+        when(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn(GatewayUserResolver.ACCESS_TYPE_AUTHORIZED);
+        when(req.getHeaderNames()).thenReturn(Collections.emptyEnumeration());
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        HttpServletRequest wrapped = (HttpServletRequest) cap.getValue();
+        assertThat(wrapped.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).isEqualTo("authorized");
+        assertThat(Collections.list(wrapped.getHeaderNames())).contains(GatewayUserResolver.HEADER_ACCESS_TYPE);
+    }
+
+    @Test
+    void clientSpoofedAccessTypeIsOverriddenByGatewayResolvedValue() throws Exception {
+        // An open-access caller tries to promote itself onto the authorized HPDS backend by sending its own header.
+        // The gateway-resolved value must win outright -- never merge, never fall through.
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn(GatewayUserResolver.ACCESS_TYPE_OPEN);
+        when(req.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn("authorized");
+        when(req.getHeaders(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn(Collections.enumeration(List.of("authorized")));
+        when(req.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_ACCESS_TYPE)));
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        HttpServletRequest wrapped = (HttpServletRequest) cap.getValue();
+        assertThat(wrapped.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).isEqualTo("open");
+        assertThat(Collections.list(wrapped.getHeaders(GatewayUserResolver.HEADER_ACCESS_TYPE))).containsExactly("open");
+        assertThat(Collections.list(wrapped.getHeaderNames()))
+            .containsExactlyInAnyOrder(GatewayUserResolver.HEADER_ACCESS_TYPE, "X-Request-Id");
+    }
+
+    @Test
+    void emitsNoAccessTypeHeaderWhenGatewayResolvedNone() throws Exception {
+        // Allow-listed prefixes and the public configuration-read carve-out never reach the auth filters, so no
+        // attribute is set. Absence is a third state -- it must NOT surface as a client-supplied value.
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn("authorized");
+        when(req.getHeaders(GatewayUserResolver.HEADER_ACCESS_TYPE)).thenReturn(Collections.enumeration(List.of("authorized")));
+        when(req.getHeaderNames()).thenReturn(Collections.enumeration(List.of(GatewayUserResolver.HEADER_ACCESS_TYPE)));
+
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        FilterChain chain = mock(FilterChain.class);
+        new IdentityPropagationFilter().doFilter(req, resp, chain);
+
+        ArgumentCaptor<ServletRequest> cap = ArgumentCaptor.forClass(ServletRequest.class);
+        verify(chain).doFilter(cap.capture(), eq(resp));
+        HttpServletRequest wrapped = (HttpServletRequest) cap.getValue();
+        assertThat(wrapped.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+        assertThat(wrapped.getHeaders(GatewayUserResolver.HEADER_ACCESS_TYPE).hasMoreElements()).isFalse();
+        assertThat(Collections.list(wrapped.getHeaderNames())).doesNotContain(GatewayUserResolver.HEADER_ACCESS_TYPE);
+    }
+
     // ---- FIX 3: request-id correlation must unify with the commons RequestIdFilter's MDC value ----
 
     @Test

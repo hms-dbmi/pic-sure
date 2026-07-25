@@ -20,6 +20,23 @@ public final class GatewayUserResolver {
     public static final String HEADER_USER_ROLES = "X-User-Roles";
     public static final String HEADER_USER_PRIVILEGES = "X-User-Privileges";
 
+    /**
+     * Which auth path admitted the request, decided by the gateway and never by the client. {@code open} means the gateway's
+     * {@code OpenAccessFilter} obtained a PSAMA open-access grant; {@code authorized} means {@code PsamaIntrospectionFilter} validated a
+     * real Bearer token. Absent means the request reached neither filter (allow-listed prefixes, the public configuration-read carve-out)
+     * -- absence is a third state, NOT a synonym for {@code open}.
+     *
+     * <p>Downstream services select their backend from this header rather than inferring it from {@link #HEADER_USER_ID}, whose open-access
+     * value is the non-blank marker {@code OPEN_ACCESS:<host>} and therefore reads as "authenticated" to any presence check.
+     */
+    public static final String HEADER_ACCESS_TYPE = "X-Picsure-Access-Type";
+
+    /** {@link #HEADER_ACCESS_TYPE} value for a PSAMA open-access grant. */
+    public static final String ACCESS_TYPE_OPEN = "open";
+
+    /** {@link #HEADER_ACCESS_TYPE} value for a validated Bearer token. */
+    public static final String ACCESS_TYPE_AUTHORIZED = "authorized";
+
     private GatewayUserResolver() {}
 
     /**

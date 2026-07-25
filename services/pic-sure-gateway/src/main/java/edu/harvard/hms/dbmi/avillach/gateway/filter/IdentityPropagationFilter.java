@@ -29,9 +29,10 @@ import jakarta.servlet.http.HttpServletResponse;
  * {@code X-User-Privileges} — plus {@code X-Request-Id} (propagate the incoming one, reuse the commons {@link RequestIdFilter}'s MDC value,
  * or generate). Downstream maps {@code X-User-Privileges} to {@code GrantedAuthority}s for {@code @RolesAllowed}-equivalent checks. <p> The
  * five {@code X-User-*} headers ({@link GatewayUserResolver#HEADER_USER_ID}, {@code _SUBJECT}, {@code _EMAIL}, {@code _ROLES},
- * {@code _PRIVILEGES}) are gateway-owned: the wrapper NEVER falls through to the raw client request for them. Whatever the gateway resolved
- * (possibly nothing) is authoritative -- a client cannot spoof these by sending its own values, even where the gateway resolved an
- * empty/null value (e.g. open-access requests, users with no privileges).
+ * {@code _PRIVILEGES}) plus {@link GatewayUserResolver#HEADER_ACCESS_TYPE} are gateway-owned: the wrapper NEVER falls through to the raw
+ * client request for them. Whatever the gateway resolved (possibly nothing) is authoritative -- a client cannot spoof these by sending its
+ * own values, even where the gateway resolved an empty/null value (e.g. open-access requests, users with no privileges). For
+ * {@code X-Picsure-Access-Type} that is load-bearing: it is how downstream services choose the authorized vs open HPDS backend.
  */
 public class IdentityPropagationFilter extends OncePerRequestFilter {
 
@@ -69,7 +70,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
         /** Gateway-owned identity headers: never sourced from the raw client request, regardless of name casing. */
         private static final Set<String> GATEWAY_OWNED_HEADERS = Set.of(
             GatewayUserResolver.HEADER_USER_ID, GatewayUserResolver.HEADER_USER_SUBJECT, GatewayUserResolver.HEADER_USER_EMAIL,
-            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES
+            GatewayUserResolver.HEADER_USER_ROLES, GatewayUserResolver.HEADER_USER_PRIVILEGES, GatewayUserResolver.HEADER_ACCESS_TYPE
         );
 
         private final Map<String, String> overrides = new LinkedHashMap<>();
@@ -81,6 +82,7 @@ public class IdentityPropagationFilter extends OncePerRequestFilter {
             put(GatewayUserResolver.HEADER_USER_EMAIL, attr(req, GatewayUserResolver.HEADER_USER_EMAIL));
             put(GatewayUserResolver.HEADER_USER_ROLES, attr(req, GatewayUserResolver.HEADER_USER_ROLES));
             put(GatewayUserResolver.HEADER_USER_PRIVILEGES, attr(req, GatewayUserResolver.HEADER_USER_PRIVILEGES));
+            put(GatewayUserResolver.HEADER_ACCESS_TYPE, attr(req, GatewayUserResolver.HEADER_ACCESS_TYPE));
             put(HEADER_REQUEST_ID, resolveRequestId(req));
         }
 

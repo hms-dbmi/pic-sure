@@ -75,6 +75,25 @@ class InboundIdentityHeaderSanitizingFilterTest {
     }
 
     @Test
+    void stripsClientSuppliedAccessTypeHeaderRegardlessOfCase() throws Exception {
+        // X-Picsure-Access-Type selects the authorized vs open HPDS backend downstream, so a client-supplied value is a
+        // direct attempt to read non-obfuscated data. It gets the same unconditional strip as the X-User-* set.
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/visualization/distributions");
+        request.addHeader("x-picsure-access-type", "authorized");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AtomicReference<HttpServletRequest> captured = new AtomicReference<>();
+        filter.doFilter(request, response, (req, resp) -> captured.set((HttpServletRequest) req));
+
+        HttpServletRequest wrapped = captured.get();
+        assertThat(wrapped.getHeader("x-picsure-access-type")).isNull();
+        assertThat(wrapped.getHeader(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+        assertThat(wrapped.getHeaders(GatewayUserResolver.HEADER_ACCESS_TYPE).hasMoreElements()).isFalse();
+        assertThat(Collections.list(wrapped.getHeaderNames()))
+            .doesNotContain("x-picsure-access-type", GatewayUserResolver.HEADER_ACCESS_TYPE);
+    }
+
+    @Test
     void nonIdentityHeadersPassThroughUnchangedWhenNoSpoofAttempted() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/query/sync");
         request.addHeader("Authorization", "Bearer abc");

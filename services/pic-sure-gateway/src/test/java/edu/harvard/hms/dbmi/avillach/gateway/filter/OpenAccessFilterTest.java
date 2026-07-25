@@ -69,6 +69,48 @@ class OpenAccessFilterTest {
     }
 
     @Test
+    void grantSetsOpenAccessTypeAttribute() throws Exception {
+        // IdentityPropagationFilter turns this attribute into X-Picsure-Access-Type. Without it, downstream services
+        // fall back to inspecting X-User-Id, whose open-access value (OPEN_ACCESS:<host>) is non-blank and so reads as
+        // authorized -- which is exactly how open requests ended up on the authorized HPDS backend.
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(true);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null);
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isEqualTo(GatewayUserResolver.ACCESS_TYPE_OPEN);
+    }
+
+    @Test
+    void denialSetsNoAccessTypeAttribute() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        when(client.validateOpenAccess(any())).thenReturn(false);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap(null);
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+    }
+
+    @Test
+    void realBearerSetsNoAccessTypeAttributeHere() throws Exception {
+        // A real token passes straight through; stamping `authorized` is PsamaIntrospectionFilter's job, and only
+        // after the token actually validates.
+        PsamaClient client = mock(PsamaClient.class);
+        OpenAccessFilter f = filter(client, new AuditContext(), true);
+
+        BufferedRequestWrapper req = wrap("Bearer real-token");
+        f.doFilter(req, mock(HttpServletResponse.class), mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+    }
+
+    @Test
     void grantSetsDedicatedOpenAccessGrantAttribute() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         when(client.validateOpenAccess(any())).thenReturn(true);
