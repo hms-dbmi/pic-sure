@@ -7,231 +7,276 @@ import java.util.stream.Collectors;
 
 public class PhenoCube<V extends Comparable<V>> implements Serializable {
 
-	private static final long serialVersionUID = -2584728054717230390L;
-	public final String name;
-	public final Class<V> vType;
+    private static final long serialVersionUID = -2584728054717230390L;
+    public final String name;
+    public final Class<V> vType;
 
-	int columnWidth;
+    int columnWidth;
 
-	V[] lowDimValues; 
-	boolean isLowDim = false;
+    V[] lowDimValues;
+    boolean isLowDim = false;
 
-	private KeyAndValue<V>[] sortedByKey;
-	
-	private TreeMap<V, TreeSet<Integer>> categoryMap;
+    private KeyAndValue<V>[] sortedByKey;
 
-	private transient List<KeyAndValue<V>> loadingMap = Collections.synchronizedList(new ArrayList<>());
+    private TreeMap<V, TreeSet<Integer>> categoryMap;
 
-	public PhenoCube(String name, Class<V> vType){
-		this.vType = vType;
-		this.name = name;
-	}
+    private transient List<KeyAndValue<V>> loadingMap = Collections.synchronizedList(new ArrayList<>());
 
-	public void add(Integer key, V value, Date date) {
-		loadingMap.add(new KeyAndValue<V>(key, value, date!=null?date.getTime():null));
-	}
-	
-	public V getValueForKey(Integer key) {
-		int idx = Arrays.binarySearch(sortedByKey(), new KeyAndValue<V>(key, null));
-		if(idx < 0) return null;
-		return sortedByKey()[idx].value;
-	}
+    public PhenoCube(String name, Class<V> vType) {
+        this.vType = vType;
+        this.name = name;
+    }
 
-	public Set<Integer> getKeysForValue(V value) {
-		
-		if(isStringType()) {
-			Set<Integer> keys = categoryMap.get(value);
-			return keys == null ? new TreeSet<Integer>() : keys;
-		} else {
-			int minIndex;
-			KeyAndValue<V> keyAndValue = new KeyAndValue<V>(1, value);
-			
-			if(value == null) {
-				return new TreeSet<Integer>();
-			} else {
-				KeyAndValue<V>[] sortedByValue = sortedByValue();
+    public void add(Integer key, V value, Date date) {
+        loadingMap.add(new KeyAndValue<V>(key, value, date != null ? date.getTime() : null));
+    }
 
-				int minSearchIndex = Arrays.binarySearch(sortedByValue, keyAndValue, (a,b)->{
-					return a.value.compareTo(b.value);
-				});
-				minIndex = seekForMinIndex(Math.abs(minSearchIndex), keyAndValue, sortedByValue);
+    public V getValueForKey(Integer key) {
+        int idx = Arrays.binarySearch(sortedByKey(), new KeyAndValue<V>(key, null));
+        if (idx < 0) return null;
+        return sortedByKey()[idx].value;
+    }
 
-				List<Integer> keys = new ArrayList<Integer>();
-				for(int x = minIndex; x < sortedByValue.length && value.equals(sortedByValue[x].value); x++) {
-					keys.add(sortedByValue[x].key);
-				}
+    public Set<Integer> getKeysForValue(V value) {
 
-				return new TreeSet<Integer> (keys);
-			}
-		}
-		
-	}
+        if (isStringType()) {
+            Set<Integer> keys = categoryMap.get(value);
+            return keys == null ? new TreeSet<Integer>() : keys;
+        } else {
+            int minIndex;
+            KeyAndValue<V> keyAndValue = new KeyAndValue<V>(1, value);
 
-	public Set<Integer> getKeysForRange(V min, V max) {
-		KeyAndValue<V>[] entries = getEntriesForValueRange(min, max);
-		Set<Integer> keys = new HashSet<>();
-		for(KeyAndValue<V> entry : entries) {
-			keys.add(entry.key);
-		}
-		return keys;
-	}
+            if (value == null) {
+                return new TreeSet<Integer>();
+            } else {
+                KeyAndValue<V>[] sortedByValue = sortedByValue();
 
-	public V[] getValuesForRange(V min, V max) {
-		KeyAndValue<V>[] entries = getEntriesForValueRange(min, max);
-		@SuppressWarnings("unchecked")
-		V[] values = (V[]) Array.newInstance(vType, entries.length);
-		for(int x = 0;x<entries.length;x++) {
-			values[x] = entries[x].value;
-		}
-		return values;
-	}
+                int minSearchIndex = Arrays.binarySearch(sortedByValue, keyAndValue, (a, b) -> {
+                    return a.value.compareTo(b.value);
+                });
+                minIndex = seekForMinIndex(Math.abs(minSearchIndex), keyAndValue, sortedByValue);
 
-	public KeyAndValue<V>[] getEntriesForValueRange(V min, V max) {
-		KeyAndValue<V> minKeyAndValue = new KeyAndValue<V>(1, min);
-		KeyAndValue<V> maxKeyAndValue = new KeyAndValue<V>(2, max);
+                List<Integer> keys = new ArrayList<Integer>();
+                for (int x = minIndex; x < sortedByValue.length && value.equals(sortedByValue[x].value); x++) {
+                    keys.add(sortedByValue[x].key);
+                }
 
-		int minIndex;
-		int maxIndex;
-		
-		KeyAndValue<V>[] sortedByValue = sortedByValue();
-		if(min == null) {
-			minIndex = 0;
-		} else {
-			int minSearchIndex = Arrays.binarySearch(sortedByValue, minKeyAndValue, (a,b)->{
-				return a.value.compareTo(b.value);
-			});
-			minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);
-		}
-		
-		if(max == null) {
-			maxIndex = sortedByValue.length;
-		} else {
-			int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a,b)->{
-				return a.value.compareTo(b.value);
-			});
-			/* 
-			 * Arrays.binarySearch returns the insertion index of the new value if there is
-			 * no exact match for the value. 
-			 * 
-			 * Sometimes this is an index that already has a value higher than our max, which 
-			 * would be shifted to the right on insertion. To still make use of the advantage
-			 * of the binary search we invert this insertion index AND decrement it once.
-			 * 
-			 * This prevents us from including one extra value in these cases.
-			 */
-			if(maxSearchIndex < 0) {
-				maxSearchIndex = (maxSearchIndex * -1)-1;
-			}
-			maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
-		}
-		
-		return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
-	}
+                return new TreeSet<Integer>(keys);
+            }
+        }
 
-	private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
-		
-		minSearchIndex--;
-		
-		Comparator<KeyAndValue<V>> comparator = (a,b)->{
-			return a.value.compareTo(b.value);
-		};
-		while(minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry)>=0) {
-			minSearchIndex--;
-		}
-		return Math.max(0, minSearchIndex+1);
-	}
+    }
 
-	private int seekForMaxIndex(int maxSearchIndex, KeyAndValue<V> maxEntry, KeyAndValue<V>[] sortedByValue) {
-		Comparator<KeyAndValue<V>> comparator = (a,b)->{
-			return a.value.compareTo(b.value);
-		};
-		while(maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex])>=0) {
-			maxSearchIndex++;
-		}
-		return maxSearchIndex;
-	}
+    public Set<Integer> getKeysForRange(V min, V max) {
+        KeyAndValue<V>[] entries = getEntriesForValueRange(min, max);
+        Set<Integer> keys = new HashSet<>();
+        for (KeyAndValue<V> entry : entries) {
+            keys.add(entry.key);
+        }
+        return keys;
+    }
 
-	public boolean isStringType() {
-		return vType.equals(String.class);
-	}
+    public V[] getValuesForRange(V min, V max) {
+        KeyAndValue<V>[] entries = getEntriesForValueRange(min, max);
+        @SuppressWarnings("unchecked")
+        V[] values = (V[]) Array.newInstance(vType, entries.length);
+        for (int x = 0; x < entries.length; x++) {
+            values[x] = entries[x].value;
+        }
+        return values;
+    }
 
-	public KeyAndValue<V>[] sortedByValue() {
-		KeyAndValue<V>[] sortedByValue = Arrays.copyOf(sortedByKey(), sortedByKey().length);
-		Arrays.sort(sortedByValue, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
-			return o1.value.compareTo(o2.value);
-		});
-		return sortedByValue;
-	}
+    public KeyAndValue<V>[] getEntriesForValueRange(V min, V max) {
+        KeyAndValue<V> minKeyAndValue = new KeyAndValue<V>(1, min);
+        KeyAndValue<V> maxKeyAndValue = new KeyAndValue<V>(2, max);
 
-	public KeyAndValue<V>[] sortedByTimestamp() {
-		KeyAndValue<V>[] sortedByTimestamp = Arrays.copyOf(sortedByKey(), sortedByKey().length);
-		Arrays.sort(sortedByTimestamp, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
-			return o1.getTimestamp()==null? -1 : o1.getTimestamp().compareTo(o2.getTimestamp());
-		});
-		return sortedByTimestamp;
-	}
+        int minIndex;
+        int maxIndex;
 
-	public List<Integer> keyBasedIndex() {
-		return Arrays.asList(sortedByKey()).stream().map((KeyAndValue<V> kv)->{
-			return kv.key;
-		}).collect(Collectors.toList());
-	}
+        KeyAndValue<V>[] sortedByValue = sortedByValue();
+        if (min == null) {
+            minIndex = 0;
+        } else {
+            int minSearchIndex = Arrays.binarySearch(sortedByValue, minKeyAndValue, (a, b) -> {
+                return a.value.compareTo(b.value);
+            });
+            minIndex = seekForMinIndex(Math.abs(minSearchIndex), minKeyAndValue, sortedByValue);
+        }
 
-	public List<Comparable<V>> keyBasedArray() {
-		return Arrays.asList(sortedByKey()).stream().map((KeyAndValue<V> kv)->{
-			return kv.value;
-		}).collect(Collectors.toList());
-	}
+        if (max == null) {
+            maxIndex = sortedByValue.length;
+        } else {
+            int maxSearchIndex = Arrays.binarySearch(sortedByValue, maxKeyAndValue, (a, b) -> {
+                return a.value.compareTo(b.value);
+            });
+            /*
+             * Arrays.binarySearch returns the insertion index of the new value if there is no exact match for the value.
+             * 
+             * Sometimes this is an index that already has a value higher than our max, which would be shifted to the right on insertion. To
+             * still make use of the advantage of the binary search we invert this insertion index AND decrement it once.
+             * 
+             * This prevents us from including one extra value in these cases.
+             */
+            if (maxSearchIndex < 0) {
+                maxSearchIndex = (maxSearchIndex * -1) - 1;
+            }
+            maxIndex = seekForMaxIndex(maxSearchIndex, maxKeyAndValue, sortedByValue);
+        }
 
-	public KeyAndValue<V>[] sortedByKey() {
-		return sortedByKey;
-	}
-	
-	public PhenoCube<V> setSortedByKey(KeyAndValue<V>[] sortedByKey) {
-		this.sortedByKey = sortedByKey;
-		return this;
-	}
+        return Arrays.copyOfRange(sortedByValue, minIndex, maxIndex);
+    }
 
-	public int getColumnWidth() {
-		return columnWidth;
-	}
+    private int seekForMinIndex(int minSearchIndex, KeyAndValue<V> minEntry, KeyAndValue<V>[] sortedByValue) {
 
-	public PhenoCube<V> setColumnWidth(int columnWidth) {
-		this.columnWidth = columnWidth;
-		return this;
-	}
+        minSearchIndex--;
 
-	public TreeMap<V, TreeSet<Integer>> getCategoryMap() {
-		return categoryMap;
-	}
+        Comparator<KeyAndValue<V>> comparator = (a, b) -> {
+            return a.value.compareTo(b.value);
+        };
+        while (minSearchIndex > -1 && comparator.compare(sortedByValue[minSearchIndex], minEntry) >= 0) {
+            minSearchIndex--;
+        }
+        return Math.max(0, minSearchIndex + 1);
+    }
 
-	public void setCategoryMap(TreeMap<V, TreeSet<Integer>> categorySetMap) {
-		this.categoryMap = categorySetMap;
-	}
+    private int seekForMaxIndex(int maxSearchIndex, KeyAndValue<V> maxEntry, KeyAndValue<V>[] sortedByValue) {
+        Comparator<KeyAndValue<V>> comparator = (a, b) -> {
+            return a.value.compareTo(b.value);
+        };
+        while (maxSearchIndex < sortedByValue.length && comparator.compare(maxEntry, sortedByValue[maxSearchIndex]) >= 0) {
+            maxSearchIndex++;
+        }
+        return maxSearchIndex;
+    }
 
-	public List<KeyAndValue<V>> getLoadingMap() {
-		return loadingMap;
-	}
-	
-	public void setLoadingMap(List<KeyAndValue<V>> newMap) {
-		this.loadingMap= newMap ;
-	}
+    public boolean isStringType() {
+        return vType.equals(String.class);
+    }
 
-	public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
-		patientIds = new TreeSet<>(patientIds);
+    public KeyAndValue<V>[] sortedByValue() {
+        KeyAndValue<V>[] sortedByValue = Arrays.copyOf(sortedByKey(), sortedByKey().length);
+        Arrays.sort(sortedByValue, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
+            return o1.value.compareTo(o2.value);
+        });
+        return sortedByValue;
+    }
 
-		List<KeyAndValue<V>> values = new ArrayList<>();
-		int x = 0;
-		for(Integer id : patientIds) {
-			while(x < sortedByKey.length && sortedByKey[x].key<id) {
-				x++;
-			}
-			while(x < sortedByKey.length && sortedByKey[x].key==id) {
-				values.add(sortedByKey[x]);
-				x++;
-			}
-		}
-		return values;
-	}
+    public KeyAndValue<V>[] sortedByTimestamp() {
+        KeyAndValue<V>[] sortedByTimestamp = Arrays.copyOf(sortedByKey(), sortedByKey().length);
+        Arrays.sort(sortedByTimestamp, (KeyAndValue<V> o1, KeyAndValue<V> o2) -> {
+            return o1.getTimestamp() == null ? -1 : o1.getTimestamp().compareTo(o2.getTimestamp());
+        });
+        return sortedByTimestamp;
+    }
 
+    public List<Integer> keyBasedIndex() {
+        return Arrays.asList(sortedByKey()).stream().map((KeyAndValue<V> kv) -> {
+            return kv.key;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Comparable<V>> keyBasedArray() {
+        return Arrays.asList(sortedByKey()).stream().map((KeyAndValue<V> kv) -> {
+            return kv.value;
+        }).collect(Collectors.toList());
+    }
+
+    public KeyAndValue<V>[] sortedByKey() {
+        return sortedByKey;
+    }
+
+    public PhenoCube<V> setSortedByKey(KeyAndValue<V>[] sortedByKey) {
+        this.sortedByKey = sortedByKey;
+        return this;
+    }
+
+    public int getColumnWidth() {
+        return columnWidth;
+    }
+
+    public PhenoCube<V> setColumnWidth(int columnWidth) {
+        this.columnWidth = columnWidth;
+        return this;
+    }
+
+    public TreeMap<V, TreeSet<Integer>> getCategoryMap() {
+        return categoryMap;
+    }
+
+    public void setCategoryMap(TreeMap<V, TreeSet<Integer>> categorySetMap) {
+        this.categoryMap = categorySetMap;
+    }
+
+    public List<KeyAndValue<V>> getLoadingMap() {
+        return loadingMap;
+    }
+
+    public void setLoadingMap(List<KeyAndValue<V>> newMap) {
+        this.loadingMap = newMap;
+    }
+
+    public List<KeyAndValue<V>> getValuesForKeys(Set<Integer> patientIds) {
+        patientIds = new TreeSet<>(patientIds);
+
+        List<KeyAndValue<V>> values = new ArrayList<>();
+        int x = 0;
+        for (Integer id : patientIds) {
+            while (x < sortedByKey.length && sortedByKey[x].key < id) {
+                x++;
+            }
+            while (x < sortedByKey.length && sortedByKey[x].key == id) {
+                values.add(sortedByKey[x]);
+                x++;
+            }
+        }
+        return values;
+    }
+
+    public PhenoCube<V> merge(PhenoCube<V> other) {
+        PhenoCube<V> newPhenoCube = new PhenoCube<>(this.name, this.vType);
+
+        // todo: merge each lazily?
+        ArrayList<KeyAndValue<V>> newKeyAndValues = new ArrayList<>(this.sortedByKey.length + other.sortedByKey.length);
+        int pointerThis = 0;
+        int pointerOther = 0;
+        while (pointerThis < this.sortedByKey.length || pointerOther < other.sortedByKey.length) {
+            if (pointerThis >= this.sortedByKey.length) {
+                newKeyAndValues.add(other.sortedByKey[pointerOther]);
+                pointerOther++;
+            } else if (pointerOther >= other.sortedByKey.length) {
+                newKeyAndValues.add(this.sortedByKey[pointerThis]);
+                pointerThis++;
+            } else if (this.sortedByKey[pointerThis].key < other.sortedByKey[pointerOther].key) {
+                newKeyAndValues.add(this.sortedByKey[pointerThis]);
+                pointerThis++;
+            } else {
+                newKeyAndValues.add(other.sortedByKey[pointerOther]);
+                pointerOther++;
+            }
+        }
+
+        TreeMap<V, TreeSet<Integer>> newCategoryMap = new TreeMap<>();
+        TreeMap<V, TreeSet<Integer>> thisCategoryMap = this.categoryMap != null ? this.categoryMap : new TreeMap<>();
+        TreeMap<V, TreeSet<Integer>> otherCategoryMap = other.categoryMap != null ? other.categoryMap : new TreeMap<>();
+        thisCategoryMap.keySet().forEach(key -> {
+            TreeSet<Integer> values = new TreeSet<>(thisCategoryMap.get(key));
+            values.addAll(otherCategoryMap.getOrDefault(key, new TreeSet<>()));
+            newCategoryMap.put(key, values);
+        });
+        otherCategoryMap.keySet().forEach(key -> {
+            // if the map contains the key, the values were added in the previous loop
+            if (!newCategoryMap.containsKey(key)) {
+                newCategoryMap.put(key, otherCategoryMap.get(key));
+            }
+        });
+        newPhenoCube.setCategoryMap(newCategoryMap);
+
+        newPhenoCube.columnWidth = Integer.max(this.columnWidth, other.columnWidth);
+        newPhenoCube.setSortedByKey(newKeyAndValues.stream().toArray(KeyAndValue[]::new));
+        return newPhenoCube;
+    }
+
+    protected KeyAndValue<V>[] getSortedByKey() {
+        return sortedByKey;
+    }
 }

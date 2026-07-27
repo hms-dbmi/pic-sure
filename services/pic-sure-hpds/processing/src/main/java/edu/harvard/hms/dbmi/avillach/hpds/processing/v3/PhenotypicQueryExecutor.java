@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Sets;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
@@ -10,9 +13,11 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
@@ -23,9 +28,20 @@ public class PhenotypicQueryExecutor {
 
     private final PartitionedPhenotypicObservationStore phenotypicObservationStore;
 
+    private final LoadingCache<String, Set<String>> childConceptCache;
+
     @Autowired
-    public PhenotypicQueryExecutor(PartitionedPhenotypicObservationStore phenotypicObservationStore) {
+    public PhenotypicQueryExecutor(
+        PartitionedPhenotypicObservationStore phenotypicObservationStore,
+        @Value("${CHILD_CONCEPT_CACHE_SIZE:500}") int childConceptCacheSize
+    ) {
         this.phenotypicObservationStore = phenotypicObservationStore;
+        this.childConceptCache = CacheBuilder.newBuilder().maximumSize(childConceptCacheSize).build(new CacheLoader<>() {
+            @Override
+            public Set<String> load(String key) {
+                return loadChildConceptPaths(key);
+            }
+        });
     }
 
     public Set<Integer> getPatientSet(Query query) {
@@ -71,7 +87,7 @@ public class PhenotypicQueryExecutor {
     }
 
     private Set<Integer> evaluateAnyRecordOfFilter(PhenotypicFilter phenotypicFilter) {
-        Set<String> matchingConcepts = phenotypicObservationStore.getChildConceptPaths(phenotypicFilter.conceptPath());
+        Set<String> matchingConcepts = getChildConceptPaths(phenotypicFilter.conceptPath());
         Set<Integer> ids = new TreeSet<>();
         for (String concept : matchingConcepts) {
             ids.addAll(phenotypicObservationStore.getAllKeys(concept));
@@ -144,5 +160,18 @@ public class PhenotypicQueryExecutor {
 
     public Set<Integer> getPatientIds() {
         return phenotypicObservationStore.getPatientIds();
+    }
+
+    public Set<String> getChildConceptPaths(String conceptPath) {
+        try {
+            return childConceptCache.get(conceptPath);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Set<String> loadChildConceptPaths(String conceptPath) {
+        return phenotypicObservationStore.getMetaStore().keySet().stream().filter(column -> column.startsWith(conceptPath))
+            .collect(Collectors.toSet());
     }
 }

@@ -1,5 +1,6 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
+import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.*;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.PhenotypeMetaStore;
@@ -10,10 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -30,7 +28,7 @@ class PhenotypicQueryExecutorTest {
 
     @BeforeEach
     public void setup() {
-        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypicObservationStore);
+        phenotypicQueryExecutor = new PhenotypicQueryExecutor(phenotypicObservationStore, 500);
     }
 
     @Test
@@ -155,7 +153,7 @@ class PhenotypicQueryExecutorTest {
     }
 
     @Test
-    public void getPatientSet_validAnyRecordOfFilter_returnPatients() throws ExecutionException {
+    public void getPatientSet_validAnyRecordOfFilter_returnPatients() {
         String categoricalConceptPath = "\\open_access-1000Genomes\\data\\POPULATION NAME\\";
         String numericConceptPath = "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\";
         String nonMatchingConceptPath = "\\synthea\\data\\SYNTHETIC_AGE\\";
@@ -165,8 +163,10 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypicObservationStore.getChildConceptPaths("\\open_access-1000Genomes\\"))
-            .thenReturn(Set.of(categoricalConceptPath, numericConceptPath));
+        Map<String, SummaryColumnMeta> metaMap =
+            Map.of(categoricalConceptPath, new SummaryColumnMeta(), numericConceptPath, new SummaryColumnMeta());
+        when(phenotypicObservationStore.getMetaStore()).thenReturn(metaMap);
+
         List<Integer> numericPatientIds = List.of(2, 3, 5);
         List<Integer> categoricalPatientIds = List.of(10, 100, 1000, 100000);
 
@@ -191,7 +191,12 @@ class PhenotypicQueryExecutorTest {
             ResultType.COUNT, null, null
         );
 
-        when(phenotypicObservationStore.getChildConceptPaths("\\open_access-1000Genomes\\")).thenReturn(Set.of());
+        Map<String, SummaryColumnMeta> metaMap = Map.of(
+            "\\open_access-1000Genomes\\data\\POPULATION NAME\\", new SummaryColumnMeta(), "\\open_access-1000Genomes\\data\\SEX\\",
+            new SummaryColumnMeta(), "\\open_access-1000Genomes\\data\\SYNTHETIC_AGE\\", new SummaryColumnMeta(),
+            "\\open_access-1000Genomes\\data\\SYNTHETIC_HEIGHT\\", new SummaryColumnMeta()
+        );
+        when(phenotypicObservationStore.getMetaStore()).thenReturn(metaMap);
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);
@@ -225,6 +230,43 @@ class PhenotypicQueryExecutorTest {
 
         Set<Integer> patientSet = phenotypicQueryExecutor.getPatientSet(query);
         assertEquals(Set.of(), patientSet);
+    }
+
+
+    private void mockMetaStore() {
+        Map<String, SummaryColumnMeta> metaStore = new TreeMap<>();
+        metaStore.put("\\study1\\demographics\\age\\", new SummaryColumnMeta().setName("age"));
+        metaStore.put("\\study1\\demographics\\sex\\", new SummaryColumnMeta().setName("sex"));
+        metaStore.put("\\study2\\demographics\\age\\", new SummaryColumnMeta().setName("age"));
+        metaStore.put("\\study2\\demographics\\sex\\", new SummaryColumnMeta().setName("sex"));
+        when(phenotypicObservationStore.getMetaStore()).thenReturn(metaStore);
+    }
+
+    @Test
+    public void loadChildConceptPaths_matchingConcepts_shouldReturnConcepts() {
+        mockMetaStore();
+
+        Set<String> childConceptPaths = phenotypicQueryExecutor.loadChildConceptPaths("\\study1\\demographics\\");
+        assertEquals(Set.of("\\study1\\demographics\\age\\", "\\study1\\demographics\\sex\\"), childConceptPaths);
+    }
+
+    @Test
+    public void loadChildConceptPaths_noMatchingConcepts_shouldReturnNoConcepts() {
+        mockMetaStore();
+
+        Set<String> childConceptPaths = phenotypicQueryExecutor.loadChildConceptPaths("\\study3\\demographics\\");
+        assertEquals(Set.of(), childConceptPaths);
+    }
+
+    @Test
+    public void getChildConceptPaths_multipleCalls_shouldCacheResults() {
+        mockMetaStore();
+
+        for (int k = 0; k < 5; k++) {
+            Set<String> childConceptPaths = phenotypicQueryExecutor.getChildConceptPaths("\\study1\\demographics\\");
+            assertEquals(Set.of("\\study1\\demographics\\age\\", "\\study1\\demographics\\sex\\"), childConceptPaths);
+        }
+        verify(phenotypicObservationStore, times(1)).getMetaStore();
     }
 
 }

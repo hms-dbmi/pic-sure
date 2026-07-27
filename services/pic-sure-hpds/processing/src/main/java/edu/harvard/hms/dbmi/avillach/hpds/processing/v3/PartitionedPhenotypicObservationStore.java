@@ -1,5 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.hpds.processing.v3;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.ColumnMeta;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.PhenoCube;
 import edu.harvard.hms.dbmi.avillach.hpds.data.phenotype.SummaryColumnMeta;
@@ -17,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -29,6 +33,8 @@ public class PartitionedPhenotypicObservationStore {
     private final UserRequestContext userRequestContext;
 
     private final Map<String, PhenotypicObservationStore> phenotypicPartitions;
+
+    private final Map<String, SummaryColumnMeta> allPartitionMetaStore;
 
     @Autowired
     public PartitionedPhenotypicObservationStore(
@@ -44,13 +50,14 @@ public class PartitionedPhenotypicObservationStore {
 
             for (Path subdirectory : subdirectories) {
                 String partitionName = subdirectory.getFileName().toString();
-                PhenotypeMetaStore phenotypeMetaStore = new PhenotypeMetaStore(subdirectory.toString(), 500);
+                PhenotypeMetaStore phenotypeMetaStore = new PhenotypeMetaStore(subdirectory.toString());
                 PhenotypicObservationStore phenotypicObservationStore =
                     new PhenotypicObservationStore(phenotypeMetaStore, subdirectory.toString(), 1000);
                 phenotypicPartitions.put(partitionName, phenotypicObservationStore);
             }
 
             this.phenotypicPartitions = Map.copyOf(phenotypicPartitions);
+            this.allPartitionMetaStore = createAllPartitionMetaStore();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -102,7 +109,22 @@ public class PartitionedPhenotypicObservationStore {
     }
 
     public Optional<PhenoCube<?>> getCube(String path) {
-        throw new RuntimeException("Not implemented");
+        Set<PhenoCube<?>> phenoCubes;
+        // todo: disallow this by default
+        if (userRequestContext.getUserConsents().isEmpty()) {
+            phenoCubes = phenotypicPartitions.values().stream()
+                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
+        } else {
+            phenoCubes = userRequestContext.getUserConsents().stream().map(phenotypicPartitions::get)
+                .flatMap(phenotypicObservationStore -> phenotypicObservationStore.getCube(path).stream()).collect(Collectors.toSet());
+        }
+        PhenoCube<?> result = phenoCubes.stream().reduce((phenoCube, phenoCube2) -> {
+            if (phenoCube.vType.equals(String.class)) {
+                return ((PhenoCube<String>) phenoCube).merge((PhenoCube<String>) phenoCube2);
+            }
+            return ((PhenoCube<Double>) phenoCube).merge((PhenoCube<Double>) phenoCube2);
+        }).get();
+        return Optional.ofNullable(result);
     }
 
     public Set<String> getCachedKeys() {
@@ -123,12 +145,12 @@ public class PartitionedPhenotypicObservationStore {
         }
     }
 
-    public Set<String> getChildConceptPaths(String s) {
-        throw new RuntimeException("Not implemented yet");
-    }
-
     @Cacheable("PartitionedPhenotypicObservationStore.getMetaStore")
     public Map<String, SummaryColumnMeta> getMetaStore() {
+        return allPartitionMetaStore;
+    }
+
+    private Map<String, SummaryColumnMeta> createAllPartitionMetaStore() {
         Map<String, SummaryColumnMeta> mergedColumnMeta = new HashMap<>();
         List<Map<String, ColumnMeta>> allPartitionMetaStores =
             phenotypicPartitions.values().stream().map(PhenotypicObservationStore::getMetaStore).collect(Collectors.toList());
@@ -143,7 +165,7 @@ public class PartitionedPhenotypicObservationStore {
                 mergedColumnMeta.put(stringColumnMetaEntry.getKey(), summaryColumnMeta);
             }
         }
-        return mergedColumnMeta;
+        return Map.copyOf(mergedColumnMeta);
     }
 
 

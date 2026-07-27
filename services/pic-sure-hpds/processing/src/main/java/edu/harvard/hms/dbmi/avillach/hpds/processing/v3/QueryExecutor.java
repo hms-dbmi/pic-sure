@@ -159,7 +159,7 @@ public class QueryExecutor {
         List<String> allFilterPaths =
             query.allFilters().stream().flatMap(phenotypicFilter -> (switch (phenotypicFilter.phenotypicFilterType()) {
                 case FILTER, REQUIRED -> List.of(phenotypicFilter.conceptPath());
-                case ANY_RECORD_OF -> phenotypeMetaStore.getChildConceptPaths(phenotypicFilter.conceptPath());
+                case ANY_RECORD_OF -> phenotypicQueryExecutor.getChildConceptPaths(phenotypicFilter.conceptPath());
             }).stream()).toList();
         allConceptPaths.addAll(allFilterPaths);
         return allConceptPaths;

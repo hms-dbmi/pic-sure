@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -36,7 +35,7 @@ public class SummaryColumnMeta implements Serializable {
         this.name = columnMeta.getName();
         this.widthInBytes = columnMeta.getWidthInBytes();
         this.categorical = columnMeta.isCategorical();
-        this.categoryValues = Set.copyOf(columnMeta.getCategoryValues());
+        this.categoryValues = columnMeta.getCategoryValues() != null ? Set.copyOf(columnMeta.getCategoryValues()) : Set.of();
         this.min = columnMeta.getMin();
         this.max = columnMeta.getMax();
         this.patientCount = columnMeta.getPatientCount();
