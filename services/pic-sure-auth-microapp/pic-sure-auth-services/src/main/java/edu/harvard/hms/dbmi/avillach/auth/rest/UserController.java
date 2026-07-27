@@ -46,8 +46,9 @@ public class UserController {
     @RolesAllowed({ADMIN, SUPER_ADMIN})
     @GetMapping(path = "/{userId}", produces = "application/json")
     public ResponseEntity<User> getUserById(
-            @Parameter(required = true, description = "The UUID of the user to fetch information about")
-            @PathVariable("userId") String userId, HttpServletRequest request) {
+        @Parameter(required = true, description = "The UUID of the user to fetch information about") @PathVariable("userId") String userId,
+        HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "target_user_id", userId);
         User userById = this.userService.getUserById(userId);
         return PICSUREResponse.success(userById);
@@ -67,8 +68,8 @@ public class UserController {
     @RolesAllowed({ADMIN})
     @PostMapping(produces = "application/json")
     public ResponseEntity<?> addUser(
-            @Parameter(required = true, description = "A list of user in JSON format")
-            @RequestBody List<User> users, HttpServletRequest request) {
+        @Parameter(required = true, description = "A list of user in JSON format") @RequestBody List<User> users, HttpServletRequest request
+    ) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> addedUsers = this.userService.addUsers(users);
         if (addedUsers == null) {
@@ -87,8 +88,7 @@ public class UserController {
     @AuditEvent(type = "ADMIN", action = "user.modify")
     @RolesAllowed({ADMIN})
     @PutMapping(produces = "application/json")
-    public ResponseEntity<?> updateUser(
-            @RequestBody List<User> users, HttpServletRequest request) {
+    public ResponseEntity<?> updateUser(@RequestBody List<User> users, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "target_user_count", String.valueOf(users.size()));
         List<User> updatedUsers = this.userService.updateUser(users);
         if (updatedUsers == null) {
@@ -166,8 +166,7 @@ public class UserController {
     @Operation(description = "refresh the long term tokne of current user")
     @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/refresh_long_term_token", produces = "application/json")
-    public ResponseEntity<?> refreshUserToken(
-            @RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
+    public ResponseEntity<?> refreshUserToken(@RequestHeader HttpHeaders httpHeaders, HttpServletRequest request) {
         AuditAttributes.putMetadata(request, "token_type", "long_term");
         Map<String, String> stringStringMap = this.userService.refreshUserToken(httpHeaders);
         if (stringStringMap != null) {
@@ -178,9 +177,10 @@ public class UserController {
     }
 
     @Operation(description = "Retrieve consents of current user")
+    @AuditEvent(type = "ACCESS", action = "user.profile")
     @GetMapping(path = "/me/consents", produces = "application/json")
-    public ResponseEntity<?> getUserConsents(@PathVariable("userId") UUID userId) {
-        UserConsents userConsents = this.userService.getUserConsents(userId);
+    public ResponseEntity<?> getUserConsents() {
+        UserConsents userConsents = this.userService.getUserConsents();
 
         if (userConsents == null) {
             return PICSUREResponse.applicationError("Inner application error, please contact admin.");

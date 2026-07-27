@@ -70,20 +70,15 @@ public class UserService {
     private final LoggingClient loggingClient;
 
     @Autowired
-    public UserService(BasicMailService basicMailService, TOSService tosService,
-                       UserRepository userRepository,
-                       ConnectionRepository connectionRepository,
-                       ApplicationRepository applicationRepository,
-                       RoleService roleService,
-                       UserConsentsRepository userConsentsRepository,
-                       FenceMappingUtility fenceMappingUtility,
-                       @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                       @Value("${application.default.uuid}") String applicationUUID,
-                       @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime,
-                       JWTUtil jwtUtil,
-                       @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
-                       @Value("${application.token.inclusionRoles}") String tokenInclusionRoles,
-                       LoggingClient loggingClient) {
+    public UserService(
+        BasicMailService basicMailService, TOSService tosService, UserRepository userRepository, ConnectionRepository connectionRepository,
+        ApplicationRepository applicationRepository, RoleService roleService, UserConsentsRepository userConsentsRepository,
+        FenceMappingUtility fenceMappingUtility, @Value("${application.token.expiration.time}") long tokenExpirationTime,
+        @Value("${application.default.uuid}") String applicationUUID,
+        @Value("${application.long.term.token.expiration.time}") long longTermTokenExpirationTime, JWTUtil jwtUtil,
+        @Value("${open.idp.provider.is.enabled}") boolean openIdpProviderIsEnabled,
+        @Value("${application.token.inclusionRoles}") String tokenInclusionRoles, LoggingClient loggingClient
+    ) {
         this.basicMailService = basicMailService;
         this.tosService = tosService;
         this.userRepository = userRepository;
@@ -116,13 +111,8 @@ public class UserService {
 
         HashMap<String, Object> claimsMap = userClaims.toHashMap();
         logger.debug("getUserProfileResponse() using claims:{}", claimsMap.toString());
-        String token = this.jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claimsMap,
-                userClaims.getSub(),
-                this.tokenExpirationTime
-        );
+        String token =
+            this.jwtUtil.createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claimsMap, userClaims.getSub(), this.tokenExpirationTime);
 
         responseMap.put("token", token);
         logger.debug("getUserProfileResponse() .usedId field is set");
@@ -148,10 +138,7 @@ public class UserService {
 
     public List<String> addRoleClaims(User user) {
         if (user != null && user.getRoles() != null) {
-            return user.getRoles().stream()
-                    .map(Role::getName)
-                    .filter(tokenInclusionRoles::contains)
-                    .collect(Collectors.toList());
+            return user.getRoles().stream().map(Role::getName).filter(tokenInclusionRoles::contains).collect(Collectors.toList());
         }
 
         return List.of();
@@ -573,11 +560,9 @@ public class UserService {
         claimsMap.put("roles", addRoleClaims(user));
 
         return this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
-                this.longTermTokenExpirationTime);
+            claims.getId(), claims.getIssuer(), claimsMap, AuthNaming.LONG_TERM_TOKEN_PREFIX + "|" + tokenSubject,
+            this.longTermTokenExpirationTime
+        );
     }
 
     public User changeRole(User currentUser, Set<Role> roles) {
@@ -651,16 +636,17 @@ public class UserService {
         user.setEmail(user.getUuid() + "@open_access.com");
         user = save(user);
 
-        logger.info("createOpenAccessUser() created user, uuid: {}, subject: {}, role: {}, privilege: {}",
-                user.getUuid(), user.getSubject(), user.getRoleString(), user.getPrivilegeString());
+        logger.info(
+            "createOpenAccessUser() created user, uuid: {}, subject: {}, role: {}, privilege: {}", user.getUuid(), user.getSubject(),
+            user.getRoleString(), user.getPrivilegeString()
+        );
 
         if (loggingClient != null && loggingClient.isEnabled()) {
             try {
-                loggingClient.send(LoggingEvent.builder("AUTHZ").action("user.open_access_created")
-                    .metadata(Map.of(
-                        "user_uuid", user.getUuid().toString(),
-                        "assigned_role", "MANAGED_OPEN_ACCESS"
-                    )).build());
+                loggingClient.send(
+                    LoggingEvent.builder("AUTHZ").action("user.open_access_created")
+                        .metadata(Map.of("user_uuid", user.getUuid().toString(), "assigned_role", "MANAGED_OPEN_ACCESS")).build()
+                );
             } catch (Exception e) {
                 logger.warn("Failed to send open access user creation logging event", e);
             }
@@ -758,13 +744,16 @@ public class UserService {
             try {
                 String addedNames = newRoles.stream().map(Role::getName).collect(Collectors.joining(","));
                 String removedNames = rolesToRemove.stream().map(Role::getName).collect(Collectors.joining(","));
-                loggingClient.send(LoggingEvent.builder("AUTHZ").action("role.sync")
-                    .metadata(Map.of(
-                        "user_id", current_user.getUuid().toString(),
-                        "user_email", current_user.getEmail() != null ? current_user.getEmail() : "",
-                        "roles_added", addedNames,
-                        "roles_removed", removedNames
-                    )).build());
+                loggingClient.send(
+                    LoggingEvent.builder("AUTHZ").action("role.sync")
+                        .metadata(
+                            Map.of(
+                                "user_id", current_user.getUuid().toString(), "user_email",
+                                current_user.getEmail() != null ? current_user.getEmail() : "", "roles_added", addedNames, "roles_removed",
+                                removedNames
+                            )
+                        ).build()
+                );
             } catch (Exception e) {
                 logger.warn("Failed to send role sync logging event", e);
             }
@@ -822,13 +811,12 @@ public class UserService {
     }
 
     public User updateUserConsents(User user, Set<String> userConsentStrings) {
-        Map<String, Set<String>> consents = new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
+        Map<String, Set<String>> consents =
+            new BdcConsentsBuilder(fenceMappingUtility.getFENCEMapping(), userConsentStrings).createConsents();
         UserConsents userConsents = userConsentsRepository.findByUserId(user.getUuid());
         if (userConsents == null) {
             logger.info("Creating user consents");
-            userConsents = new UserConsents()
-                .setConsents(consents)
-                .setUserId(user.getUuid());
+            userConsents = new UserConsents().setConsents(consents).setUserId(user.getUuid());
             logger.info("{} User consents created", userConsents.getConsents().size());
         }
         userConsents.setConsents(consents);
@@ -838,16 +826,29 @@ public class UserService {
         return user;
     }
 
-    public UserConsents getUserConsents(UUID userId) {
+    /**
+     * Returns the consents of the currently authenticated user. The user is taken from the security context, so a caller can only ever read
+     * its own consents.
+     *
+     * @return the user's consents, an empty set of consents if none are stored, or null if no user is authenticated
+     */
+    public UserConsents getUserConsents() {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) securityContext.getAuthentication().getPrincipal();
         if (customUserDetails == null || customUserDetails.getUser() == null || customUserDetails.getUser().getUuid() == null) {
             logger.error("Security context didn't have a user stored.");
             return null;
-        } else if (customUserDetails.getUser().getUuid() != userId) {
-            logger.error("User " + customUserDetails.getUser().getUuid() + " tried to access consents for user " + userId);
-            return null;
         }
-        return userConsentsRepository.findByUserId(userId);
+
+        UUID userId = customUserDetails.getUser().getUuid();
+        UserConsents userConsents = userConsentsRepository.findByUserId(userId);
+        if (userConsents == null) {
+            // Not an error: a user with no stored record simply has no authorized studies. Returning an empty set lets clients treat
+            // this as "nothing authorized" instead of failing outright.
+            logger.info("No consents stored for user {}", userId);
+            return new UserConsents().setUserId(userId).setConsents(Map.of());
+        }
+
+        return userConsents;
     }
 }
