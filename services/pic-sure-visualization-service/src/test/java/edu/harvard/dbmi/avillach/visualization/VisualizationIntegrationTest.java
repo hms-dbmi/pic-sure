@@ -23,13 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-// Production shape: no configured fallback UUIDs -- resourceUUID flows as null end-to-end (HpdsCallIntegrationTest
-// covers the configured-fallback shape via the test profile's properties).
 // Actuator is OFF BY DEFAULT (exposure defaults to 'none'); expose health so healthEndpoint_isPublic exercises the
 // endpoint the AIO deployment enables via PICSURE_ACTUATOR_EXPOSURE=health.
-@TestPropertySource(
-    properties = {"hpds.resource.authorized.uuid=", "hpds.resource.open.uuid=", "management.endpoints.web.exposure.include=health"}
-)
+@TestPropertySource(properties = {"management.endpoints.web.exposure.include=health"})
 class VisualizationIntegrationTest {
 
     private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -218,6 +214,9 @@ class VisualizationIntegrationTest {
 
         String content = result.getResponse().getContentAsString();
         assertTrue(content.contains("POST /distributions"));
-        assertTrue(content.contains("hpdsResourceUUID"));
+        assertTrue(content.contains("query"));
+        // hpdsResourceUUID is no longer part of the request: the backend is chosen by X-Picsure-Access-Type and the
+        // path query-service is called on. Advertising it would tell clients to send a field nothing reads.
+        assertFalse(content.contains("hpdsResourceUUID"));
     }
 }

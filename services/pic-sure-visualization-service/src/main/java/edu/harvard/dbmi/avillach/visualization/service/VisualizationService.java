@@ -82,17 +82,20 @@ public class VisualizationService {
                 }
             } catch (HttpStatusCodeException e) {
                 logger.error(
-                    "HPDS returned HTTP {} for {} {} query", e.getStatusCode().value(), accessType.getValue(), descriptor.resultType(), e
+                    "Query service returned HTTP {} for {} {} query", e.getStatusCode().value(), accessType.getValue(),
+                    descriptor.resultType(), e
                 );
-                throw new HpdsUpstreamException("HPDS query failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e);
+                throw new HpdsUpstreamException(
+                    "Query service request failed with status " + e.getStatusCode().value() + ": " + e.getStatusText(), e
+                );
             } catch (ResourceAccessException e) {
-                logger.error("Could not reach HPDS for {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("HPDS query failed: " + e.getMessage(), e);
+                logger.error("Could not reach query service for {} {} query", accessType.getValue(), descriptor.resultType(), e);
+                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
             } catch (VisualizationException e) {
                 throw e;
             } catch (Exception e) {
                 logger.error("Failed to execute {} {} query", accessType.getValue(), descriptor.resultType(), e);
-                throw new HpdsUpstreamException("HPDS query failed: " + e.getMessage(), e);
+                throw new HpdsUpstreamException("Query service request failed: " + e.getMessage(), e);
             }
         }
 

@@ -204,7 +204,9 @@ class HpdsCallIntegrationTest {
         mockServer.verify();
 
         String responseBody = result.getResponse().getContentAsString();
-        assertTrue(responseBody.contains("HPDS query failed"));
+        // Names the hop that actually failed. This service no longer calls HPDS, so a message saying it did would send
+        // an operator to the wrong container.
+        assertTrue(responseBody.contains("Query service request failed"));
     }
 
     @Test

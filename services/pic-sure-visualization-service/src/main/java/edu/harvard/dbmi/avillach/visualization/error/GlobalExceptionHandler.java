@@ -28,7 +28,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HpdsUpstreamException.class)
     public ResponseEntity<Map<String, String>> handleHpdsUpstreamException(HpdsUpstreamException e) {
-        logger.error("Upstream HPDS error: {}", e.getMessage());
+        logger.error("Upstream query-service error: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
     }
 
@@ -43,12 +43,12 @@ public class GlobalExceptionHandler {
         Throwable cause = e.getCause();
 
         if (cause instanceof HttpStatusCodeException) {
-            logger.error("Upstream HPDS HTTP error: {}", e.getMessage());
+            logger.error("Upstream query-service HTTP error: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
         }
 
         if (cause instanceof ResourceAccessException) {
-            logger.error("Upstream HPDS unreachable: {}", e.getMessage());
+            logger.error("Upstream query-service unreachable: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
         }
 

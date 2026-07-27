@@ -25,11 +25,6 @@ public class PicsureMetadataController {
 
     private QueryFormat distributionQueryFormat() {
         return new QueryFormat().setName("PIC-SURE Visualization Distributions").setDescription("Request format for POST /distributions")
-            .setSpecification(
-                Map.of(
-                    "hpdsResourceUUID", "Configured authorized or open HPDS resource UUID", "query",
-                    "PIC-SURE HPDS v3 query used to generate distribution charts"
-                )
-            );
+            .setSpecification(Map.of("query", "PIC-SURE HPDS v3 query used to generate distribution charts"));
     }
 }
