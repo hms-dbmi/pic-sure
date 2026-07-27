@@ -14,18 +14,18 @@ class AccessTypeResolverTest {
 
     @Test
     void resolvesAuthorized() {
-        assertEquals(AccessType.AUTHORIZED, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).accessType());
+        assertEquals(AccessType.AUTHORIZED, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_AUTHORIZED));
     }
 
     @Test
     void resolvesOpen() {
-        assertEquals(AccessType.OPEN, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_OPEN).accessType());
+        assertEquals(AccessType.OPEN, resolver.resolve(GatewayUserResolver.ACCESS_TYPE_OPEN));
     }
 
     @Test
     void resolveIsCaseInsensitiveAndTrims() {
-        assertEquals(AccessType.OPEN, resolver.resolve("  OPEN ").accessType());
-        assertEquals(AccessType.AUTHORIZED, resolver.resolve("Authorized").accessType());
+        assertEquals(AccessType.OPEN, resolver.resolve("  OPEN "));
+        assertEquals(AccessType.AUTHORIZED, resolver.resolve("Authorized"));
     }
 
     @Test

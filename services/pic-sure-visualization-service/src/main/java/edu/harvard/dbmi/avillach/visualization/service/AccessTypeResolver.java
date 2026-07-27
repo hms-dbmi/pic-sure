@@ -2,7 +2,6 @@ package edu.harvard.dbmi.avillach.visualization.service;
 
 import edu.harvard.dbmi.avillach.visualization.error.BadVisualizationRequestException;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
-import edu.harvard.dbmi.avillach.visualization.model.HpdsAccessContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import java.util.Locale;
 import org.springframework.stereotype.Component;
@@ -23,14 +22,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class AccessTypeResolver {
 
-    public HpdsAccessContext resolve(String accessTypeHeader) {
+    public AccessType resolve(String accessTypeHeader) {
         if (accessTypeHeader != null) {
             String normalized = accessTypeHeader.trim().toLowerCase(Locale.ROOT);
             if (GatewayUserResolver.ACCESS_TYPE_AUTHORIZED.equals(normalized)) {
-                return new HpdsAccessContext(null, AccessType.AUTHORIZED);
+                return AccessType.AUTHORIZED;
             }
             if (GatewayUserResolver.ACCESS_TYPE_OPEN.equals(normalized)) {
-                return new HpdsAccessContext(null, AccessType.OPEN);
+                return AccessType.OPEN;
             }
         }
         throw new BadVisualizationRequestException("Missing or unrecognized X-Picsure-Access-Type header");

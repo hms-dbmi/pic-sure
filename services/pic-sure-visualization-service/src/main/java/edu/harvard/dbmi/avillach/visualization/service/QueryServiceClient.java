@@ -7,6 +7,7 @@ import edu.harvard.dbmi.avillach.logging.RequestInfo;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
+import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import java.net.URI;
@@ -15,7 +16,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,53 +25,64 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
+/**
+ * Posts distribution sub-queries to {@code pic-sure-hpds-query-service}, the single HPDS ingress. This service does NOT talk to HPDS
+ * directly -- query-service owns that hop, selects the backend from the {@code /hpds/{auth,open}} path segment, and applies the open path's
+ * threshold/variance obfuscation.
+ *
+ * <p>The gateway's {@code X-User-*} headers are forwarded verbatim because query-service gates {@code /hpds/**} behind
+ * {@code .authenticated()}, which its {@code GatewayPrivilegesFilter} satisfies only when {@code X-User-Id} is present. Open-access
+ * requests carry the marker {@code OPEN_ACCESS:<host>} in that header, which satisfies the rule; the auth-vs-open choice itself comes from
+ * {@link AccessTypeResolver}, never from this value.
+ *
+ * <p>No {@code resourceUUID} is sent. query-service selects its backend from the path and only echoes the field back, so including it would
+ * imply a routing role it no longer has.
+ */
 @Component
-public class HpdsClient {
+public class QueryServiceClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(HpdsClient.class);
+    private static final Logger logger = LoggerFactory.getLogger(QueryServiceClient.class);
+
+    /** The gateway-resolved identity to forward downstream. Any component may be null or blank; only non-blank values become headers. */
+    public record GatewayIdentity(String userId, String subject, String email, String roles, String privileges) {
+    }
 
     private final RestClient restClient;
     private final LoggingClient loggingClient;
-    private final String hpdsBaseUrl;
+    private final String queryServiceBaseUrl;
 
-    public HpdsClient(RestClient restClient, LoggingClient loggingClient, @Value("${hpds.base-url}") String hpdsBaseUrl) {
+    public QueryServiceClient(
+        RestClient restClient, LoggingClient loggingClient, @Value("${picsure.query-service.base-url}") String queryServiceBaseUrl
+    ) {
         this.restClient = restClient;
         this.loggingClient = loggingClient;
-        this.hpdsBaseUrl = hpdsBaseUrl;
-    }
-
-    public Map<String, Map<String, Integer>> getAuthCrossCounts(Query query, ResultType resultType, UUID resourceUUID, String bearerToken) {
-        return getAuthCrossCounts(query, resultType, resourceUUID, bearerToken, null, AccessType.AUTHORIZED, null);
+        this.queryServiceBaseUrl = queryServiceBaseUrl;
     }
 
     public Map<String, Map<String, Integer>> getAuthCrossCounts(
-        Query query, ResultType resultType, UUID resourceUUID, String bearerToken, String requestId, AccessType accessType,
-        DistributionType distributionKind
+        Query query, ResultType resultType, GatewayIdentity identity, String requestId, DistributionType distributionKind
     ) {
         return queryCrossCounts(
-            query, resultType, resourceUUID, bearerToken, requestId, accessType, distributionKind, new ParameterizedTypeReference<>() {}
+            query, resultType, identity, requestId, AccessType.AUTHORIZED, distributionKind, new ParameterizedTypeReference<>() {}
         );
     }
 
-    public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(Query query, ResultType resultType, UUID resourceUUID, String bearerToken) {
-        return getOpenCrossCounts(query, resultType, resourceUUID, bearerToken, null, AccessType.OPEN, null);
-    }
-
     public Map<String, Map<String, ObfuscatedCount>> getOpenCrossCounts(
-        Query query, ResultType resultType, UUID resourceUUID, String bearerToken, String requestId, AccessType accessType,
-        DistributionType distributionKind
+        Query query, ResultType resultType, GatewayIdentity identity, String requestId, DistributionType distributionKind
     ) {
         return queryCrossCounts(
-            query, resultType, resourceUUID, bearerToken, requestId, accessType, distributionKind, new ParameterizedTypeReference<>() {}
+            query, resultType, identity, requestId, AccessType.OPEN, distributionKind, new ParameterizedTypeReference<>() {}
         );
     }
 
     private <T> Map<String, T> queryCrossCounts(
-        Query query, ResultType resultType, UUID resourceUUID, String bearerToken, String requestId, AccessType accessType,
+        Query query, ResultType resultType, GatewayIdentity identity, String requestId, AccessType accessType,
         DistributionType distributionKind, ParameterizedTypeReference<Map<String, T>> typeRef
     ) {
         long startTime = System.currentTimeMillis();
 
+        // authorizationFilters are carried through verbatim: PSAMA injects the caller's consent scope and the gateway's
+        // BodyMutationFilter swaps it into the body before this service sees it. Auth HPDS rejects an empty list.
         Query subQuery = new Query(
             query.select(), query.authorizationFilters(), query.phenotypicClause(), query.genomicFilters(), resultType, query.picsureId(),
             query.id()
@@ -80,47 +91,63 @@ public class HpdsClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.ALL));
-        if (bearerToken != null && !bearerToken.isBlank()) {
-            headers.set("Authorization", bearerToken);
-        }
+        addIdentityHeaders(headers, identity);
         if (requestId != null && !requestId.isBlank()) {
             headers.set("X-Request-Id", requestId);
         }
 
-        String url = hpdsBaseUrl + querySyncPath(accessType);
-        Object body = requestBody(subQuery, resourceUUID);
+        String path = querySyncPath(accessType);
+        String url = queryServiceBaseUrl + path;
+        Object body = requestBody(subQuery);
         logger.info(
-            "Calling HPDS requestId={} accessType={} distributionKind={} resultType={} resourceUUID={} selectedConceptCount={} selectedConceptPaths={} url={}",
-            requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, resourceUUID,
-            selectedConceptCount(subQuery), selectedConceptPaths(subQuery), url
+            "Calling query-service requestId={} accessType={} distributionKind={} resultType={} selectedConceptCount={} selectedConceptPaths={} url={}",
+            requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, selectedConceptCount(subQuery),
+            selectedConceptPaths(subQuery), url
         );
 
         try {
             ResponseEntity<Map<String, T>> response =
                 restClient.post().uri(url).headers(h -> h.addAll(headers)).body(body).retrieve().toEntity(typeRef);
             logger.info(
-                "HPDS call completed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} responseSeriesCount={} responsePointCount={} responseSeriesKeys={}",
+                "query-service call completed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} responseSeriesCount={} responsePointCount={} responseSeriesKeys={}",
                 requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType,
                 response.getStatusCode().value(), System.currentTimeMillis() - startTime, seriesCount(response.getBody()),
                 responsePointCount(response.getBody()), responseSeriesKeys(response.getBody())
             );
-            sendHpdsEvent(
-                subQuery, resultType, resourceUUID, requestId, bearerToken, accessType, distributionKind, url,
-                response.getStatusCode().value(), System.currentTimeMillis() - startTime, response.getBody(), null
+            sendQueryEvent(
+                subQuery, resultType, requestId, accessType, distributionKind, url, path, response.getStatusCode().value(),
+                System.currentTimeMillis() - startTime, response.getBody(), null
             );
             return response.getBody() != null ? response.getBody() : new LinkedHashMap<>();
         } catch (RuntimeException e) {
             Integer status = e instanceof HttpStatusCodeException httpError ? httpError.getStatusCode().value() : null;
             logger.warn(
-                "HPDS call failed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} error={}",
+                "query-service call failed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} error={}",
                 requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, status,
                 System.currentTimeMillis() - startTime, e.getMessage()
             );
-            sendHpdsEvent(
-                subQuery, resultType, resourceUUID, requestId, bearerToken, accessType, distributionKind, url, null,
-                System.currentTimeMillis() - startTime, null, e
+            sendQueryEvent(
+                subQuery, resultType, requestId, accessType, distributionKind, url, path, null, System.currentTimeMillis() - startTime,
+                null, e
             );
             throw e;
+        }
+    }
+
+    private static void addIdentityHeaders(HttpHeaders headers, GatewayIdentity identity) {
+        if (identity == null) {
+            return;
+        }
+        setIfPresent(headers, GatewayUserResolver.HEADER_USER_ID, identity.userId());
+        setIfPresent(headers, GatewayUserResolver.HEADER_USER_SUBJECT, identity.subject());
+        setIfPresent(headers, GatewayUserResolver.HEADER_USER_EMAIL, identity.email());
+        setIfPresent(headers, GatewayUserResolver.HEADER_USER_ROLES, identity.roles());
+        setIfPresent(headers, GatewayUserResolver.HEADER_USER_PRIVILEGES, identity.privileges());
+    }
+
+    private static void setIfPresent(HttpHeaders headers, String name, String value) {
+        if (value != null && !value.isBlank()) {
+            headers.set(name, value);
         }
     }
 
@@ -148,47 +175,44 @@ public class HpdsClient {
         return responseBody != null ? new ArrayList<>(responseBody.keySet()) : List.of();
     }
 
-    private Object requestBody(Query subQuery, UUID resourceUUID) {
+    private Object requestBody(Query subQuery) {
         GeneralQueryRequest request = new GeneralQueryRequest();
-        request.setResourceUUID(resourceUUID);
         request.setQuery(subQuery);
         request.setResourceCredentials(Map.of());
         return request;
     }
 
     private String querySyncPath(AccessType accessType) {
-        return accessType == AccessType.OPEN ? "/query/sync" : "/v3/query/sync";
+        return accessType == AccessType.OPEN ? "/hpds/open/v3/query/sync" : "/hpds/auth/v3/query/sync";
     }
 
-    private void sendHpdsEvent(
-        Query query, ResultType resultType, UUID resourceUUID, String requestId, String bearerToken, AccessType accessType,
-        DistributionType distributionKind, String url, Integer status, long duration, Map<String, ?> responseBody, RuntimeException error
+    private void sendQueryEvent(
+        Query query, ResultType resultType, String requestId, AccessType accessType, DistributionType distributionKind, String url,
+        String path, Integer status, long duration, Map<String, ?> responseBody, RuntimeException error
     ) {
         try {
             Integer resolvedStatus = status;
             if (resolvedStatus == null && error instanceof HttpStatusCodeException httpError) {
                 resolvedStatus = httpError.getStatusCode().value();
             }
-            LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action("visualization.hpds.query")
+            LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action("visualization.query-service.query")
                 .request(
-                    RequestInfo.builder().requestId(requestId).method("POST").url("/v3/query/sync").destIp(destinationHost(url))
+                    RequestInfo.builder().requestId(requestId).method("POST").url(path).destIp(destinationHost(url))
                         .destPort(destinationPort(url)).status(resolvedStatus).duration(duration).build()
-                ).metadata(hpdsMetadata(query, resultType, resourceUUID, accessType, distributionKind, responseBody));
+                ).metadata(queryMetadata(query, resultType, accessType, distributionKind, responseBody));
             if (error != null) {
                 builder.error(errorMetadata(error, resolvedStatus));
             }
-            loggingClient.send(builder.build(), bearerToken, requestId);
+            loggingClient.send(builder.build(), null, requestId);
         } catch (Exception e) {
-            logger.debug("Failed to send HPDS audit log event: {}", e.getMessage());
+            logger.debug("Failed to send query-service audit log event: {}", e.getMessage());
         }
     }
 
-    private static Map<String, Object> hpdsMetadata(
-        Query query, ResultType resultType, UUID resourceUUID, AccessType accessType, DistributionType distributionKind,
-        Map<String, ?> responseBody
+    private static Map<String, Object> queryMetadata(
+        Query query, ResultType resultType, AccessType accessType, DistributionType distributionKind, Map<String, ?> responseBody
     ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("resource_uuid", resourceUUID.toString());
         metadata.put("result_type", resultType.toString());
         List<String> selectedConceptPaths = query.select() != null ? query.select() : List.of();
         metadata.put("selected_concept_paths", selectedConceptPaths);
