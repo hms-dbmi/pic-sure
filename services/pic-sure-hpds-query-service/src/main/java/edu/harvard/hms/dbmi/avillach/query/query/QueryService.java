@@ -45,10 +45,9 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  *
  * <p><b>Typed on both sides:</b> the public entry points take the bare v3 {@link Query} (or nothing but the query id, for reads) and return
  * {@link QueryStatusResponse}/{@link SignedUrlResponse}, and the HPDS hop underneath speaks the same records -- the {@code QueryRequest}
- * envelope survives only on the aggregate service's overloads ({@link #query(String, QueryRequest)} /
- * {@link #queryV3Enveloped(String, QueryRequest)}), which a later task retypes. The store DTOs are the shared
- * {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the {@link PicSureStatus} enum end to
- * end rather than a string that only happened to parse.
+ * envelope survives only on the aggregate service's overload ({@link #queryV3Enveloped(String, QueryRequest)}), which a later task retypes.
+ * The store DTOs are the shared {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the
+ * {@link PicSureStatus} enum end to end rather than a string that only happened to parse.
  *
  * <p><b>Decision 9 (the signed-url bug fix):</b> {@link #status}, {@link #result}, and {@link #signedUrl} all dispatch to HPDS using the
  * backend implied by the ingress {@code {backend}} path segment (auth/open) AND the v3-ness of the STORED query's {@code version} field
@@ -101,31 +100,19 @@ public class QueryService {
     }
 
     /**
-     * Aggregate-service create path (v1 dispatch), still enveloped.
-     *
-     * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this overload dies with it.
-     */
-    public QueryStatus query(String backend, QueryRequest req) {
-        return envelopedCreate(backend, req, false);
-    }
-
-    /**
-     * Aggregate-service create path (v3 dispatch), still enveloped. Named apart from {@link #queryV3(String, Query)} on purpose: an
-     * overload pair differing only in the argument type is an ambiguity trap for a {@code null} argument.
+     * Aggregate-service create path, still enveloped (the v1-dispatch sibling died with the v1 aggregate ingress). Named apart from
+     * {@link #queryV3(String, Query)} on purpose: an overload pair differing only in the argument type is an ambiguity trap for a
+     * {@code null} argument.
      *
      * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this overload dies with it.
      */
     public QueryStatus queryV3Enveloped(String backend, QueryRequest req) {
-        return envelopedCreate(backend, req, true);
-    }
-
-    private QueryStatus envelopedCreate(String backend, QueryRequest req, boolean v3) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-        HpdsTarget target = selector.select(backend, v3);
+        HpdsTarget target = selector.select(backend, true);
         QueryStatusResponse down = requireStatus(hpds.queryEnveloped(target, req));
-        return toLegacyStatus(persistCreate(down, storedBody(req), v3 ? CURRENT_VERSION : null));
+        return toLegacyStatus(persistCreate(down, storedBody(req), CURRENT_VERSION));
     }
 
     /**

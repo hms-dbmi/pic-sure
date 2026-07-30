@@ -57,35 +57,20 @@ class AggregateBackendClientTest {
     }
 
     @Test
-    void querySyncSendsBearerTokenAndPropagatesMetadata() {
+    void querySyncPrependsTheVersionPrefixAndSendsBearerTokenAndPropagatesMetadata() {
         // finding I5: HPDS emits the metadata under "queryMetadata" (the legacy WAR's ResourceWebClient.QUERY_METADATA_FIELD); the
         // client must surface that exact header. Stubbing the real name here (not the constant) keeps this a genuine contract check.
         hpds.stubFor(
-            post(urlEqualTo("/query/sync")).withHeader("Content-Type", WireMock.containing("application/json"))
+            post(urlEqualTo("/v3/query/sync")).withHeader("Content-Type", WireMock.containing("application/json"))
                 .willReturn(aResponse().withStatus(200).withHeader("queryMetadata", "abc").withBody("42"))
         );
 
-        ResponseEntity<String> resp = client().querySync(req("{}"), AggregateVariant.V1);
+        ResponseEntity<String> resp = client().querySync(req("{}"), AggregateVariant.V3);
 
         assertThat(resp.getBody()).isEqualTo("42");
         assertThat(resp.getHeaders().getFirst(AggregateBackendClient.QUERY_METADATA_FIELD)).isEqualTo("abc");
         assertThat(AggregateBackendClient.QUERY_METADATA_FIELD).isEqualTo("queryMetadata");
-        hpds.verify(postRequestedFor(urlEqualTo("/query/sync")).withHeader("Authorization", WireMock.equalTo("Bearer open-token")));
-    }
-
-    @Test
-    void v3QuerySyncPrependsVersionPrefix() {
-        hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(okJson("7")));
-        ResponseEntity<String> resp = client().querySync(req("{}"), AggregateVariant.V3);
-        assertThat(resp.getBody()).isEqualTo("7");
-        hpds.verify(postRequestedFor(urlEqualTo("/v3/query/sync")));
-    }
-
-    @Test
-    void v1BinContinuousHasNoVersionPrefix() {
-        hpds.stubFor(post(urlEqualTo("/bin/continuous")).willReturn(okJson("{}")));
-        client().binContinuous(req("{}"), AggregateVariant.V1);
-        hpds.verify(postRequestedFor(urlEqualTo("/bin/continuous")));
+        hpds.verify(postRequestedFor(urlEqualTo("/v3/query/sync")).withHeader("Authorization", WireMock.equalTo("Bearer open-token")));
     }
 
     @Test
@@ -110,8 +95,8 @@ class AggregateBackendClientTest {
 
     @Test
     void nonTwoxxResponseThrowsHpdsCommunicationException() {
-        hpds.stubFor(post(urlEqualTo("/query/sync")).willReturn(aResponse().withStatus(500)));
-        assertThatThrownBy(() -> client().querySync(req("{}"), AggregateVariant.V1)).isInstanceOf(HpdsCommunicationException.class);
+        hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(aResponse().withStatus(500)));
+        assertThatThrownBy(() -> client().querySync(req("{}"), AggregateVariant.V3)).isInstanceOf(HpdsCommunicationException.class);
     }
 
     @Test
@@ -120,9 +105,9 @@ class AggregateBackendClientTest {
         props.setHpdsOpenToken(null);
         AggregateBackendClient c = new AggregateBackendClient(RestClient.builder().build(), props);
 
-        hpds.stubFor(post(urlEqualTo("/query/sync")).willReturn(okJson("1")));
-        c.querySync(req("{}"), AggregateVariant.V1);
+        hpds.stubFor(post(urlEqualTo("/v3/query/sync")).willReturn(okJson("1")));
+        c.querySync(req("{}"), AggregateVariant.V3);
 
-        hpds.verify(postRequestedFor(urlEqualTo("/query/sync")).withoutHeader("Authorization"));
+        hpds.verify(postRequestedFor(urlEqualTo("/v3/query/sync")).withoutHeader("Authorization"));
     }
 }

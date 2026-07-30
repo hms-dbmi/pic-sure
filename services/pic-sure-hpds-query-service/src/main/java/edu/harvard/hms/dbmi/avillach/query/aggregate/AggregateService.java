@@ -30,11 +30,11 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
 /**
- * Direct port of {@code AggregateDataSharingResourceRS}/{@code AggregateDataSharingResourceRSV3}'s orchestration -- the querySync
- * obfuscation dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression
- * rule. Stores no {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS
- * dispatch to {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader}
- * (dead code in the WAR -- dropped) or perform inline audit logging (handled in the gateway).
+ * Direct port of {@code AggregateDataSharingResourceRSV3}'s orchestration (the v1 sibling's ingress is gone) -- the querySync obfuscation
+ * dispatch, the {@code CROSS_COUNT} query alteration ({@code changeQueryToOpenCrossCount}), and the continuous-suppression rule. Stores no
+ * {@code Query} rows itself (this module is DB-free); the async open submit ({@link #query}) delegates persistence and HPDS dispatch to
+ * {@link QueryService} (which persists over HTTP via operations-service), and does not implement {@code RequestScopedHeader} (dead code in
+ * the WAR -- dropped) or perform inline audit logging (handled in the gateway).
  *
  * <p><b>PRIVACY-CRITICAL:</b> {@link #ALLOWED_RESULT_TYPES} is the exact 10-type allow-list from the WAR; a type not on it is rejected with
  * a 400 rather than silently forwarded. The per-type dispatch in {@link #getExpectedResponse} determines which types get threshold/variance
@@ -74,10 +74,10 @@ public class AggregateService {
 
     /**
      * Async open-channel submit. Direct port of the WAR aggregate resources' {@code query()} entry point
-     * ({@code AggregateDataSharingResourceRS.query} / {@code RSV3.query}): validate the request and -- only for a {@code CROSS_COUNT}
-     * submission -- rewrite it via {@link #changeQueryToOpenCrossCount} (force {@code CROSS_COUNT} + inject the full study-consents
-     * allow-list under the variant's consents field) BEFORE it is persisted and dispatched. Non-{@code CROSS_COUNT} types are forwarded
-     * unchanged, exactly as the WAR's async {@code query()} did (it had no allow-list; that guard existed only on {@code querySync}).
+     * ({@code AggregateDataSharingResourceRSV3.query}): validate the request and -- only for a {@code CROSS_COUNT} submission -- rewrite it
+     * via {@link #changeQueryToOpenCrossCount} (force {@code CROSS_COUNT} + inject the full study-consents allow-list under the variant's
+     * consents field) BEFORE it is persisted and dispatched. Non-{@code CROSS_COUNT} types are forwarded unchanged, exactly as the WAR's
+     * async {@code query()} did (it had no allow-list; that guard existed only on {@code querySync}).
      *
      * <p><b>Consent-scoping fix (I6):</b> persistence + HPDS dispatch are delegated to {@link QueryService} (the module's DB-free create
      * flow), so the STORED query is the REWRITTEN one. Every later status/result/signed-url/metadata call -- served by the v3 read ingress
@@ -93,8 +93,7 @@ public class AggregateService {
         if ("CROSS_COUNT".equalsIgnoreCase(node.get("expectedResultType").asText())) {
             changeQueryToOpenCrossCount(req, variant);
         }
-        return variant == AggregateVariant.V3 ? queryService.queryV3Enveloped(HpdsBackendSelector.OPEN, req)
-            : queryService.query(HpdsBackendSelector.OPEN, req);
+        return queryService.queryV3Enveloped(HpdsBackendSelector.OPEN, req);
     }
 
     // ---- the obfuscation core ----
@@ -222,14 +221,16 @@ public class AggregateService {
         for (String key : phenotypes.keySet()) {
             arrayNode.add(key);
         }
-        ((ObjectNode) jsonNode).set(variant.consentsField, arrayNode); // v1: crossCountFields, v3: select
+        ((ObjectNode) jsonNode).set(variant.consentsField, arrayNode); // v3: select
         return jsonNode;
     }
 
     private SearchResults getAllStudyConsents() {
         QueryRequest studiesConsents = new GeneralQueryRequest();
         studiesConsents.setQuery(STUDIES_CONSENTS_PATH);
-        return backend.search(studiesConsents); // /search -- NO /v3 prefix in either variant
+        // TODO(well-defined-contracts): Task 10 -- this hop still posts the QueryRequest envelope to the UNVERSIONED /search, which HPDS
+        // no longer serves now that the v1 controller is gone; it must become a SearchRequest against /v3/search.
+        return backend.search(studiesConsents);
     }
 
     // ---- guards ----

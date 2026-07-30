@@ -51,7 +51,7 @@ class AggregateServiceTest {
     void rejectsDisallowedResultTypeWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
-        assertThatThrownBy(() -> svc.querySync(sync("DATAFRAME"), AggregateVariant.V1)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.querySync(sync("DATAFRAME"), AggregateVariant.V3)).isInstanceOf(PicsureException.class);
         verify(backend, never()).querySync(any(), any());
     }
 
@@ -60,33 +60,33 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
         QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
-        assertThatThrownBy(() -> svc.querySync(noErt, AggregateVariant.V1)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.querySync(noErt, AggregateVariant.V3)).isInstanceOf(PicsureException.class);
     }
 
     @Test
     void rejectsNullQueryWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
-        assertThatThrownBy(() -> svc.querySync(new GeneralQueryRequest(), AggregateVariant.V1)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.querySync(new GeneralQueryRequest(), AggregateVariant.V3)).isInstanceOf(PicsureException.class);
     }
 
     @Test
     void countBelowThresholdIsFloored() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("5"));
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("5"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).isEqualTo("< 10");
     }
 
     @Test
     void countAtOrAboveThresholdIsVarianceRandomized() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("100"));
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("100"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).matches("\\d+ ±3");
     }
 
@@ -95,30 +95,14 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V1)))
+        when(backend.querySync(any(), eq(AggregateVariant.V3)))
             .thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V3);
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
         assertThat(body.get("\\study\\a\\")).isEqualTo("< 10");
         assertThat(body.get("\\study\\b\\")).matches("\\d+ ±3");
-    }
-
-    @Test
-    void crossCountUsesCrossCountFieldsForV1() {
-        AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{}"));
-        AggregateService svc = service(backend, new AggregateProperties());
-
-        svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V1);
-
-        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(backend).querySync(cap.capture(), eq(AggregateVariant.V1));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
-        assertThat(query).containsKey("crossCountFields").doesNotContainKey("select");
     }
 
     @Test
@@ -144,12 +128,12 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         // first querySync call returns the raw categorical payload; the CROSS_COUNT lookup (getCrossCountForQuery)
         // is a second call to querySync with the mutated (CROSS_COUNT) request
-        when(backend.querySync(any(), eq(AggregateVariant.V1)))
+        when(backend.querySync(any(), eq(AggregateVariant.V3)))
             .thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5,\"female\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).contains("\"male\"").contains("< 10");
     }
 
@@ -157,11 +141,11 @@ class AggregateServiceTest {
     void continuousCrossCountSuppressedWhenStudyConsentsBelowThreshold() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"< 10\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).isNull();
     }
 
@@ -169,11 +153,11 @@ class AggregateServiceTest {
     void continuousCrossCountObfuscatesRawWhenNoVisualizationConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).contains("\"5\"").matches(s -> s.matches(".*±3.*"));
     }
 
@@ -181,38 +165,21 @@ class AggregateServiceTest {
     void continuousCrossCountBinsViaVisualizationWhenConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
-        when(backend.binContinuous(any(), eq(AggregateVariant.V1))).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
+        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
         AggregateProperties props = new AggregateProperties();
         props.setVisualizationUrl("http://viz.example");
         AggregateService svc = service(backend, props);
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
         assertThat(out.getBody()).contains("\"0-10\"");
-        verify(backend).binContinuous(any(), eq(AggregateVariant.V1));
+        verify(backend).binContinuous(any(), eq(AggregateVariant.V3));
     }
 
     // ---- async open submit (finding I6): CROSS_COUNT is consent-scoped, then persisted+dispatched via QueryService ----
 
-    @Test
-    void asyncOpenCrossCountIsRewrittenThenDispatchedViaQueryServiceV1() {
-        AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.search(any())).thenReturn(consentsSearch());
-        QueryService queryService = mock(QueryService.class);
-        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
-
-        svc.query(sync("CROSS_COUNT"), AggregateVariant.V1);
-
-        // The query handed to QueryService for persistence+dispatch is the REWRITTEN cross-count query (consent-scoped), never the raw one.
-        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).query(eq("open"), cap.capture());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
-        assertThat(query).containsKey("crossCountFields"); // full study-consents allow-list injected
-        assertThat(query.get("expectedResultType")).isEqualTo("CROSS_COUNT");
-    }
-
+    /** The query handed to QueryService for persistence+dispatch is the REWRITTEN cross-count query (consent-scoped), never the raw one. */
     @Test
     void asyncOpenCrossCountUsesSelectAndDispatchesViaQueryServiceV3() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
@@ -236,14 +203,14 @@ class AggregateServiceTest {
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
 
-        svc.query(sync("COUNT"), AggregateVariant.V1);
+        svc.query(sync("COUNT"), AggregateVariant.V3);
 
         ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).query(eq("open"), cap.capture());
+        verify(queryService).queryV3Enveloped(eq("open"), cap.capture());
         @SuppressWarnings("unchecked")
         Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
         assertThat(query.get("expectedResultType")).isEqualTo("COUNT");
-        assertThat(query).doesNotContainKey("crossCountFields");
+        assertThat(query).doesNotContainKey("select");
         verify(backend, never()).search(any());
     }
 
@@ -255,7 +222,7 @@ class AggregateServiceTest {
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
 
         QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
-        assertThatThrownBy(() -> svc.query(noErt, AggregateVariant.V1)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.query(noErt, AggregateVariant.V3)).isInstanceOf(PicsureException.class);
         verifyNoInteractions(queryService);
     }
 
@@ -265,10 +232,10 @@ class AggregateServiceTest {
         // "resultMetadata" bug the service would read getFirst("resultMetadata") == null from this response and DROP the header, so this
         // assertion would fail. It passes only when the constant resolves to the real name.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V1))).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
+        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V1);
+        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
         assertThat(out.getHeaders().getFirst("queryMetadata")).isEqualTo("rid");
         assertThat(AggregateBackendClient.QUERY_METADATA_FIELD).isEqualTo("queryMetadata");
     }

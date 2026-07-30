@@ -21,9 +21,10 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * hop, and concept values come back as a {@link PaginatedResponse} that this service passes through. The {@code QueryRequest} envelope the
  * WAR accepted from callers is gone from both ends.
  *
- * <p><b>Search is NOT versioned downstream</b>: unlike the query-lifecycle calls, the legacy WAR's {@code PicsureSearchService} always hit
- * HPDS at the backend's base path with no {@code /v3} suffix, even though the ingress path is versioned. This class always resolves the
- * backend with {@code v3=false} to preserve that (search endpoints on HPDS are not versioned).
+ * <p><b>Search is versioned downstream</b>: the legacy WAR's {@code PicsureSearchService} hit HPDS at the backend's base path with no
+ * {@code /v3} suffix, which resolved to HPDS's v1 controller. That controller is gone -- {@code /search} and {@code /search/values/} now
+ * exist only under {@code PIC-SURE/v3} -- so this class resolves the backend with {@code v3=true}, matching the typed
+ * {@link SearchRequest}/{@link PaginatedResponse} shapes HPDS's v3 endpoints bind.
  *
  * <p>Also preserves that search/values calls carry NO service token: {@link ResourceWebClient#search} and
  * {@link ResourceWebClient#searchConceptValues} take a plain base URL string (not an {@code HpdsTarget}), so the per-backend service token
@@ -45,14 +46,13 @@ public class SearchService {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing search data");
         }
-        // Non-versioned downstream, no service token: only the resolved base URL is used.
-        return hpds.search(selector.select(backend, false).baseUrl(), req);
+        // No service token: only the resolved base URL is used.
+        return hpds.search(selector.select(backend, true).baseUrl(), req);
     }
 
     public PaginatedResponse<String> searchConceptValues(String backend, String conceptPath, String query, Integer page, Integer size) {
         // The downstream call is a GET whose inputs are entirely in the query string.
-        PaginatedResponse<String> down =
-            hpds.searchConceptValues(selector.select(backend, false).baseUrl(), conceptPath, query, page, size);
+        PaginatedResponse<String> down = hpds.searchConceptValues(selector.select(backend, true).baseUrl(), conceptPath, query, page, size);
         // A 2xx with no body would otherwise surface as a null page body; an empty page is the honest answer.
         return down == null ? new PaginatedResponse<>(List.of(), 0, 0) : down;
     }

@@ -45,8 +45,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * <p>Both ends are typed. The v3 surface takes a BARE {@code Query} and returns {@link QueryStatusResponse}; the downstream HPDS hop takes
  * the same bare {@code Query} and returns the same contract records; and the store DTOs are the shared
  * {@code edu.harvard.dbmi.avillach.contracts.internal} records, whose {@code status} is the typed {@link PicSureStatus} rather than a bare
- * string. The {@code QueryRequest}-shaped {@code query}/{@code queryV3Enveloped} overloads that remain are the aggregate service's (retyped
- * in Task 10).
+ * string. The one {@code QueryRequest}-shaped overload that remains, {@code queryV3Enveloped}, is the aggregate service's (retyped in Task
+ * 10); its v1-dispatch sibling died with the v1 aggregate ingress.
  */
 class QueryServiceTest {
 
@@ -154,31 +154,20 @@ class QueryServiceTest {
         verify(operationsClient, org.mockito.Mockito.never()).save(any());
     }
 
-    // --- the aggregate service's enveloped overloads stay until Task 10 ---
-
-    @Test
-    void legacyEnvelopedCreateStillPersistsAndDispatchesForTheAggregatePath() {
-        UUID picsureId = UUID.randomUUID();
-        when(hpds.queryEnveloped(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        QueryStatus out = service.query("auth", legacyReq());
-
-        assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
-        assertThat(out.getStatus()).isEqualTo(edu.harvard.dbmi.avillach.domain.PicSureStatus.PENDING);
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-1".equals(r.resourceResultId()) && r.version() == null));
-        verify(hpds).queryEnveloped(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), any()); // v1 base
-    }
+    // --- the aggregate service's enveloped overload stays until Task 10 (its v1-dispatch sibling died with the v1 aggregate ingress) ---
 
     /** The v3 aggregate overload is named apart from the bare-Query one so a null argument can never pick the wrong hop. */
     @Test
     void legacyEnvelopedV3CreateHitsTheV3BaseAndStoresVersion3() {
+        UUID picsureId = UUID.randomUUID();
         when(hpds.queryEnveloped(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-2"));
-        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+        when(operationsClient.save(any())).thenReturn(picsureId);
 
-        service.queryV3Enveloped("auth", legacyReq());
+        QueryStatus out = service.queryV3Enveloped("auth", legacyReq());
 
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "3".equals(r.version())));
+        assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
+        assertThat(out.getStatus()).isEqualTo(edu.harvard.dbmi.avillach.domain.PicSureStatus.PENDING);
+        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-2".equals(r.resourceResultId()) && "3".equals(r.version())));
         verify(hpds).queryEnveloped(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any());
     }
 

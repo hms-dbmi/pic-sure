@@ -12,6 +12,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.QueryExecutor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
@@ -26,7 +27,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * Verifies that Spring actually registers the AuditLoggingFilter and AuditInterceptor, and that @AuditEvent annotations on real controller
- * methods produce correct logging events through the full HTTP pipeline.
+ * methods produce correct logging events through the full HTTP pipeline. Every endpoint exercised here is on the v3 surface -- the v1
+ * {@code /PIC-SURE/*} controller is gone.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -48,6 +50,8 @@ class AuditMockMvcTest {
     @MockBean
     AbstractProcessor abstractProcessor;
     @MockBean
+    QueryExecutor queryExecutor;
+    @MockBean
     Paginator paginator;
     @MockBean
     SignUrlService signUrlService;
@@ -60,9 +64,7 @@ class AuditMockMvcTest {
     void postInfoEndpointProducesAuditEvent() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
-        mockMvc.perform(
-            post("/PIC-SURE/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
-        ).andExpect(status().isOk());
+        mockMvc.perform(post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient, atLeastOnce()).send(captor.capture());
@@ -78,11 +80,11 @@ class AuditMockMvcTest {
     @Test
     void searchEndpointIncludesSearchTermMetadata() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
-        when(abstractProcessor.getDictionary()).thenReturn(new java.util.TreeMap<>());
-        when(abstractProcessor.getInfoStoreMeta()).thenReturn(java.util.List.of());
+        when(queryExecutor.getDictionary()).thenReturn(new java.util.TreeMap<>());
+        when(queryExecutor.getInfoStoreMeta()).thenReturn(java.util.List.of());
 
         mockMvc.perform(
-            post("/PIC-SURE/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"blood pressure\"}")
+            post("/PIC-SURE/v3/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"blood pressure\"}")
         ).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
@@ -98,9 +100,7 @@ class AuditMockMvcTest {
     void v3EndpointIncludesApiVersion() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
-        mockMvc.perform(
-            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
-        ).andExpect(status().isOk());
+        mockMvc.perform(post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient, atLeastOnce()).send(captor.capture());
@@ -114,7 +114,7 @@ class AuditMockMvcTest {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer mytoken")
                 .header("X-Request-Id", "req-99")
         ).andExpect(status().isOk());
@@ -132,7 +132,7 @@ class AuditMockMvcTest {
     void notFoundReturnsOtherEventTypeWithNoAnnotation() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
-        mockMvc.perform(get("/PIC-SURE/nonexistent")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/PIC-SURE/v3/nonexistent")).andExpect(status().isNotFound());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient, atLeastOnce()).send(captor.capture());

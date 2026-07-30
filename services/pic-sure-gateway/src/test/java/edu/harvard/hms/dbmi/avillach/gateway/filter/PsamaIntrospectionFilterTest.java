@@ -78,7 +78,7 @@ class PsamaIntrospectionFilterTest {
         AuditContext ctx = new AuditContext();
         PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
 
-        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/query/sync");
+        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/v3/query/sync");
         req.setAttribute(GatewayUserResolver.HEADER_USER_ID, "OPEN_ACCESS:localhost");
         req.setAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
         HttpServletResponse resp = mock(HttpServletResponse.class);
@@ -99,7 +99,7 @@ class PsamaIntrospectionFilterTest {
         AuditContext ctx = new AuditContext();
         PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
 
-        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/query/sync");
+        BufferedRequestWrapper req = wrap(null, "{}".getBytes(), "/hpds/open/v3/query/sync");
         req.setAttribute(OpenAccessFilter.ATTR_OPEN_ACCESS_GRANTED, Boolean.TRUE);
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));

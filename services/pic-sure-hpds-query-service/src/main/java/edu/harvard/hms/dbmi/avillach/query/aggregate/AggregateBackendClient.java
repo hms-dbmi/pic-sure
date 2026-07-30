@@ -55,6 +55,10 @@ public class AggregateBackendClient {
         this.props = props;
     }
 
+    /**
+     * TODO(well-defined-contracts): Task 10 -- HPDS serves search at {@code /v3/search} binding a {@code SearchRequest} only; the
+     * unversioned path this still posts an enveloped {@code QueryRequest} to went away with the v1 controller.
+     */
     public SearchResults search(QueryRequest req) {
         return postJson(openUrl("/search"), chain(req), SearchResults.class);
     }

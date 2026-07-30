@@ -26,8 +26,9 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
  * Ports the legacy WAR's {@code PicsureSearchServiceTest} coverage of {@code search}/{@code searchGenomicConceptValues} minus Resource +
  * AuditContext: backend resolution comes from the ingress {@code {backend}} path segment via {@link HpdsBackendSelector}, and both calls go
  * through {@link ResourceWebClient#search} / {@link ResourceWebClient#searchConceptValues}, which never receive an {@code Authorization}
- * header (verified indirectly here by asserting only the non-versioned base URL string is passed -- the client itself is the thing that
- * omits the token; see {@code ResourceWebClientTest} for that half of the parity guarantee).
+ * header (verified indirectly here by asserting only the resolved base URL string is passed -- the client itself is the thing that omits
+ * the token; see {@code ResourceWebClientTest} for that half of the parity guarantee). That base is the {@code /v3} one: HPDS's unversioned
+ * search endpoints died with its v1 controller.
  *
  * <p>Both directions are typed end to end: {@link SearchRequest} goes straight out on the downstream hop (no {@code QueryRequest} envelope
  * is built anywhere) and concept values come back as a {@link PaginatedResponse} that this service passes through untouched.
@@ -51,13 +52,14 @@ class SearchServiceTest {
     }
 
     @Test
-    void searchUsesNonVersionedBase() {
+    void searchUsesTheV3Base() {
         SearchResults sr = new SearchResults();
-        when(hpds.search(eq("http://hpds/PIC-SURE"), any())).thenReturn(sr);
+        when(hpds.search(eq("http://hpds/PIC-SURE/v3"), any())).thenReturn(sr);
 
         assertThat(service.search("auth", req())).isSameAs(sr);
 
-        verify(hpds).search(eq("http://hpds/PIC-SURE"), any()); // no /v3, no token param
+        // HPDS serves /search only under PIC-SURE/v3 now that the v1 controller is gone; still no token param.
+        verify(hpds).search(eq("http://hpds/PIC-SURE/v3"), any());
     }
 
     /** The typed search request is what reaches HPDS: no envelope is built on the way down. */
@@ -65,18 +67,18 @@ class SearchServiceTest {
     void searchForwardsTheTypedSearchRequestDownstream() {
         service.search("auth", req());
 
-        verify(hpds).search(eq("http://hpds/PIC-SURE"), eq(new SearchRequest("BRCA")));
+        verify(hpds).search(eq("http://hpds/PIC-SURE/v3"), eq(new SearchRequest("BRCA")));
     }
 
     @Test
     void searchResolvesOpenBackendSeparatelyFromAuth() {
         props.setOpenUrl("http://hpds-open/PIC-SURE");
         SearchResults sr = new SearchResults();
-        when(hpds.search(eq("http://hpds-open/PIC-SURE"), any())).thenReturn(sr);
+        when(hpds.search(eq("http://hpds-open/PIC-SURE/v3"), any())).thenReturn(sr);
 
         service.search("open", req());
 
-        verify(hpds).search(eq("http://hpds-open/PIC-SURE"), any());
+        verify(hpds).search(eq("http://hpds-open/PIC-SURE/v3"), any());
     }
 
     @Test
@@ -92,8 +94,8 @@ class SearchServiceTest {
     }
 
     @Test
-    void valuesPassesParamsThroughOnNonVersionedBaseAndReturnsTheTypedPage() {
-        when(hpds.searchConceptValues(eq("http://hpds/PIC-SURE"), any(), any(), any(), any()))
+    void valuesPassesParamsThroughOnTheV3BaseAndReturnsTheTypedPage() {
+        when(hpds.searchConceptValues(eq("http://hpds/PIC-SURE/v3"), any(), any(), any(), any()))
             .thenReturn(new PaginatedResponse<>(List.of("BRCA1", "BRCA2"), 1, 2));
 
         PaginatedResponse<String> out = service.searchConceptValues("auth", "\\gene\\", "BRCA", 1, 10);
@@ -101,7 +103,7 @@ class SearchServiceTest {
         assertThat(out.results()).containsExactly("BRCA1", "BRCA2");
         assertThat(out.page()).isEqualTo(1);
         assertThat(out.total()).isEqualTo(2);
-        verify(hpds).searchConceptValues(eq("http://hpds/PIC-SURE"), eq("\\gene\\"), eq("BRCA"), eq(1), eq(10));
+        verify(hpds).searchConceptValues(eq("http://hpds/PIC-SURE/v3"), eq("\\gene\\"), eq("BRCA"), eq(1), eq(10));
     }
 
     @Test
