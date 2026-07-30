@@ -42,8 +42,12 @@ public class AuditFilterConfig {
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/result/?$"), null, "DATA_ACCESS", "query.result"),
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/signed-url/?$"), null, "DATA_ACCESS", "query.signed_url"),
                 new AuditRoute(Pattern.compile(PFX + "/query/[^/]+/metadata/?$"), null, "QUERY", "query.metadata"),
-                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/?$"), "POST", "SEARCH", "search.execute"),
-                new AuditRoute(Pattern.compile(PFX + "/search/[^/]+/values/"), null, "SEARCH", "search.values", true)
+                // Search: the legacy WAR's {resourceId} path segment is GONE from both routes, so these patterns match the surviving
+                // surface directly -- POST /hpds/{backend}/v3/search and GET /hpds/{backend}/v3/search/values. Values is listed first
+                // (first-match-wins) and, like the WAR's row, pins no method: the endpoint is a GET, but leaving the row method-agnostic
+                // keeps any other verb reaching it inside the audit rather than silently outside it.
+                new AuditRoute(Pattern.compile(PFX + "/search/values/?$"), null, "SEARCH", "search.values"),
+                new AuditRoute(Pattern.compile(PFX + "/search/?$"), "POST", "SEARCH", "search.execute")
             )
         );
     }
