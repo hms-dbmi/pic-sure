@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,7 +18,6 @@ import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
-import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
 import edu.harvard.hms.dbmi.avillach.auth.repository.AccessRuleRepository;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -34,13 +33,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
 
 /**
  * SECURITY: deployed FISMA access rules are JsonPath strings in PSAMA's database, evaluated against the node
@@ -50,40 +42,20 @@ import org.springframework.test.context.ContextConfiguration;
  * one level deeper or shallower, the query arriving as an escaped string, or a Jackson node handed to a json-path provider that only walks
  * {@code Map}/{@code List}. Every one of those leaves rules silently unresolvable rather than failing loudly.
  */
-@SpringBootTest
-@ContextConfiguration(classes = {AuthorizationService.class, AccessRuleService.class})
 class AuthorizationServiceRuleNodeTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    @MockBean
-    private SecurityContext securityContext;
-
-    @MockBean
-    private SessionService sessionService;
-
-    @MockBean
-    private AccessRuleRepository accessRuleRepository;
-
-    @MockBean
-    private RoleService roleService;
-
-    @MockBean
-    private BdcConsentBasedAccessRuleEvaluator consentEvaluator;
-
-    @MockBean
-    private UserConsentsRepository userConsentsRepository;
-
     private AuthorizationService authorizationService;
 
+    /** Wired by hand: nothing under test reads the Spring container, so a context would only slow the guard down. */
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-        SecurityContextHolder.setContext(securityContext);
         AccessRuleService accessRuleService =
-            new AccessRuleService(accessRuleRepository, "false", "false", "false", "false", "false", "false");
+            new AccessRuleService(mock(AccessRuleRepository.class), "false", "false", "false", "false", "false", "false");
         authorizationService = new AuthorizationService(
-            accessRuleService, sessionService, roleService, consentEvaluator, "fence,okta,open", userConsentsRepository
+            accessRuleService, mock(SessionService.class), mock(RoleService.class), mock(BdcConsentBasedAccessRuleEvaluator.class),
+            "fence,okta,open", mock(UserConsentsRepository.class)
         );
     }
 
@@ -136,6 +108,32 @@ class AuthorizationServiceRuleNodeTest {
         assertEquals("/picsure/proxy/dictionary/search", JsonPath.parse(node).read("$.['Target Service']"));
         org.junit.jupiter.api.Assertions
             .assertThrows(PathNotFoundException.class, () -> JsonPath.parse(node).read("$.query.expectedResultType"));
+    }
+
+    /**
+     * A present-but-null "Target Service" is worse than an absent one: JsonPath returns null rather than raising PathNotFoundException, and
+     * {@code AccessRuleService#evaluateNode} dereferences the match eagerly -- so the key must be OMITTED, not emitted as null, or a rule
+     * bound to it NPEs into a 500 that the gateway reports as a 502.
+     */
+    @Test
+    void ruleNodeOmitsTargetServiceEntirelyWhenTheRequestHasNoPath() {
+        Map<String, Object> node = AuthorizationService.toRuleEvaluationNode(new TargetedRequest(null, null));
+
+        assertFalse(node.containsKey("Target Service"), "a null Target Service must be omitted, not emitted as null: " + node);
+        assertTrue(node.isEmpty(), "a request with neither component must serialize to an empty node: " + node);
+        org.junit.jupiter.api.Assertions.assertThrows(PathNotFoundException.class, () -> JsonPath.parse(node).read("$.['Target Service']"));
+    }
+
+    /** The whole point of the omission: a rule bound to an absent Target Service denies cleanly instead of throwing. */
+    @Test
+    void targetServiceRuleDeniesWithoutThrowingWhenThePathIsAbsent() {
+        AccessRule rule = accessRule("$.['Target Service']", "/picsure/proxy/dictionary/search");
+        Application application = application();
+        User user = userFor(application, rule);
+
+        boolean result = authorizationService.isAuthorized(application, new TargetedRequest(null, null), user, false).result();
+
+        assertFalse(result);
     }
 
     /** End to end through the real evaluator: a $.['Target Service'] rule still grants. */
@@ -198,7 +196,7 @@ class AuthorizationServiceRuleNodeTest {
         return application;
     }
 
-    private User userFor(Application application, AccessRule rule) {
+    private static User userFor(Application application, AccessRule rule) {
         Privilege privilege = new Privilege();
         privilege.setUuid(UUID.randomUUID());
         privilege.setName("TEST_PRIVILEGE");
@@ -221,10 +219,6 @@ class AuthorizationServiceRuleNodeTest {
         user.setAcceptedTOS(new Date());
         user.setActive(true);
         user.setConnection(connection);
-
-        CustomUserDetails details = new CustomUserDetails(user);
-        when(securityContext.getAuthentication())
-            .thenReturn(new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities()));
         return user;
     }
 }

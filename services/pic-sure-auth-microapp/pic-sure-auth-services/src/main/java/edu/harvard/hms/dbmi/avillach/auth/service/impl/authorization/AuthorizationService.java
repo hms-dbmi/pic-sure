@@ -220,7 +220,20 @@ public class AuthorizationService {
                         failedRules.add(accessRule);
                         continue;
                     }
-                    Query query = OBJECT_MAPPER.convertValue(queryNode, Query.class);
+
+                    Query query;
+                    try {
+                        query = OBJECT_MAPPER.convertValue(queryNode, Query.class);
+                    } catch (IllegalArgumentException e) {
+                        // Anything that is not a v3 Query -- a legacy {query, resourceUUID} envelope, a dictionary
+                        // search body, a field this PSAMA does not know -- fails conversion on the strict mapper.
+                        // A consent rule cannot decide about a body it cannot read, so deny by this rule. Letting the
+                        // IllegalArgumentException escape would be a 500 the gateway surfaces as a 502, i.e. an
+                        // unreadable body would take the whole endpoint down instead of failing one rule closed.
+                        logger.info("Consent rule {} denied: request query is not a v3 Query ({})", accessRule.getName(), e.getMessage());
+                        failedRules.add(accessRule);
+                        continue;
+                    }
 
                     if (consentBasedAccessRuleEvaluator.evaluateAccessRule(query, accessRule, userConsents)) {
                         result = true;
@@ -370,7 +383,10 @@ public class AuthorizationService {
             return targetedRequest;
         }
         if (!(requestBody instanceof Map<?, ?> requestMap)) {
-            // Nothing a rule can bind to; every rule then decides on PathNotFound, as it would have for an empty body.
+            // Nothing a rule can bind to. Both components are NON_NULL on the contract, so this serializes to {} and every
+            // rule decides on PathNotFoundException -- the same outcome an empty body has always produced. That depends on
+            // the NON_NULL annotations: were either component emitted as null, the rule would match null instead and
+            // AccessRuleService#evaluateNode would NPE. AuthorizationServiceRuleNodeTest pins the omission.
             return new TargetedRequest(null, null);
         }
         Object targetService = requestMap.get("Target Service");

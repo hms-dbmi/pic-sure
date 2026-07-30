@@ -6,7 +6,6 @@
   "roles": ["PIC-SURE Top Admin", "MANAGED_phs000007_c1"],
   "privileges": ["ADMIN", "PRIV_MANAGED_phs000007_c1"],
   "tokenRefreshed": false,
-  "token": null,
   "query": {
     "expectedResultType": "COUNT",
     "select": [],

@@ -72,6 +72,20 @@ class RuleCompatibilityTest {
     }
 
     /**
+     * The target service is omitted rather than emitted as null for a harsher reason than the query is. PSAMA's
+     * {@code AccessRuleService#evaluateNode} dereferences the matched value eagerly ({@code requestBodyValue.getClass()}), and JsonPath
+     * returns null -- not PathNotFoundException -- for a key that is present with a null value. So {@code "Target Service": null} turns
+     * every rule bound to it into an NPE, i.e. a 500 that the gateway reports as a 502, where an absent key is a clean decision.
+     */
+    @Test
+    void shouldOmitTargetServiceEntirelyWhenAbsent() throws JsonProcessingException {
+        String json = MAPPER.writeValueAsString(new TargetedRequest(null, null));
+
+        assertEquals("{}", json);
+        assertThrows(PathNotFoundException.class, () -> JsonPath.read(json, TARGET_SERVICE_RULE));
+    }
+
+    /**
      * The query has to stay a JSON object. Serializing it as an escaped string makes {@code $.query.<field>} unresolvable while
      * {@code $.query} still matches, which is exactly the failure mode that silently widens or narrows access.
      */

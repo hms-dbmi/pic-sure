@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.contracts;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -126,6 +127,41 @@ class FixtureRoundTripTest {
             MAPPER.readValue("{\"active\":true,\"uuid\":\"6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11\"}", IntrospectionResponse.class);
 
         assertEquals("6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11", response.userId());
+    }
+
+    /**
+     * SECURITY: absence and null are not interchangeable for a JsonNode component. Jackson binds an explicit JSON null to NullNode and only
+     * an absent field to Java null, so callers that test the mutated query with {@code query() != null} -- which is how the gateway decides
+     * whether to swap the caller's request body -- see a present query on EVERY response the moment PSAMA emits {@code "query": null}. This
+     * is the whole reason IntrospectionResponse is NON_NULL.
+     */
+    @Test
+    void shouldDistinguishAnAbsentQueryFromAnExplicitNullQuery() throws IOException {
+        IntrospectionResponse absent = MAPPER.readValue("{\"active\":true}", IntrospectionResponse.class);
+        assertNull(absent.query(), "an absent query must read back as Java null, not NullNode");
+
+        IntrospectionResponse explicitNull = MAPPER.readValue("{\"active\":true,\"query\":null}", IntrospectionResponse.class);
+        assertNotNull(explicitNull.query(), "Jackson binds an explicit JSON null to NullNode; this is the trap NON_NULL avoids");
+        assertTrue(explicitNull.query().isNull());
+    }
+
+    /**
+     * The serialized counterpart: an unmutated verdict must omit the query key entirely, which is what PSAMA's wire looked like before the
+     * response was typed. Emitting it as null would trip every {@code query() != null} check downstream.
+     */
+    @Test
+    void shouldOmitNullFieldsWhenSerializingAVerdict() throws IOException {
+        IntrospectionResponse unmutated =
+            new IntrospectionResponse(true, "user-1", "saml|foo", null, List.of("ADMIN"), List.of(), false, null, null);
+
+        String json = MAPPER.writeValueAsString(unmutated);
+
+        assertFalse(json.contains("\"query\""), "an unmutated verdict must not carry a query key at all: " + json);
+        assertFalse(json.contains("\"token\""), "the refreshed-token key must be absent when no token was issued: " + json);
+        assertFalse(json.contains("\"email\""), json);
+        assertTrue(json.contains("\"active\":true"), json);
+        assertTrue(json.contains("\"tokenRefreshed\":false"), "primitives stay on the wire regardless of inclusion: " + json);
+        assertNull(MAPPER.readValue(json, IntrospectionResponse.class).query());
     }
 
     /**

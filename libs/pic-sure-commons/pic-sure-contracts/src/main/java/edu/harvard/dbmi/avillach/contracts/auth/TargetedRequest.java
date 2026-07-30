@@ -16,7 +16,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
         + "Deployed JsonPath access rules bind to this node"
 )
 public record TargetedRequest(
-    @JsonProperty("Target Service") @Schema(
+    // Omitted rather than emitted as null for the same reason as query below, plus a sharper one: PSAMA's AccessRuleService#evaluateNode
+    // dereferences the matched value eagerly, so a present-but-null match is an NPE -> 500 -> gateway 502, where an absent key is a clean
+    // decision. An emitted "Target Service": null would turn every rule bound to it into a 500.
+    @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("Target Service") @Schema(
         name = "Target Service", description = "Verbatim request path; deployed JsonPath access rules bind $.['Target Service']"
     ) String targetService,
     // Omitted entirely -- never null -- when there is nothing to authorize: PSAMA's extractAndCheckRule treats a PathNotFoundException

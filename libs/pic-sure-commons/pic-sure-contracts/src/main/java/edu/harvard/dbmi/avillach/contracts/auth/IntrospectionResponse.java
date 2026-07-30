@@ -2,6 +2,7 @@ package edu.harvard.dbmi.avillach.contracts.auth;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -14,6 +15,12 @@ import java.util.List;
  * whatever else the token happened to hold. Only the fields below are contractual; nothing may start depending on the rest.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
+// SECURITY: absence and null are NOT interchangeable on this record, because Jackson deserializes an explicit JSON null into a JsonNode
+// component as NullNode, not as Java null -- only an ABSENT field yields Java null. Callers test the mutated query with
+// `query() != null` (PsamaIntrospectionFilter), so emitting "query": null on every non-mutated response would make that check fire every
+// time and swap the caller's body for a NullNode. NON_NULL keeps the pre-contract wire behaviour: the query key appears only when consent
+// evaluation actually rewrote the query.
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "PSAMA's token-introspection verdict, including the consent-mutated query the caller may actually run")
 public record IntrospectionResponse(
     @Schema(description = "False whenever the token is unusable for any reason: invalid, expired, unknown user, or unauthorized") //
