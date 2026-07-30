@@ -21,8 +21,9 @@ import edu.harvard.dbmi.avillach.domain.SearchResults;
  * {@link PaginatedResponse} of concept values. It previously declared a {@code @RequestBody} on a GET, which no HTTP client sends and no
  * downstream call read.
  *
- * <p>Search is never versioned downstream (see {@link SearchService}): the versioned ingress path still resolves to the backend's
- * non-versioned HPDS base.
+ * <p>Search is versioned downstream too (see {@link SearchService}): HPDS serves {@code /search} and {@code /search/values/} only under
+ * {@code PIC-SURE/v3} now that its v1 controller is gone, so this ingress resolves the backend's {@code /v3} base. The legacy WAR's
+ * {@code PicsureSearchService} hit the unversioned base instead -- that path no longer exists.
  */
 @RestController
 public class HpdsSearchController {
