@@ -1,9 +1,11 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Application;
-import edu.harvard.hms.dbmi.avillach.auth.entity.Privilege;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.exceptions.NotAuthorizedException;
@@ -25,13 +27,18 @@ import org.springframework.stereotype.Service;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 
 @Service
 public class TokenService {
 
     private final static Logger logger = LoggerFactory.getLogger(TokenService.class);
+
+    /**
+     * Only ever used to turn the consent-mutated {@code Query} into a tree. It must stay {@code valueToTree} -- writing the query as a
+     * string would make {@code $.query.<field>} unresolvable for every caller that re-authorizes the returned query.
+     */
+    private final static ObjectMapper objectMapper = new ObjectMapper();
 
     private final AuthorizationService authorizationService;
 
@@ -46,11 +53,11 @@ public class TokenService {
     private final UserService userService;
 
     @Autowired
-    public TokenService(AuthorizationService authorizationService, UserRepository userRepository,
-                        @Value("${application.token.expiration.time}") long tokenExpirationTime,
-                        JWTUtil jwtUtil,
-                        SessionService sessionService,
-                        UserService userService) {
+    public TokenService(
+        AuthorizationService authorizationService, UserRepository userRepository,
+        @Value("${application.token.expiration.time}") long tokenExpirationTime, JWTUtil jwtUtil, SessionService sessionService,
+        UserService userService
+    ) {
         this.authorizationService = authorizationService;
         this.userRepository = userRepository;
         this.tokenExpirationTime = tokenExpirationTime > 0 ? tokenExpirationTime : defaultTokenExpirationTime;
@@ -59,50 +66,34 @@ public class TokenService {
         this.userService = userService;
     }
 
-    public Map<String, Object> inspectToken(Map<String, Object> inputMap) {
+    public TokenIntrospectionResponse inspectToken(IntrospectionRequest introspectionRequest) {
         logger.info("TokenInspect starting...");
-        TokenInspection tokenInspection;
         try {
-            tokenInspection = validateToken(inputMap);
+            return validateToken(introspectionRequest);
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
+        } finally {
+            logger.info("Finished token introspection.");
         }
-        if (tokenInspection.getMessage() != null) {
-            tokenInspection.addField("message", tokenInspection.getMessage());
-        }
-
-        logger.info("Finished token introspection.");
-        return tokenInspection.getResponseMap();
     }
 
-    private TokenInspection validateToken(Map<String, Object> inputMap) throws IllegalAccessException {
-        logger.debug(
-            "_inspectToken, the incoming token map is: {}",
-            inputMap.entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue()).collect(Collectors.joining(", "))
-        );
+    private TokenIntrospectionResponse validateToken(IntrospectionRequest introspectionRequest) throws IllegalAccessException {
+        TargetedRequest targetedRequest = introspectionRequest == null ? null : introspectionRequest.request();
+        logger.debug("_inspectToken, the incoming request is: {}", targetedRequest);
 
-        TokenInspection tokenInspection = new TokenInspection();
-        String token = (String) inputMap.get("token");
+        String token = introspectionRequest == null ? null : introspectionRequest.token();
         if (token == null || token.isEmpty()) {
-            logger.error("Token - {} is blank", token);
-            tokenInspection.setMessage("Token not found");
-            tokenInspection.addField("active", false);
-            return tokenInspection;
+            logger.error("Token is blank");
+            return TokenIntrospectionResponse.denied("Token not found");
         }
 
-        // Parse token using client secret and verify signature
+        // Parse token using client secret and verify signature. The token itself is never logged.
         Jws<Claims> jws;
         try {
             jws = this.jwtUtil.parseToken(token);
-
-            // Remove token from inputMap to prevent accidental logging
-            inputMap.remove("token");
         } catch (NotAuthorizedException ex) {
-            // Log invalid token only when verification fails
-            logger.error("_inspectToken() the token - {} - is invalid with exception: {}", token, ex.getMessage());
-            tokenInspection.setMessage(ex.getMessage());
-            tokenInspection.addField("active", false);
-            return tokenInspection;
+            logger.error("_inspectToken() the presented token is invalid with exception: {}", ex.getMessage());
+            return TokenIntrospectionResponse.denied(ex.getMessage());
         }
 
         Application application;
@@ -125,7 +116,10 @@ public class TokenService {
             throw new NullPointerException("Inner application error, please ask admin to check the log.");
         }
 
-        String subject = jws.getPayload().getSubject();
+        // The verbatim token subject, long-term prefix included. This -- not the stripped lookup key below -- is what has always been
+        // echoed back as "sub", and the gateway forwards it downstream as X-User-Sub.
+        String tokenSubject = jws.getPayload().getSubject();
+        String subject = tokenSubject;
 
         // Extract user from token subject
         User user;
@@ -146,14 +140,15 @@ public class TokenService {
         logger.info("_inspectToken() does user with subject - {} - exists in database", subject);
         if (user == null) {
             logger.error("_inspectToken() could not find user with subject {}", subject);
-            tokenInspection.setMessage("user doesn't exist");
-            tokenInspection.addField("active", false);
-            return tokenInspection;
+            return TokenIntrospectionResponse.denied("user doesn't exist");
         }
 
         // Verify token is active and authorized
         boolean isAuthorizationPassed = false;
         String errorMsg = null;
+        JsonNode mutatedQuery = null;
+        boolean tokenRefreshed = false;
+        String refreshedToken = null;
 
         // Verify long-term token matches database
         boolean isLongTermTokenCompromised = false;
@@ -171,27 +166,27 @@ public class TokenService {
             isAuthorizationPassed = true;
             logger.info(
                 "ACCESS_LOG ___ {},{},{} ___ has been granted access to execute query ___ {} ___ in application ___ {} ___ NO APP PRIVILEGES DEFINED",
-                user.getUuid(), user.getEmail(), user.getName(), inputMap.get("request"), application.getName()
+                user.getUuid(), user.getEmail(), user.getName(), targetedRequest, application.getName()
             );
         } else if (!isLongTermTokenCompromised && user.getRoles() != null) {
             EvaluateAccessRuleResult evaluateAccessRuleResult =
-                authorizationService.isAuthorized(application, inputMap.get("request"), user, isLongTermToken);
+                authorizationService.isAuthorized(application, targetedRequest, user, isLongTermToken);
             isAuthorizationPassed = evaluateAccessRuleResult.result();
-            evaluateAccessRuleResult.query().ifPresent(query -> {
-                try {
-                    tokenInspection.addField("query", new ObjectMapper().writeValueAsString(query));
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            // The consent-mutated query goes out as a JSON OBJECT. Serializing it as a string would break every
+            // $.query.<field> access rule the caller's next hop is evaluated against.
+            if (evaluateAccessRuleResult.query().isPresent()) {
+                mutatedQuery = objectMapper.valueToTree(evaluateAccessRuleResult.query().get());
+            }
         } else if (!isLongTermTokenCompromised) {
             errorMsg = "User doesn't have enough privileges.";
         }
 
+        boolean active;
+        String message = null;
         if (isLongTermToken && isAuthorizationPassed) {
-            tokenInspection.addField("active", true);
+            active = true;
         } else if (isAuthorizationPassed) {
-            tokenInspection.addField("active", true);
+            active = true;
 
             // Refresh token if expiring soon
             Date expiration = jws.getPayload().getExpiration();
@@ -199,34 +194,54 @@ public class TokenService {
                 logger.info("_inspectToken() Token is about to expire, refreshing token...");
                 RefreshToken refreshResponse = refreshToken(token);
                 if (refreshResponse instanceof ValidRefreshToken validRefreshToken) {
-                    tokenInspection.addField("token", validRefreshToken.token());
-                    tokenInspection.addField("tokenRefreshed", true);
+                    refreshedToken = validRefreshToken.token();
+                    tokenRefreshed = true;
                 } else if (refreshResponse instanceof InvalidRefreshToken invalidRefreshToken) {
-                    tokenInspection.setMessage(invalidRefreshToken.error());
-                    tokenInspection.addField("active", false);
+                    message = invalidRefreshToken.error();
+                    active = false;
                 }
-            } else {
-                tokenInspection.addField("tokenRefreshed", false);
             }
         } else {
-            tokenInspection.setMessage(errorMsg);
-            tokenInspection.addField("active", false);
+            message = errorMsg;
+            active = false;
         }
 
-        // Include token payload and privileges
-        tokenInspection.addAllFields(jws.getPayload());
-        tokenInspection.addField("roles", user.getRoleString());
         Set<String> userPrivileges = user.getPrivilegeNameSetByApplication(application);
         userPrivileges.addAll(user.getPrivilegeNameSet());
-        tokenInspection.addField("privileges", userPrivileges);
 
-        logger.debug(
-            "_inspectToken() Successfully inspect and return response map: {}",
-            tokenInspection.getResponseMap().entrySet().stream().map(entry -> entry.getKey() + " - " + entry.getValue())
-                .collect(Collectors.joining(", "))
+        IntrospectionResponse introspectionResponse = new IntrospectionResponse(
+            active, userId(jws.getPayload(), user), tokenSubject, email(jws.getPayload(), user), roleNames(user),
+            List.copyOf(userPrivileges), tokenRefreshed, refreshedToken, mutatedQuery
         );
 
-        return tokenInspection;
+        logger.debug("_inspectToken() Successfully inspected token; active={}, message={}", active, message);
+
+        return new TokenIntrospectionResponse(introspectionResponse, message);
+    }
+
+    /**
+     * The user UUID the gateway forwards as {@code X-User-Id}. The {@code uuid} claim minted at login stays authoritative -- it is what
+     * PSAMA has always echoed -- with the resolved user row as a fallback for tokens minted before the claim existed.
+     */
+    private static String userId(Claims claims, User user) {
+        Object claimed = claims.get("uuid");
+        if (claimed != null) {
+            return claimed.toString();
+        }
+        return user.getUuid() == null ? null : user.getUuid().toString();
+    }
+
+    private static String email(Claims claims, User user) {
+        Object claimed = claims.get("email");
+        return claimed != null ? claimed.toString() : user.getEmail();
+    }
+
+    /**
+     * Role NAMES as a JSON array. This used to be {@code User#getRoleString()}, a comma-joined string that every consumer had to split back
+     * apart -- and that silently corrupted any role name containing a comma.
+     */
+    private static List<String> roleNames(User user) {
+        return user.getRoles() == null ? null : user.getRoles().stream().map(Role::getName).toList();
     }
 
     public RefreshToken refreshToken(String authorizationHeader) {
@@ -269,12 +284,8 @@ public class TokenService {
         claimsMap.put("roles", userService.addRoleClaims(loadUser));
 
         Date expirationDate = new Date(Calendar.getInstance().getTimeInMillis() + this.tokenExpirationTime);
-        String refreshedToken = this.jwtUtil.createJwtToken(
-                claims.getId(),
-                claims.getIssuer(),
-                claimsMap,
-                subject,
-                this.tokenExpirationTime);
+        String refreshedToken =
+            this.jwtUtil.createJwtToken(claims.getId(), claims.getIssuer(), claimsMap, subject, this.tokenExpirationTime);
 
         logger.debug("Finished RefreshToken and new token has been generated.");
         return new ValidRefreshToken(refreshedToken, ZonedDateTime.ofInstant(expirationDate.toInstant(), ZoneOffset.UTC).toString());

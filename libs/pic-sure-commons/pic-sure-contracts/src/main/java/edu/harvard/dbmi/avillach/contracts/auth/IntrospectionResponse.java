@@ -18,10 +18,11 @@ import java.util.List;
 public record IntrospectionResponse(
     @Schema(description = "False whenever the token is unusable for any reason: invalid, expired, unknown user, or unauthorized") //
     boolean active,
-    // PSAMA's inspect response carries the user UUID as "uuid" (UserService#responseMap / UserClaims#toMap); it never sends a "userId"
-    // field. Without this alias X-User-Id is never propagated and the query/operations services' header-based authn rejects every request.
-    @JsonAlias("uuid") @Schema(description = "PSAMA's UUID for the authenticated user; sent on the wire as \"uuid\"") String userId,
-    @Schema(description = "Token subject, i.e. the identity-provider-scoped user identifier") String sub,
+    // PSAMA emits this as "userId" now that it writes this record. It spent years emitting the same value as "uuid" (copied from the JWT
+    // claims), and any PSAMA that has not been redeployed still does, so the alias stays: without it X-User-Id is never propagated and the
+    // query/operations services' header-based authn rejects every request.
+    @JsonAlias("uuid") @Schema(description = "PSAMA's UUID for the authenticated user; also read from the legacy \"uuid\" key") //
+    String userId, @Schema(description = "Token subject, i.e. the identity-provider-scoped user identifier") String sub,
     @Schema(description = "Email address of the authenticated user") String email,
     @Schema(description = "Names of the roles held by the user") List<String> roles,
     @Schema(description = "Names of the privileges the user holds in the calling application, plus their application-independent ones") //

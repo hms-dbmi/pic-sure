@@ -162,6 +162,11 @@
             <artifactId>mockito-subclass</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Wire contract for /token/inspect: the gateway and PSAMA bind the same records. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-contracts</artifactId>
+        </dependency>
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>

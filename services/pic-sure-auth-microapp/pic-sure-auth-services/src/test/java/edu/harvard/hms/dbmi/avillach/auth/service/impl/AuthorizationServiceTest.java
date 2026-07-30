@@ -1,5 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
@@ -33,6 +35,8 @@ public class AuthorizationServiceTest {
 
     private AuthorizationService authorizationService;
     private AccessRuleService accessRuleService;
+
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @MockBean
     private SessionService sessionService;
@@ -68,7 +72,8 @@ public class AuthorizationServiceTest {
         // create access_rule for privilege
         AccessRule accessRule = new AccessRule();
         accessRule.setUuid(UUID.randomUUID());
-        accessRule.setRule("$.test");
+        // The gateway sends the body under "query"; deployed rules bind $.query.<field>.
+        accessRule.setRule("$.query.test");
         accessRule.setType(AccessRule.TypeNaming.ALL_EQUALS);
         accessRule.setValue("value");
 
@@ -79,11 +84,9 @@ public class AuthorizationServiceTest {
         }
         configureUserSecurityContext(user);
 
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("test", "value");
-        requestBody.put("Target Service", "/query");
+        TargetedRequest request = new TargetedRequest("/query", mapper.createObjectNode().put("test", "value"));
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        boolean result = authorizationService.isAuthorized(application, request, user, false).result();
 
         assertTrue(result);
     }
@@ -94,10 +97,9 @@ public class AuthorizationServiceTest {
         User user = createTestUser();
         configureUserSecurityContext(user);
 
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("test", "differentValue");
+        TargetedRequest request = new TargetedRequest("/query", mapper.createObjectNode().put("test", "differentValue"));
 
-        boolean result = authorizationService.isAuthorized(application, requestBody, user, false).result();
+        boolean result = authorizationService.isAuthorized(application, request, user, false).result();
 
         assertFalse(result);
     }
@@ -202,7 +204,7 @@ public class AuthorizationServiceTest {
         User user = createTestUser();
 
         user.getRoles().iterator().next().setPrivileges(Collections.emptySet());
-        boolean result = authorizationService.isAuthorized(application, new HashMap<>(), user, false).result();
+        boolean result = authorizationService.isAuthorized(application, new TargetedRequest(null, null), user, false).result();
 
         assertFalse(result);
     }

@@ -19,6 +19,7 @@
         <!-- Internal artifacts: the 3.0.0 Java 25 line published from this repo.
              Legacy stays pinned to the frozen Java 11 releases and never resolves these. -->
         <pic-sure-api-model.version>3.0.0</pic-sure-api-model.version>
+        <pic-sure-contracts.version>3.0.0</pic-sure-contracts.version>
         <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
         <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
         <pic-sure-spring-commons.version>3.0.0</pic-sure-spring-commons.version>
@@ -54,6 +55,11 @@
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
                 <artifactId>pic-sure-api-model</artifactId>
                 <version>${pic-sure-api-model.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-contracts</artifactId>
+                <version>${pic-sure-contracts.version}</version>
             </dependency>
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>

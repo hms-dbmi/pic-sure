@@ -1,7 +1,10 @@
 package edu.harvard.hms.dbmi.avillach.auth.rest;
 
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.auth.model.InvalidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.RefreshToken;
+import edu.harvard.hms.dbmi.avillach.auth.model.TokenIntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.auth.model.ValidRefreshToken;
 import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.authorization.AuthorizationService;
@@ -47,38 +50,28 @@ public class TokenController {
     @Operation(description = "Token introspection endpoint for user to retrieve a valid token")
     @AuditEvent(type = "ACCESS", action = "token.introspect")
     @PostMapping(path = "/inspect", produces = "application/json")
-    public ResponseEntity<Map<String, Object>> inspectToken(
-            @Parameter(required = true, description = "A JSON object that at least" +
-                    " include a user the token for validation")
-            @RequestBody Map<String, Object> inputMap, HttpServletRequest request) {
-        Map<String, Object> resultMap = this.tokenService.inspectToken(inputMap);
+    public ResponseEntity<TokenIntrospectionResponse> inspectToken(
+        @Parameter(
+            required = true, description = "The token to validate plus the request being authorized"
+        ) @RequestBody IntrospectionRequest introspectionRequest, HttpServletRequest request
+    ) {
+        TokenIntrospectionResponse result = this.tokenService.inspectToken(introspectionRequest);
 
-        boolean active = Boolean.TRUE.equals(resultMap.getOrDefault("active", false));
-        AuditAttributes.putMetadata(request, "authz_result", active ? "granted" : "denied");
-        AuditAttributes.putMetadata(request, "authz_user_sub", String.valueOf(resultMap.getOrDefault("sub", "")));
-        if (resultMap.containsKey("message")) {
-            AuditAttributes.putMetadata(request, "authz_message", String.valueOf(resultMap.get("message")));
+        AuditAttributes.putMetadata(request, "authz_result", result.introspection().active() ? "granted" : "denied");
+        AuditAttributes.putMetadata(request, "authz_user_sub", String.valueOf(result.introspection().sub()));
+        if (result.message() != null) {
+            AuditAttributes.putMetadata(request, "authz_message", result.message());
         }
-        if (resultMap.containsKey("tokenRefreshed")) {
-            AuditAttributes.putMetadata(request, "authz_token_refreshed", String.valueOf(resultMap.get("tokenRefreshed")));
-        }
+        AuditAttributes.putMetadata(request, "authz_token_refreshed", String.valueOf(result.introspection().tokenRefreshed()));
 
-        Object requestObj = inputMap.get("request");
-        if (requestObj instanceof Map<?, ?> requestDetails) {
-            Object targetService = requestDetails.get("Target Service");
-            if (targetService != null) {
-                AuditAttributes.putMetadata(request, "target_service", targetService.toString());
-            }
-            Object query = requestDetails.get("query");
-            if (query instanceof Map<?, ?> queryMap) {
-                Object resourceUUID = queryMap.get("resourceUUID");
-                if (resourceUUID != null) {
-                    AuditAttributes.putMetadata(request, "resource_id", resourceUUID.toString());
-                }
-            }
+        TargetedRequest targetedRequest = introspectionRequest == null ? null : introspectionRequest.request();
+        if (targetedRequest != null) {
+            AuditAttributes.putMetadata(request, "target_service", targetedRequest.targetService());
+            // v3 request bodies carry no resourceUUID; the resource being reached is the one the path names.
+            AuditAttributes.putMetadata(request, "resource_id", AuditAttributes.resourceLabelForPath(targetedRequest.targetService()));
         }
 
-        return PICSUREResponse.success(resultMap);
+        return PICSUREResponse.success(result);
     }
 
     @Operation(description = "To refresh current user's token if the user is an active user")
@@ -95,7 +88,8 @@ public class TokenController {
 
         if (refreshTokenResp instanceof ValidRefreshToken validRefreshToken) {
             AuditAttributes.putMetadata(request, "token_refresh_result", "success");
-            return PICSUREResponse.success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
+            return PICSUREResponse
+                .success(Map.of("token", validRefreshToken.token(), "expirationDate", validRefreshToken.expirationDate()));
         }
 
         return PICSUREResponse.success();

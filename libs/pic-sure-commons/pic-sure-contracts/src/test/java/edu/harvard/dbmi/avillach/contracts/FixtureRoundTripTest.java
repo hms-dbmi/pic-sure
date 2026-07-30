@@ -116,8 +116,9 @@ class FixtureRoundTripTest {
     }
 
     /**
-     * PSAMA sends the user UUID as "uuid", never as "userId". Losing this alias silently drops X-User-Id and every downstream service
-     * rejects the request, so the alias is contractual and not a convenience.
+     * PSAMA writes this record now, so the UUID goes out as "userId" -- but any PSAMA that has not been redeployed still sends it as
+     * "uuid". Losing this alias silently drops X-User-Id and every downstream service rejects the request, so the alias is contractual and
+     * not a convenience.
      */
     @Test
     void shouldAcceptUuidAliasForUserId() throws IOException {

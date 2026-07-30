@@ -38,6 +38,26 @@ class AuditAttributesTest {
         assertTrue(all.isEmpty());
     }
 
+    /**
+     * v3 query bodies carry no resourceUUID, so the audit resource label is derived from the path the request targets. Losing this would
+     * leave every introspection audit record without a resource.
+     */
+    @Test
+    void shouldDeriveResourceLabelFromTargetServicePath() {
+        assertEquals("hpds", AuditAttributes.resourceLabelForPath("/hpds/auth/v3/query"));
+        assertEquals("picsure", AuditAttributes.resourceLabelForPath("/picsure/proxy/dictionary/search"));
+        assertEquals("operations", AuditAttributes.resourceLabelForPath("operations/dataset/named"));
+        assertEquals("hpds", AuditAttributes.resourceLabelForPath("/hpds"));
+    }
+
+    @Test
+    void shouldReturnNullResourceLabelWhenThereIsNoPath() {
+        assertNull(AuditAttributes.resourceLabelForPath(null));
+        assertNull(AuditAttributes.resourceLabelForPath(""));
+        assertNull(AuditAttributes.resourceLabelForPath("   "));
+        assertNull(AuditAttributes.resourceLabelForPath("/"));
+    }
+
     @Test
     void shouldNotIncludeNonAuditAttributes() {
         MockHttpServletRequest request = new MockHttpServletRequest();
