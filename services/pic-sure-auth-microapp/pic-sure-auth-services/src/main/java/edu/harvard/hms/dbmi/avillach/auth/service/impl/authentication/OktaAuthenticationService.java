@@ -28,11 +28,11 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Exchange the code for an access token. This is a call to the OKTA token endpoint.
-     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#token">Token</a>
+     * Exchange the code for an access token. This is a call to the OKTA token endpoint. Documentation: <a
+     * href="https://developer.okta.com/docs/reference/api/oidc/#token">Token</a>
      *
      * @param host The UriInfo object from the JAX-RS context
-     * @param code    The code to exchange
+     * @param code The code to exchange
      * @return The response from the token endpoint as a JsonNode
      */
     protected JsonNode handleCodeTokenExchange(String host, String code) {
@@ -44,11 +44,10 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Perform a request to the OKTA API using the provided URL and parameters. The request will be a POST request.
-     * It is using Authorization Basic authentication. The client ID and client secret are base64 encoded and sent
-     * in the Authorization header.
+     * Perform a request to the OKTA API using the provided URL and parameters. The request will be a POST request. It is using
+     * Authorization Basic authentication. The client ID and client secret are base64 encoded and sent in the Authorization header.
      *
-     * @param requestUrl    The URL to call
+     * @param requestUrl The URL to call
      * @param requestParams The parameters to send
      * @return The response from the OKTA API as a JsonNode
      */
@@ -71,8 +70,8 @@ public class OktaAuthenticationService {
     }
 
     /**
-     * Introspect the token to get the user's email address. This is a call to the OKTA introspect endpoint.
-     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#introspect">/introspect</a>
+     * Introspect the token to get the user's email address. This is a call to the OKTA introspect endpoint. Documentation: <a
+     * href="https://developer.okta.com/docs/reference/api/oidc/#introspect">/introspect</a>
      *
      * @param userToken The token to introspect
      * @return The response from the introspect endpoint as a JsonNode
