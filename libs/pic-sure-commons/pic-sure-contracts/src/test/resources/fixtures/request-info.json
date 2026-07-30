@@ -1,0 +1,15 @@
+{
+  "request_id": "b7f0c1a2-3d4e-4f50-8a6b-9c0d1e2f3a4b",
+  "method": "POST",
+  "url": "/picsure/query/sync",
+  "query_string": "format=json",
+  "src_ip": "10.1.2.3",
+  "dest_ip": "10.4.5.6",
+  "dest_port": 8080,
+  "http_user_agent": "picsure-client/3.0.0",
+  "http_content_type": "application/json",
+  "status": 200,
+  "bytes": 2048,
+  "duration": 137,
+  "referrer": "https://picsure.example.edu/explorer"
+}

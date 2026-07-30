@@ -3,15 +3,26 @@ package edu.harvard.dbmi.avillach.contracts;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import edu.harvard.dbmi.avillach.contracts.audit.AuditAccepted;
+import edu.harvard.dbmi.avillach.contracts.audit.AuditEvent;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
 import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
 import edu.harvard.dbmi.avillach.contracts.info.QueryFormat;
 import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
+import edu.harvard.dbmi.avillach.contracts.internal.DispatchResponse;
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryResponse;
+import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
+import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
@@ -23,6 +34,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
@@ -127,6 +139,125 @@ class FixtureRoundTripTest {
     }
 
     @Test
+    void shouldRoundTripSaveQueryRequest() throws IOException {
+        SaveQueryRequest request = assertRoundTrip("save-query-request.json", SaveQueryRequest.class);
+
+        assertEquals(PicSureStatus.QUEUED, request.status());
+        assertEquals("hpds-result-4471", request.resourceResultId());
+        assertEquals("v3", request.version());
+        assertTrue(request.query().startsWith("{"), "the stored query stays an opaque JSON string, never a nested object");
+    }
+
+    @Test
+    void shouldRoundTripUpdateQueryRequest() throws IOException {
+        UpdateQueryRequest request = assertRoundTrip("update-query-request.json", UpdateQueryRequest.class);
+
+        assertEquals(PicSureStatus.AVAILABLE, request.status());
+        assertEquals("hpds-result-4471", request.resourceResultId());
+    }
+
+    /**
+     * The persisted status travels as the enum NAME, not its ordinal: the operations service writes {@code "AVAILABLE"} on the wire and any
+     * shift to numbers would silently re-map every stored query.
+     */
+    @Test
+    void shouldRoundTripStoredQuery() throws IOException {
+        StoredQuery stored = assertRoundTrip("stored-query.json", StoredQuery.class);
+
+        assertEquals(PicSureStatus.AVAILABLE, stored.status());
+        assertEquals(UUID.fromString("0f0d1d5c-6b3f-4d51-9a1e-2c9b6f7f8a10"), stored.picsureId());
+        assertTrue(read("stored-query.json").contains("\"status\": \"AVAILABLE\""), "status must be the enum name on the wire");
+    }
+
+    @Test
+    void shouldRoundTripSaveQueryResponse() throws IOException {
+        SaveQueryResponse response = assertRoundTrip("save-query-response.json", SaveQueryResponse.class);
+
+        assertEquals(UUID.fromString("0f0d1d5c-6b3f-4d51-9a1e-2c9b6f7f8a10"), response.picsureId());
+    }
+
+    @Test
+    void shouldRoundTripDispatchResponse() throws IOException {
+        DispatchResponse response = assertRoundTrip("dispatch-response.json", DispatchResponse.class);
+
+        assertTrue(response.queryJson().startsWith("{"), "queryJson is a JSON STRING, not a nested object");
+    }
+
+    @Test
+    void shouldRoundTripAuditEvent() throws IOException {
+        AuditEvent event = assertRoundTrip("audit-event.json", AuditEvent.class);
+
+        assertEquals("api_request", event.eventType());
+        assertEquals("gateway", event.clientType());
+        assertEquals("1f5c8c1e-0a11-4b5c-8f5a-6ac1b1df1c66", event.sessionId());
+        assertEquals("POST", event.request().method());
+        assertEquals(1, event.metadata().size());
+        assertEquals(2, event.error().size());
+    }
+
+    @Test
+    void shouldRoundTripRequestInfo() throws IOException {
+        RequestInfo request = assertRoundTrip("request-info.json", RequestInfo.class);
+
+        assertEquals("b7f0c1a2-3d4e-4f50-8a6b-9c0d1e2f3a4b", request.requestId());
+        assertEquals("format=json", request.queryString());
+        assertEquals(8080, request.destPort());
+        assertEquals(2048L, request.bytes());
+    }
+
+    @Test
+    void shouldRoundTripAuditAccepted() throws IOException {
+        AuditAccepted accepted = assertRoundTrip("audit-accepted.json", AuditAccepted.class);
+
+        assertEquals("accepted", accepted.status());
+    }
+
+    /**
+     * The audit models use snake_case on the wire; a camelCase payload is NOT the contract and must leave the fields unset rather than
+     * silently binding.
+     */
+    @Test
+    void shouldBindAuditFieldsOnlyBySnakeCaseNames() throws IOException {
+        AuditEvent event = MAPPER.readValue("{\"eventType\":\"api_request\",\"event_type\":\"real\"}", AuditEvent.class);
+
+        assertEquals("real", event.eventType());
+    }
+
+    /**
+     * Audit intake is tolerant by design: emitters across services add keys ahead of the collector learning about them, and an audit event
+     * must never be the reason a request fails.
+     */
+    @Test
+    void shouldIgnoreUnknownAuditProperties() throws IOException {
+        AuditEvent event = MAPPER.readValue("{\"event_type\":\"api_request\",\"tenant\":\"bch\"}", AuditEvent.class);
+        RequestInfo request = MAPPER.readValue("{\"method\":\"GET\",\"http_version\":\"2\"}", RequestInfo.class);
+
+        assertEquals("api_request", event.eventType());
+        assertEquals("GET", request.method());
+        assertNull(event.request());
+    }
+
+    /**
+     * Every contract EXCEPT the deliberately tolerant readers ({@code IntrospectionResponse}, the audit models) must reject unknown
+     * properties, so a caller sending a field the contract does not model gets a 400 instead of silent data loss. This mirrors the
+     * reactor-wide {@code StrictWebDeserializationConfig} that turns the same feature on for every service's web ObjectMapper.
+     */
+    @Test
+    void shouldRejectUnknownPropertiesOnStrictContracts() {
+        assertRejectsUnknownProperty("{\"picsureId\":null,\"typo\":1}", StoredQuery.class);
+        assertRejectsUnknownProperty("{\"query\":\"{}\",\"typo\":1}", SaveQueryRequest.class);
+        assertRejectsUnknownProperty("{\"status\":\"QUEUED\",\"typo\":1}", UpdateQueryRequest.class);
+        assertRejectsUnknownProperty("{\"picsureId\":null,\"typo\":1}", SaveQueryResponse.class);
+        assertRejectsUnknownProperty("{\"queryJson\":\"{}\",\"typo\":1}", DispatchResponse.class);
+        assertRejectsUnknownProperty("{\"status\":\"accepted\",\"typo\":1}", AuditAccepted.class);
+        assertRejectsUnknownProperty("{\"resourceStatus\":\"COMPLETE\",\"typo\":1}", QueryStatusResponse.class);
+        assertRejectsUnknownProperty("{\"query\":\"asthma\",\"typo\":1}", SearchRequest.class);
+        assertRejectsUnknownProperty("{\"signedUrl\":\"https://x\",\"typo\":1}", SignedUrlResponse.class);
+        assertRejectsUnknownProperty("{\"name\":\"x\",\"typo\":1}", QueryFormat.class);
+        assertRejectsUnknownProperty("{\"name\":\"x\",\"typo\":1}", ResourceInfo.class);
+    }
+
+    @Test
     void shouldDefaultNullCollectionsToEmpty() {
         assertEquals(Map.of(), new QueryStatusResponse(null, null, null, null, 0L, 0L, 0L, 0L, null).resultMetadata());
         assertEquals(List.of(), new PaginatedResponse<String>(null, 0, 0).results());
@@ -141,6 +272,13 @@ class FixtureRoundTripTest {
         assertArrayEquals(
             new PicSureStatus[] {PicSureStatus.QUEUED, PicSureStatus.PENDING, PicSureStatus.ERROR, PicSureStatus.AVAILABLE},
             PicSureStatus.values()
+        );
+    }
+
+    private void assertRejectsUnknownProperty(String json, Class<?> type) {
+        assertThrows(
+            UnrecognizedPropertyException.class, () -> MAPPER.readValue(json, type),
+            type.getSimpleName() + " must not silently swallow properties it does not model"
         );
     }
 
