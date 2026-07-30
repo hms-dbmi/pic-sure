@@ -37,6 +37,20 @@
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
 			<artifactId>pic-sure-api-model</artifactId>
 		</dependency>
+		<!-- Shared wire contracts for the v3 surface (QueryStatusResponse, SearchRequest, PaginatedResponse,
+		     SignedUrlResponse, ResourceInfo). -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-contracts</artifactId>
+		</dependency>
+		<!-- Brings StrictWebDeserializationConfig (auto-configured): unknown fields on a v3 request body are a 400,
+		     not a silently dropped value. It is the ONLY entry in this jar's AutoConfiguration.imports, and HPDS
+		     component-scans only ...avillach.hpds, so the commons filters/advice/identity beans stay out of the
+		     context: HPDS keeps its own audit filter and has no PicsureException to map. -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-spring-commons</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-math3</artifactId>

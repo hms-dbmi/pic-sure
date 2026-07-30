@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -40,14 +40,8 @@ class PicSureV3ServiceAuditTest {
         queryService = mock(QueryV3Service.class);
         queryExecutor = mock(QueryExecutor.class);
         service = new PicSureV3Service(
-            queryService,
-            mock(CountV3Processor.class),
-            mock(VariantListV3Processor.class),
-            queryExecutor,
-            mock(Paginator.class),
-            mock(SignUrlService.class),
-            mock(FileSharingV3Service.class),
-            mock(TestDataService.class)
+            queryService, mock(CountV3Processor.class), mock(VariantListV3Processor.class), queryExecutor, mock(Paginator.class),
+            mock(SignUrlService.class), mock(FileSharingV3Service.class), mock(TestDataService.class)
         );
 
         request = new MockHttpServletRequest();
@@ -66,12 +60,11 @@ class PicSureV3ServiceAuditTest {
         when(mockQuery.id()).thenReturn(UUID.randomUUID());
         when(queryService.runQuery(any())).thenReturn(asyncResult);
 
-        QueryRequest queryRequest = mock(QueryRequest.class);
-        when(queryRequest.getQuery()).thenReturn(Map.of("expectedResultType", "COUNT"));
+        Query incoming = new Query(List.of(), null, null, null, ResultType.COUNT, null, null);
 
         try (MockedStatic<Crypto> crypto = mockStatic(Crypto.class)) {
             crypto.when(() -> Crypto.hasKey(Crypto.DEFAULT_KEY_NAME)).thenReturn(true);
-            service.query(queryRequest);
+            service.query(incoming);
         }
 
         Map<String, Object> metadata = AuditAttributes.getMetadata(request);
@@ -84,7 +77,7 @@ class PicSureV3ServiceAuditTest {
         UUID queryId = UUID.randomUUID();
         when(queryService.getResultFor(queryId)).thenReturn(null);
 
-        service.queryResult(queryId, mock(QueryRequest.class));
+        service.queryResult(queryId);
 
         assertEquals(queryId.toString(), AuditAttributes.getMetadata(request).get("query_id"));
     }
@@ -101,7 +94,7 @@ class PicSureV3ServiceAuditTest {
         when(mockQuery.id()).thenReturn(UUID.randomUUID());
         when(queryService.getStatusFor(queryId.toString())).thenReturn(asyncResult);
 
-        service.queryStatus(queryId, mock(QueryRequest.class));
+        service.queryStatus(queryId);
 
         assertEquals(queryId.toString(), AuditAttributes.getMetadata(request).get("query_id"));
     }
@@ -111,7 +104,7 @@ class PicSureV3ServiceAuditTest {
         UUID queryId = UUID.randomUUID();
         when(queryService.getResultFor(queryId)).thenReturn(null);
 
-        service.querySignedURL(queryId, mock(QueryRequest.class));
+        service.querySignedURL(queryId);
 
         assertEquals(queryId.toString(), AuditAttributes.getMetadata(request).get("query_id"));
     }
@@ -134,10 +127,7 @@ class PicSureV3ServiceAuditTest {
         when(queryExecutor.getDictionary()).thenReturn(new TreeMap<>());
         when(queryExecutor.getInfoStoreMeta()).thenReturn(List.of());
 
-        QueryRequest searchRequest = mock(QueryRequest.class);
-        when(searchRequest.getQuery()).thenReturn("blood pressure");
-
-        service.search(searchRequest);
+        service.search(new SearchRequest("blood pressure"));
 
         assertEquals("blood pressure", AuditAttributes.getMetadata(request).get("search_term"));
     }
