@@ -105,7 +105,7 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
         String path = req.getRequestURI() == null ? "" : req.getRequestURI();
         String method = req.getMethod();
 
-        if ("GET".equals(method) && (path.equals("/system/status") || path.equals("/v3/system/status"))) {
+        if ("GET".equals(method) && path.equals("/system/status")) {
             audit.put("username", "SYSTEM_MONITOR");
             chain.doFilter(req, resp);
             return;

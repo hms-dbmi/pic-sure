@@ -318,6 +318,24 @@ class PsamaIntrospectionFilterTest {
     }
 
     @Test
+    void v3SystemStatusIsNotAllowListed() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, mock(QueryAuthFetcher.class));
+
+        BufferedRequestWrapper req = wrap(null, new byte[0], "/v3/system/status", "GET");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verifyNoInteractions(client);
+        verify(chain, never()).doFilter(any(), any());
+        verify(resp).setStatus(401);
+        assertThat(ctx.getMetadata()).doesNotContainEntry("username", "SYSTEM_MONITOR");
+    }
+
+    @Test
     void prefixAllowListSkipsIntrospection() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), mock(QueryAuthFetcher.class));
