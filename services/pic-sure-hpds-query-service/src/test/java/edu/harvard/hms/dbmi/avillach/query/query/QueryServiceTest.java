@@ -10,30 +10,41 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
+import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
+import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
+import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
 import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
 
 /**
  * DB-free port of the legacy WAR's {@code PicsureQueryServiceTest}: every place the brief expected a local
  * {@code QueryRepository}/{@code Query} entity now goes through {@link OperationsClient} instead (create/sync persist via
  * {@code operationsClient.save}/{@code update}; read ops load via {@code operationsClient.get}).
+ *
+ * <p>The v3 surface takes a BARE {@code Query} and returns {@link QueryStatusResponse}: there is no {@code QueryRequest} envelope on the
+ * way in and no {@code resourceID} echo on the way out. The {@code QueryRequest}-shaped {@code query}/{@code queryV3} overloads that remain
+ * are the aggregate service's (retyped in Task 10).
  */
 class QueryServiceTest {
 
@@ -50,11 +61,13 @@ class QueryServiceTest {
         return p;
     }
 
-    private QueryRequest req() {
-        GeneralQueryRequest r = new GeneralQueryRequest();
-        r.setQuery("q");
-        r.setResourceUUID(UUID.randomUUID());
-        return r;
+    private Query query() {
+        return new Query(List.of("\\age\\"), null, null, null, ResultType.COUNT, null, null);
+    }
+
+    /** The aggregate service's (still enveloped) call shape -- Task 10 retypes it. */
+    private QueryRequest legacyReq() {
+        return new GeneralQueryRequest().setQuery(Map.of("expectedResultType", "COUNT"));
     }
 
     private QueryStatus hpdsStatus(String rrid) {
@@ -64,57 +77,65 @@ class QueryServiceTest {
         return s;
     }
 
-    // --- create ---
+    // --- create (typed v3 ingress) ---
 
     @Test
-    void createPersistsViaOperationsClientAndTranslatesIds() {
-        UUID picsureId = UUID.randomUUID();
-        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        QueryStatus out = service.query("auth", req());
-
-        assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
-        assertThat(out.getResourceResultId()).isEqualTo("rr-1");
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-1".equals(r.resourceResultId()) && r.version() == null));
-        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), any()); // v1 base
-    }
-
-    @Test
-    void createFallbackCopiesPicsureIdWhenHpdsHasNoResourceResultId() {
-        UUID picsureId = UUID.randomUUID();
-        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus(null)); // HPDS returned no id
-        when(operationsClient.save(any())).thenReturn(picsureId);
-
-        QueryStatus out = service.query("auth", req());
-
-        assertThat(out.getResourceResultId()).isEqualTo(out.getPicsureResultId().toString()); // fallback
-        verify(operationsClient)
-            .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
-    }
-
-    @Test
-    void createV3StampsVersion3() {
+    void v3CreateReturnsATypedResponseCarryingThePicsureId() {
         UUID picsureId = UUID.randomUUID();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        service.queryV3("auth", req());
+        QueryStatusResponse out = service.queryV3("auth", query());
 
+        assertThat(out.picsureId()).isEqualTo(picsureId);
+        assertThat(out.resourceResultId()).isEqualTo("rr-3");
+        assertThat(out.status()).isEqualTo(edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus.PENDING);
         verify(operationsClient).save(argThat((SaveQueryRequest r) -> "3".equals(r.version())));
         verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any()); // v3 base
     }
 
     @Test
-    void createEchoesResourceUuidFromRequest() {
+    void v3CreatePersistsTheBareQueryUnderTheStoredEnvelopesQueryField() {
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-3"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        service.queryV3("auth", query());
+
+        verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.query().contains("\"select\"") && r.query().contains("\\\\age\\\\")));
+    }
+
+    @Test
+    void v3CreateFallsBackToThePicsureIdWhenHpdsReturnsNoResourceResultId() {
         UUID picsureId = UUID.randomUUID();
-        QueryRequest request = req();
+        when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus(null));
+        when(operationsClient.save(any())).thenReturn(picsureId);
+
+        QueryStatusResponse out = service.queryV3("auth", query());
+
+        assertThat(out.resourceResultId()).isEqualTo(picsureId.toString());
+        verify(operationsClient)
+            .update(eq(picsureId), argThat((UpdateQueryRequest u) -> picsureId.toString().equals(u.resourceResultId())));
+    }
+
+    @Test
+    void v3CreateRejectsAMissingQuery() {
+        assertThatThrownBy(() -> service.queryV3("auth", (Query) null))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    // --- the aggregate service's enveloped overloads stay until Task 10 ---
+
+    @Test
+    void legacyEnvelopedCreateStillPersistsAndDispatchesForTheAggregatePath() {
+        UUID picsureId = UUID.randomUUID();
         when(hpds.query(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-1"));
         when(operationsClient.save(any())).thenReturn(picsureId);
 
-        QueryStatus out = service.query("auth", request);
+        QueryStatus out = service.query("auth", legacyReq());
 
-        assertThat(out.getResourceID()).isEqualTo(request.getResourceUUID());
+        assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
+        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-1".equals(r.resourceResultId()) && r.version() == null));
+        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), any()); // v1 base
     }
 
     // --- sync ---
@@ -126,7 +147,7 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), null));
 
-        var resp = service.querySync("auth", req(), "UI");
+        var resp = service.querySync("auth", query(), "UI");
 
         assertThat(new String(resp.body())).isEqualTo("body");
         // resourceResultId persisted = the picsureId when no header (maintain WAR behavior)
@@ -141,82 +162,70 @@ class QueryServiceTest {
         when(hpds.querySync(any(HpdsTarget.class), any(), any()))
             .thenReturn(new ResourceWebClient.QuerySyncResult("body".getBytes(), "hpds-meta-id"));
 
-        service.querySync("auth", req(), "UI");
+        service.querySync("auth", query(), "UI");
 
         verify(operationsClient).update(eq(picsureId), argThat((UpdateQueryRequest u) -> "hpds-meta-id".equals(u.resourceResultId())));
     }
 
-    // --- read ops ---
+    // --- read ops: id only, no request body ---
 
     @Test
     void unknownQueryIdThrowsNotFound() {
         UUID id = UUID.randomUUID();
-        when(operationsClient.get(id)).thenThrow(
-            new edu.harvard.hms.dbmi.avillach.commons.error.PicsureException(
-                org.springframework.http.HttpStatus.NOT_FOUND, "not_found", "Query not found: " + id
-            )
-        );
+        when(operationsClient.get(id)).thenThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "Query not found: " + id));
 
-        org.junit.jupiter.api.Assertions
-            .assertThrows(edu.harvard.hms.dbmi.avillach.commons.error.PicsureException.class, () -> service.queryStatus("auth", id, req()));
-    }
-
-    @Test
-    void signedUrlDispatchesV3WhenStoredVersionIs3() { // THE BUG FIX
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null); // v1-path request, v3-stored query
-        when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok("{\"url\":\"x\"}"));
-
-        service.queryResultSignedUrl("auth", id, req());
-
-        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"), any()); // /v3
-                                                                                                                                        // base,
-                                                                                                                                        // not
-                                                                                                                                        // v1
-    }
-
-    @Test
-    void resultDispatchesV1WhenStoredVersionIsNull() {
-        UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{}", "rr-2", "PENDING", null, null);
-        when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"), any()))
-            .thenReturn(org.springframework.http.ResponseEntity.ok(new byte[] {1}));
-
-        service.queryResult("auth", id, req());
-
-        verify(hpds).queryResult(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), eq("rr-2"), any());
+        assertThatThrownBy(() -> service.status("auth", id))
+            .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
     void statusUsesStoredResourceResultIdAndV1ForNullVersionAndPersistsNewStatus() {
         UUID id = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\"}", "rr-7", "PENDING", null, null);
-        when(operationsClient.get(id)).thenReturn(stored);
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-7", "PENDING", null, null));
         QueryStatus s = hpdsStatus("rr-7");
         s.setStatus(PicSureStatus.AVAILABLE);
         when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"), any())).thenReturn(s);
 
-        QueryStatus out = service.queryStatus("auth", id, req());
+        QueryStatusResponse out = service.status("auth", id);
 
-        assertThat(out.getPicsureResultId()).isEqualTo(id);
+        assertThat(out.picsureId()).isEqualTo(id);
+        assertThat(out.status()).isEqualTo(edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus.AVAILABLE);
         verify(hpds).queryStatus(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), eq("rr-7"), any()); // v1 base
         verify(operationsClient).update(eq(id), argThat((UpdateQueryRequest u) -> "AVAILABLE".equals(u.status())));
     }
 
     @Test
-    void statusEchoesResourceUuidParsedFromStoredQueryJson() {
+    void resultDispatchesV1WhenStoredVersionIsNull() {
         UUID id = UUID.randomUUID();
-        UUID resourceUuid = UUID.randomUUID();
-        StoredQuery stored = new StoredQuery(id, "{\"resourceUUID\":\"" + resourceUuid + "\"}", "rr-7", "PENDING", null, null);
-        when(operationsClient.get(id)).thenReturn(stored);
-        when(hpds.queryStatus(any(HpdsTarget.class), eq("rr-7"), any())).thenReturn(hpdsStatus("rr-7"));
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-2", "PENDING", null, null));
+        when(hpds.queryResult(any(HpdsTarget.class), eq("rr-2"), any())).thenReturn(ResponseEntity.ok(new byte[] {1}));
 
-        QueryStatus out = service.queryStatus("auth", id, req());
+        service.result("auth", id);
 
-        assertThat(out.getResourceID()).isEqualTo(resourceUuid);
+        verify(hpds).queryResult(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE".equals(t.baseUrl())), eq("rr-2"), any());
+    }
+
+    @Test
+    void signedUrlDispatchesV3WhenStoredVersionIs3() { // THE BUG FIX
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any()))
+            .thenReturn(ResponseEntity.ok("{\"signedUrl\":\"https://s3/x\"}"));
+
+        SignedUrlResponse out = service.signedUrl("auth", id);
+
+        assertThat(out.signedUrl()).isEqualTo("https://s3/x");
+        verify(hpds).queryResultSignedUrl(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), eq("rr-1"), any());
+    }
+
+    /** A downstream body that is not a {@code {"signedUrl": ...}} object is an upstream contract violation, not a null-carrying 200. */
+    @Test
+    void signedUrlWithoutASignedUrlFieldSurfacesAsAnUpstreamFailure() {
+        UUID id = UUID.randomUUID();
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, "{}", "rr-1", "PENDING", "3", null));
+        when(hpds.queryResultSignedUrl(any(HpdsTarget.class), eq("rr-1"), any())).thenReturn(ResponseEntity.ok("not json"));
+
+        assertThatThrownBy(() -> service.signedUrl("auth", id)).isInstanceOf(HpdsCommunicationException.class);
     }
 
     // --- metadata ---
@@ -225,16 +234,18 @@ class QueryServiceTest {
     void metadataBuildsResultMetadataShapeWithoutCallingHpds() {
         UUID id = UUID.randomUUID();
         StoredQuery stored = new StoredQuery(
-            id, "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":\"q\"}", "rr-1", "AVAILABLE", null,
+            id, "{\"query\":\"q\"}", "rr-1", "AVAILABLE", null,
             java.util.Base64.getEncoder().encodeToString("{\"commonAreaUUID\":\"x\"}".getBytes())
         );
         when(operationsClient.get(id)).thenReturn(stored);
 
-        QueryStatus out = service.queryMetadata(id);
+        QueryStatusResponse out = service.metadata(id);
 
-        assertThat(out.getResultMetadata()).containsKey("queryJson");
-        assertThat(out.getResultMetadata()).containsKey("queryResultMetadata");
-        assertThat((String) out.getResultMetadata().get("queryResultMetadata")).contains("commonAreaUUID");
+        assertThat(out.picsureId()).isEqualTo(id);
+        assertThat(out.resourceResultId()).isEqualTo("rr-1");
+        assertThat(out.status()).isEqualTo(edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus.AVAILABLE);
+        assertThat(out.resultMetadata()).containsKey("queryJson").containsKey("queryResultMetadata");
+        assertThat((String) out.resultMetadata().get("queryResultMetadata")).contains("commonAreaUUID");
         org.mockito.Mockito.verifyNoInteractions(hpds);
     }
 
@@ -243,20 +254,17 @@ class QueryServiceTest {
         UUID id = UUID.randomUUID();
         when(operationsClient.get(id)).thenThrow(new PicsureException(HttpStatus.NOT_FOUND, "not_found", "nope"));
 
-        assertThatThrownBy(() -> service.queryMetadata(id))
+        assertThatThrownBy(() -> service.metadata(id))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
 
-        verify(operationsClient).get(id); // the one lookup queryMetadata is allowed to make
+        verify(operationsClient).get(id); // the one lookup metadata is allowed to make
         verifyNoMoreInteractions(operationsClient); // pins that no second (e.g. common-area) lookup is attempted
     }
 
     /**
-     * A row written before the federated removal stores a serialized FederatedQueryRequest. queryMetadata must still read it: it parses the
+     * A row written before the federated removal stores a serialized FederatedQueryRequest. metadata must still read it: it parses the
      * stored blob into a plain {@code Map} via {@code MAPPER.readValue(..., Object.class)}, so {@code "@type"} is just another map key and
-     * any value — known, unknown, or garbage — parses fine. That's why this test would still pass if the blob's {@code "@type"} were
-     * replaced with a nonsense value: it pins the parse path, not the subtype registry. The subtype-registry fallback (via
-     * {@code QueryRequest}'s {@code defaultImpl}) is separately pinned by
-     * {@code QueryRequestTest.shouldDeserializeRemovedFederatedTypeAsGeneralQueryRequest} in pic-sure-api-model.
+     * any value — known, unknown, or garbage — parses fine.
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -267,13 +275,12 @@ class QueryServiceTest {
                 + UUID.randomUUID() + "\"," + "\"institutionOfOrigin\":\"BCH\"," + "\"requesterEmail\":\"alice@harvard.edu\"}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, legacyBlob, "rr-legacy", "AVAILABLE", "3", null));
 
-        QueryStatus result = service.queryMetadata(id);
+        QueryStatusResponse result = service.metadata(id);
 
-        Map<String, Object> resultMetadata = result.getResultMetadata();
-        Map<String, Object> queryJson = (Map<String, Object>) resultMetadata.get("queryJson");
+        Map<String, Object> queryJson = (Map<String, Object>) result.resultMetadata().get("queryJson");
         assertThat(queryJson).isNotNull();
         assertThat(queryJson).containsKey("query");
-        assertThat(result.getPicsureResultId()).isEqualTo(id);
+        assertThat(result.picsureId()).isEqualTo(id);
     }
 
     @Test
@@ -284,9 +291,9 @@ class QueryServiceTest {
             + "\"expectedResultType\":\"COUNT\",\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
 
-        QueryStatus out = service.queryMetadata(id);
+        QueryStatusResponse out = service.metadata(id);
 
-        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
         assertThat(queryJson).isNotNull();
         assertThat(queryJson).containsKey("resourceUUID"); // wrapper preserved
         Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
@@ -305,9 +312,9 @@ class QueryServiceTest {
                 + "{\"categoryVariantInfoFilters\":{\"Gene_with_variant\":[\"B\"]},\"numericVariantInfoFilters\":{}}]}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v1Blob, "rr-1", "AVAILABLE", null, null));
 
-        QueryStatus out = service.queryMetadata(id);
+        QueryStatusResponse out = service.metadata(id);
 
-        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
         Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
         assertThat(inner).containsKey("variantInfoFilters"); // untranslated v1 body preserved
         assertThat(inner).containsKey("categoryFilters"); // raw v1 body returned in full, not partially translated
@@ -318,19 +325,17 @@ class QueryServiceTest {
     @SuppressWarnings("unchecked")
     void metadataLeavesV3StoredRowUntranslated() {
         UUID id = UUID.randomUUID();
-        String v3Blob = "{\"resourceUUID\":\"" + UUID.randomUUID() + "\",\"query\":{"
-            + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
+        String v3Blob = "{\"query\":{" + "\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
             + "\"conceptPath\":\"\\\\x\\\\\"},\"genomicFilters\":[]}}";
         when(operationsClient.get(id)).thenReturn(new StoredQuery(id, v3Blob, "rr-1", "AVAILABLE", "3", null));
 
-        QueryStatus out = service.queryMetadata(id);
+        QueryStatusResponse out = service.metadata(id);
 
-        Map<String, Object> queryJson = (Map<String, Object>) out.getResultMetadata().get("queryJson");
+        Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
         Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
         // non-null structural assertion: a wrongly-applied v1 translation would produce a different/empty clause,
         // so asserting the exact conceptPath survives discriminates "left alone" from "translated".
         assertThat(inner.get("phenotypicClause")).isNotNull();
-        @SuppressWarnings("unchecked")
         Map<String, Object> clause = (Map<String, Object>) inner.get("phenotypicClause");
         assertThat(clause.get("conceptPath")).isEqualTo("\\x\\");
     }

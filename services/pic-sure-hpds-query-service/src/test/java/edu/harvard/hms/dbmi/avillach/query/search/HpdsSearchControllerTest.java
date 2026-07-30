@@ -2,6 +2,7 @@ package edu.harvard.hms.dbmi.avillach.query.search;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -13,8 +14,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import java.util.UUID;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,10 +35,10 @@ import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * Full-context MockMvc coverage of {@code /hpds/{backend}[/v3]/search/**}. Search is NOT versioned downstream (matching the ported
- * {@code PicsureSearchService}): both the v1 and v3 ingress paths for a given backend must land on the SAME non-{@code /v3} HPDS URL.
- * {@code auth} and {@code open} are pointed at distinct paths on one WireMock instance so backend selection is verifiable without running
- * two servers.
+ * Full-context MockMvc coverage of {@code /hpds/{backend}/v3/search/**}. The ingress is v3-only and typed ({@code SearchRequest} in,
+ * {@code PaginatedResponse<String>} out of {@code /search/values}); search remains NOT versioned downstream (matching the ported
+ * {@code PicsureSearchService}), so the v3 ingress path must still land on the non-{@code /v3} HPDS URL. {@code auth} and {@code open} are
+ * pointed at distinct paths on one WireMock instance so backend selection is verifiable without running two servers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -78,20 +77,17 @@ class HpdsSearchControllerTest {
     }
 
     @Test
-    void searchOnAuthBackendMapsToSameDownstreamUrlForV1AndV3() throws Exception {
+    void searchBindsTheTypedRequestAndHitsTheNonVersionedDownstreamUrl() throws Exception {
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
+            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"BRCA\"}")
         ).andExpect(status().isOk());
 
-        mockMvc.perform(
-            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
-
-        hpds.verify(2, postRequestedFor(urlEqualTo("/AUTH/search"))); // same non-versioned URL both times
+        // non-versioned URL, and the search term carried under the downstream envelope's query field (Task 7 retypes this hop)
+        hpds.verify(postRequestedFor(urlEqualTo("/AUTH/search")).withRequestBody(equalToJson("{\"query\":\"BRCA\"}", true, true)));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/v3/search")));
     }
 
     @Test
@@ -99,43 +95,54 @@ class HpdsSearchControllerTest {
         hpds.stubFor(WireMock.post(urlEqualTo("/OPEN/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
 
         mockMvc.perform(
-            post("/hpds/open/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
+            post("/hpds/open/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"BRCA\"}")
         ).andExpect(status().isOk());
 
         hpds.verify(postRequestedFor(urlEqualTo("/OPEN/search")));
     }
 
+    /** Strict deserialization: a body carrying anything but the modelled {@code query} field is a 400, not a silently-dropped field. */
     @Test
-    void searchViaV3PathNeverHitsAVersionedDownstreamUrl() throws Exception {
-        hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}")));
-
+    void unknownFieldsOnTheSearchRequestAreRejectedWith400() throws Exception {
         mockMvc.perform(
-            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
-        ).andExpect(status().isOk());
+            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"BRCA\",\"resourceUUID\":\"00000000-0000-0000-0000-000000000000\"}")
+        ).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errorType").value("bad_request"));
 
-        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/v3/search"))); // search is never versioned downstream
+        hpds.verify(0, postRequestedFor(urlEqualTo("/AUTH/search")));
     }
 
     @Test
-    void valuesEndpointMapsForBothV1AndV3OnAuthBackend() throws Exception {
+    void valuesIsAPureQueryParamGetReturningTheTypedPage() throws Exception {
         hpds.stubFor(
             WireMock.get(urlPathEqualTo("/AUTH/search/values/")).withQueryParam("genomicConceptPath", equalTo("\\gene\\"))
-                .withQueryParam("query", equalTo("BRCA")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
+                .withQueryParam("query", equalTo("BRCA")).willReturn(okJson("{\"results\":[\"BRCA1\"],\"page\":1,\"total\":1}"))
         );
 
         mockMvc.perform(
-            get("/hpds/auth/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .param("genomicConceptPath", "\\gene\\").param("query", "BRCA")
-        ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+            get("/hpds/auth/v3/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER).param("genomicConceptPath", "\\gene\\")
+                .param("query", "BRCA")
+        ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1)).andExpect(jsonPath("$.results[0]").value("BRCA1"));
 
+        hpds.verify(getRequestedFor(urlPathEqualTo("/AUTH/search/values/")));
+    }
+
+    // --- the legacy v1 search ingress routes are gone ---
+
+    @Test
+    void legacyV1SearchRouteIsGone() throws Exception {
         mockMvc.perform(
-            get("/hpds/auth/v3/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .param("genomicConceptPath", "\\gene\\").param("query", "BRCA")
-        ).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"BRCA\"}")
+        ).andExpect(status().isNotFound());
+    }
 
-        hpds.verify(2, getRequestedFor(urlPathEqualTo("/AUTH/search/values/")));
+    @Test
+    void legacyV1SearchValuesRouteIsGone() throws Exception {
+        mockMvc.perform(
+            get("/hpds/auth/search/values").header(GatewayUserResolver.HEADER_USER_ID, USER).param("genomicConceptPath", "\\gene\\")
+        ).andExpect(status().isNotFound());
     }
 
     @Test
@@ -143,15 +150,14 @@ class HpdsSearchControllerTest {
         hpds.stubFor(WireMock.post(urlEqualTo("/AUTH/search")).willReturn(aResponse().withStatus(500)));
 
         mockMvc.perform(
-            post("/hpds/auth/search").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
+            post("/hpds/auth/v3/search").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"BRCA\"}")
         ).andExpect(status().isBadGateway());
     }
 
     @Test
     void searchWithoutGatewayIdentityIsRejected() throws Exception {
-        mockMvc.perform(
-            post("/hpds/auth/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}")
-        ).andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
+        mockMvc.perform(post("/hpds/auth/v3/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"BRCA\"}"))
+            .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
     }
 }

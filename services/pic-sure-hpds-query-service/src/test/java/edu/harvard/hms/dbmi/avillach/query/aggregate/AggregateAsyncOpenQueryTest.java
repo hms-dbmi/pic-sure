@@ -138,8 +138,9 @@ class AggregateAsyncOpenQueryTest {
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
         mockMvc.perform(
+            // the auth ingress binds the BARE v3 Query (HpdsQueryV3Controller), not the aggregate controller's envelope
             post("/hpds/auth/v3/query").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":{\"expectedResultType\":\"DATAFRAME\"}}")
+                .content("{\"expectedResultType\":\"DATAFRAME\"}")
         ).andExpect(status().isOk());
 
         // Generic authorized path: the raw DATAFRAME query is stored + dispatched unchanged; no consent lookup, no CROSS_COUNT rewrite.

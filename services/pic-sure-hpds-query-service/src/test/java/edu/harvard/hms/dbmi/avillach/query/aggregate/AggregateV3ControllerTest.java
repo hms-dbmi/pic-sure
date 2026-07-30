@@ -104,8 +104,9 @@ class AggregateV3ControllerTest {
         );
 
         mockMvc.perform(
+            // the auth ingress binds the BARE v3 Query (HpdsQueryV3Controller), not the aggregate controller's envelope
             post("/hpds/auth/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"query\":\"q\"}")
+                .content("{\"expectedResultType\":\"COUNT\"}")
         ).andExpect(status().isOk()).andExpect(content().contentType(MediaType.APPLICATION_JSON));
 
         verifyNoInteractions(aggregateService);
