@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -213,6 +214,36 @@ class PicSureV3ServiceWebTest {
                     .param("size", "10")
             ).andExpect(status().isOk()).andExpect(jsonPath("$.results[0]").value("BRCA1")).andExpect(jsonPath("$.page").value(1))
             .andExpect(jsonPath("$.total").value(2));
+    }
+
+    // --- write: the two guards the deleted v1 PicSureServiceTest covered, re-homed onto the v3 endpoint ---
+
+    /** {@code test_upload} short-circuits every other guard: the upload service's verdict is the response. */
+    @Test
+    void writeUploadsTheTestFileForTheTestUploadDataType() throws Exception {
+        UUID picsureId = UUID.randomUUID();
+        when(testDataService.uploadTestFile(picsureId.toString())).thenReturn(true);
+
+        mockMvc.perform(
+            post("/PIC-SURE/v3/write/{dataType}", "test_upload").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"select\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":\"" + picsureId + "\"}")
+        ).andExpect(status().isOk());
+
+        verify(testDataService).uploadTestFile(picsureId.toString());
+    }
+
+    /** Only DATAFRAME_TIMESERIES and PATIENTS are writable; anything else is a 400 naming the reason, never a silent no-op. */
+    @Test
+    void writeRejectsANonTimeseriesResultTypeWith400() throws Exception {
+        mockMvc
+            .perform(
+                post("/PIC-SURE/v3/write/{dataType}", "patients").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"select\":[],\"expectedResultType\":\"COUNT\",\"picsureId\":\"" + UUID.randomUUID() + "\"}")
+            ).andExpect(status().isBadRequest())
+            .andExpect(content().string("The write endpoint only writes time series dataframes. Fix result type."));
+
+        verify(queryV3Service, never()).runQuery(any());
+        verify(fileSharingService, never()).createPatientList(any());
     }
 
     // --- info + the deleted endpoint ---
