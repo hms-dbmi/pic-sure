@@ -61,6 +61,20 @@ public class SecurityConfig {
         return http.csrf(csrf -> csrf.disable()).authorizeHttpRequests(a -> a.anyRequest().permitAll()).build();
     }
 
+    /**
+     * KEPT DELIBERATELY, despite suppressing Boot's auto-configured mapper (and with it commons' {@code StrictWebDeserializationConfig}
+     * customizer, which only ever reaches the auto-configured one).
+     *
+     * <p>That customizer exists to make {@code @RequestBody} binding reject unmodelled fields; the gateway has no {@code @RequestBody}
+     * endpoint to bind — it is a proxy. What it does instead is parse request bodies as trees ({@code PsamaIntrospectionFilter},
+     * {@code BodyMutationFilter}), where FAIL_ON_UNKNOWN_PROPERTIES is inert, and this mapper is strict by Jackson's own default anyway.
+     * The introspection RESPONSE is bound by {@code PsamaClient}'s RestClient, not by this bean, and its contract is a deliberate tolerant
+     * reader.
+     *
+     * <p>Replacing it with the auto-configured mapper would instead widen behaviour: Boot registers every module on the classpath onto it,
+     * which is a larger and less predictable surface for the security-critical introspection payload than a bare mapper. So this stays, and
+     * {@code SecurityConfigTest} pins both its strictness and the rule-compatible shape it serializes.
+     */
     @Bean
     ObjectMapper objectMapper() {
         return new ObjectMapper();

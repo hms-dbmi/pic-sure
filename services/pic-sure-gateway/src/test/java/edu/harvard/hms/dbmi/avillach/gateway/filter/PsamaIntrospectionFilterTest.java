@@ -20,12 +20,14 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
+import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.commons.audit.AuditContext;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.BufferedRequestWrapper;
-import edu.harvard.hms.dbmi.avillach.gateway.auth.IntrospectionResponse;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.PsamaClient;
 import edu.harvard.hms.dbmi.avillach.gateway.auth.QueryAuthFetcher;
 import jakarta.servlet.FilterChain;
@@ -34,10 +36,20 @@ import jakarta.servlet.http.HttpServletResponse;
 
 class PsamaIntrospectionFilterTest {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private PsamaIntrospectionFilter filter(PsamaClient client, AuditContext ctx, QueryAuthFetcher fetcher) {
         return new PsamaIntrospectionFilter(
             client, ctx, new ObjectMapper(), fetcher, List.of("/actuator", "/openapi", "/swagger-ui", "/logging"), "userId"
         );
+    }
+
+    private static IntrospectionResponse active(List<String> roles, List<String> privileges) {
+        return new IntrospectionResponse(true, "u-1", "s-1", "alice@example.com", roles, privileges, false, null, null);
+    }
+
+    private static IntrospectionResponse inactive() {
+        return new IntrospectionResponse(false, null, null, null, null, null, false, null, null);
     }
 
     @Test
@@ -126,9 +138,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(eq("user-token"), any())).thenReturn(
-            new IntrospectionResponse(true, "u-1", "s-1", "alice@example.com", "ADMIN", List.of("SUPER_ADMIN"), false, null, null)
-        );
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of("SUPER_ADMIN")));
         AuditContext ctx = new AuditContext();
         PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
 
@@ -150,11 +160,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(eq("user-token"), any())).thenReturn(
-            new IntrospectionResponse(
-                true, "u-1", "s-1", "alice@example.com", "ADMIN", List.of("SUPER_ADMIN", "DATA_ADMIN", "USER"), false, null, null
-            )
-        );
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of("SUPER_ADMIN", "DATA_ADMIN", "USER")));
         AuditContext ctx = new AuditContext();
         PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
 
@@ -168,6 +174,45 @@ class PsamaIntrospectionFilterTest {
         verify(chain).doFilter(req, resp);
     }
 
+    /**
+     * PSAMA now sends roles as a JSON array, but {@code X-User-Roles} is still an opaque comma-joined string downstream
+     * ({@code GatewayUser#roles}). Joining with a bare comma -- no space -- keeps the header byte-identical to what PSAMA used to
+     * comma-join itself, so nothing downstream has to change and the 64KB header budget is unaffected.
+     */
+    @Test
+    void joinsRolesIntoTheSameCommaSeparatedHeaderValuePsamaUsedToSend() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any()))
+            .thenReturn(active(List.of("PIC-SURE Top Admin", "Admin", "User"), List.of("SUPER_ADMIN")));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ROLES)).isEqualTo("PIC-SURE Top Admin,Admin,User");
+    }
+
+    @Test
+    void absentRolesAndPrivilegesBecomeEmptyHeaderValuesRatherThanNull() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(null, null));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_ROLES)).isEqualTo("");
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_USER_PRIVILEGES)).isEqualTo("");
+    }
+
     @Test
     void successfulIntrospectionSetsAuthorizedAccessTypeAttribute() throws Exception {
         // IdentityPropagationFilter turns this attribute into X-Picsure-Access-Type, which is how downstream services
@@ -175,8 +220,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(eq("user-token"), any()))
-            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), false, null, null));
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/visualization/distributions");
@@ -208,7 +252,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(any(), any())).thenReturn(new IntrospectionResponse(false, null, null, null, null, null, null, null, null));
+        when(client.introspect(any(), any())).thenReturn(inactive());
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         BufferedRequestWrapper req = wrap("Bearer expired-token", new byte[0], "/visualization/distributions");
@@ -224,23 +268,64 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(eq("user-token"), any()))
-            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), false, null, null));
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
-        byte[] body = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":{\"a\":1}}".getBytes();
+        byte[] body = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"expectedResultType\":\"COUNT\"}".getBytes();
         // real path is sent verbatim: no /v3 rewriting, no canonical mapping
         BufferedRequestWrapper req = wrap("Bearer user-token", body, "/v3/query");
         HttpServletResponse resp = mock(HttpServletResponse.class);
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         f.doFilter(req, resp, mock(FilterChain.class));
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
-        verify(client).introspect(eq("user-token"), meta.capture());
-        assertThat(meta.getValue().get("Target Service")).isEqualTo("/v3/query");
-        assertThat(meta.getValue().toString()).doesNotContain("resourceCredentials");
-        assertThat(meta.getValue().toString()).doesNotContain("formattedQuery");
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().targetService()).isEqualTo("/v3/query");
+        assertThat(sent.getValue().query().has("expectedResultType")).isTrue();
+        assertThat(MAPPER.writeValueAsString(sent.getValue())).doesNotContain("resourceCredentials").doesNotContain("formattedQuery");
+    }
+
+    /**
+     * SECURITY: the query the gateway sends must be the request BODY itself (a bare v3 Query), not an envelope wrapping it -- deployed
+     * FISMA rules read {@code $.query.<field>} against exactly that node.
+     */
+    @Test
+    void sendsTheBufferedBodyItselfAsTheQueryNode() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req =
+            wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\",\"select\":[]}".getBytes(), "/hpds/auth/v3/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().query()).isEqualTo(MAPPER.readTree("{\"expectedResultType\":\"COUNT\",\"select\":[]}"));
+    }
+
+    @Test
+    void bodylessRequestOmitsTheQueryNodeEntirely() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/picsure/proxy/dictionary/search");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().query()).isNull();
+        // PSAMA distinguishes an absent query from a null one; the record's NON_NULL include keeps absence absent.
+        assertThat(MAPPER.writeValueAsString(sent.getValue())).doesNotContain("query");
     }
 
     @Test
@@ -248,8 +333,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(eq("user-token"), any()))
-            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), false, null, null));
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         // Truncated/invalid JSON that still textually contains a resourceCredentials secret.
@@ -259,11 +343,10 @@ class PsamaIntrospectionFilterTest {
         lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
         f.doFilter(req, resp, mock(FilterChain.class));
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Object>> meta = ArgumentCaptor.forClass(Map.class);
-        verify(client).introspect(eq("user-token"), meta.capture());
-        assertThat(meta.getValue()).doesNotContainKey("query");
-        assertThat(meta.getValue().toString()).doesNotContain("super-secret-value");
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().query()).isNull();
+        assertThat(MAPPER.writeValueAsString(sent.getValue())).doesNotContain("super-secret-value");
     }
 
     @Test
@@ -271,7 +354,7 @@ class PsamaIntrospectionFilterTest {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
-        when(client.introspect(any(), any())).thenReturn(new IntrospectionResponse(false, null, null, null, null, null, null, null, null));
+        when(client.introspect(any(), any())).thenReturn(inactive());
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
@@ -288,9 +371,10 @@ class PsamaIntrospectionFilterTest {
     void stashesRefreshedTokenAndMutatedQueryAttributes() throws Exception {
         PsamaClient client = mock(PsamaClient.class);
         QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        JsonNode mutated = MAPPER.readTree("{\"expectedResultType\":\"COUNT\",\"_topmed_consents\":[\"phs1\"]}");
         when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
         when(client.introspect(any(), any()))
-            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", "ADMIN", List.of(), true, "new-token", "{\"new\":1}"));
+            .thenReturn(new IntrospectionResponse(true, "u-1", "s-1", "a@b", List.of("ADMIN"), List.of(), true, "new-token", mutated));
         PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
 
         BufferedRequestWrapper req = wrap("Bearer user-token", "{}".getBytes(), "/query");
@@ -299,7 +383,84 @@ class PsamaIntrospectionFilterTest {
         f.doFilter(req, resp, mock(FilterChain.class));
 
         assertThat(req.getAttribute(PsamaIntrospectionFilter.ATTR_REFRESHED_TOKEN)).isEqualTo("new-token");
-        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isEqualTo("{\"new\":1}");
+        // BodyMutationFilter consumes a JsonNode now, not a JSON string.
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isEqualTo(mutated);
+    }
+
+    @Test
+    void noMutatedQueryStashesNoAttribute() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any())).thenReturn(active(List.of("ADMIN"), List.of()));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\"}".getBytes(), "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isNull();
+    }
+
+    /**
+     * An explicit {@code "query": null} deserializes to NullNode, not Java null. It means "no mutation" exactly as an absent key does, so
+     * it must not be mistaken for one -- BodyMutationFilter would otherwise be handed a node it fails closed on.
+     */
+    @Test
+    void explicitJsonNullQueryIsTreatedAsNoMutation() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any())).thenReturn(
+            new IntrospectionResponse(
+                true, "u-1", "s-1", "a@b", List.of("ADMIN"), List.of(), false, null, MAPPER.getNodeFactory().nullNode()
+            )
+        );
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\"}".getBytes(), "/query");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isNull();
+        verify(chain).doFilter(req, resp);
+    }
+
+    /**
+     * SECURITY: PSAMA used to writeValueAsString the mutated query. A gateway pointed at such a build would receive a TextNode -- and
+     * treating it as "no mutation" would forward the caller's ORIGINAL, unfiltered query. Deny instead.
+     */
+    @Test
+    void failsClosedWhenTheMutatedQueryIsNotAJsonObject() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any())).thenReturn(Optional.empty());
+        when(client.introspect(any(), any())).thenReturn(
+            new IntrospectionResponse(
+                true, "u-1", "s-1", "a@b", List.of("ADMIN"), List.of(), false, null,
+                MAPPER.getNodeFactory().textNode("{\"_topmed_consents\":[\"phs1\"]}")
+            )
+        );
+        AuditContext ctx = new AuditContext();
+        PsamaIntrospectionFilter f = filter(client, ctx, fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", "{\"expectedResultType\":\"COUNT\"}".getBytes(), "/query");
+        StringWriter written = new StringWriter();
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        when(resp.getWriter()).thenReturn(new PrintWriter(written, true));
+        FilterChain chain = mock(FilterChain.class);
+        f.doFilter(req, resp, chain);
+
+        verify(resp).setStatus(502);
+        assertThat(written.toString()).contains("\"errorType\":\"introspection_malformed\"");
+        assertThat(ctx.getMetadata()).containsEntry("auth_failure_reason", "introspection_malformed");
+        verify(chain, never()).doFilter(any(), any());
+        // Denial path: no identity leaks through, and BodyMutationFilter is never handed the bad node.
+        assertThat(req.getAttribute(GatewayUserResolver.HEADER_ACCESS_TYPE)).isNull();
+        assertThat(req.getAttribute(BodyMutationFilter.ATTR_MUTATED_QUERY)).isNull();
     }
 
     @Test
@@ -485,6 +646,27 @@ class PsamaIntrospectionFilterTest {
         // Fail closed: the request must never reach the downstream route, and PSAMA is never consulted.
         verify(chain, never()).doFilter(any(), any());
         verifyNoInteractions(client);
+    }
+
+    /** The stored query fetched for a bodyless result read is what PSAMA authorizes, credentials stripped. */
+    @Test
+    void sendsTheDispatchedStoredQueryAsTheQueryNodeForResultReads() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath(any()))
+            .thenReturn(Optional.of("{\"expectedResultType\":\"COUNT\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"}}"));
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/hpds/auth/v3/query/abc/result", "GET");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().query().get("expectedResultType").asText()).isEqualTo("COUNT");
+        assertThat(MAPPER.writeValueAsString(sent.getValue())).doesNotContain("resourceCredentials").doesNotContain("secret");
     }
 
     private static BufferedRequestWrapper wrap(String authHeader, byte[] body, String uri) {

@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import edu.harvard.dbmi.avillach.contracts.internal.DispatchResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
@@ -17,6 +18,9 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * {@code /operations/internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape —
  * NO database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY
  * error (incl. 403) denies the request.
+ *
+ * <p>The response body is the shared {@link DispatchResponse} contract — the same record operations-service writes — rather than a private
+ * copy of it.
  */
 public class QueryAuthFetcher {
 
@@ -71,8 +75,5 @@ public class QueryAuthFetcher {
             throw new PicsureException(HttpStatus.BAD_GATEWAY, "dispatch_empty", "Dispatch returned no query for id " + picsureId);
         }
         return resp.queryJson();
-    }
-
-    record DispatchResponse(String queryJson) {
     }
 }
