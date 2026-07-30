@@ -188,5 +188,6 @@ class AggregateAsyncOpenQueryTest {
 
         verify(operationsClient, never()).save(any());
         hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/v3/query")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/v3/search")));
     }
 }

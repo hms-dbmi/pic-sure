@@ -55,8 +55,11 @@ public class AggregateService {
     /**
      * Port of the WAR's {@code querySync} allow-list (identical in v1 and v3), typed as the enum. The WAR's tenth entry,
      * {@code OBSERVATION_COUNT}, has no v3 {@link ResultType} constant and so cannot reach this check.
+     *
+     * <p>Package-private so {@code AggregateServiceTest} can drive EVERY allow-listed type through {@link #getExpectedResponse}: adding a
+     * type here without deciding its obfuscation treatment there must be a test failure, not a silent pass-through.
      */
-    private static final Set<ResultType> ALLOWED_RESULT_TYPES = Set.of(
+    static final Set<ResultType> ALLOWED_RESULT_TYPES = Set.of(
         ResultType.COUNT, ResultType.CROSS_COUNT, ResultType.INFO_COLUMN_LISTING, ResultType.OBSERVATION_CROSS_COUNT,
         ResultType.CATEGORICAL_CROSS_COUNT, ResultType.CONTINUOUS_CROSS_COUNT, ResultType.VARIANT_COUNT_FOR_QUERY,
         ResultType.AGGREGATE_VCF_EXCERPT, ResultType.VCF_EXCERPT
@@ -122,8 +125,14 @@ public class AggregateService {
     }
 
     /**
-     * Dispatches on the result type to the matching obfuscation path. Types allow-listed but not obfuscated in the WAR
-     * (INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, VCF_EXCERPT) fall through unmodified.
+     * Dispatches on the result type to the matching obfuscation path. Every {@link #ALLOWED_RESULT_TYPES} member is named EXPLICITLY here,
+     * including the five the WAR allow-listed but never obfuscated (INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY,
+     * AGGREGATE_VCF_EXCERPT, VCF_EXCERPT), which pass through unmodified.
+     *
+     * <p><b>No silent pass-through default.</b> A raw-return {@code default} would mean that widening the allow-list without deciding the
+     * new type's obfuscation treatment leaks its unobfuscated payload -- a privacy regression that compiles and passes. The default throws
+     * instead, so the omission is loud. It is unreachable for the current allow-list ({@link #querySync} rejects everything else with a 400
+     * first), which is exactly what {@code AggregateServiceTest} pins by driving all nine types through here.
      */
     private String getExpectedResponse(ResultType resultType, String entityString, Query query) {
         try {
@@ -132,7 +141,10 @@ public class AggregateService {
                 case CROSS_COUNT -> objectMapper.writeValueAsString(obfuscation.processCrossCounts(entityString));
                 case CATEGORICAL_CROSS_COUNT -> obfuscation.processCategoricalCrossCounts(entityString, getCrossCountForQuery(query));
                 case CONTINUOUS_CROSS_COUNT -> processContinuousCrossCounts(entityString, getCrossCountForQuery(query));
-                default -> entityString;
+                case INFO_COLUMN_LISTING, OBSERVATION_CROSS_COUNT, VARIANT_COUNT_FOR_QUERY, AGGREGATE_VCF_EXCERPT, VCF_EXCERPT -> entityString;
+                default -> throw new IllegalStateException(
+                    "Result type " + resultType + " is allow-listed but has no obfuscation treatment; refusing to return its raw payload"
+                );
             };
         } catch (IOException e) {
             throw new UncheckedIOException("Error processing aggregate response", e);

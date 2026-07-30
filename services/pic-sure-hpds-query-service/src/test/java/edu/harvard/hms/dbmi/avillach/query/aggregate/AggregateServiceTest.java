@@ -1,6 +1,7 @@
 package edu.harvard.hms.dbmi.avillach.query.aggregate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,8 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.GenomicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -109,10 +113,16 @@ class AggregateServiceTest {
 
     /**
      * The typed rebuild, end to end: the query that reaches the backend carries the consent allow-list in {@code select} and
-     * {@code CROSS_COUNT}, while every other component of the caller's query survives untouched.
+     * {@code CROSS_COUNT}, while every other component of the caller's query survives VERBATIM.
+     *
+     * <p>The authorization and genomic filters are deliberately NON-EMPTY. Both components null-coalesce to {@code List.of()} inside the
+     * {@link Query} record, so an empty fixture would let a rebuild that dropped either positional argument still satisfy every assertion
+     * here -- and these two are precisely the components whose silent loss WIDENS access: the gateway body-replaces the submission with
+     * PSAMA's consent-mutated query, which carries injected {@code authorizationFilters}. Losing them would hand the open backend an
+     * unrestricted query.
      */
     @Test
-    void crossCountRebuildsTheQueryWithTheConsentAllowListInSelect() {
+    void crossCountRebuildsTheQueryWithTheConsentAllowListInSelectAndKeepsEveryOtherComponent() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{}"));
@@ -121,7 +131,10 @@ class AggregateServiceTest {
         UUID picsureId = UUID.randomUUID();
         UUID id = UUID.randomUUID();
         PhenotypicFilter filter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\age\\", null, null, null, null);
-        Query in = new Query(List.of("\\dropped\\"), List.of(), filter, List.of(), ResultType.CROSS_COUNT, picsureId, id);
+        List<AuthorizationFilter> authFilters =
+            List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1")), new AuthorizationFilter("\\_topmed\\", Set.of("c2")));
+        List<GenomicFilter> genomicFilters = List.of(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null));
+        Query in = new Query(List.of("\\dropped\\"), authFilters, filter, genomicFilters, ResultType.CROSS_COUNT, picsureId, id);
 
         svc.querySync(in);
 
@@ -130,9 +143,58 @@ class AggregateServiceTest {
         Query sent = cap.getValue();
         assertThat(sent.select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
         assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
+        // the access-narrowing components must survive the rebuild EXACTLY -- losing them would widen what the open backend answers
+        assertThat(sent.authorizationFilters()).containsExactlyElementsOf(authFilters);
+        assertThat(sent.genomicFilters()).containsExactlyElementsOf(genomicFilters);
         assertThat(sent.phenotypicClause()).isEqualTo(filter);
         assertThat(sent.picsureId()).isEqualTo(picsureId);
         assertThat(sent.id()).isEqualTo(id);
+    }
+
+    /** Same guarantee on the async submit, which is the path whose REWRITTEN query is what gets persisted and later re-read. */
+    @Test
+    void asyncCrossCountRebuildKeepsTheAccessNarrowingFilters() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        QueryService queryService = mock(QueryService.class);
+        AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
+
+        List<AuthorizationFilter> authFilters = List.of(new AuthorizationFilter("\\_consents\\", Set.of("phs000001.c1")));
+        List<GenomicFilter> genomicFilters = List.of(new GenomicFilter("Variant_frequency_as_text", null, 0.1f, 0.9f));
+        svc.query(new Query(null, authFilters, null, genomicFilters, ResultType.CROSS_COUNT, null, null));
+
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(queryService).queryV3(org.mockito.ArgumentMatchers.eq("open"), cap.capture());
+        assertThat(cap.getValue().authorizationFilters()).containsExactlyElementsOf(authFilters);
+        assertThat(cap.getValue().genomicFilters()).containsExactlyElementsOf(genomicFilters);
+    }
+
+    /**
+     * PRIVACY GUARD: every allow-listed type must have an EXPLICIT obfuscation treatment. The response dispatch has no raw-return default
+     * -- an allow-listed type with no case throws rather than leaking its unobfuscated payload -- so widening
+     * {@link AggregateService#ALLOWED_RESULT_TYPES} without deciding the new type's treatment fails HERE instead of shipping a leak.
+     */
+    @Test
+    void everyAllowListedResultTypeHasAnExplicitObfuscationTreatment() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        // shape the stub to the type actually being dispatched, so each branch gets a body it can parse
+        when(backend.querySync(any())).thenAnswer(inv -> {
+            Query sent = inv.getArgument(0);
+            return switch (sent.expectedResultType()) {
+                case COUNT -> ResponseEntity.ok("12");
+                // also serves the internal CROSS_COUNT lookup the categorical/continuous branches make
+                case CROSS_COUNT -> ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}");
+                default -> ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":100}}");
+            };
+        });
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        assertThat(AggregateService.ALLOWED_RESULT_TYPES).isNotEmpty();
+        for (ResultType type : AggregateService.ALLOWED_RESULT_TYPES) {
+            assertThatCode(() -> svc.querySync(query(type))).as("allow-listed type %s has no obfuscation treatment", type)
+                .doesNotThrowAnyException();
+        }
     }
 
     /** The consents lookup is a typed {@link SearchRequest} carrying the studies-consents path -- never an untyped envelope. */
