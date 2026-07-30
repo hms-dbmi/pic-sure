@@ -3,28 +3,25 @@ package edu.harvard.hms.dbmi.avillach.auth.rest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.TermsOfService;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
-import edu.harvard.hms.dbmi.avillach.auth.model.response.PICSUREResponse;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.TOSService;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.UserService;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,9 +30,12 @@ import static edu.harvard.hms.dbmi.avillach.auth.utils.AuthNaming.AuthRoleNaming
 
 /**
  * <p>Endpoint for creating and updating terms of service entities. Records when a user accepts a term of service.</p>
+ *
+ * <p>The {@code text/html} and {@code text/plain} shapes here are deliberate and unchanged: the TOS body is a document the UI renders, not
+ * a structure, and the acceptance check is a bare boolean a client reads as text.
  */
 @Tag(name = "Terms of Service Management")
-@Controller
+@RestController
 @RequestMapping("/tos")
 public class TermsOfServiceController {
 
@@ -52,52 +52,55 @@ public class TermsOfServiceController {
     @Operation(description = "GET the latest Terms of Service")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(path = "/latest", produces = "text/html")
-    public ResponseEntity<String> getLatestTermsOfService() {
+    public String getLatestTermsOfService() {
         logger.info("Getting latest Terms of Service");
-        return PICSUREResponse.success(tosService.getLatest());
+        return tosService.getLatest();
     }
 
+    /**
+     * Answers with the stored terms of service, or an empty body when the submitted html matched what was already current -- the same
+     * 200-with-no-body the envelope's {@code success()} produced.
+     */
     @Operation(description = "Update the Terms of Service html body")
     @AuditEvent(type = "ADMIN", action = "tos.update")
     @RolesAllowed({AuthNaming.AuthRoleNaming.ADMIN, SUPER_ADMIN})
     @PostMapping(path = "/update", consumes = "text/html", produces = "application/json")
-    public ResponseEntity<?> updateTermsOfService(@RequestBody String html, HttpServletRequest request) {
+    public TermsOfService updateTermsOfService(@RequestBody String html, HttpServletRequest request) {
         SecurityContext context = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) context.getAuthentication().getPrincipal();
         String userSubject = customUserDetails.getUser().getSubject();
         logger.info("User {} updating TOS", userSubject);
         Optional<TermsOfService> termsOfService = tosService.updateTermsOfService(html);
         if (termsOfService.isEmpty()) {
-            return PICSUREResponse.success();
+            return null;
         }
         User user = tosService.acceptTermsOfService(userSubject);
         userService.updateUser(List.of(user));
         AuditAttributes.putMetadata(request, "tos_updated", "true");
-        return PICSUREResponse.success(termsOfService.get());
+        return termsOfService.get();
     }
 
-    @Operation(description = "GET if current user has acceptted his TOS or not")
+    @Operation(description = "GET if current user has accepted their TOS or not")
     @AuditEvent(type = "ACCESS", action = "tos.view")
     @GetMapping(produces = "text/plain")
-    public ResponseEntity<Boolean> hasUserAcceptedTOS() {
+    public Boolean hasUserAcceptedTOS() {
         SecurityContext context = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) context.getAuthentication().getPrincipal();
         String userSubject = customUserDetails.getUser().getSubject();
         logger.info("hasUserAcceptedTOS for user {}", userSubject);
-        return PICSUREResponse.success(tosService.hasUserAcceptedLatest(userSubject));
+        return tosService.hasUserAcceptedLatest(userSubject);
     }
 
     @Operation(description = "Endpoint for current user to accept his terms of service")
     @AuditEvent(type = "ACCESS", action = "tos.accept")
     @PostMapping(path = "/accept", produces = "application/json")
-    public ResponseEntity<?> acceptTermsOfService(HttpServletRequest request) {
+    public void acceptTermsOfService(HttpServletRequest request) {
         SecurityContext context = SecurityContextHolder.getContext();
         CustomUserDetails customUserDetails = (CustomUserDetails) context.getAuthentication().getPrincipal();
         String userSubject = customUserDetails.getUser().getSubject();
         User user = tosService.acceptTermsOfService(userSubject);
         userService.updateUser(List.of(user));
         AuditAttributes.putMetadata(request, "tos_accepted", "true");
-        return PICSUREResponse.success();
     }
 
 }

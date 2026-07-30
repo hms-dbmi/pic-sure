@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
@@ -38,7 +40,8 @@ public class FENCEAuthenticationService implements AuthenticationService {
     private final Logger logger = LoggerFactory.getLogger(FENCEAuthenticationService.class);
 
     private final UserService userService;
-    private final ConnectionWebService connectionService; // We will need to investigate if the ConnectionWebService will need to be versioned as well.
+    private final ConnectionWebService connectionService; // We will need to investigate if the ConnectionWebService will need to be
+                                                          // versioned as well.
     private final FenceMappingUtility fenceMappingUtility;
     private final CacheEvictionService cacheEvictionService;
 
@@ -53,14 +56,12 @@ public class FENCEAuthenticationService implements AuthenticationService {
     private final RestClientUtil restClientUtil;
 
     @Autowired
-    public FENCEAuthenticationService(UserService userService,
-                                      ConnectionWebService connectionService,
-                                      RestClientUtil restClientUtil,
-                                      @Value("${fence.idp.provider.is.enabled}") boolean isFenceEnabled,
-                                      @Value("${fence.idp.provider.uri}") String idpProviderUri,
-                                      @Value("${fence.client.id}") String fenceClientId,
-                                      @Value("${fence.client.secret}") String fenceClientSecret,
-                                      FenceMappingUtility fenceMappingUtility, CacheEvictionService cacheEvictionService) {
+    public FENCEAuthenticationService(
+        UserService userService, ConnectionWebService connectionService, RestClientUtil restClientUtil,
+        @Value("${fence.idp.provider.is.enabled}") boolean isFenceEnabled, @Value("${fence.idp.provider.uri}") String idpProviderUri,
+        @Value("${fence.client.id}") String fenceClientId, @Value("${fence.client.secret}") String fenceClientSecret,
+        FenceMappingUtility fenceMappingUtility, CacheEvictionService cacheEvictionService
+    ) {
         this.userService = userService;
         this.connectionService = connectionService;
         this.idp_provider_uri = idpProviderUri;
@@ -80,11 +81,11 @@ public class FENCEAuthenticationService implements AuthenticationService {
     }
 
     @Override
-    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
+    public AuthenticationResponse authenticate(AuthenticationRequest authRequest, String host) {
         String callBackUrl = "https://" + host + "/login/loading/";
 
         logger.debug("getFENCEProfile() starting...");
-        String fence_code = authRequest.get("code");
+        String fence_code = authRequest.code();
 
         // Validate that the fence code is alphanumeric
         if (!fence_code.matches("[a-zA-Z0-9]+")) {
@@ -118,8 +119,9 @@ public class FENCEAuthenticationService implements AuthenticationService {
             logger.debug("getFENCEProfile() .email:{}", fence_user_profile.get("email"));
         } catch (Exception ex) {
             logger.error("getFENCEProfile() could not retrieve the user profile from the auth provider, because {}", ex.getMessage(), ex);
-            throw new NotAuthorizedException("Could not get the user profile " +
-                    "from the Gen3 authentication provider." + ex.getMessage());
+            throw new NotAuthorizedException(
+                "Could not get the user profile " + "from the Gen3 authentication provider." + ex.getMessage()
+            );
         }
 
         User currentUser;
@@ -127,7 +129,9 @@ public class FENCEAuthenticationService implements AuthenticationService {
             // Create or retrieve the user profile from our database, based on the the key
             // in the Gen3/FENCE profile
             currentUser = createUserFromFENCEProfile(fence_user_profile);
-            logger.info("getFENCEProfile() saved details for user with e-mail:{} and subject:{}", currentUser.getEmail(), currentUser.getSubject());
+            logger.info(
+                "getFENCEProfile() saved details for user with e-mail:{} and subject:{}", currentUser.getEmail(), currentUser.getSubject()
+            );
             cacheEvictionService.evictCache(currentUser);
         } catch (Exception ex) {
             logger.error("getFENCEToken() Could not persist the user information, because {}", ex.getMessage());
@@ -169,20 +173,20 @@ public class FENCEAuthenticationService implements AuthenticationService {
         userClaims.setName(fence_user_profile.has("name") ? fence_user_profile.get("name").asText() : currentUser.getName());
         userClaims.setIdp(this.fenceConnection.getLabel());
         userClaims.setRoles(userService.addRoleClaims(currentUser));
-        HashMap<String, String> responseMap = userService.getUserProfileResponse(userClaims);
+        AuthenticationResponse profile = userService.getUserProfileResponse(userClaims);
 
-        if (responseMap != null) {
-            logger.info("LOGIN SUCCESS ___ {}:{}:{} ___ WITH ROLES ___ {} ___ Authorization will expire at  ___ {}___",
-                    currentUser.getEmail(),
-                    currentUser.getUuid().toString(),
-                    currentUser.getSubject(),
-                    currentUser.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
-                    responseMap.get("expirationDate"));
+        if (profile != null) {
+            logger.info(
+                "LOGIN SUCCESS ___ {}:{}:{} ___ WITH ROLES ___ {} ___ Authorization will expire at  ___ {}___", currentUser.getEmail(),
+                currentUser.getUuid().toString(), currentUser.getSubject(),
+                currentUser.getRoles().stream().map(role -> role.getName().replace("MANAGED_", "")).collect(Collectors.joining(",")),
+                profile.expirationDate()
+            );
             logger.debug("getFENCEProfile() UserProfile response object has been generated");
             logger.debug("getFENCEToken() finished");
         }
 
-        return responseMap;
+        return profile;
     }
 
 
@@ -206,11 +210,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         logger.debug("getFENCEUserProfile() getting user profile from uri:{}", url);
 
         try {
-            ResponseEntity<String> resp = this.restClientUtil.retrieveGetResponseWithRequestConfiguration(
-                    url,
-                    headers,
-                    10000
-            );
+            ResponseEntity<String> resp = this.restClientUtil.retrieveGetResponseWithRequestConfiguration(url, headers, 10000);
 
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 logger.error("getFENCEUserProfile() non-2xx: status={}, body={}", resp.getStatusCode(), resp.getBody());
@@ -225,7 +225,9 @@ public class FENCEAuthenticationService implements AuthenticationService {
             logger.debug("getFENCEUserProfile() finished, returning user profile: {}", json.toString());
             return json;
         } catch (HttpClientErrorException e) {
-            logger.error("getFENCEUserProfile() HttpClientErrorException: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            logger.error(
+                "getFENCEUserProfile() HttpClientErrorException: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString()
+            );
             throw new NotAuthorizedException("User profile request failed: " + e.getStatusCode());
         } catch (Exception e) {
             logger.error("getFENCEUserProfile() error: {}", e.getMessage(), e);
@@ -250,10 +252,7 @@ public class FENCEAuthenticationService implements AuthenticationService {
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(queryMap, headers);
 
         try {
-            ResponseEntity<String> resp = this.restClientUtil.retrievePostResponse(
-                    fence_token_url,
-                    request
-            );
+            ResponseEntity<String> resp = this.restClientUtil.retrievePostResponse(fence_token_url, request);
 
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 String body = resp.getBody();

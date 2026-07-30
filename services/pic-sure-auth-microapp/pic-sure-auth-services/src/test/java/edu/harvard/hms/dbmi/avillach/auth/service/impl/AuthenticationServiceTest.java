@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Connection;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
@@ -51,27 +53,31 @@ public class AuthenticationServiceTest {
 
     private Auth0AuthenticationService authenticationService;
 
+    private static final AuthenticationResponse PROFILE =
+        new AuthenticationResponse("jwt", "auth0|123", "user@example.com", "false", "2026-08-01T00:00:00Z", "uuid-1", null);
+
     private final String accessToken = "dummyAccessToken";
     private final String redirectURI = "http://dummyRedirectUri.com";
     private final String userId = "user123";
     private final String connectionId = "conn123";
-    private Map<String, String> authRequest;
+    private AuthenticationRequest authRequest;
 
     @BeforeEach
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        authRequest = new HashMap<>();
-        authRequest.put("access_token", accessToken);
-        authRequest.put("redirectURI", redirectURI);
+        authRequest = new AuthenticationRequest(null, accessToken, redirectURI);
 
-        authenticationService = new Auth0AuthenticationService(matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost", cacheEvictionService);
+        authenticationService = new Auth0AuthenticationService(
+            matchingService, userRepository, basicMailService, userService, connectionRepository, restClientUtil, true, false, "localhost",
+            cacheEvictionService
+        );
     }
 
     // Tests missing parameters in the authentication request
     @Test
     public void testGetToken_MissingParameters() throws IOException {
         assertThrows(IllegalArgumentException.class, () -> {
-            authenticationService.authenticate(new HashMap<>(), "localhost"); // Empty map should trigger the exception
+            authenticationService.authenticate(new AuthenticationRequest(null, null, null), "localhost"); // no credentials -> exception
         });
     }
 
@@ -105,7 +111,7 @@ public class AuthenticationServiceTest {
         // return null for matching user
         when(matchingService.matchTokenToUser(any())).thenReturn(null);
 
-        HashMap<String, String> token = authenticationService.authenticate(authRequest, "localhost");
+        AuthenticationResponse token = authenticationService.authenticate(authRequest, "localhost");
         assertNotNull(token);
     }
 
@@ -152,15 +158,11 @@ public class AuthenticationServiceTest {
         when(mockUserInfo.get("identities").get(0).get("connection")).thenReturn(mock(JsonNode.class));
         when(mockUserInfo.get("identities").get(0).get("connection").asText()).thenReturn(connectionId);
 
-        String validJson = "{"
-                + "\"user_id\": \"" + userId + "\","
-                + "\"identities\": ["
-                + "  {\"connection\": \"" + connectionId + "\"}"
-                + "]"
-                + "}";
+        String validJson =
+            "{" + "\"user_id\": \"" + userId + "\"," + "\"identities\": [" + "  {\"connection\": \"" + connectionId + "\"}" + "]" + "}";
 
         when(restClientUtil.retrieveGetResponseWithRequestConfiguration(anyString(), any(HttpHeaders.class), anyInt()))
-                .thenReturn(new ResponseEntity<>(validJson, HttpStatus.OK));
+            .thenReturn(new ResponseEntity<>(validJson, HttpStatus.OK));
 
         // Create a test user
         Connection connection = new Connection();
@@ -174,7 +176,7 @@ public class AuthenticationServiceTest {
         when(connectionRepository.findById(anyString())).thenReturn(Optional.of(connection));
         when(matchingService.matchTokenToUser(any())).thenReturn(user);
         when(userRepository.findBySubjectAndConnection(anyString(), any(Connection.class))).thenReturn(user);
-        when(userService.getUserProfileResponse(any(UserClaims.class))).thenReturn(new HashMap<>());
+        when(userService.getUserProfileResponse(any(UserClaims.class))).thenReturn(PROFILE);
     }
 
     private void setupNoUserMatchScenario() throws IOException {

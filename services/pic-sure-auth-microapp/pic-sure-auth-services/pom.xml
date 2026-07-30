@@ -167,6 +167,11 @@
             <groupId>edu.harvard.hms.dbmi.avillach</groupId>
             <artifactId>pic-sure-contracts</artifactId>
         </dependency>
+        <!-- PicsureException + GatewayExceptionAdvice + RequestIdFilter: the uniform {errorType,message,requestId} error contract. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+        </dependency>
         <dependency>
             <groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
             <artifactId>pic-sure-hpds-model</artifactId>

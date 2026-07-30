@@ -146,10 +146,31 @@ class PsamaClientTest {
         assertThatThrownBy(() -> JsonPath.read(sent, "$.request.query")).isInstanceOf(PathNotFoundException.class);
     }
 
+    /** The shape a pre-retyping PSAMA answers with. Still read, so this gateway can be deployed ahead of PSAMA. */
     @Test
-    void openValidateReturnsBareBoolean() {
+    void openValidateReadsTheLegacyBareBoolean() {
         psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("true")));
         assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isTrue();
+
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("false")));
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isFalse();
+    }
+
+    /** The shape PSAMA answers with now that its surface is typed: {@code ValidationResponse}. */
+    @Test
+    void openValidateReadsTheTypedValidationRecord() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("{\"valid\":true}")));
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isTrue();
+
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("{\"valid\":false}")));
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isFalse();
+    }
+
+    /** An answer the gateway cannot read is not an answer it may treat as a grant: this is the unauthenticated path. */
+    @Test
+    void openValidateDeniesOnAnUnrecognizedShape() {
+        psama.stubFor(post(urlEqualTo("/open/validate")).willReturn(okJson("{\"authorized\":true}")));
+        assertThat(client().validateOpenAccess(Map.of("ipAddress", "OPEN_ACCESS:host"))).isFalse();
     }
 
     @Test

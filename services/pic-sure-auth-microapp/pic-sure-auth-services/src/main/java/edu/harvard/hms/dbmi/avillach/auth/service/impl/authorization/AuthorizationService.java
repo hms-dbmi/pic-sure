@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.harvard.dbmi.avillach.contracts.auth.TargetedRequest;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 import edu.harvard.hms.dbmi.avillach.auth.model.EvaluateAccessRuleResult;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
 import edu.harvard.hms.dbmi.avillach.auth.repository.UserConsentsRepository;
 import edu.harvard.hms.dbmi.avillach.auth.rest.TokenController;
 import edu.harvard.hms.dbmi.avillach.auth.service.impl.AccessRuleService;
@@ -318,16 +319,23 @@ public class AuthorizationService {
         return HPDS_V3_TARGET_SERVICE_PATTERN.matcher(targetService).matches();
     }
 
-    public boolean openAccessRequestIsValid(Map<String, Object> inputMap) {
+    /**
+     * Evaluates an unauthenticated request against the open-access rule set.
+     *
+     * <p>The {@code request} node arrives as the same {@link TargetedRequest} introspection binds, so the JsonPath rules stored in the
+     * database resolve identically on both paths. Absence of a body is granted rather than denied, unchanged: the gateway omits it for
+     * requests that carry nothing to authorize.
+     */
+    public boolean openAccessRequestIsValid(OpenAccessValidationRequest validationRequest) {
 
-        if (inputMap == null || inputMap.isEmpty()) {
+        if (validationRequest == null) {
             logger.info(
                 "ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been denied access to application ___ NO REQUEST BODY FORWARDED BY APPLICATION"
             );
             return true;
         }
 
-        Object requestBody = inputMap.get("request");
+        TargetedRequest requestBody = validationRequest.request();
         // If there is no request body, we can assume the request is valid
         if (requestBody == null) {
             logger.info(
@@ -354,8 +362,7 @@ public class AuthorizationService {
             result = true;
             logger.info("ACCESS_LOG ___ AN OPEN ACCESS USER ___ has been granted access to application ___ NO ACCESS RULES EVALUATED");
         } else {
-            EvaluateAccessRuleResult evaluationResult =
-                passesAccessRuleEvaluation(asTargetedRequest(requestBody), allOpenAccessRules, null);
+            EvaluateAccessRuleResult evaluationResult = passesAccessRuleEvaluation(requestBody, allOpenAccessRules, null);
             result = evaluationResult.result();
             String passRuleName = evaluationResult.passRuleName();
             Set<AccessRule> failedRules = evaluationResult.failedRules();
@@ -372,27 +379,4 @@ public class AuthorizationService {
         return result;
     }
 
-    /**
-     * The open-access endpoint still binds an untyped map (it also carries {@code ipAddress}, which introspection does not), so its
-     * {@code request} node is narrowed here instead of at the controller. Narrowing is deliberately lenient -- an unexpected key is dropped
-     * rather than raised -- because a rejected open-access request is a user-visible outage, and the gateway only ever sends the two keys
-     * this reads ({@code OpenAccessFilter#buildOpenAccessRequest}). PSAMA's own surface is typed in a later step.
-     */
-    private static TargetedRequest asTargetedRequest(Object requestBody) {
-        if (requestBody instanceof TargetedRequest targetedRequest) {
-            return targetedRequest;
-        }
-        if (!(requestBody instanceof Map<?, ?> requestMap)) {
-            // Nothing a rule can bind to. Both components are NON_NULL on the contract, so this serializes to {} and every
-            // rule decides on PathNotFoundException -- the same outcome an empty body has always produced. That depends on
-            // the NON_NULL annotations: were either component emitted as null, the rule would match null instead and
-            // AccessRuleService#evaluateNode would NPE. AuthorizationServiceRuleNodeTest pins the omission.
-            return new TargetedRequest(null, null);
-        }
-        Object targetService = requestMap.get("Target Service");
-        Object query = requestMap.get("query");
-        return new TargetedRequest(
-            targetService == null ? null : targetService.toString(), query == null ? null : OBJECT_MAPPER.valueToTree(query)
-        );
-    }
 }

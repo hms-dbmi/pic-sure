@@ -3,6 +3,8 @@ package edu.harvard.hms.dbmi.avillach.auth.service.impl.authentication;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.Role;
 import edu.harvard.hms.dbmi.avillach.auth.entity.User;
 import edu.harvard.hms.dbmi.avillach.auth.entity.UserClaims;
@@ -25,7 +27,7 @@ import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGE
 import static edu.harvard.hms.dbmi.avillach.auth.service.impl.RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME;
 
 @Service
-public class AimAheadAuthenticationService extends OktaAuthenticationService implements AuthenticationService  {
+public class AimAheadAuthenticationService extends OktaAuthenticationService implements AuthenticationService {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -47,14 +49,12 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
      * @param spClientSecret The client secret
      */
     @Autowired
-    public AimAheadAuthenticationService(UserService userService,
-                                         RoleService roleService,
-                                         RestClientUtil restClientUtil,
-                                         @Value("${a4.okta.idp.provider.is.enabled}") boolean isOktaEnabled,
-                                         @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
-                                         @Value("${a4.okta.connection.id}") String connectionId,
-                                         @Value("${a4.okta.client.id}") String clientId,
-                                         @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService) {
+    public AimAheadAuthenticationService(
+        UserService userService, RoleService roleService, RestClientUtil restClientUtil,
+        @Value("${a4.okta.idp.provider.is.enabled}") boolean isOktaEnabled, @Value("${a4.okta.idp.provider.uri}") String idp_provider_uri,
+        @Value("${a4.okta.connection.id}") String connectionId, @Value("${a4.okta.client.id}") String clientId,
+        @Value("${a4.okta.client.secret}") String spClientSecret, CacheEvictionService cacheEvictionService
+    ) {
         super(idp_provider_uri, clientId, spClientSecret, restClientUtil);
 
         this.userService = userService;
@@ -70,35 +70,37 @@ public class AimAheadAuthenticationService extends OktaAuthenticationService imp
     }
 
     /**
-     * Authenticate the user using the code provided by the IDP. This code is exchanged for an access token.
-     * The access token is then used to introspect the user. The user is then loaded from the database.
-     * If the user does not exist, we will reject their login attempt.
+     * Authenticate the user using the code provided by the IDP. This code is exchanged for an access token. The access token is then used
+     * to introspect the user. The user is then loaded from the database. If the user does not exist, we will reject their login attempt.
      *
-     * @param host       The host of the request
+     * @param host The host of the request
      * @param authRequest The request body
      * @return The response from the authentication attempt
      */
     @Override
-    public HashMap<String, String> authenticate(Map<String, String> authRequest, String host) {
-        logger.info("OKTA LOGIN ATTEMPT ___ {} ___", authRequest.get("code"));
+    public AuthenticationResponse authenticate(AuthenticationRequest authRequest, String host) {
+        logger.info("OKTA LOGIN ATTEMPT ___ {} ___", authRequest.code());
 
-        String code = authRequest.get("code");
+        String code = authRequest.code();
         if (StringUtils.isNotBlank(code)) {
             JsonNode userToken = super.handleCodeTokenExchange(host, code);
-JsonNode introspectResponse = super.introspectToken(userToken);
+            JsonNode introspectResponse = super.introspectToken(userToken);
             User user = initializeUser(introspectResponse);
 
             if (user == null) {
                 return null;
             }
 
-            HashMap<String, String> responseMap = createUserClaims(user);
-            if (responseMap != null) {
-                logger.info("LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(), responseMap.get("expirationDate"));
-                responseMap.put("oktaIdToken", userToken.get("id_token").asText());
+            AuthenticationResponse profile = createUserClaims(user);
+            if (profile != null) {
+                logger.info(
+                    "LOGIN SUCCESS ___ {}:{} ___ Authorization will expire at  ___ {}___", user.getEmail(), user.getUuid().toString(),
+                    profile.expirationDate()
+                );
+                profile = profile.withOktaIdToken(userToken.get("id_token").asText());
             }
 
-            return responseMap;
+            return profile;
         }
 
         logger.info("LOGIN FAILED ___ USER NOT AUTHENTICATED ___");
@@ -142,7 +144,7 @@ JsonNode introspectResponse = super.introspectToken(userToken);
      * @param user The user
      * @return The user claims as a HashMap
      */
-    private HashMap<String, String> createUserClaims(User user) {
+    private AuthenticationResponse createUserClaims(User user) {
         UserClaims userClaims = new UserClaims();
         userClaims.setUuid(user.getUuid().toString());
         userClaims.setSub(user.getSubject());
@@ -154,9 +156,9 @@ JsonNode introspectResponse = super.introspectToken(userToken);
     }
 
     /**
-     * Using the introspection token response, load the user from the database. If the user does not exist, we
-     * will reject their login attempt.
-     * Documentation: <a href="https://developer.okta.com/docs/reference/api/oidc/#response-example-success-access-token">response-example-success-access-token</a>
+     * Using the introspection token response, load the user from the database. If the user does not exist, we will reject their login
+     * attempt. Documentation: <a
+     * href="https://developer.okta.com/docs/reference/api/oidc/#response-example-success-access-token">response-example-success-access-token</a>
      *
      * @param introspectResponse The response from the introspect endpoint
      * @return The user
@@ -183,7 +185,10 @@ JsonNode introspectResponse = super.introspectToken(userToken);
                 user = userService.changeRole(user, roles);
                 userService.updateUserConsents(user, Set.of());
             } else {
-                logger.info("{} has not be created for this environment. Please create the role and its permissions before attempting to use auth access.", MANAGED_AUTH_ACCESS_ROLE_NAME);
+                logger.info(
+                    "{} has not be created for this environment. Please create the role and its permissions before attempting to use auth access.",
+                    MANAGED_AUTH_ACCESS_ROLE_NAME
+                );
             }
 
             // All users that login through OKTA should have the fence_open_access role, or they will not be able to interact with the UI
@@ -207,11 +212,11 @@ JsonNode introspectResponse = super.introspectToken(userToken);
     }
 
     /**
-     * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's
-     * role and other information.
+     * Generate the user metadata that will be stored in the database. This metadata is used to determine the user's role and other
+     * information.
      *
      * @param introspectResponse The response from the introspect endpoint
-     * @param user               The user
+     * @param user The user
      * @return The user metadata as an ObjectNode
      */
     protected ObjectNode generateUserMetadata(JsonNode introspectResponse, User user) {

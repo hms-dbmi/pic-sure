@@ -1,6 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.AuthenticationResponse;
+import edu.harvard.hms.dbmi.avillach.auth.model.response.LongTermTokenResponse;
 import edu.harvard.hms.dbmi.avillach.auth.entity.*;
 
 import edu.harvard.hms.dbmi.avillach.auth.model.CustomUserDetails;
@@ -79,21 +81,10 @@ public class UserServiceTest {
         jwtUtil = new JWTUtil(generate256Base64Secret(), true);
         String applicationUUID = UUID.randomUUID().toString();
         userService = new UserService(
-                basicMailService,
-                tosService,
-                userRepository,
-                connectionRepository,
-                applicationRepository,
-                roleService,
-                userConsentsRepository,
-                fenceMappingUtility,
-                defaultTokenExpirationTime,
-                applicationUUID,
-                longTermTokenExpirationTime,
-                mockJwtUtil,
-                false,
-                "ADMIN,SUPER_ADMIN",
-                null);
+            basicMailService, tosService, userRepository, connectionRepository, applicationRepository, roleService, userConsentsRepository,
+            fenceMappingUtility, defaultTokenExpirationTime, applicationUUID, longTermTokenExpirationTime, mockJwtUtil, false,
+            "ADMIN,SUPER_ADMIN", null
+        );
     }
 
     @Test
@@ -102,7 +93,7 @@ public class UserServiceTest {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(user);
 
         UserClaims userClaims = buildTestUserClaims(user);
-        HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
+        AuthenticationResponse result = userService.getUserProfileResponse(userClaims);
         assertNotNull(result);
     }
 
@@ -124,7 +115,7 @@ public class UserServiceTest {
         UUID testId = UUID.randomUUID();
         when(userRepository.findById(testId)).thenReturn(Optional.empty());
 
-        assertThrows(IllegalArgumentException.class, ()-> {
+        assertThrows(IllegalArgumentException.class, () -> {
             userService.getUserById(testId.toString());
         });
     }
@@ -292,7 +283,7 @@ public class UserServiceTest {
         userToFindByID.setRoles(new HashSet<>());
         when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(userToFindByID));
 
-        assertThrows(IllegalArgumentException.class, ()-> {
+        assertThrows(IllegalArgumentException.class, () -> {
             userService.updateUser(List.of(user));
         });
     }
@@ -302,7 +293,7 @@ public class UserServiceTest {
         UserClaims userClaims = new UserClaims();
         userClaims.setEmail("test@example.com");
         // Missing "sub" - should return null since subject is required
-        HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
+        AuthenticationResponse result = userService.getUserProfileResponse(userClaims);
         assertNull(result);
     }
 
@@ -338,13 +329,8 @@ public class UserServiceTest {
         claims.put("sub", user.getSubject());
 
         // Application Long term token
-        String token = jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claims,
-                claims.get("sub").toString(),
-                longTermTokenExpirationTime
-        );
+        String token = jwtUtil
+            .createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), longTermTokenExpirationTime);
         user.setToken(token);
         configureUserSecurityContext(user);
 
@@ -367,13 +353,8 @@ public class UserServiceTest {
         claims.put("sub", user.getSubject());
 
         // Application Long term token
-        String token = jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claims,
-                claims.get("sub").toString(),
-                longTermTokenExpirationTime
-        );
+        String token = jwtUtil
+            .createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), longTermTokenExpirationTime);
 
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
         System.out.println(claimsJws);
@@ -406,13 +387,8 @@ public class UserServiceTest {
         claims.put("sub", user.getSubject());
 
         // Application Long term token
-        String token = jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claims,
-                claims.get("sub").toString(),
-                longTermTokenExpirationTime
-        );
+        String token = jwtUtil
+            .createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), longTermTokenExpirationTime);
 
         Jws<Claims> claimsJws = this.jwtUtil.parseToken(token);
 
@@ -426,7 +402,7 @@ public class UserServiceTest {
 
     @Test
     public void testGetQueryTemplate_invalidApplicationId() {
-        assertThrows(IllegalArgumentException.class, ()->{
+        assertThrows(IllegalArgumentException.class, () -> {
             userService.getQueryTemplate(null);
         });
     }
@@ -437,8 +413,8 @@ public class UserServiceTest {
         when(tosService.hasUserAcceptedLatest(anyString())).thenReturn(false);
 
         UserClaims userClaims = buildTestUserClaims(user);
-        HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
-        assertEquals("false", result.get("acceptedTOS"));
+        AuthenticationResponse result = userService.getUserProfileResponse(userClaims);
+        assertEquals("false", result.acceptedTOS());
     }
 
     @Test
@@ -447,8 +423,8 @@ public class UserServiceTest {
         when(tosService.hasUserAcceptedLatest(anyString())).thenReturn(true);
 
         UserClaims userClaims = buildTestUserClaims(user);
-        HashMap<String, String> result = userService.getUserProfileResponse(userClaims);
-        assertEquals("true", result.get("acceptedTOS"));
+        AuthenticationResponse result = userService.getUserProfileResponse(userClaims);
+        assertEquals("true", result.acceptedTOS());
     }
 
     @Test
@@ -516,13 +492,8 @@ public class UserServiceTest {
         claims.put("sub", user.getSubject());
 
         // Application Long term token
-        String token = jwtUtil.createJwtToken(
-                "whatever",
-                "edu.harvard.hms.dbmi.psama",
-                claims,
-                claims.get("sub").toString(),
-                longTermTokenExpirationTime
-        );
+        String token = jwtUtil
+            .createJwtToken("whatever", "edu.harvard.hms.dbmi.psama", claims, claims.get("sub").toString(), longTermTokenExpirationTime);
 
         String authorizationHeader = "Bearer " + token;
         HttpHeaders headers = new HttpHeaders();
@@ -532,9 +503,9 @@ public class UserServiceTest {
         when(mockJwtUtil.parseToken(anyString())).thenReturn(claimsJws);
         when(mockJwtUtil.createJwtToken(anyString(), anyString(), anyMap(), anyString(), anyLong())).thenReturn(token);
 
-        Map<String, String> result = userService.refreshUserToken(headers);
+        LongTermTokenResponse result = userService.refreshUserToken(headers);
         assertNotNull(result);
-        assertEquals(token, result.get("userLongTermToken"));
+        assertEquals(token, result.userLongTermToken());
     }
 
     @Test
@@ -635,13 +606,9 @@ public class UserServiceTest {
 
     private String createValidApplicationTestToken(Application application) {
         return this.jwtUtil.createJwtToken(
-                null, null,
-                new HashMap<>(
-                        Map.of(
-                                "user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName()
-                        )
-                ),
-                AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24);
+            null, null, new HashMap<>(Map.of("user_id", AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getName())),
+            AuthNaming.PSAMA_APPLICATION_TOKEN_PREFIX + "|" + application.getUuid().toString(), 365L * 1000 * 60 * 60 * 24
+        );
     }
 
     private Role createTestRole() {
@@ -656,7 +623,11 @@ public class UserServiceTest {
         Privilege privilege = new Privilege();
         privilege.setName("TEST_PRIVILEGE");
         privilege.setUuid(UUID.randomUUID());
-        privilege.setQueryTemplate(createQueryTemplate("consent_concept_path_"+privilege.getUuid(), "project_name_"+privilege.getUuid(), "consent_group_"+privilege.getUuid()));
+        privilege.setQueryTemplate(
+            createQueryTemplate(
+                "consent_concept_path_" + privilege.getUuid(), "project_name_" + privilege.getUuid(), "consent_group_" + privilege.getUuid()
+            )
+        );
 
         return privilege;
     }
@@ -664,7 +635,8 @@ public class UserServiceTest {
     private void configureUserSecurityContext(User user) {
         CustomUserDetails customUserDetails = new CustomUserDetails(user);
         // configure security context
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
+        UsernamePasswordAuthenticationToken authentication =
+            new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
         when(securityContext.getAuthentication()).thenReturn(authentication);
     }
 
@@ -696,15 +668,10 @@ public class UserServiceTest {
     }
 
     private String createQueryTemplate(String consent_concept_path, String project_name, String consent_group) {
-    	return "{\"categoryFilters\": {\""
-                + consent_concept_path
-                + "\":\""
-                + project_name + "." + consent_group
-                + "\"},"
-                + "\"numericFilters\":{},\"requiredFields\":[],"
-                + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
-                + "\"expectedResultType\": \"COUNT\""
-                + "}";
+        return "{\"categoryFilters\": {\"" + consent_concept_path + "\":\"" + project_name + "." + consent_group + "\"},"
+            + "\"numericFilters\":{},\"requiredFields\":[],"
+            + "\"variantInfoFilters\":[{\"categoryVariantInfoFilters\":{},\"numericVariantInfoFilters\":{}}],"
+            + "\"expectedResultType\": \"COUNT\"" + "}";
     }
 
 }

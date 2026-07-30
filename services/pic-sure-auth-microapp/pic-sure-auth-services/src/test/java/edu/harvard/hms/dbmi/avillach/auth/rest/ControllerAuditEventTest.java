@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.AuthenticationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.OpenAccessValidationRequest;
+import edu.harvard.hms.dbmi.avillach.auth.model.request.StudyAccessRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -26,8 +29,10 @@ class ControllerAuditEventTest {
     @Test
     void authenticationController() throws Exception {
         Class<?> c = AuthenticationController.class;
-        // authentication(String idpProvider, Map<String, String> authRequest, HttpServletRequest request)
-        assertAuditEvent(c, "authentication", new Class[] {String.class, Map.class, HttpServletRequest.class}, "AUTH", "auth.login");
+        // authentication(String idpProvider, AuthenticationRequest authRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "authentication", new Class[] {String.class, AuthenticationRequest.class, HttpServletRequest.class}, "AUTH", "auth.login"
+        );
     }
 
     @Test
@@ -60,6 +65,8 @@ class ControllerAuditEventTest {
         assertAuditEvent(c, "getQueryTemplate", new Class[] {}, "ACCESS", "user.profile");
         // refreshUserToken(HttpHeaders httpHeaders, HttpServletRequest request)
         assertAuditEvent(c, "refreshUserToken", new Class[] {HttpHeaders.class, HttpServletRequest.class}, "ACCESS", "user.profile");
+        // getUserConsents() - the only /me endpoint that was never audited
+        assertAuditEvent(c, "getUserConsents", new Class[] {}, "ACCESS", "user.profile");
     }
 
     @Test
@@ -144,15 +151,19 @@ class ControllerAuditEventTest {
     @Test
     void openAccessController() throws Exception {
         Class<?> c = OpenAccessController.class;
-        // validate(Map<String, Object> inputMap, HttpServletRequest request)
-        assertAuditEvent(c, "validate", new Class[] {Map.class, HttpServletRequest.class}, "ACCESS", "open.validate");
+        // validate(OpenAccessValidationRequest validationRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "validate", new Class[] {OpenAccessValidationRequest.class, HttpServletRequest.class}, "ACCESS", "open.validate"
+        );
     }
 
     @Test
     void studyAccessController() throws Exception {
         Class<?> c = StudyAccessController.class;
-        // addStudyAccess(String studyIdentifier, HttpServletRequest request)
-        assertAuditEvent(c, "addStudyAccess", new Class[] {String.class, HttpServletRequest.class}, "ADMIN", "study_access.create");
+        // addStudyAccess(StudyAccessRequest studyAccessRequest, HttpServletRequest request)
+        assertAuditEvent(
+            c, "addStudyAccess", new Class[] {StudyAccessRequest.class, HttpServletRequest.class}, "ADMIN", "study_access.create"
+        );
     }
 
     @Test
