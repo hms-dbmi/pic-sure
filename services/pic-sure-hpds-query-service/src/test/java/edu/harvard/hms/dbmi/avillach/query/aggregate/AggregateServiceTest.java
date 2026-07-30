@@ -223,7 +223,7 @@ class AggregateServiceTest {
         svc.query(sync("CROSS_COUNT"), AggregateVariant.V3);
 
         ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).queryV3(eq("open"), cap.capture());
+        verify(queryService).queryV3Enveloped(eq("open"), cap.capture());
         @SuppressWarnings("unchecked")
         Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
         assertThat(query).containsKey("select").doesNotContainKey("crossCountFields");

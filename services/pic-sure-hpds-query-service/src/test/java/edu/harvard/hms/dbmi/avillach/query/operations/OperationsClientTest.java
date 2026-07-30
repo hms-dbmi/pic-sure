@@ -25,8 +25,17 @@ import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
+import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
+/**
+ * The store DTOs are the shared {@code contracts.internal} records, so {@code status} is the typed {@link PicSureStatus}. The wire bytes
+ * are unchanged -- the enum travels as its NAME, exactly the string the local copies carried -- which is what the {@code equalToJson}
+ * assertions here pin.
+ */
 class OperationsClientTest {
 
     static WireMockServer ops;
@@ -59,7 +68,7 @@ class OperationsClientTest {
             )
         );
 
-        SaveQueryRequest req = new SaveQueryRequest("{}", null, "QUEUED", "v1", null);
+        SaveQueryRequest req = new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, "v1", null);
         UUID result = client().save(req);
 
         assertThat(result).isEqualTo(id);
@@ -78,7 +87,7 @@ class OperationsClientTest {
                 .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody("{\"picsureId\":null}"))
         );
 
-        assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "v1", null)))
+        assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, "v1", null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 
@@ -86,7 +95,7 @@ class OperationsClientTest {
     void saveServerErrorThrowsBadGateway() {
         ops.stubFor(post(urlEqualTo("/operations/internal/queries")).willReturn(aResponse().withStatus(500)));
 
-        assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, "QUEUED", "v1", null)))
+        assertThatThrownBy(() -> client().save(new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, "v1", null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 
@@ -97,14 +106,14 @@ class OperationsClientTest {
             get(urlEqualTo("/operations/internal/queries/" + id)).willReturn(
                 okJson(
                     "{\"picsureId\":\"" + id
-                        + "\",\"query\":\"{}\",\"resourceResultId\":\"r-1\",\"status\":\"COMPLETE\",\"version\":\"v1\",\"metadata\":\"YWJj\"}"
+                        + "\",\"query\":\"{}\",\"resourceResultId\":\"r-1\",\"status\":\"AVAILABLE\",\"version\":\"v1\",\"metadata\":\"YWJj\"}"
                 )
             )
         );
 
         StoredQuery result = client().get(id);
 
-        assertThat(result).isEqualTo(new StoredQuery(id, "{}", "r-1", "COMPLETE", "v1", "YWJj"));
+        assertThat(result).isEqualTo(new StoredQuery(id, "{}", "r-1", PicSureStatus.AVAILABLE, "v1", "YWJj"));
         ops.verify(
             getRequestedFor(urlEqualTo("/operations/internal/queries/" + id)).withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
         );
@@ -133,12 +142,12 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(204)));
 
-        client().update(id, new UpdateQueryRequest("COMPLETE", "r-1", null));
+        client().update(id, new UpdateQueryRequest(PicSureStatus.AVAILABLE, "r-1", null));
 
         ops.verify(
             patchRequestedFor(urlEqualTo("/operations/internal/queries/" + id))
                 .withHeader("X-PIC-SURE-INTERNAL-TOKEN", equalTo("test-token"))
-                .withRequestBody(equalToJson("{\"status\":\"COMPLETE\",\"resourceResultId\":\"r-1\",\"metadata\":null}"))
+                .withRequestBody(equalToJson("{\"status\":\"AVAILABLE\",\"resourceResultId\":\"r-1\",\"metadata\":null}"))
         );
     }
 
@@ -147,7 +156,7 @@ class OperationsClientTest {
         UUID id = UUID.randomUUID();
         ops.stubFor(patch(urlEqualTo("/operations/internal/queries/" + id)).willReturn(aResponse().withStatus(500)));
 
-        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest("COMPLETE", null, null)))
+        assertThatThrownBy(() -> client().update(id, new UpdateQueryRequest(PicSureStatus.AVAILABLE, null, null)))
             .isInstanceOfSatisfying(PicsureException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 }

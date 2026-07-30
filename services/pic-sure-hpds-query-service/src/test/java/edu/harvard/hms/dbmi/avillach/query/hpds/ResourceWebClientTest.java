@@ -3,27 +3,49 @@ package edu.harvard.hms.dbmi.avillach.query.hpds;
 import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 
+/**
+ * Pins the HPDS wire. Every hop is typed: submissions carry a BARE v3 {@link Query} (no {@code QueryRequest} envelope), the status hop is a
+ * GET, and result/signed-url are bodyless POSTs -- reads have nothing to send, since HPDS already holds the query behind the
+ * {@code resourceResultId}. Responses parse into the shared contract records.
+ *
+ * <p>These stubs are the SPEC for HPDS's side of the contract (Task 8 lands the matching controllers): what is asserted here -- verb, path,
+ * request body, and response shape -- is exactly what HPDS must accept and emit.
+ */
 class ResourceWebClientTest {
 
     static WireMockServer hpds;
@@ -42,6 +64,11 @@ class ResourceWebClientTest {
         hpds.stop();
     }
 
+    @BeforeEach
+    void resetStubs() {
+        hpds.resetAll();
+    }
+
     private ResourceWebClient client() {
         return new ResourceWebClient(RestClient.builder().build());
     }
@@ -54,102 +81,162 @@ class ResourceWebClientTest {
         return new HpdsTarget(base(), TOKEN);
     }
 
-    private QueryRequest req() {
-        GeneralQueryRequest r = new GeneralQueryRequest();
-        r.setQuery("q");
-        return r;
+    private Query query() {
+        return new Query(List.of("\\age\\"), null, null, null, ResultType.COUNT, null, null);
     }
 
+    /** The aggregate service's still-enveloped shape -- Task 10 retypes it. */
+    private QueryRequest legacyReq() {
+        return new GeneralQueryRequest().setQuery(java.util.Map.of("expectedResultType", "COUNT"));
+    }
+
+    // --- create: a BARE Query on the wire, a typed status back ---
+
     @Test
-    void queryInjectsServiceBearerToken() {
+    void queryPostsTheBareQueryAndInjectsTheServiceBearerToken() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/query")).withHeader("Authorization", equalTo("Bearer " + TOKEN)) // service token preserved
                 .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"PENDING\"}"))
         );
 
-        var status = client().query(target(), req());
+        QueryStatusResponse status = client().query(target(), query());
 
-        assertThat(status.getResourceResultId()).isEqualTo("rr-1");
+        assertThat(status.resourceResultId()).isEqualTo("rr-1");
+        assertThat(status.status()).isEqualTo(PicSureStatus.PENDING);
+        // BARE: the query's own fields sit at the root -- there is no "query" wrapper left on this hop.
+        hpds.verify(
+            postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.select"))
+                .withRequestBody(matchingJsonPath("$.expectedResultType", equalTo("COUNT")))
+        );
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.query")));
     }
 
+    /** Aggregate's enveloped create still exists until Task 10; it is a DIFFERENT method, so neither hop can be reached by accident. */
     @Test
-    void resultBuffersOctetStreamWithToken() {
+    void queryEnvelopedStillPostsTheEnvelopeForTheAggregatePath() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(okJson("{\"resourceResultId\":\"rr-agg\",\"status\":\"PENDING\"}")));
+
+        QueryStatusResponse status = client().queryEnveloped(target(), legacyReq());
+
+        assertThat(status.resourceResultId()).isEqualTo("rr-agg");
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.query.expectedResultType")));
+    }
+
+    /**
+     * HPDS's status response is read as the shared {@link QueryStatusResponse}. Fields HPDS emits that the contract does not model (the
+     * legacy {@code picsureResultId}/{@code resourceID} echoes, alive until Task 8) must not break the hop.
+     */
+    @Test
+    void statusIsAGetWithNoBodyAndParsesIntoTheContractRecord() {
+        hpds.stubFor(
+            get(urlEqualTo("/PIC-SURE/query/rr-1/status")).withHeader("Authorization", equalTo("Bearer " + TOKEN)).willReturn(
+                okJson(
+                    "{\"resourceResultId\":\"rr-1\",\"status\":\"AVAILABLE\",\"resourceStatus\":\"SUCCESS\"," //
+                        + "\"sizeInBytes\":42,\"picsureResultId\":null,\"resourceID\":null}"
+                )
+            )
+        );
+
+        QueryStatusResponse status = client().queryStatus(target(), "rr-1");
+
+        assertThat(status.status()).isEqualTo(PicSureStatus.AVAILABLE);
+        assertThat(status.resourceStatus()).isEqualTo("SUCCESS");
+        assertThat(status.sizeInBytes()).isEqualTo(42L);
+        hpds.verify(getRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/status")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/status")));
+    }
+
+    /** Octet-stream, FULLY BUFFERED -- parity with the legacy ResourceWebClient.queryResult/readBytesFromResponse. */
+    @Test
+    void resultIsABodylessPostThatBuffersTheOctetStream() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/query/rr-1/result")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
                 .willReturn(aResponse().withStatus(200).withBody(new byte[] {1, 2, 3}))
         );
 
-        ResponseEntity<byte[]> resp = client().queryResult(target(), "rr-1", req());
+        ResponseEntity<byte[]> resp = client().queryResult(target(), "rr-1");
 
         assertThat(resp.getBody()).containsExactly(1, 2, 3);
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/result")).withRequestBody(absent()));
     }
 
     @Test
-    void signedUrlBuffersJsonStringWithToken() {
+    void signedUrlIsABodylessPostParsedIntoTheContractRecord() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"url\":\"https://s3/x\"}"))
+                .willReturn(okJson("{\"signedUrl\":\"https://s3/x\"}"))
         );
 
-        ResponseEntity<String> resp = client().queryResultSignedUrl(target(), "rr-1", req());
+        SignedUrlResponse resp = client().queryResultSignedUrl(target(), "rr-1");
 
-        assertThat(resp.getBody()).contains("https://s3/x");
+        assertThat(resp.signedUrl()).isEqualTo("https://s3/x");
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).withRequestBody(absent()));
+    }
+
+    /** A signed-url body that is not JSON is an upstream contract violation, not a 200 carrying a null url. */
+    @Test
+    void signedUrlWithAnUnreadableBodyThrowsCommunicationException() {
+        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query/rr-1/signed-url")).willReturn(okJson("not json")));
+
+        assertThatThrownBy(() -> client().queryResultSignedUrl(target(), "rr-1")).isInstanceOf(HpdsCommunicationException.class);
     }
 
     @Test
-    void querySyncInjectsTokenPropagatesMetadataHeaderAndSendsRequestSource() {
+    void querySyncPostsTheBareQueryPropagatesMetadataHeaderAndSendsRequestSource() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/query/sync")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
                 .withHeader("request-source", equalTo("UI"))
                 .willReturn(aResponse().withStatus(200).withHeader("queryMetadata", "rr-9").withBody("payload"))
         );
 
-        var result = client().querySync(target(), req(), "UI");
+        var result = client().querySync(target(), query(), "UI");
 
         assertThat(new String(result.body())).isEqualTo("payload");
         assertThat(result.queryMetadata()).isEqualTo("rr-9");
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query/sync")).withRequestBody(matchingJsonPath("$.expectedResultType")));
+        hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/query/sync")).withRequestBody(matchingJsonPath("$.query")));
     }
 
-    @Test
-    void statusInjectsToken() {
-        hpds.stubFor(
-            post(urlEqualTo("/PIC-SURE/query/rr-1/status")).withHeader("Authorization", equalTo("Bearer " + TOKEN))
-                .willReturn(okJson("{\"resourceResultId\":\"rr-1\",\"status\":\"AVAILABLE\"}"))
-        );
-
-        var status = client().queryStatus(target(), "rr-1", req());
-
-        assertThat(status.getStatus().name()).isEqualTo("AVAILABLE");
-    }
+    // --- search: NO service token (parity with PicsureSearchService, which never set BEARER_TOKEN) ---
 
     @Test
-    void searchDoesNotInjectServiceToken() { // parity with PicsureSearchService (no BEARER_TOKEN)
+    void searchPostsTheTypedSearchRequestWithoutAServiceToken() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/search")).withHeader("Authorization", absent())
-                .willReturn(okJson("{\"searchQuery\":\"q\",\"results\":{}}"))
+                .willReturn(okJson("{\"searchQuery\":\"BRCA\",\"results\":{}}"))
         );
 
-        var result = client().search(base(), req()); // String base, not HpdsTarget -- no token path
+        var result = client().search(base(), new SearchRequest("BRCA")); // String base, not HpdsTarget -- no token path
 
         assertThat(result).isNotNull();
+        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/search")).withRequestBody(equalToJson("{\"query\":\"BRCA\"}")));
     }
 
     @Test
-    void searchValuesIsGetWithParamsAndNoServiceToken() {
+    void searchValuesIsGetWithParamsAndReturnsTheTypedPage() {
         hpds.stubFor(
             get(urlPathEqualTo("/PIC-SURE/search/values/")).withHeader("Authorization", absent())
                 .withQueryParam("genomicConceptPath", equalTo("\\gene\\")).withQueryParam("query", equalTo("BRCA"))
-                .withQueryParam("page", equalTo("1")).willReturn(okJson("{\"results\":[],\"page\":1,\"total\":0}"))
+                .withQueryParam("page", equalTo("1")).withQueryParam("size", equalTo("10"))
+                .willReturn(okJson("{\"results\":[\"BRCA1\",\"BRCA2\"],\"page\":1,\"total\":2}"))
         );
 
-        var result = client().searchConceptValues(base(), req(), "\\gene\\", "BRCA", 1, 10);
+        PaginatedResponse<String> result = client().searchConceptValues(base(), "\\gene\\", "BRCA", 1, 10);
 
-        assertThat(result).isNotNull();
+        assertThat(result.results()).containsExactly("BRCA1", "BRCA2");
+        assertThat(result.page()).isEqualTo(1);
+        assertThat(result.total()).isEqualTo(2);
     }
 
     @Test
     void hpdsNon2xxThrowsCommunicationException() {
         hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(aResponse().withStatus(500)));
-        assertThatThrownBy(() -> client().query(target(), req())).isInstanceOf(HpdsCommunicationException.class);
+        assertThatThrownBy(() -> client().query(target(), query())).isInstanceOf(HpdsCommunicationException.class);
+    }
+
+    @Test
+    void statusNon2xxThrowsCommunicationException() {
+        hpds.stubFor(get(urlEqualTo("/PIC-SURE/query/rr-1/status")).willReturn(aResponse().withStatus(503)));
+        assertThatThrownBy(() -> client().queryStatus(target(), "rr-1")).isInstanceOf(HpdsCommunicationException.class);
     }
 }

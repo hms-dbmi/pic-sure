@@ -19,6 +19,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
+import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
@@ -33,9 +36,6 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
-import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
-import edu.harvard.hms.dbmi.avillach.query.operations.StoredQuery;
-import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
 
 /**
  * Ports the legacy WAR's {@code PicsureQueryService} (create/sync/status/result/signed-url/metadata) into a DB-free service: every place
@@ -43,18 +43,18 @@ import edu.harvard.hms.dbmi.avillach.query.operations.UpdateQueryRequest;
  * local UUID generation and no local {@code Query} entity anywhere in this module -- operations-service is the sole source of the {@code
  * picsureId} and the sole persistence store.
  *
- * <p><b>Typed v3 surface:</b> the public entry points take the bare v3 {@link Query} (or nothing but the query id, for reads) and return
- * {@link QueryStatusResponse}/{@link SignedUrlResponse}. The {@code QueryRequest} envelope is gone from the ingress: there is no
- * {@code resourceUUID} to echo back and no {@code resourceCredentials} to accept, so {@code picsureId} is the response's only identity. The
- * remaining {@code QueryRequest}-shaped {@link #query(String, QueryRequest)}/{@link #queryV3(String, QueryRequest)} overloads exist solely
- * for the aggregate service, which is retyped in a later task.
+ * <p><b>Typed on both sides:</b> the public entry points take the bare v3 {@link Query} (or nothing but the query id, for reads) and return
+ * {@link QueryStatusResponse}/{@link SignedUrlResponse}, and the HPDS hop underneath speaks the same records -- the {@code QueryRequest}
+ * envelope survives only on the aggregate service's overloads ({@link #query(String, QueryRequest)} /
+ * {@link #queryV3Enveloped(String, QueryRequest)}), which a later task retypes. The store DTOs are the shared
+ * {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the {@link PicSureStatus} enum end to
+ * end rather than a string that only happened to parse.
  *
  * <p><b>Decision 9 (the signed-url bug fix):</b> {@link #status}, {@link #result}, and {@link #signedUrl} all dispatch to HPDS using the
  * backend implied by the ingress {@code {backend}} path segment (auth/open) AND the v3-ness of the STORED query's {@code version} field
  * (never a value passed in on the request). The legacy WAR applied this "stored version decides v1 vs v3" rule to status and result, but
  * not to signed-url ({@code PicsureQueryService.java:197+}) -- a v1-path signed-url request for a v3-stored query never reached HPDS's
- * {@code
- * /v3} routes. Here all three read ops share the same {@link #isV3(StoredQuery)} check, closing that gap.
+ * {@code /v3} routes. Here all three read ops share the same {@link #isV3(StoredQuery)} check, closing that gap.
  */
 @Service
 public class QueryService {
@@ -85,10 +85,13 @@ public class QueryService {
 
     // --- create / sync ---
 
-    /** Typed v3 ingress: a bare {@link Query} in, {@link QueryStatusResponse} out. */
+    /** Typed v3 path: a bare {@link Query} in, the same bare {@link Query} out to HPDS, {@link QueryStatusResponse} back. */
     public QueryStatusResponse queryV3(String backend, Query query) {
         requireQuery(query);
-        return toResponse(create(backend, downstreamRequest(query), true));
+        HpdsTarget target = selector.select(backend, true); // URL + service token
+        // HPDS call first (parity: query() calls HPDS then persists)
+        QueryStatusResponse down = requireStatus(hpds.query(target, query));
+        return persistCreate(down, storedBody(query), CURRENT_VERSION);
     }
 
     private static void requireQuery(Query query) {
@@ -103,53 +106,56 @@ public class QueryService {
      * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this overload dies with it.
      */
     public QueryStatus query(String backend, QueryRequest req) {
-        return create(backend, req, false);
+        return envelopedCreate(backend, req, false);
     }
 
     /**
-     * Aggregate-service create path (v3 dispatch), still enveloped.
+     * Aggregate-service create path (v3 dispatch), still enveloped. Named apart from {@link #queryV3(String, Query)} on purpose: an
+     * overload pair differing only in the argument type is an ambiguity trap for a {@code null} argument.
      *
      * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this overload dies with it.
      */
-    public QueryStatus queryV3(String backend, QueryRequest req) {
-        return create(backend, req, true);
+    public QueryStatus queryV3Enveloped(String backend, QueryRequest req) {
+        return envelopedCreate(backend, req, true);
     }
 
-    private QueryStatus create(String backend, QueryRequest req, boolean v3) {
+    private QueryStatus envelopedCreate(String backend, QueryRequest req, boolean v3) {
         if (req == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-        HpdsTarget target = selector.select(backend, v3); // URL + service token
+        HpdsTarget target = selector.select(backend, v3);
+        QueryStatusResponse down = requireStatus(hpds.queryEnveloped(target, req));
+        return toLegacyStatus(persistCreate(down, storedBody(req), v3 ? CURRENT_VERSION : null));
+    }
 
-        QueryStatus results = hpds.query(target, req); // HPDS call first (parity: query() calls HPDS then persists)
-        String version = v3 ? CURRENT_VERSION : null;
-        String metadataBase64 = buildMetadataBase64(results);
+    /**
+     * Persists a freshly dispatched query and stamps the store's {@code picsureId} onto the response. Preserves the WAR's create-time
+     * fallback: when the resource returned no id of its own, the {@code picsureId} becomes the {@code resourceResultId}.
+     */
+    private QueryStatusResponse persistCreate(QueryStatusResponse down, String queryJson, String version) {
+        Map<String, Object> resultMetadata = down.resultMetadata(); // the record normalizes null to an empty map
+        UUID picsureId = operationsClient
+            .save(new SaveQueryRequest(queryJson, down.resourceResultId(), down.status(), version, encodeMetadata(resultMetadata)));
 
-        UUID picsureId = operationsClient.save(
-            new SaveQueryRequest(
-                serializeQuery(req), results.getResourceResultId(), statusName(results.getStatus()), version, metadataBase64
-            )
-        );
-        results.setPicsureResultId(picsureId);
-
-        if (results.getResourceResultId() == null) { // create-time fallback (PRESERVE)
-            String fallbackId = picsureId.toString();
-            results.setResourceResultId(fallbackId);
-            operationsClient.update(picsureId, new UpdateQueryRequest(null, fallbackId, null));
+        String resourceResultId = down.resourceResultId();
+        if (resourceResultId == null) { // create-time fallback (PRESERVE)
+            resourceResultId = picsureId.toString();
+            operationsClient.update(picsureId, new UpdateQueryRequest(null, resourceResultId, null));
         }
-        return results;
+        return new QueryStatusResponse(
+            picsureId, down.status(), down.resourceStatus(), resourceResultId, down.sizeInBytes(), down.startTime(), down.duration(),
+            down.expiration(), resultMetadata
+        );
     }
 
     public QuerySyncResponse querySync(String backend, Query query, String requestSource) {
         requireQuery(query);
-        QueryRequest req = downstreamRequest(query);
         HpdsTarget target = selector.select(backend, true); // sync's only remaining caller is the v3 ingress
-        String version = CURRENT_VERSION;
 
         // persist FIRST (parity: sync persists then calls HPDS)
-        UUID picsureId = operationsClient.save(new SaveQueryRequest(serializeQuery(req), null, null, version, null));
+        UUID picsureId = operationsClient.save(new SaveQueryRequest(storedBody(query), null, null, CURRENT_VERSION, null));
 
-        ResourceWebClient.QuerySyncResult down = hpds.querySync(target, req, requestSource);
+        ResourceWebClient.QuerySyncResult down = hpds.querySync(target, query, requestSource);
         String resourceResultId = down.queryMetadata() != null ? down.queryMetadata() : picsureId.toString();
         operationsClient.update(picsureId, new UpdateQueryRequest(null, resourceResultId, null));
 
@@ -157,13 +163,8 @@ public class QueryService {
     }
 
     /** Port of copyQuery's metadata assembly (PicsureQueryService.java:380-419) minus Resource + AuditContext. */
-    private String buildMetadataBase64(QueryStatus response) {
-        Map<String, Object> meta = response.getResultMetadata();
-        if (meta == null) {
-            meta = new HashMap<>();
-        }
-        response.setResultMetadata(meta);
-        if (meta.isEmpty()) {
+    private String encodeMetadata(Map<String, Object> meta) {
+        if (meta == null || meta.isEmpty()) {
             return null;
         }
         try {
@@ -175,8 +176,22 @@ public class QueryService {
         }
     }
 
-    /** null query → null blob; else the serialized full QueryRequest (including resourceCredentials -- stripped only at dispatch time). */
-    private String serializeQuery(QueryRequest req) {
+    /**
+     * The blob handed to the query store. Still the {@code {"query": ...}} WRAPPER rather than the bare query, even though the HPDS hop is
+     * now bare: operations-service's {@code /dispatch} endpoint strips {@code resourceCredentials} out of exactly this wrapper for the
+     * gateway's {@code QueryAuthFetcher}, and {@link #metadata} reads stored v1 rows back through it. Rewriting the persisted shape is a
+     * data migration, not a wire change.
+     *
+     * TODO(well-defined-contracts): Task 15 migrates the stored blob to the bare v3 Query.
+     */
+    private String storedBody(Query query) {
+        return storedBody(new GeneralQueryRequest().setQuery(query));
+    }
+
+    /**
+     * null query -&gt; null blob; else the serialized full QueryRequest (including resourceCredentials -- stripped only at dispatch time).
+     */
+    private String storedBody(QueryRequest req) {
         if (req.getQuery() == null) {
             return null;
         }
@@ -187,50 +202,44 @@ public class QueryService {
         }
     }
 
-    private static String statusName(edu.harvard.dbmi.avillach.domain.PicSureStatus status) {
-        return status == null ? null : status.name();
-    }
-
     // --- read ops with uniform stored-version dispatch ---
 
     public QueryStatusResponse status(String backend, UUID picsureId) {
         StoredQuery stored = load(picsureId);
         HpdsTarget target = selector.select(backend, isV3(stored)); // backend from path, version from the stored row
-        QueryStatus status = hpds.queryStatus(target, stored.resourceResultId(), downstreamRequest(null));
-        status.setPicsureResultId(picsureId);
-        operationsClient.update(picsureId, new UpdateQueryRequest(statusName(status.getStatus()), null, null));
-        return toResponse(status);
+        QueryStatusResponse down = requireStatus(hpds.queryStatus(target, stored.resourceResultId()));
+        operationsClient.update(picsureId, new UpdateQueryRequest(down.status(), null, null));
+        return new QueryStatusResponse(
+            picsureId, down.status(), down.resourceStatus(), down.resourceResultId(), down.sizeInBytes(), down.startTime(), down.duration(),
+            down.expiration(), down.resultMetadata()
+        );
     }
 
     public ResponseEntity<byte[]> result(String backend, UUID picsureId) {
         StoredQuery stored = load(picsureId);
-        return hpds.queryResult(selector.select(backend, isV3(stored)), stored.resourceResultId(), downstreamRequest(null));
-    }
-
-    public SignedUrlResponse signedUrl(String backend, UUID picsureId) {
-        StoredQuery stored = load(picsureId);
-        // DECISION 9 FIX: dispatch on STORED version for signed-url too (the legacy WAR omitted this).
-        ResponseEntity<String> down =
-            hpds.queryResultSignedUrl(selector.select(backend, isV3(stored)), stored.resourceResultId(), downstreamRequest(null));
-        return signedUrlFrom(down.getBody());
+        return hpds.queryResult(selector.select(backend, isV3(stored)), stored.resourceResultId());
     }
 
     /**
      * HPDS answers signed-url with {@code {"signedUrl": "..."}}. Anything else is an upstream contract violation and surfaces as a 502
      * rather than a 200 carrying a null url, which a caller would otherwise have to discover by following it.
      */
-    static SignedUrlResponse signedUrlFrom(String body) {
-        if (body != null) {
-            try {
-                JsonNode url = MAPPER.readTree(body).path("signedUrl");
-                if (url.isTextual()) {
-                    return new SignedUrlResponse(url.asText());
-                }
-            } catch (JsonProcessingException e) {
-                throw new HpdsCommunicationException("HPDS signed-url response was not JSON", e);
-            }
+    public SignedUrlResponse signedUrl(String backend, UUID picsureId) {
+        StoredQuery stored = load(picsureId);
+        // DECISION 9 FIX: dispatch on STORED version for signed-url too (the legacy WAR omitted this).
+        SignedUrlResponse down = hpds.queryResultSignedUrl(selector.select(backend, isV3(stored)), stored.resourceResultId());
+        if (down == null || down.signedUrl() == null) {
+            throw new HpdsCommunicationException("HPDS signed-url response carried no signedUrl");
         }
-        throw new HpdsCommunicationException("HPDS signed-url response carried no signedUrl");
+        return down;
+    }
+
+    /** A 2xx with no readable status body is an upstream contract violation, not a query we can go on to persist. */
+    private static QueryStatusResponse requireStatus(QueryStatusResponse down) {
+        if (down == null) {
+            throw new HpdsCommunicationException("HPDS returned no query status");
+        }
+        return down;
     }
 
     private StoredQuery load(UUID picsureId) {
@@ -247,24 +256,22 @@ public class QueryService {
     }
 
     /**
-     * Wraps the typed ingress query in the envelope HPDS still expects on the wire. Read ops pass {@code null}: they carry no query at all
-     * (the stored one is the subject), and the WAR's read calls posted a body whose only surviving purpose was resourceCredentials.
+     * Adapts a typed status back to the WAR's {@code QueryStatus} for the aggregate service's still-enveloped callers.
      *
-     * TODO(well-defined-contracts): Task 7 retypes {@link ResourceWebClient} to post the bare {@link Query}; this adapter dies with it.
+     * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this adapter dies with it.
      */
-    private static QueryRequest downstreamRequest(Query query) {
-        return new GeneralQueryRequest().setQuery(query);
-    }
-
-    private static QueryStatusResponse toResponse(QueryStatus s) {
-        return new QueryStatusResponse(
-            s.getPicsureResultId(), toContractStatus(s.getStatus()), s.getResourceStatus(), s.getResourceResultId(), s.getSizeInBytes(),
-            s.getStartTime(), s.getDuration(), s.getExpiration(), s.getResultMetadata()
-        );
-    }
-
-    private static PicSureStatus toContractStatus(edu.harvard.dbmi.avillach.domain.PicSureStatus status) {
-        return status == null ? null : PicSureStatus.valueOf(status.name());
+    private static QueryStatus toLegacyStatus(QueryStatusResponse r) {
+        QueryStatus s = new QueryStatus();
+        s.setPicsureResultId(r.picsureId());
+        s.setStatus(r.status() == null ? null : edu.harvard.dbmi.avillach.domain.PicSureStatus.valueOf(r.status().name()));
+        s.setResourceStatus(r.resourceStatus());
+        s.setResourceResultId(r.resourceResultId());
+        s.setSizeInBytes(r.sizeInBytes());
+        s.setStartTime(r.startTime());
+        s.setDuration(r.duration());
+        s.setExpiration(r.expiration());
+        s.setResultMetadata(r.resultMetadata());
+        return s;
     }
 
     // --- metadata (DB-only, no HPDS) ---
@@ -284,8 +291,7 @@ public class QueryService {
         }
 
         return new QueryStatusResponse(
-            stored.picsureId(), stored.status() == null ? null : PicSureStatus.valueOf(stored.status()), null, stored.resourceResultId(),
-            0L, 0L, 0L, 0L, resultMetadata
+            stored.picsureId(), stored.status(), null, stored.resourceResultId(), 0L, 0L, 0L, 0L, resultMetadata
         );
     }
 

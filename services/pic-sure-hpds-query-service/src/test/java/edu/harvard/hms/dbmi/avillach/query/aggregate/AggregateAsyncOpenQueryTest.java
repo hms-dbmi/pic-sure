@@ -33,8 +33,8 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
-import edu.harvard.hms.dbmi.avillach.query.operations.SaveQueryRequest;
 
 /**
  * Full-context proof of finding I6 (async open path consent-scoping). Real {@link AggregateService} +
@@ -148,9 +148,10 @@ class AggregateAsyncOpenQueryTest {
             argThat((SaveQueryRequest r) -> r.query() != null && r.query().contains("DATAFRAME") && !r.query().contains("crossCountFields"))
         );
         hpds.verify(0, postRequestedFor(urlEqualTo("/search")));
+        // the generic authorized ingress is the typed one, so its downstream body is the BARE query (no envelope)
         hpds.verify(
             postRequestedFor(urlEqualTo("/PIC-SURE/v3/query"))
-                .withRequestBody(matchingJsonPath("$.query.expectedResultType", WireMock.equalTo("DATAFRAME")))
+                .withRequestBody(matchingJsonPath("$.expectedResultType", WireMock.equalTo("DATAFRAME")))
         );
     }
 

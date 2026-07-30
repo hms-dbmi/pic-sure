@@ -93,7 +93,7 @@ public class AggregateService {
         if ("CROSS_COUNT".equalsIgnoreCase(node.get("expectedResultType").asText())) {
             changeQueryToOpenCrossCount(req, variant);
         }
-        return variant == AggregateVariant.V3 ? queryService.queryV3(HpdsBackendSelector.OPEN, req)
+        return variant == AggregateVariant.V3 ? queryService.queryV3Enveloped(HpdsBackendSelector.OPEN, req)
             : queryService.query(HpdsBackendSelector.OPEN, req);
     }
 
