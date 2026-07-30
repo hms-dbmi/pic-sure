@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.hms.dbmi.avillach.query.search.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -220,7 +220,7 @@ public class AggregateService {
     /** The consent allow-list: every phenotype concept path HPDS reports under the studies-consents search. */
     private List<String> studyConsentAllowList() {
         SearchResults consentResults = backend.search(new SearchRequest(STUDIES_CONSENTS_PATH));
-        LinkedHashMap<String, Object> resultsMap = objectMapper.convertValue(consentResults.getResults(), new TypeReference<>() {});
+        LinkedHashMap<String, Object> resultsMap = objectMapper.convertValue(consentResults.results(), new TypeReference<>() {});
         LinkedHashMap<String, Object> phenotypes = objectMapper.convertValue(resultsMap.get("phenotypes"), new TypeReference<>() {});
         return List.copyOf(phenotypes.keySet());
     }

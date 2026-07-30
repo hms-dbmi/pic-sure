@@ -2,7 +2,7 @@ package edu.harvard.hms.dbmi.avillach.operations.dataset;
 
 import java.util.UUID;
 
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 
 /**
  * The {@code query} member of {@link NamedDatasetDto}, mirroring the subset of the legacy {@code Query} entity's wire shape that consumers

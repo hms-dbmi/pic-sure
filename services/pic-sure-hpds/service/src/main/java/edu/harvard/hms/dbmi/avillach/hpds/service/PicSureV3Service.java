@@ -12,8 +12,7 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.UUIDv5;
 import edu.harvard.hms.dbmi.avillach.hpds.crypto.Crypto;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.audit.AuditAttributes;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
@@ -213,8 +212,9 @@ public class PicSureV3Service {
             });
         }
 
-        return new SearchResults().setResults(ImmutableMap.of("phenotypes", phenotypeResults, "info", infoResults))
-            .setSearchQuery(searchTerm != null ? searchTerm : "");
+        return new SearchResults(
+            ImmutableMap.of("phenotypes", phenotypeResults, "info", infoResults), searchTerm != null ? searchTerm : ""
+        );
     }
 
     /**

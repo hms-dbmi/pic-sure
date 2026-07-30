@@ -8,7 +8,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.operations.query.Query;
 
 class NamedDatasetMapperTest {

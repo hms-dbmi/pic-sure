@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -116,6 +117,25 @@ class QueryServiceTest {
         service.queryV3("auth", query());
 
         verify(operationsClient).save(argThat((SaveQueryRequest r) -> r.query().contains("\"select\"") && r.query().contains("\\\\age\\\\")));
+    }
+
+    /**
+     * Pins the PERSISTED wrapper byte-for-byte. It used to come from serializing api-model's {@code GeneralQueryRequest}, whose
+     * {@code @JsonTypeInfo} produced the leading {@code "@type"} plus an empty {@code resourceCredentials} and a null {@code resourceUUID};
+     * that module is retired but the stored rows and their readers (operations-service's {@code /dispatch} credential strip, {@code
+     * /metadata}'s v1 translation) are not, so the exact field set and ORDER must survive the retirement unchanged.
+     */
+    @Test
+    void v3CreatePersistsTheLegacyWrapperShapeByteForByte() {
+        when(hpds.query(any(HpdsTarget.class), any(Query.class))).thenReturn(hpdsStatus("rr-3"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
+
+        service.queryV3("auth", query());
+
+        ArgumentCaptor<SaveQueryRequest> saved = ArgumentCaptor.forClass(SaveQueryRequest.class);
+        verify(operationsClient).save(saved.capture());
+        assertThat(saved.getValue().query()).startsWith("{\"@type\":\"GeneralQueryRequest\",\"resourceCredentials\":{},\"query\":{")
+            .endsWith(",\"resourceUUID\":null}");
     }
 
     @Test

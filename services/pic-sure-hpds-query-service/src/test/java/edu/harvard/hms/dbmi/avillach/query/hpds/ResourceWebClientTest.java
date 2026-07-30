@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -181,16 +182,22 @@ class ResourceWebClientTest {
 
     // --- search: NO service token (parity with PicsureSearchService, which never set BEARER_TOKEN) ---
 
+    /**
+     * Also pins this module's local {@code SearchResults} against the shape HPDS's {@code PicSureV3Service} actually emits: both components
+     * must bind off the wire, or the aggregate consents lookup silently reads a null allow-list.
+     */
     @Test
     void searchPostsTheTypedSearchRequestWithoutAServiceToken() {
         hpds.stubFor(
             post(urlEqualTo("/PIC-SURE/search")).withHeader("Authorization", absent())
-                .willReturn(okJson("{\"searchQuery\":\"BRCA\",\"results\":{}}"))
+                .willReturn(okJson("{\"searchQuery\":\"BRCA\",\"results\":{\"phenotypes\":{},\"info\":{}}}"))
         );
 
         var result = client().search(base(), new SearchRequest("BRCA")); // String base, not HpdsTarget -- no token path
 
         assertThat(result).isNotNull();
+        assertThat(result.searchQuery()).isEqualTo("BRCA");
+        assertThat(result.results()).isEqualTo(Map.of("phenotypes", Map.of(), "info", Map.of()));
         hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/search")).withRequestBody(equalToJson("{\"query\":\"BRCA\"}")));
     }
 

@@ -25,8 +25,6 @@ import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -153,21 +151,25 @@ public class QueryService {
      * gateway's {@code QueryAuthFetcher}, and {@link #metadata} reads stored v1 rows back through it. Rewriting the persisted shape is a
      * data migration, not a wire change.
      *
+     * <p><b>Byte-for-byte the legacy wrapper.</b> This used to serialize an {@code api-model} {@code GeneralQueryRequest}, whose
+     * {@code @JsonTypeInfo} emitted a leading {@code "@type":"GeneralQueryRequest"} alongside an empty {@code resourceCredentials} and a
+     * null {@code resourceUUID}. That module is gone, but the stored rows and the readers above are not, so the wrapper is now built
+     * explicitly -- same fields, same order, same bytes -- rather than resurrecting the class to produce them. {@code QueryServiceTest}
+     * pins the exact string.
+     *
      * TODO(well-defined-contracts): Task 15 migrates the stored blob to the bare v3 Query.
      */
     private String storedBody(Query query) {
-        return storedBody(new GeneralQueryRequest().setQuery(query));
-    }
-
-    /**
-     * null query -&gt; null blob; else the serialized full QueryRequest (including resourceCredentials -- stripped only at dispatch time).
-     */
-    private String storedBody(QueryRequest req) {
-        if (req.getQuery() == null) {
+        if (query == null) {
             return null;
         }
+        ObjectNode wrapper = MAPPER.createObjectNode();
+        wrapper.put("@type", "GeneralQueryRequest");
+        wrapper.putObject("resourceCredentials");
+        wrapper.set("query", MAPPER.valueToTree(query));
+        wrapper.putNull("resourceUUID");
         try {
-            return MAPPER.writeValueAsString(req);
+            return MAPPER.writeValueAsString(wrapper);
         } catch (JsonProcessingException e) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
         }

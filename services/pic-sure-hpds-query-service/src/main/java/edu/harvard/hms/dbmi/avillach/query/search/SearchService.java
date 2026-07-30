@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
 import edu.harvard.hms.dbmi.avillach.query.hpds.ResourceWebClient;

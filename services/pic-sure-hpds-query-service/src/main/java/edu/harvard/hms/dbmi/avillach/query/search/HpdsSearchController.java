@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
 
 /**
  * Ports the legacy WAR's {@code PicsureRS}/{@code PicsureRSv3} search endpoints, v3-only: {@code /hpds/{backend}/v3/search} and

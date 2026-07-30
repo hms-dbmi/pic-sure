@@ -10,7 +10,7 @@ pic-sure/                       root pom — PARENT + aggregator
 ├── platform/                   pic-sure-bom — the single version catalog (STANDALONE; no parent)
 ├── libs/
 │   ├── pic-sure-commons/       pic-sure-common aggregator (subtree of hms-dbmi/pic-sure-common)
-│   │   ├── pic-sure-api-model/     domain DTOs   (pkg edu.harvard.dbmi.avillach.{domain,util})
+│   │   ├── pic-sure-contracts/     shared wire contracts (pkg edu.harvard.dbmi.avillach.contracts)
 │   │   └── pic-sure-hpds-model/    HPDS query model (groupId …avillach.hpds — frozen)
 │   └── pic-sure-logging-client/ audit/logging client (groupId edu.harvard.dbmi.avillach — frozen)
 ├── services/
@@ -59,7 +59,7 @@ sibling lib repos get archived at push day. pic-sure-legacy still pins the relea
 |---|---|
 | `3.0.0` (`${revision}`) | The monorepo line — Java 25, everything in the new reactor. Never publish it from the sibling repos. |
 | `2.x` | The legacy WAR family (`pic-sure-legacy` parent is `pic-sure-api:2.2.0-SNAPSHOT`). |
-| `1.x` | Frozen Java 11 releases the legacy WAR pins (e.g. `pic-sure-api-model:1.0.0`, `pic-sure-logging-client:1.0.0`). Immutable — the frozen and `3.0.0` lines must never share a coordinate+version. |
+| `1.x` | Frozen Java 11 releases the legacy WAR pins (e.g. `pic-sure-logging-client:1.0.0`). Immutable — the frozen and `3.0.0` lines must never share a coordinate+version. |
 
 Versions are CI-friendly (`${revision}` + `flatten-maven-plugin`). Dependency versions come from the `platform` BOM (`pic-sure-bom`), which imports the Spring Boot 3.5.x and Spring Cloud 2025.0.x BOMs. Internal modules inherit everything through the root parent; **external consumers import the published `pic-sure-bom` directly** instead of inheriting the parent (see `platform/README.md`).
 

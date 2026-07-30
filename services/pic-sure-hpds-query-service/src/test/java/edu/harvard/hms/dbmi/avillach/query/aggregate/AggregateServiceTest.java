@@ -23,7 +23,7 @@ import org.springframework.http.ResponseEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.hms.dbmi.avillach.query.search.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.AuthorizationFilter;
@@ -346,6 +346,6 @@ class AggregateServiceTest {
         Map<String, Object> phenotypes = new LinkedHashMap<>();
         phenotypes.put("\\study\\a\\consent\\", Map.of());
         phenotypes.put("\\study\\b\\consent\\", Map.of());
-        return new SearchResults().setResults(Map.of("phenotypes", phenotypes));
+        return new SearchResults(Map.of("phenotypes", phenotypes), null);
     }
 }

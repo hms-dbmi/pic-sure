@@ -20,9 +20,10 @@
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 			<artifactId>pic-sure-hpds-model</artifactId>
 		</dependency>
+		<!-- Shared wire contracts: AsyncResult's Status maps onto the cross-service PicSureStatus enum. -->
 		<dependency>
 			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-api-model</artifactId>
+			<artifactId>pic-sure-contracts</artifactId>
 		</dependency>
 		<dependency>
 		    <groupId>org.mockito</groupId>

@@ -9,7 +9,7 @@ Bill of Materials (BOM) for `pic-sure`. This module publishes a single, centrali
 Its sole job: **pin versions**, for two categories of dependencies used across `pic-sure`:
 
 - **Third-party libraries** used across the monorepo, primarily via the imported `spring-boot-dependencies` and `spring-cloud-dependencies` BOMs
-- **Internal artifacts** published from this repo (`pic-sure-api-model`, `pic-sure-hpds-model`, `pic-sure-logging-client`), so services always align on the current in-repo version
+- **Internal artifacts** published from this repo (`pic-sure-contracts`, `pic-sure-hpds-model`, `pic-sure-logging-client`), so services always align on the current in-repo version
 
 > **This BOM is standalone by design** — it has no `<parent>`. The root parent POM imports this BOM, so a `<parent>` pointing back at the root would create a model-resolution cycle. Its version properties (`spring-boot.version`, `spring-cloud.version`) are therefore duplicated from the root pom and must be bumped in lockstep.
 
@@ -38,7 +38,7 @@ Keeping them separate means a module can pull in consistent versions via this BO
   </dependency>
   <dependency>
     <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-    <artifactId>pic-sure-api-model</artifactId>
+    <artifactId>pic-sure-contracts</artifactId>
   </dependency>
 </dependencies>
 ```

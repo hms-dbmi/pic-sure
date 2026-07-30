@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.query.config.HpdsProperties;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector;
@@ -53,7 +52,7 @@ class SearchServiceTest {
 
     @Test
     void searchUsesTheV3Base() {
-        SearchResults sr = new SearchResults();
+        SearchResults sr = new SearchResults(null, null);
         when(hpds.search(eq("http://hpds/PIC-SURE/v3"), any())).thenReturn(sr);
 
         assertThat(service.search("auth", req())).isSameAs(sr);
@@ -73,7 +72,7 @@ class SearchServiceTest {
     @Test
     void searchResolvesOpenBackendSeparatelyFromAuth() {
         props.setOpenUrl("http://hpds-open/PIC-SURE");
-        SearchResults sr = new SearchResults();
+        SearchResults sr = new SearchResults(null, null);
         when(hpds.search(eq("http://hpds-open/PIC-SURE/v3"), any())).thenReturn(sr);
 
         service.search("open", req());

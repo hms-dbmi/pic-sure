@@ -9,7 +9,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.io.CsvWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.PfbWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.*;
-import edu.harvard.dbmi.avillach.util.UUIDv5;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.UUIDv5;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

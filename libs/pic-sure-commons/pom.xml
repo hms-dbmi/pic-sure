@@ -13,7 +13,6 @@
 	<packaging>pom</packaging>
 	<name>pic-sure-common</name>
 	<modules>
-		<module>pic-sure-api-model</module>
 		<module>pic-sure-hpds-model</module>
 		<module>pic-sure-contracts</module>
     </modules>

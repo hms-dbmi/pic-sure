@@ -17,7 +17,7 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.SearchResults;
+import edu.harvard.hms.dbmi.avillach.query.search.SearchResults;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
 

@@ -5,7 +5,7 @@ import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStore;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.ResultStoreStream;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.io.ResultWriter;
-import edu.harvard.dbmi.avillach.domain.PicSureStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;

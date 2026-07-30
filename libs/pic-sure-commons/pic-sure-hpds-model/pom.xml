@@ -15,11 +15,6 @@
   <url>https://avillach-lab.hms.harvard.edu/pic-sure</url>
   <dependencies>
     <dependency>
-      <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-      <artifactId>pic-sure-api-model</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>io.swagger.core.v3</groupId>
       <artifactId>swagger-annotations</artifactId>
     </dependency>

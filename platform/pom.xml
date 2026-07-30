@@ -18,7 +18,6 @@
         <spring-cloud.version>2025.0.0</spring-cloud.version>
         <!-- Internal artifacts: the 3.0.0 Java 25 line published from this repo.
              Legacy stays pinned to the frozen Java 11 releases and never resolves these. -->
-        <pic-sure-api-model.version>3.0.0</pic-sure-api-model.version>
         <pic-sure-contracts.version>3.0.0</pic-sure-contracts.version>
         <pic-sure-hpds-model.version>3.0.0</pic-sure-hpds-model.version>
         <pic-sure-logging-client.version>3.0.0</pic-sure-logging-client.version>
@@ -51,11 +50,6 @@
             <!-- Consumable jars from libs/pic-sure-commons (the pic-sure-common
                  aggregator pom itself is not a dependency target). Note the
                  distinct groupId on pic-sure-hpds-model. -->
-            <dependency>
-                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
-                <artifactId>pic-sure-api-model</artifactId>
-                <version>${pic-sure-api-model.version}</version>
-            </dependency>
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
                 <artifactId>pic-sure-contracts</artifactId>

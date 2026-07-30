@@ -33,10 +33,6 @@
 			<groupId>edu.harvard.hms.dbmi.avillach.hpds</groupId>
 			<artifactId>common</artifactId>
 		</dependency>
-		<dependency>
-			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
-			<artifactId>pic-sure-api-model</artifactId>
-		</dependency>
 		<!-- Shared wire contracts for the v3 surface (QueryStatusResponse, SearchRequest, PaginatedResponse,
 		     SignedUrlResponse, ResourceInfo). -->
 		<dependency>

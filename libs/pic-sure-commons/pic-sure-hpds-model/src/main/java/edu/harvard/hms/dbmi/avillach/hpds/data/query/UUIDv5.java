@@ -1,4 +1,4 @@
-package edu.harvard.dbmi.avillach.util;
+package edu.harvard.hms.dbmi.avillach.hpds.data.query;
 
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
