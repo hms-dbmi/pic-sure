@@ -73,7 +73,8 @@ class HpdsCallIntegrationTest {
             // The caller's Bearer token is NOT forwarded: query-service authorizes from the gateway's identity headers,
             // which is what must reach it for its /hpds/** .authenticated() rule to pass.
             .andExpect(headerDoesNotExist("Authorization")).andExpect(header("X-User-Id", "test-user"))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}}"))
+            // Bare v3 Query on the wire -- the query-service ingress binds Query itself and 400s on envelope keys.
+            .andExpect(content().json("{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}")).andExpect(jsonPath("$.query").doesNotExist())
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         // Build a v3 query with a categorical filter
@@ -116,7 +117,7 @@ class HpdsCallIntegrationTest {
         hpdsResponse.put("\\measurements\\bmi\\", bmiValues);
 
         mockServer.expect(requestTo("http://localhost:9999/mock-query-service/hpds/auth/v3/query/sync")).andExpect(method(HttpMethod.POST))
-            .andExpect(content().json("{\"query\":{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}}"))
+            .andExpect(content().json("{\"expectedResultType\":\"CONTINUOUS_CROSS_COUNT\"}"))
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
         Map<String, Object> query = Map.of(

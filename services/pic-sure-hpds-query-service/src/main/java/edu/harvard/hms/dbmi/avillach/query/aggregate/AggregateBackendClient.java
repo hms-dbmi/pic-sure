@@ -83,13 +83,19 @@ public class AggregateBackendClient {
     }
 
     /**
-     * Visualization {@code /v3/bin/continuous}. The body is the service's {@code {"query": <continuous counts>}} request shape -- Task 11
-     * retypes that endpoint onto a shared contract record, at which point this map literal becomes that record.
+     * Visualization {@code /v3/bin/continuous}. The body is that endpoint's {@code ContinuousBinningRequest} shape --
+     * {@code {"continuousData": <continuous counts>}}; the field is NOT named {@code query} (it never was one, and the old name is now
+     * rejected along with every other unmodelled property). The response is viz's {@code BinnedDistribution} wrapper, i.e. the bins live
+     * under {@code bins} -- see {@link AggregateService#getBinnedContinuousCrossCount}, which unwraps it.
+     *
+     * <p>Written as a map literal rather than viz's record because that record is service-local: viz owns this contract, and query-service
+     * is one client of it. The endpoint's strict deserialization is what keeps the two honest -- a drifted field name is a 400 here, not a
+     * silently empty binning.
      */
     public String binContinuous(Map<String, Map<String, Integer>> continuousCounts) {
         String uri = props.getVisualizationUrl() + V3 + "/bin/continuous";
         try {
-            return post(uri, Map.of("query", continuousCounts)).retrieve().body(String.class);
+            return post(uri, Map.of("continuousData", continuousCounts)).retrieve().body(String.class);
         } catch (RestClientException e) {
             throw new HpdsCommunicationException("Aggregate bin/continuous call failed: " + uri, e);
         }

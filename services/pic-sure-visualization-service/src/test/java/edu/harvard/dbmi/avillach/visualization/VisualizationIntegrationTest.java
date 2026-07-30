@@ -1,6 +1,9 @@
 package edu.harvard.dbmi.avillach.visualization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.contracts.info.QueryFormat;
+import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
+import edu.harvard.dbmi.avillach.visualization.model.BinnedDistribution;
 import edu.harvard.dbmi.avillach.visualization.model.VisualizationResponse;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import org.junit.jupiter.api.Test;
@@ -27,9 +30,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // endpoint the AIO deployment enables via PICSURE_ACTUATOR_EXPOSURE=health.
 @TestPropertySource(properties = {"management.endpoints.web.exposure.include=health"})
 class VisualizationIntegrationTest {
-
-    private static final String AUTHORIZED_UUID = "550e8400-e29b-41d4-a716-446655440000";
-    private static final String OPEN_UUID = "550e8400-e29b-41d4-a716-446655440001";
 
     @Autowired
     private MockMvc mockMvc;
@@ -100,20 +100,35 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_legacyHpdsResourceUUID_isAcceptedAndIgnoredForAccessSelection() throws Exception {
-        // Legacy clients still send a body UUID; it no longer drives AUTHORIZED-vs-OPEN and unknown values are not rejected.
+    void distributions_retiredHpdsResourceUUID_returns400() throws Exception {
+        // The resource-registry selector is retired, not tolerated: the request model no longer opts out of strict
+        // deserialization, so a client still sending it is told so instead of having the field silently dropped.
         String body =
             objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
+
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
+        ).andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
+    void distributions_retiredResourceCredentials_returns400() throws Exception {
+        // The v1 envelope's other half. /distributions never read it; with the envelope gone from every hop, sending it
+        // is a client-version mismatch worth surfacing.
+        String body = objectMapper.writeValueAsString(Map.of("resourceCredentials", Map.of(), "query", Map.of()));
 
         mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
                 .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
-        ).andExpect(status().isOk());
+        ).andExpect(status().isBadRequest());
     }
 
     @Test
     void distributions_nullQuery_returns400() throws Exception {
-        String body = "{\"hpdsResourceUUID\":\"" + AUTHORIZED_UUID + "\",\"query\":null}";
+        String body = "{\"query\":null}";
 
         MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isBadRequest()).andReturn();
@@ -140,9 +155,10 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void binContinuous_nullQueryField_returns400() throws Exception {
-        MvcResult result = mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": null}"))
-            .andExpect(status().isBadRequest()).andReturn();
+    void binContinuous_nullContinuousDataField_returns400() throws Exception {
+        MvcResult result =
+            mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"continuousData\": null}"))
+                .andExpect(status().isBadRequest()).andReturn();
 
         assertTrue(result.getResponse().getContentAsString().contains("error"));
     }
@@ -150,7 +166,7 @@ class VisualizationIntegrationTest {
     @Test
     void binContinuous_invalidDataFormat_returns400() throws Exception {
         MvcResult result =
-            mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"query\": \"not a map\"}"))
+            mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content("{\"continuousData\": \"not a map\"}"))
                 .andExpect(status().isBadRequest()).andReturn();
 
         assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
@@ -164,47 +180,71 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void binContinuous_acceptsQueryRequestFormat() throws Exception {
+    void binContinuous_retiredQueryFieldName_returns400() throws Exception {
+        // The counts field was misnamed 'query' (it is per-concept value counts, not a query). The old name is not an
+        // accepted alias: a caller on the old name gets told, rather than silently binning nothing.
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100))));
+
+        MvcResult result = mockMvc.perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
+    void binContinuous_retiredEnvelopeFields_returns400() throws Exception {
+        // resourceUUID/resourceCredentials came from the v1 QueryRequest envelope this endpoint never read. With the
+        // strictness opt-out gone, they are rejected rather than ignored.
         Map<String, Object> requestBody = Map.of(
-            "query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)), "resourceUUID",
-            "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
+            "continuousData", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100)), "resourceUUID", "550e8400-e29b-41d4-a716-446655440000",
+            "resourceCredentials", Map.of()
         );
+
+        MvcResult result = mockMvc
+            .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
+            .andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
+    void binContinuous_returnsBinsUnderTheNamedWrapper() throws Exception {
+        Map<String, Object> requestBody =
+            Map.of("continuousData", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)));
 
         MvcResult result = mockMvc
             .perform(post("/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody)))
             .andExpect(status().isOk()).andReturn();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
+        BinnedDistribution response = objectMapper.readValue(result.getResponse().getContentAsString(), BinnedDistribution.class);
+        assertTrue(response.bins().containsKey("\\measurements\\bmi\\"));
+        assertFalse(response.bins().get("\\measurements\\bmi\\").isEmpty());
     }
 
     @Test
-    void binContinuous_v3RouteAcceptsQueryRequestFormat() throws Exception {
-        Map<String, Object> requestBody = Map.of(
-            "query", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)), "resourceUUID",
-            "550e8400-e29b-41d4-a716-446655440000", "resourceCredentials", Map.of()
-        );
+    void binContinuous_v3RouteReturnsBinsUnderTheNamedWrapper() throws Exception {
+        Map<String, Object> requestBody =
+            Map.of("continuousData", Map.of("\\measurements\\bmi\\", Map.of("18.0", 100, "25.0", 200, "30.0", 150)));
 
         MvcResult result = mockMvc.perform(
             post("/v3/bin/continuous").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(requestBody))
         ).andExpect(status().isOk()).andReturn();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> response = objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
-        assertTrue(response.containsKey("\\measurements\\bmi\\"));
-        assertFalse(response.get("\\measurements\\bmi\\").isEmpty());
+        BinnedDistribution response = objectMapper.readValue(result.getResponse().getContentAsString(), BinnedDistribution.class);
+        assertTrue(response.bins().containsKey("\\measurements\\bmi\\"));
+        assertFalse(response.bins().get("\\measurements\\bmi\\").isEmpty());
     }
 
     @Test
-    void info_returnsResourceInfo() throws Exception {
+    void info_returnsSharedResourceInfoContract() throws Exception {
         MvcResult result =
             mockMvc.perform(post("/info").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk()).andReturn();
 
-        String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("PIC-SURE Visualization Service"));
-        assertTrue(content.contains("queryFormats"));
+        // The shared contracts.info record, not viz's own /info schema: one /info shape repo-wide.
+        ResourceInfo info = objectMapper.readValue(result.getResponse().getContentAsString(), ResourceInfo.class);
+        assertEquals("PIC-SURE Visualization Service", info.name());
+        assertEquals(1, info.queryFormats().size());
+        assertEquals("PIC-SURE Visualization Distributions", info.queryFormats().get(0).name());
     }
 
     @Test
@@ -212,11 +252,11 @@ class VisualizationIntegrationTest {
         MvcResult result = mockMvc.perform(post("/query/format").contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isOk()).andReturn();
 
-        String content = result.getResponse().getContentAsString();
-        assertTrue(content.contains("POST /distributions"));
-        assertTrue(content.contains("query"));
+        QueryFormat format = objectMapper.readValue(result.getResponse().getContentAsString(), QueryFormat.class);
+        assertEquals("Request format for POST /distributions", format.description());
+        assertTrue(format.specification().containsKey("query"));
         // hpdsResourceUUID is no longer part of the request: the backend is chosen by X-Picsure-Access-Type and the
         // path query-service is called on. Advertising it would tell clients to send a field nothing reads.
-        assertFalse(content.contains("hpdsResourceUUID"));
+        assertFalse(result.getResponse().getContentAsString().contains("hpdsResourceUUID"));
     }
 }

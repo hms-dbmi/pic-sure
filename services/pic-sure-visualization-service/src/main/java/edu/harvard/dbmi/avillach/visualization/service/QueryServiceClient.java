@@ -1,6 +1,5 @@
 package edu.harvard.dbmi.avillach.visualization.service;
 
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.logging.RequestInfo;
@@ -34,6 +33,10 @@ import org.springframework.web.client.RestClient;
  * {@code .authenticated()}, which its {@code GatewayPrivilegesFilter} satisfies only when {@code X-User-Id} is present. Open-access
  * requests carry the marker {@code OPEN_ACCESS:<host>} in that header, which satisfies the rule; the auth-vs-open choice itself comes from
  * {@link AccessTypeResolver}, never from this value.
+ *
+ * <p><b>The body is the BARE v3 {@link Query}.</b> Both {@code /hpds/{auth,open}/v3/query/sync} routes bind {@code Query} directly and
+ * reject unmodelled properties, so the old {@code GeneralQueryRequest} envelope ({@code query} + {@code resourceCredentials}) is not merely
+ * redundant here -- sending it is a 400.
  *
  * <p>No {@code resourceUUID} is sent. query-service selects its backend from the path and only echoes the field back, so including it would
  * imply a routing role it no longer has.
@@ -98,7 +101,6 @@ public class QueryServiceClient {
 
         String path = querySyncPath(accessType);
         String url = queryServiceBaseUrl + path;
-        Object body = requestBody(subQuery);
         logger.info(
             "Calling query-service requestId={} accessType={} distributionKind={} resultType={} selectedConceptCount={} selectedConceptPaths={} url={}",
             requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType, selectedConceptCount(subQuery),
@@ -107,7 +109,7 @@ public class QueryServiceClient {
 
         try {
             ResponseEntity<Map<String, T>> response =
-                restClient.post().uri(url).headers(h -> h.addAll(headers)).body(body).retrieve().toEntity(typeRef);
+                restClient.post().uri(url).headers(h -> h.addAll(headers)).body(subQuery).retrieve().toEntity(typeRef);
             logger.info(
                 "query-service call completed requestId={} accessType={} distributionKind={} resultType={} status={} durationMs={} responseSeriesCount={} responsePointCount={} responseSeriesKeys={}",
                 requestId, accessTypeValue(accessType), distributionKindValue(distributionKind), resultType,
@@ -173,13 +175,6 @@ public class QueryServiceClient {
 
     private static List<String> responseSeriesKeys(Map<String, ?> responseBody) {
         return responseBody != null ? new ArrayList<>(responseBody.keySet()) : List.of();
-    }
-
-    private Object requestBody(Query subQuery) {
-        GeneralQueryRequest request = new GeneralQueryRequest();
-        request.setQuery(subQuery);
-        request.setResourceCredentials(Map.of());
-        return request;
     }
 
     private String querySyncPath(AccessType accessType) {

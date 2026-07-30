@@ -273,7 +273,8 @@ class AggregateServiceTest {
         when(backend.search(any())).thenReturn(consentsSearch());
         when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
-        when(backend.binContinuous(any())).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
+        // viz answers with the named BinnedDistribution wrapper; the bins live under "bins", not at the root.
+        when(backend.binContinuous(any())).thenReturn("{\"bins\":{\"\\\\age\\\\\":{\"0-10\":100}}}");
         AggregateProperties props = new AggregateProperties();
         props.setVisualizationUrl("http://viz.example");
         AggregateService svc = service(backend, props);

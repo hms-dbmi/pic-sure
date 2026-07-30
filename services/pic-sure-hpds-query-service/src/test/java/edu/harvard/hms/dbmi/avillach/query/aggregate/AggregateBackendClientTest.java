@@ -104,16 +104,20 @@ class AggregateBackendClientTest {
         hpds.verify(0, postRequestedFor(urlEqualTo("/search")));
     }
 
-    /** The binning hop carries the continuous counts under the viz service's {@code query} field and nothing else. */
+    /**
+     * The binning hop carries the continuous counts under the viz service's {@code continuousData} field and nothing else. The field is NOT
+     * named {@code query} any more (it never was one), and viz now rejects unmodelled properties -- so a stale field name here is a 400,
+     * not a silently empty binning.
+     */
     @Test
     void binContinuousPostsTheCountsToTheV3VizPathWithNoResourceUuid() {
-        hpds.stubFor(post(urlEqualTo("/v3/bin/continuous")).willReturn(okJson("{}")));
+        hpds.stubFor(post(urlEqualTo("/v3/bin/continuous")).willReturn(okJson("{\"bins\":{}}")));
 
         client().binContinuous(Map.of("\\age\\", Map.of("5", 100)));
 
         hpds.verify(
-            postRequestedFor(urlEqualTo("/v3/bin/continuous")).withRequestBody(matchingJsonPath("$.query['\\\\age\\\\']['5']"))
-                .withRequestBody(matchingJsonPath("$.resourceUUID", absent()))
+            postRequestedFor(urlEqualTo("/v3/bin/continuous")).withRequestBody(matchingJsonPath("$.continuousData['\\\\age\\\\']['5']"))
+                .withRequestBody(matchingJsonPath("$.query", absent())).withRequestBody(matchingJsonPath("$.resourceUUID", absent()))
         );
     }
 

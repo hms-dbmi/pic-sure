@@ -181,10 +181,25 @@ public class AggregateService {
     /**
      * Replaces the WAR's {@code ResourceRepository.getById(visualizationResourceId)} with the configured viz URL (DB-free). The binning hop
      * carries only the continuous counts: the WAR's {@code resourceUUID}/{@code resourceCredentials} echo went with the envelope.
+     *
+     * <p>Viz answers with its named {@code BinnedDistribution} wrapper, so the bins are unwrapped from {@code bins} rather than read off
+     * the response root.
      */
     private Map<String, Map<String, Object>> getBinnedContinuousCrossCount(Map<String, Map<String, Integer>> continuous)
         throws IOException {
-        return objectMapper.readValue(backend.binContinuous(continuous), new TypeReference<>() {});
+        return objectMapper.readValue(backend.binContinuous(continuous), BinnedDistributionResponse.class).bins();
+    }
+
+    /**
+     * The visualization service's {@code POST /v3/bin/continuous} response ({@code BinnedDistribution}). Modelled here rather than imported
+     * because that record is viz-local; unknown properties are NOT tolerated, so viz changing this shape fails loudly here instead of
+     * quietly binning nothing. Values stay {@code Object} because {@link ObfuscationService#obfuscateCrossCount} takes the widened map.
+     */
+    private record BinnedDistributionResponse(Map<String, Map<String, Object>> bins) {
+
+        private BinnedDistributionResponse {
+            bins = bins == null ? Map.of() : bins;
+        }
     }
 
     // ---- query rebuild (typed) ----
