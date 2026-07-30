@@ -40,6 +40,14 @@
 				<version>5.12.2</version>
 				<scope>test</scope>
 			</dependency>
+			<!-- Same version PSAMA resolves via the Spring Boot BOM, so the rule-compatibility test evaluates deployed
+			     FISMA access rules with the exact JsonPath implementation that runs in production. -->
+			<dependency>
+				<groupId>com.jayway.jsonpath</groupId>
+				<artifactId>json-path</artifactId>
+				<version>2.9.0</version>
+				<scope>test</scope>
+			</dependency>
 		</dependencies>
   </dependencyManagement>
   <distributionManagement>

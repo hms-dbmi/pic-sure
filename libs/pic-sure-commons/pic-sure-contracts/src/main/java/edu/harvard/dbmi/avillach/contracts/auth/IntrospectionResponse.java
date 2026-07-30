@@ -1,0 +1,36 @@
+package edu.harvard.dbmi.avillach.contracts.auth;
+
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.List;
+
+/**
+ * PSAMA's answer to {@link IntrospectionRequest}: whether the token is usable, who it belongs to, and -- when consent evaluation rewrote it
+ * -- the query the caller is actually allowed to run. <p> Unknown properties are ignored because PSAMA copies every JWT claim into this
+ * response ({@code TokenInspection#addAllFields}), so the payload carries {@code exp}, {@code iat}, {@code jti}, {@code message} and
+ * whatever else the token happened to hold. Only the fields below are contractual; nothing may start depending on the rest.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "PSAMA's token-introspection verdict, including the consent-mutated query the caller may actually run")
+public record IntrospectionResponse(
+    @Schema(description = "False whenever the token is unusable for any reason: invalid, expired, unknown user, or unauthorized") //
+    boolean active,
+    // PSAMA's inspect response carries the user UUID as "uuid" (UserService#responseMap / UserClaims#toMap); it never sends a "userId"
+    // field. Without this alias X-User-Id is never propagated and the query/operations services' header-based authn rejects every request.
+    @JsonAlias("uuid") @Schema(description = "PSAMA's UUID for the authenticated user; sent on the wire as \"uuid\"") String userId,
+    @Schema(description = "Token subject, i.e. the identity-provider-scoped user identifier") String sub,
+    @Schema(description = "Email address of the authenticated user") String email,
+    @Schema(description = "Names of the roles held by the user") List<String> roles,
+    @Schema(description = "Names of the privileges the user holds in the calling application, plus their application-independent ones") //
+    List<String> privileges,
+    @Schema(description = "True when PSAMA issued a fresh token because the presented one was close to expiring") boolean tokenRefreshed,
+    @Schema(description = "The refreshed token; populated only when tokenRefreshed is true") String token,
+    @Schema(
+        description = "Consent-mutated v3 Query as a JSON OBJECT (never a string). Present only when access-rule evaluation rewrote the "
+            + "submitted query; the caller must run this one instead of the query it sent"
+    ) JsonNode query
+) {
+}

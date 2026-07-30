@@ -3,10 +3,13 @@ package edu.harvard.dbmi.avillach.contracts;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionRequest;
+import edu.harvard.dbmi.avillach.contracts.auth.IntrospectionResponse;
 import edu.harvard.dbmi.avillach.contracts.info.QueryFormat;
 import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
@@ -80,6 +83,47 @@ class FixtureRoundTripTest {
         assertEquals("HPDS Resource", resourceInfo.name());
         assertEquals(1, resourceInfo.queryFormats().size());
         assertNotNull(resourceInfo.id());
+    }
+
+    @Test
+    void shouldRoundTripIntrospectionRequest() throws IOException {
+        IntrospectionRequest request = assertRoundTrip("introspection-request.json", IntrospectionRequest.class);
+
+        assertEquals("/hpds/auth/v3/query", request.request().targetService());
+        assertEquals("COUNT", request.request().query().get("expectedResultType").asText());
+    }
+
+    @Test
+    void shouldRoundTripIntrospectionResponse() throws IOException {
+        IntrospectionResponse response = assertRoundTrip("introspection-response.json", IntrospectionResponse.class);
+
+        assertTrue(response.active());
+        assertEquals("6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11", response.userId());
+        assertEquals(List.of("ADMIN", "PRIV_MANAGED_phs000007_c1"), response.privileges());
+        assertTrue(response.query().isObject(), "the consent-mutated query must stay a JSON object");
+    }
+
+    /**
+     * PSAMA sends the user UUID as "uuid", never as "userId". Losing this alias silently drops X-User-Id and every downstream service
+     * rejects the request, so the alias is contractual and not a convenience.
+     */
+    @Test
+    void shouldAcceptUuidAliasForUserId() throws IOException {
+        IntrospectionResponse response =
+            MAPPER.readValue("{\"active\":true,\"uuid\":\"6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11\"}", IntrospectionResponse.class);
+
+        assertEquals("6ac1b1df-1c66-4b5c-8f5a-1f5c8c1e0a11", response.userId());
+    }
+
+    /**
+     * PSAMA copies every JWT claim into the introspection response, so unknown properties must not break deserialization.
+     */
+    @Test
+    void shouldIgnoreUnknownIntrospectionResponseProperties() throws IOException {
+        IntrospectionResponse response =
+            MAPPER.readValue("{\"active\":true,\"exp\":1893456000,\"iat\":1893452400,\"message\":\"ok\"}", IntrospectionResponse.class);
+
+        assertTrue(response.active());
     }
 
     @Test

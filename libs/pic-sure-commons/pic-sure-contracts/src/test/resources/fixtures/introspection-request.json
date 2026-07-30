@@ -1,0 +1,11 @@
+{
+  "token": "a.placeholder.token",
+  "request": {
+    "Target Service": "/hpds/auth/v3/query",
+    "query": {
+      "expectedResultType": "COUNT",
+      "select": [],
+      "requiredFields": ["\\demographics\\SEX\\"]
+    }
+  }
+}
