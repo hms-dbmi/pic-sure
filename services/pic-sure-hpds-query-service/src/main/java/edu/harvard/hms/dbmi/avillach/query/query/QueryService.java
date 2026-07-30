@@ -27,7 +27,6 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
 import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
 import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.QueryTranslator;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -44,10 +43,11 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * picsureId} and the sole persistence store.
  *
  * <p><b>Typed on both sides:</b> the public entry points take the bare v3 {@link Query} (or nothing but the query id, for reads) and return
- * {@link QueryStatusResponse}/{@link SignedUrlResponse}, and the HPDS hop underneath speaks the same records -- the {@code QueryRequest}
- * envelope survives only on the aggregate service's overload ({@link #queryV3Enveloped(String, QueryRequest)}), which a later task retypes.
- * The store DTOs are the shared {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the
- * {@link PicSureStatus} enum end to end rather than a string that only happened to parse.
+ * {@link QueryStatusResponse}/{@link SignedUrlResponse}, and the HPDS hop underneath speaks the same records. The aggregate (open) path
+ * shares {@link #queryV3(String, Query)} rather than carrying an envelope of its own. The {@code QueryRequest} wrapper survives ONLY inside
+ * {@link #storedBody(Query)}, i.e. in the persisted blob, until Task 15 migrates it. The store DTOs are the shared
+ * {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the {@link PicSureStatus} enum end to
+ * end rather than a string that only happened to parse.
  *
  * <p><b>Decision 9 (the signed-url bug fix):</b> {@link #status}, {@link #result}, and {@link #signedUrl} all dispatch to HPDS using the
  * backend implied by the ingress {@code {backend}} path segment (auth/open) AND the v3-ness of the STORED query's {@code version} field
@@ -97,22 +97,6 @@ public class QueryService {
         if (query == null) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
         }
-    }
-
-    /**
-     * Aggregate-service create path, still enveloped (the v1-dispatch sibling died with the v1 aggregate ingress). Named apart from
-     * {@link #queryV3(String, Query)} on purpose: an overload pair differing only in the argument type is an ambiguity trap for a
-     * {@code null} argument.
-     *
-     * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this overload dies with it.
-     */
-    public QueryStatus queryV3Enveloped(String backend, QueryRequest req) {
-        if (req == null) {
-            throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Missing query data");
-        }
-        HpdsTarget target = selector.select(backend, true);
-        QueryStatusResponse down = requireStatus(hpds.queryEnveloped(target, req));
-        return toLegacyStatus(persistCreate(down, storedBody(req), CURRENT_VERSION));
     }
 
     /**
@@ -240,25 +224,6 @@ public class QueryService {
     static boolean isV3(StoredQuery query) {
         String v = query.version();
         return v != null && v.split("\\.")[0].equals(CURRENT_VERSION);
-    }
-
-    /**
-     * Adapts a typed status back to the WAR's {@code QueryStatus} for the aggregate service's still-enveloped callers.
-     *
-     * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this adapter dies with it.
-     */
-    private static QueryStatus toLegacyStatus(QueryStatusResponse r) {
-        QueryStatus s = new QueryStatus();
-        s.setPicsureResultId(r.picsureId());
-        s.setStatus(r.status() == null ? null : edu.harvard.dbmi.avillach.domain.PicSureStatus.valueOf(r.status().name()));
-        s.setResourceStatus(r.resourceStatus());
-        s.setResourceResultId(r.resourceResultId());
-        s.setSizeInBytes(r.sizeInBytes());
-        s.setStartTime(r.startTime());
-        s.setDuration(r.duration());
-        s.setExpiration(r.expiration());
-        s.setResultMetadata(r.resultMetadata());
-        return s;
     }
 
     // --- metadata (DB-only, no HPDS) ---

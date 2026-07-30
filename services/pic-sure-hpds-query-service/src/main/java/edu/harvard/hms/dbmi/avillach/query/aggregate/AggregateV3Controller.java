@@ -7,15 +7,21 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
+import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * The aggregate/obfuscation ingress, and the only one: {@code POST /hpds/open/v3/query/sync} and {@code POST /hpds/open/v3/query}. It
- * passes {@link AggregateVariant#V3} to {@link AggregateService}, which yields the {@code select} consents field and the {@code /v3}
- * downstream HPDS prefix. The unversioned sibling ({@code /hpds/open/query[/sync]}, {@code crossCountFields}, unprefixed downstream) was
- * retired with the rest of the v1 surface. No inline audit here -- the gateway audits this path, see {@code AuditRouteTable}.
+ * The aggregate/obfuscation ingress, and the only one: {@code POST /hpds/open/v3/query/sync} and {@code POST /hpds/open/v3/query}. The
+ * unversioned sibling ({@code /hpds/open/query[/sync]}, {@code crossCountFields}, unprefixed downstream) was retired with the rest of the
+ * v1 surface. No inline audit here -- the gateway audits this path, see {@code AuditRouteTable}.
+ *
+ * <p><b>Same bare contract as the generic ingress.</b> Both endpoints bind the v3 {@link Query} record directly -- no {@code QueryRequest}
+ * envelope, no {@code resourceUUID}, no {@code resourceCredentials} -- so an open submission and an authorized one are the same wire shape,
+ * and strict deserialization turns a leftover envelope field into a 400 rather than a silently dropped query. {@code /query} answers with
+ * the shared {@link QueryStatusResponse}; {@code /query/sync} stays a {@code ResponseEntity<String>} passthrough because its body is the
+ * OBFUSCATED payload, whose shape varies by result type (a {@code Map<String,String>} of concept path to obfuscated display value for the
+ * cross counts, a bare string for COUNT) and which must not be re-serialized on the way out.
  *
  * <p>Open-access: no {@link edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUser} guard here -- {@code WebSecurityConfig} already
  * requires an authenticated caller for all of {@code /hpds/**} (the "open"/"auth" distinction is about which HPDS backend answers the query
@@ -47,12 +53,12 @@ public class AggregateV3Controller {
     }
 
     @PostMapping(value = "/query/sync", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> querySync(@RequestBody QueryRequest req) {
-        return service.querySync(req, AggregateVariant.V3);
+    public ResponseEntity<String> querySync(@RequestBody Query query) {
+        return service.querySync(query);
     }
 
     @PostMapping("/query")
-    public QueryStatus query(@RequestBody QueryRequest req) {
-        return service.query(req, AggregateVariant.V3);
+    public QueryStatusResponse query(@RequestBody Query query) {
+        return service.query(query);
     }
 }

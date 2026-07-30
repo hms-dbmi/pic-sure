@@ -5,7 +5,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +16,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,15 +30,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsCommunicationException;
 import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
 
 /**
- * MockMvc coverage of {@link AggregateV3Controller} (the v3 obfuscation ingress at {@code /hpds/open/v3/query/sync}), mirroring
- * {@link AggregateControllerTest}: {@link AggregateService} is mocked (obfuscation logic itself lives in {@link AggregateServiceTest}), and
- * the point of this class is the routing/coexistence behavior with
+ * MockMvc coverage of {@link AggregateV3Controller} (the v3 obfuscation ingress at {@code /hpds/open/v3/query/sync}):
+ * {@link AggregateService} is mocked (obfuscation logic itself lives in {@link AggregateServiceTest}), and the point of this class is the
+ * binding/routing behavior -- the bare {@code Query} contract at the ingress, and the coexistence with
  * {@link edu.harvard.hms.dbmi.avillach.query.query.HpdsQueryV3Controller}'s generic {@code /hpds/{backend}/v3/query/sync} mapping.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -81,19 +82,32 @@ class AggregateV3ControllerTest {
     }
 
     @Test
-    void openV3QuerySyncRoutesToAggregateServiceV3AndReturnsResult() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class), eq(AggregateVariant.V3)))
-            .thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{}"));
+    void openV3QuerySyncRoutesToAggregateServiceAndReturnsResult() throws Exception {
+        when(aggregateService.querySync(any(Query.class))).thenReturn(ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body("{}"));
 
         mockMvc
             .perform(
                 post("/hpds/open/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                    .contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"expectedResultType\":\"CROSS_COUNT\"}")
             ).andExpect(status().isOk()).andExpect(content().string("{}"));
 
-        verify(aggregateService).querySync(any(QueryRequest.class), eq(AggregateVariant.V3));
+        // the ingress binds the BARE v3 Query record: what the service sees is the query itself, not an envelope to unwrap
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(aggregateService).querySync(cap.capture());
+        assertThat(cap.getValue().expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
         verifyNoInteractions(operationsClient);
         hpds.verify(0, WireMock.postRequestedFor(urlEqualTo("/PIC-SURE/v3/query/sync")));
+    }
+
+    /** The retired envelope is not merely ignored: strict deserialization rejects it, so a stale client gets an honest 400. */
+    @Test
+    void openV3QuerySyncRejectsTheRetiredEnvelopeWith400() throws Exception {
+        mockMvc.perform(
+            post("/hpds/open/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
+        ).andExpect(status().isBadRequest());
+
+        verifyNoInteractions(aggregateService);
     }
 
     @Test
@@ -115,7 +129,8 @@ class AggregateV3ControllerTest {
 
     @Test
     void openV3QuerySyncWithoutGatewayIdentityIsUnauthorized() throws Exception {
-        mockMvc.perform(post("/hpds/open/v3/query/sync").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"q\"}"))
+        mockMvc
+            .perform(post("/hpds/open/v3/query/sync").contentType(MediaType.APPLICATION_JSON).content("{\"expectedResultType\":\"COUNT\"}"))
             .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403));
 
         verifyNoInteractions(aggregateService);
@@ -123,13 +138,13 @@ class AggregateV3ControllerTest {
 
     @Test
     void openV3QuerySyncUpstreamErrorSurfacesAs502() throws Exception {
-        when(aggregateService.querySync(any(QueryRequest.class), eq(AggregateVariant.V3)))
+        when(aggregateService.querySync(any(Query.class)))
             .thenThrow(new HpdsCommunicationException("Aggregate query/sync call failed", new RuntimeException("boom")));
 
         mockMvc
             .perform(
                 post("/hpds/open/v3/query/sync").header(GatewayUserResolver.HEADER_USER_ID, USER)
-                    .contentType(MediaType.APPLICATION_JSON).content("{\"query\":{\"expectedResultType\":\"CROSS_COUNT\"}}")
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"expectedResultType\":\"CROSS_COUNT\"}")
             ).andExpect(status().isBadGateway());
     }
 }

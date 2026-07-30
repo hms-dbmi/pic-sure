@@ -32,8 +32,6 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -43,8 +41,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
  * GET, and result/signed-url are bodyless POSTs -- reads have nothing to send, since HPDS already holds the query behind the
  * {@code resourceResultId}. Responses parse into the shared contract records.
  *
- * <p>These stubs are the SPEC for HPDS's side of the contract (Task 8 lands the matching controllers): what is asserted here -- verb, path,
- * request body, and response shape -- is exactly what HPDS must accept and emit.
+ * <p>These stubs are the SPEC for HPDS's side of the contract: what is asserted here -- verb, path, request body, and response shape -- is
+ * exactly what HPDS accepts and emits (pinned on that side by {@code PicSureV3ServiceWebTest}).
  */
 class ResourceWebClientTest {
 
@@ -85,11 +83,6 @@ class ResourceWebClientTest {
         return new Query(List.of("\\age\\"), null, null, null, ResultType.COUNT, null, null);
     }
 
-    /** The aggregate service's still-enveloped shape -- Task 10 retypes it. */
-    private QueryRequest legacyReq() {
-        return new GeneralQueryRequest().setQuery(java.util.Map.of("expectedResultType", "COUNT"));
-    }
-
     // --- create: a BARE Query on the wire, a typed status back ---
 
     @Test
@@ -109,17 +102,6 @@ class ResourceWebClientTest {
                 .withRequestBody(matchingJsonPath("$.expectedResultType", equalTo("COUNT")))
         );
         hpds.verify(0, postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.query")));
-    }
-
-    /** Aggregate's enveloped create still exists until Task 10; it is a DIFFERENT method, so neither hop can be reached by accident. */
-    @Test
-    void queryEnvelopedStillPostsTheEnvelopeForTheAggregatePath() {
-        hpds.stubFor(post(urlEqualTo("/PIC-SURE/query")).willReturn(okJson("{\"resourceResultId\":\"rr-agg\",\"status\":\"PENDING\"}")));
-
-        QueryStatusResponse status = client().queryEnveloped(target(), legacyReq());
-
-        assertThat(status.resourceResultId()).isEqualTo("rr-agg");
-        hpds.verify(postRequestedFor(urlEqualTo("/PIC-SURE/query")).withRequestBody(matchingJsonPath("$.query.expectedResultType")));
     }
 
     /**

@@ -3,7 +3,6 @@ package edu.harvard.hms.dbmi.avillach.query.aggregate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,7 +10,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -19,10 +20,13 @@ import org.springframework.http.ResponseEntity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilter;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.PhenotypicFilterType;
+import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.config.AggregateProperties;
 import edu.harvard.hms.dbmi.avillach.query.query.QueryService;
 
@@ -43,83 +47,105 @@ class AggregateServiceTest {
         return new AggregateService(backend, obfuscation(), props, mock(QueryService.class));
     }
 
-    private QueryRequest sync(String expectedResultType) {
-        return new GeneralQueryRequest().setQuery(Map.of("expectedResultType", expectedResultType));
+    private Query query(ResultType type) {
+        return new Query(null, null, null, null, type, null, null);
     }
 
     @Test
     void rejectsDisallowedResultTypeWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
-        assertThatThrownBy(() -> svc.querySync(sync("DATAFRAME"), AggregateVariant.V3)).isInstanceOf(PicsureException.class);
-        verify(backend, never()).querySync(any(), any());
+        assertThatThrownBy(() -> svc.querySync(query(ResultType.DATAFRAME))).isInstanceOf(PicsureException.class);
+        verify(backend, never()).querySync(any());
     }
 
     @Test
     void rejectsMissingExpectedResultTypeWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
-        QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
-        assertThatThrownBy(() -> svc.querySync(noErt, AggregateVariant.V3)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.querySync(query(null))).isInstanceOf(PicsureException.class);
     }
 
     @Test
     void rejectsNullQueryWith400() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         AggregateService svc = service(backend, new AggregateProperties());
-        assertThatThrownBy(() -> svc.querySync(new GeneralQueryRequest(), AggregateVariant.V3)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.querySync(null)).isInstanceOf(PicsureException.class);
     }
 
     @Test
     void countBelowThresholdIsFloored() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("5"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("5"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.COUNT));
         assertThat(out.getBody()).isEqualTo("< 10");
     }
 
     @Test
     void countAtOrAboveThresholdIsVarianceRandomized() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("100"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("100"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.COUNT));
         assertThat(out.getBody()).matches("\\d+ ±3");
     }
 
     @Test
     void crossCountObfuscatesEachEntry() throws Exception {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        // changeQueryToOpenCrossCount first searches consents, then the backend returns the cross counts
+        // the cross-count rewrite first searches consents, then the backend returns the cross counts
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V3)))
-            .thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\study\\\\a\\\\\":\"5\",\"\\\\study\\\\b\\\\\":\"100\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CROSS_COUNT));
         Map<String, String> body = mapper.readValue(out.getBody(), Map.class);
         assertThat(body.get("\\study\\a\\")).isEqualTo("< 10");
         assertThat(body.get("\\study\\b\\")).matches("\\d+ ±3");
     }
 
+    /**
+     * The typed rebuild, end to end: the query that reaches the backend carries the consent allow-list in {@code select} and
+     * {@code CROSS_COUNT}, while every other component of the caller's query survives untouched.
+     */
     @Test
-    void crossCountUsesSelectFieldForV3() {
+    void crossCountRebuildsTheQueryWithTheConsentAllowListInSelect() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{}"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        svc.querySync(sync("CROSS_COUNT"), AggregateVariant.V3);
+        UUID picsureId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        PhenotypicFilter filter = new PhenotypicFilter(PhenotypicFilterType.FILTER, "\\age\\", null, null, null, null);
+        Query in = new Query(List.of("\\dropped\\"), List.of(), filter, List.of(), ResultType.CROSS_COUNT, picsureId, id);
 
-        // capture the mutated request sent to the backend; assert it carries `select`, not `crossCountFields`
-        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(backend).querySync(cap.capture(), eq(AggregateVariant.V3));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
-        assertThat(query).containsKey("select").doesNotContainKey("crossCountFields");
+        svc.querySync(in);
+
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(backend).querySync(cap.capture());
+        Query sent = cap.getValue();
+        assertThat(sent.select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
+        assertThat(sent.expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
+        assertThat(sent.phenotypicClause()).isEqualTo(filter);
+        assertThat(sent.picsureId()).isEqualTo(picsureId);
+        assertThat(sent.id()).isEqualTo(id);
+    }
+
+    /** The consents lookup is a typed {@link SearchRequest} carrying the studies-consents path -- never an untyped envelope. */
+    @Test
+    void consentLookupIsATypedSearchRequestForTheStudiesConsentsPath() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{}"));
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        svc.querySync(query(ResultType.CROSS_COUNT));
+
+        verify(backend).search(new SearchRequest("\\_studies_consents\\"));
     }
 
     @Test
@@ -127,25 +153,43 @@ class AggregateServiceTest {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
         // first querySync call returns the raw categorical payload; the CROSS_COUNT lookup (getCrossCountForQuery)
-        // is a second call to querySync with the mutated (CROSS_COUNT) request
-        when(backend.querySync(any(), eq(AggregateVariant.V3)))
-            .thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5,\"female\":100}}"))
+        // is a second call to querySync with the rebuilt (CROSS_COUNT) query
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5,\"female\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CATEGORICAL_CROSS_COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CATEGORICAL_CROSS_COUNT));
         assertThat(out.getBody()).contains("\"male\"").contains("< 10");
+    }
+
+    /** The categorical/continuous cross-count LOOKUP is rebuilt; the caller's own query keeps its original result type. */
+    @Test
+    void categoricalCrossCountLookupIsRebuiltButTheFirstHopKeepsTheCallersType() {
+        AggregateBackendClient backend = mock(AggregateBackendClient.class);
+        when(backend.search(any())).thenReturn(consentsSearch());
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\gender\\\\\":{\"male\":5}}"))
+            .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
+        AggregateService svc = service(backend, new AggregateProperties());
+
+        svc.querySync(query(ResultType.CATEGORICAL_CROSS_COUNT));
+
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(backend, org.mockito.Mockito.times(2)).querySync(cap.capture());
+        assertThat(cap.getAllValues().get(0).expectedResultType()).isEqualTo(ResultType.CATEGORICAL_CROSS_COUNT);
+        assertThat(cap.getAllValues().get(0).select()).isEmpty();
+        assertThat(cap.getAllValues().get(1).expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
+        assertThat(cap.getAllValues().get(1).select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
     }
 
     @Test
     void continuousCrossCountSuppressedWhenStudyConsentsBelowThreshold() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":1}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"< 10\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CONTINUOUS_CROSS_COUNT));
         assertThat(out.getBody()).isNull();
     }
 
@@ -153,11 +197,11 @@ class AggregateServiceTest {
     void continuousCrossCountObfuscatesRawWhenNoVisualizationConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CONTINUOUS_CROSS_COUNT));
         assertThat(out.getBody()).contains("\"5\"").matches(s -> s.matches(".*±3.*"));
     }
 
@@ -165,16 +209,17 @@ class AggregateServiceTest {
     void continuousCrossCountBinsViaVisualizationWhenConfigured() {
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
         when(backend.search(any())).thenReturn(consentsSearch());
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok("{\"\\\\age\\\\\":{\"5\":100}}"))
             .thenReturn(ResponseEntity.ok("{\"\\\\_studies_consents\\\\\":\"500\"}"));
-        when(backend.binContinuous(any(), eq(AggregateVariant.V3))).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
+        when(backend.binContinuous(any())).thenReturn("{\"\\\\age\\\\\":{\"0-10\":100}}");
         AggregateProperties props = new AggregateProperties();
         props.setVisualizationUrl("http://viz.example");
         AggregateService svc = service(backend, props);
 
-        ResponseEntity<String> out = svc.querySync(sync("CONTINUOUS_CROSS_COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.CONTINUOUS_CROSS_COUNT));
         assertThat(out.getBody()).contains("\"0-10\"");
-        verify(backend).binContinuous(any(), eq(AggregateVariant.V3));
+        // the binning hop carries the continuous counts themselves -- no envelope, no resourceUUID
+        verify(backend).binContinuous(Map.of("\\age\\", Map.of("5", 100)));
     }
 
     // ---- async open submit (finding I6): CROSS_COUNT is consent-scoped, then persisted+dispatched via QueryService ----
@@ -187,13 +232,12 @@ class AggregateServiceTest {
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
 
-        svc.query(sync("CROSS_COUNT"), AggregateVariant.V3);
+        svc.query(query(ResultType.CROSS_COUNT));
 
-        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).queryV3Enveloped(eq("open"), cap.capture());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
-        assertThat(query).containsKey("select").doesNotContainKey("crossCountFields");
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(queryService).queryV3(org.mockito.ArgumentMatchers.eq("open"), cap.capture());
+        assertThat(cap.getValue().select()).containsExactly("\\study\\a\\consent\\", "\\study\\b\\consent\\");
+        assertThat(cap.getValue().expectedResultType()).isEqualTo(ResultType.CROSS_COUNT);
     }
 
     @Test
@@ -203,14 +247,10 @@ class AggregateServiceTest {
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
 
-        svc.query(sync("COUNT"), AggregateVariant.V3);
+        Query in = query(ResultType.COUNT);
+        svc.query(in);
 
-        ArgumentCaptor<QueryRequest> cap = ArgumentCaptor.forClass(QueryRequest.class);
-        verify(queryService).queryV3Enveloped(eq("open"), cap.capture());
-        @SuppressWarnings("unchecked")
-        Map<String, Object> query = mapper.convertValue(cap.getValue().getQuery(), Map.class);
-        assertThat(query.get("expectedResultType")).isEqualTo("COUNT");
-        assertThat(query).doesNotContainKey("select");
+        verify(queryService).queryV3("open", in);
         verify(backend, never()).search(any());
     }
 
@@ -221,8 +261,7 @@ class AggregateServiceTest {
         QueryService queryService = mock(QueryService.class);
         AggregateService svc = new AggregateService(backend, obfuscation(), new AggregateProperties(), queryService);
 
-        QueryRequest noErt = new GeneralQueryRequest().setQuery(Map.of("fields", "x"));
-        assertThatThrownBy(() -> svc.query(noErt, AggregateVariant.V3)).isInstanceOf(PicsureException.class);
+        assertThatThrownBy(() -> svc.query(query(null))).isInstanceOf(PicsureException.class);
         verifyNoInteractions(queryService);
     }
 
@@ -232,10 +271,10 @@ class AggregateServiceTest {
         // "resultMetadata" bug the service would read getFirst("resultMetadata") == null from this response and DROP the header, so this
         // assertion would fail. It passes only when the constant resolves to the real name.
         AggregateBackendClient backend = mock(AggregateBackendClient.class);
-        when(backend.querySync(any(), eq(AggregateVariant.V3))).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
+        when(backend.querySync(any())).thenReturn(ResponseEntity.ok().header("queryMetadata", "rid").body("12"));
         AggregateService svc = service(backend, new AggregateProperties());
 
-        ResponseEntity<String> out = svc.querySync(sync("COUNT"), AggregateVariant.V3);
+        ResponseEntity<String> out = svc.querySync(query(ResultType.COUNT));
         assertThat(out.getHeaders().getFirst("queryMetadata")).isEqualTo("rid");
         assertThat(AggregateBackendClient.QUERY_METADATA_FIELD).isEqualTo("queryMetadata");
     }

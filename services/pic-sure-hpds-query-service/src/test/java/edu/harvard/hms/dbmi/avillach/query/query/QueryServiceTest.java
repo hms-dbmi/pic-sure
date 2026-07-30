@@ -24,9 +24,6 @@ import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.GeneralQueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
-import edu.harvard.dbmi.avillach.domain.QueryStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.ResultType;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
@@ -45,8 +42,8 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * <p>Both ends are typed. The v3 surface takes a BARE {@code Query} and returns {@link QueryStatusResponse}; the downstream HPDS hop takes
  * the same bare {@code Query} and returns the same contract records; and the store DTOs are the shared
  * {@code edu.harvard.dbmi.avillach.contracts.internal} records, whose {@code status} is the typed {@link PicSureStatus} rather than a bare
- * string. The one {@code QueryRequest}-shaped overload that remains, {@code queryV3Enveloped}, is the aggregate service's (retyped in Task
- * 10); its v1-dispatch sibling died with the v1 aggregate ingress.
+ * string. Nothing on this service's own surface carries a {@code QueryRequest} envelope any more -- the aggregate (open) path shares the
+ * same bare create hop -- and the wrapper survives only inside the PERSISTED blob, until Task 15 migrates it.
  */
 class QueryServiceTest {
 
@@ -65,11 +62,6 @@ class QueryServiceTest {
 
     private Query query() {
         return new Query(List.of("\\age\\"), null, null, null, ResultType.COUNT, null, null);
-    }
-
-    /** The aggregate service's (still enveloped) call shape -- Task 10 retypes it. */
-    private QueryRequest legacyReq() {
-        return new GeneralQueryRequest().setQuery(Map.of("expectedResultType", "COUNT"));
     }
 
     private QueryStatusResponse hpdsStatus(String rrid) {
@@ -154,21 +146,16 @@ class QueryServiceTest {
         verify(operationsClient, org.mockito.Mockito.never()).save(any());
     }
 
-    // --- the aggregate service's enveloped overload stays until Task 10 (its v1-dispatch sibling died with the v1 aggregate ingress) ---
-
-    /** The v3 aggregate overload is named apart from the bare-Query one so a null argument can never pick the wrong hop. */
+    /** The aggregate (open) submit shares this same create path -- it is the same bare hop, differing only in the backend segment. */
     @Test
-    void legacyEnvelopedV3CreateHitsTheV3BaseAndStoresVersion3() {
-        UUID picsureId = UUID.randomUUID();
-        when(hpds.queryEnveloped(any(HpdsTarget.class), any())).thenReturn(hpdsStatus("rr-2"));
-        when(operationsClient.save(any())).thenReturn(picsureId);
+    void theOpenBackendCreateUsesTheSameBareV3Hop() {
+        when(hpds.query(any(HpdsTarget.class), any(Query.class))).thenReturn(hpdsStatus("rr-open"));
+        when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
-        QueryStatus out = service.queryV3Enveloped("auth", legacyReq());
+        QueryStatusResponse out = service.queryV3("open", query());
 
-        assertThat(out.getPicsureResultId()).isEqualTo(picsureId);
-        assertThat(out.getStatus()).isEqualTo(edu.harvard.dbmi.avillach.domain.PicSureStatus.PENDING);
-        verify(operationsClient).save(argThat((SaveQueryRequest r) -> "rr-2".equals(r.resourceResultId()) && "3".equals(r.version())));
-        verify(hpds).queryEnveloped(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any());
+        assertThat(out.resourceResultId()).isEqualTo("rr-open");
+        verify(hpds).query(argThat((HpdsTarget t) -> "http://hpds/PIC-SURE/v3".equals(t.baseUrl())), any(Query.class));
     }
 
     // --- sync ---

@@ -17,7 +17,6 @@ import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.QueryStatusResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SignedUrlResponse;
-import edu.harvard.dbmi.avillach.domain.QueryRequest;
 import edu.harvard.dbmi.avillach.domain.SearchResults;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
@@ -30,8 +29,8 @@ import edu.harvard.hms.dbmi.avillach.query.hpds.HpdsBackendSelector.HpdsTarget;
  * forwards after consent mutation -- and the reads carry no query at all, because HPDS already holds it behind the
  * {@code resourceResultId}: {@link #queryStatus} is a GET, and {@link #queryResult}/{@link #queryResultSignedUrl} are bodyless POSTs (POST
  * rather than GET because they are audited data-access events, not cacheable reads). Responses parse into the shared contract records
- * ({@link QueryStatusResponse}, {@link SignedUrlResponse}, {@link PaginatedResponse}). Task 8 lands HPDS's matching controllers; until then
- * the two sides differ, which is why these shapes are pinned by {@code ResourceWebClientTest} rather than by an integration test.
+ * ({@link QueryStatusResponse}, {@link SignedUrlResponse}, {@link PaginatedResponse}). These shapes are pinned by
+ * {@code ResourceWebClientTest} on this side and by {@code PicSureV3ServiceWebTest} on HPDS's.
  *
  * <p><b>Tokens.</b> Query-lifecycle calls inject {@code Authorization: Bearer <backend service token>} -- parity with the WAR's
  * {@code createHeaders(...BEARER_TOKEN...)} after {@code PicsureQueryService} put {@code resource.getToken()} into the credentials.
@@ -62,16 +61,6 @@ public class ResourceWebClient {
     /** Submits the bare v3 {@link Query}; HPDS answers with the query's initial status. */
     public QueryStatusResponse query(HpdsTarget target, Query query) {
         return postJson(target, target.baseUrl() + "/query", query);
-    }
-
-    /**
-     * Aggregate-service submit, still wrapped in the {@code QueryRequest} envelope. Deliberately a separate method rather than an overload
-     * of {@link #query}: an overload pair would let a {@code null} argument silently pick the wrong wire format.
-     *
-     * TODO(well-defined-contracts): Task 10 retypes the aggregate service; this method dies with it.
-     */
-    public QueryStatusResponse queryEnveloped(HpdsTarget target, QueryRequest req) {
-        return postJson(target, target.baseUrl() + "/query", req);
     }
 
     /** Bodyless GET: the {@code resourceResultId} in the path is the whole request. */
