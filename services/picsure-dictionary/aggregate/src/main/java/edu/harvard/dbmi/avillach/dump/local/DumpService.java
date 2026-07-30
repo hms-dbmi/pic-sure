@@ -15,11 +15,13 @@ public class DumpService {
         this.repository = repository;
     }
 
-    public List<? extends DumpRow> dumpTable(DumpTable table) {
+    public List<DumpRow> dumpTable(DumpTable table) {
         return switch (table) {
-            case ConceptNode -> repository.getAllConcepts();
+            // These two build their result by hand rather than streaming a RowMapper, so they are copied into
+            // the sealed supertype here; every other branch already produces List<DumpRow> without copying.
+            case ConceptNode -> List.copyOf(repository.getAllConcepts());
             case FacetCategory -> repository.getAllFacetCategories();
-            case Facet -> repository.getAllFacets();
+            case Facet -> List.copyOf(repository.getAllFacets());
             case FacetConceptNode -> repository.getAllFacetConceptPairs();
             case ConceptNodeMeta -> repository.getAllConceptNodeMetas();
             case FacetCategoryMeta -> repository.getAllFacetCategoryMetas();

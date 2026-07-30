@@ -54,14 +54,14 @@ class DumpRepositoryTest {
 
     @Test
     void shouldGetAllConceptNodeMetas() {
-        List<? extends DumpRow> actual = subject.getAllConceptNodeMetas();
+        List<DumpRow> actual = subject.getAllConceptNodeMetas();
 
         Assertions.assertEquals(117, actual.size());
     }
 
     @Test
     void shouldGetAllFacets() {
-        List<FacetDump> actual = (List<FacetDump>) subject.getAllFacets();
+        List<FacetDump> actual = subject.getAllFacets();
         long actualChildCount = actual.stream().map(FacetDump::children).flatMap(List::stream).count();
         Assertions.assertEquals(16, actual.size());
         Assertions.assertEquals(2, actualChildCount);
@@ -69,13 +69,13 @@ class DumpRepositoryTest {
 
     @Test
     void shouldGetAllFacetMetas() {
-        List<? extends DumpRow> actual = subject.getAllFacetMetas();
+        List<DumpRow> actual = subject.getAllFacetMetas();
         Assertions.assertEquals(3, actual.size());
     }
 
     @Test
     void shouldGetAllFacetCategories() {
-        List<? extends DumpRow> actual = subject.getAllFacetCategories();
+        List<DumpRow> actual = subject.getAllFacetCategories();
 
         List<FacetCategoryDump> expected = List.of(
             new FacetCategoryDump("study_ids_dataset_ids", "Study IDs/Dataset IDs", ""),
@@ -88,13 +88,13 @@ class DumpRepositoryTest {
 
     @Test
     void shouldGetAllFacetCategoryMetas() {
-        List<? extends DumpRow> actual = subject.getAllFacetCategoryMetas();
+        List<DumpRow> actual = subject.getAllFacetCategoryMetas();
         Assertions.assertEquals(1, actual.size());
     }
 
     @Test
     void shouldGetAllFacetConceptPairs() {
-        List<? extends DumpRow> actual = subject.getAllFacetConceptPairs();
+        List<DumpRow> actual = subject.getAllFacetConceptPairs();
         Assertions.assertEquals(94, actual.size());
     }
 

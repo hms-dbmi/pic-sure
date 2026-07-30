@@ -25,7 +25,7 @@ class DumpControllerTest {
     void shouldGetDump() {
         Mockito.when(service.dumpTable(DumpTable.ConceptNode)).thenReturn(List.of());
 
-        ResponseEntity<List<? extends DumpRow>> actual = subject.dumpTable(DumpTable.ConceptNode);
+        ResponseEntity<List<DumpRow>> actual = subject.dumpTable(DumpTable.ConceptNode);
 
         Assertions.assertTrue(actual.getStatusCode().is2xxSuccessful());
         Assertions.assertEquals(List.of(), actual.getBody());

@@ -20,8 +20,8 @@ public class DumpController {
 
     @AuditEvent(type = "DATA_ACCESS", action = "dump.table")
     @GetMapping("/dump/{table}")
-    public ResponseEntity<List<? extends DumpRow>> dumpTable(@PathVariable DumpTable table) {
-        List<? extends DumpRow> rows = dumpService.dumpTable(table);
+    public ResponseEntity<List<DumpRow>> dumpTable(@PathVariable DumpTable table) {
+        List<DumpRow> rows = dumpService.dumpTable(table);
         return ResponseEntity.ok(rows);
     }
 

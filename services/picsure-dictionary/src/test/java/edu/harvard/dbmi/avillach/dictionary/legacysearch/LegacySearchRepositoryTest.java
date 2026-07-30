@@ -3,7 +3,6 @@ package edu.harvard.dbmi.avillach.dictionary.legacysearch;
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptRepository;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
-import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.SearchResult;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,23 +41,22 @@ public class LegacySearchRepositoryTest {
 
     @Test
     void shouldGetLegacySearchResults() {
-        List<SearchResult> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.unpaged());
+        List<Concept> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.unpaged());
 
         Assertions.assertEquals(31, searchResults.size());
     }
 
     @Test
     void shouldGetLegacySearchResultsBySearch() {
-        List<SearchResult> searchResults =
-            subject.getLegacySearchResults(new Filter(List.of(), "phs000007", List.of()), Pageable.unpaged());
+        List<Concept> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "phs000007", List.of()), Pageable.unpaged());
 
-        searchResults.forEach(searchResult -> Assertions.assertEquals("phs000007", searchResult.result().studyId()));
-
+        Assertions.assertFalse(searchResults.isEmpty());
+        searchResults.forEach(concept -> Assertions.assertEquals("phs000007", concept.dataset()));
     }
 
     @Test
     void shouldGetLegacySearchResultsByPageSize() {
-        List<SearchResult> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.ofSize(5));
+        List<Concept> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.ofSize(5));
 
         Assertions.assertEquals(5, searchResults.size());
     }
@@ -67,10 +65,12 @@ public class LegacySearchRepositoryTest {
     void legacySearchResultShouldGetEqualCountToConceptSearch() {
         // This test will ensure modifications made to the conceptSearch will be reflected in the legacy search result.
         // They use near equivalent queries and updates made to one should be made to the other.
-        List<SearchResult> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.unpaged());
+        List<Concept> searchResults = subject.getLegacySearchResults(new Filter(List.of(), "", List.of()), Pageable.unpaged());
         List<Concept> concepts = conceptService.getConcepts(new Filter(List.of(), "", List.of()), Pageable.unpaged());
 
         Assertions.assertEquals(searchResults.size(), concepts.size());
+        // Same projection on both sides now: an unfiltered search and an unfiltered concept listing are the same objects.
+        Assertions.assertEquals(concepts, searchResults);
     }
 
 }

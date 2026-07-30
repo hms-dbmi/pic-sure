@@ -1,22 +1,26 @@
 package edu.harvard.dbmi.avillach.dictionary.legacysearch;
 
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.LegacyResponse;
-import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.Results;
-import edu.harvard.dbmi.avillach.dictionary.legacysearch.model.SearchResult;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
-import java.io.IOException;
+import org.junit.jupiter.api.BeforeEach;
+
 import java.util.List;
 
 @SpringBootTest
@@ -38,54 +42,42 @@ class LegacySearchControllerIntegrationTest {
         registry.add("spring.datasource.db", databaseContainer::getDatabaseName);
     }
 
-    @Test
-    void shouldGetLegacyResponseByStudyID() throws IOException {
-        String jsonString = """
-            {"query":{"searchTerm":"phs000007","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
-
-        ResponseEntity<LegacyResponse> legacyResponseResponseEntity = legacySearchController.legacySearch(jsonString);
-        System.out.println(legacyResponseResponseEntity);
-        Assertions.assertEquals(HttpStatus.OK, legacyResponseResponseEntity.getStatusCode());
-        LegacyResponse legacyResponseBody = legacyResponseResponseEntity.getBody();
-        Assertions.assertNotNull(legacyResponseBody);
-        Results results = legacyResponseBody.results();
-        List<SearchResult> searchResults = results.searchResults();
-        searchResults.forEach(searchResult -> Assertions.assertEquals("phs000007", searchResult.result().studyId()));
+    @BeforeEach
+    void setUp() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
     }
 
     @Test
-    void shouldHandleORRequest() throws IOException {
-        String jsonString = """
-            {"query":{"searchTerm":"age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
+    void shouldGetConceptsByStudyID() {
+        ResponseEntity<LegacyResponse> response = legacySearchController.legacySearch(new SearchRequest("phs000007"), 0, 100);
 
-        ResponseEntity<LegacyResponse> legacyResponseResponseEntity = legacySearchController.legacySearch(jsonString);
-        Assertions.assertEquals(HttpStatus.OK, legacyResponseResponseEntity.getStatusCode());
-        LegacyResponse legacyResponseBody = legacyResponseResponseEntity.getBody();
-        Assertions.assertNotNull(legacyResponseBody);
-        Results results = legacyResponseBody.results();
-        List<SearchResult> ageSearchResults = results.searchResults();
-        Assertions.assertEquals(4, ageSearchResults.size());
+        Assertions.assertEquals(HttpStatus.OK, response.getStatusCode());
+        LegacyResponse body = response.getBody();
+        Assertions.assertNotNull(body);
+        Assertions.assertFalse(body.results().isEmpty());
+        body.results().forEach(concept -> Assertions.assertEquals("phs000007", concept.dataset()));
+    }
 
-        jsonString = """
-            {"query":{"searchTerm":"physical|age","includedTags":[],"excludedTags":[],"returnTags":"true","offset":0,"limit":100}}
-            """;
+    @Test
+    void shouldHandleORRequest() {
+        List<Concept> ageResults = legacySearchController.legacySearch(new SearchRequest("age"), 0, 100).getBody().results();
+        Assertions.assertEquals(4, ageResults.size());
 
-        legacyResponseResponseEntity = legacySearchController.legacySearch(jsonString);
-        Assertions.assertEquals(HttpStatus.OK, legacyResponseResponseEntity.getStatusCode());
-        legacyResponseBody = legacyResponseResponseEntity.getBody();
-        Assertions.assertNotNull(legacyResponseBody);
-        results = legacyResponseBody.results();
-        List<SearchResult> physicalORAgeSearchResults = results.searchResults();
-        Assertions.assertEquals(5, physicalORAgeSearchResults.size());
-
-        // Verify that age|physical has expanded the search results
-        Assertions.assertNotEquals(ageSearchResults.size(), physicalORAgeSearchResults.size());
+        List<Concept> physicalOrAgeResults =
+            legacySearchController.legacySearch(new SearchRequest("physical|age"), 0, 100).getBody().results();
+        Assertions.assertEquals(5, physicalOrAgeResults.size());
 
         // Verify the OR statement has more results
-        Assertions.assertTrue(ageSearchResults.size() < physicalORAgeSearchResults.size());
+        Assertions.assertTrue(ageResults.size() < physicalOrAgeResults.size());
     }
 
+    @Test
+    void shouldPageResults() {
+        List<Concept> firstPage = legacySearchController.legacySearch(new SearchRequest("age"), 0, 2).getBody().results();
+        List<Concept> secondPage = legacySearchController.legacySearch(new SearchRequest("age"), 1, 2).getBody().results();
 
+        Assertions.assertEquals(2, firstPage.size());
+        Assertions.assertEquals(2, secondPage.size());
+        Assertions.assertNotEquals(firstPage, secondPage);
+    }
 }

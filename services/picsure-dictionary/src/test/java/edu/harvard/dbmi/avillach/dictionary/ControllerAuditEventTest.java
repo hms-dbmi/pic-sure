@@ -2,7 +2,9 @@ package edu.harvard.dbmi.avillach.dictionary;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
 import edu.harvard.dbmi.avillach.dictionary.concept.ConceptController;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPathRequest;
 import edu.harvard.dbmi.avillach.dictionary.dashboard.DashboardController;
 import edu.harvard.dbmi.avillach.dictionary.dashboarddrawer.DashboardDrawerController;
 import edu.harvard.dbmi.avillach.dictionary.facet.FacetController;
@@ -31,10 +33,10 @@ class ControllerAuditEventTest {
         Class<?> c = ConceptController.class;
         assertAuditEvent(c, "listConcepts", new Class[] {Filter.class, int.class, int.class}, "SEARCH", "concept.search");
         assertAuditEvent(c, "dumpConcepts", new Class[] {int.class, int.class}, "DATA_ACCESS", "concept.dump");
-        assertAuditEvent(c, "conceptDetail", new Class[] {String.class, String.class}, "SEARCH", "concept.detail");
+        assertAuditEvent(c, "conceptDetail", new Class[] {String.class, ConceptPathRequest.class}, "SEARCH", "concept.detail");
         assertAuditEvent(c, "conceptsDetail", new Class[] {List.class}, "SEARCH", "concept.detail");
-        assertAuditEvent(c, "conceptTree", new Class[] {String.class, String.class, Integer.class}, "SEARCH", "concept.tree");
-        assertAuditEvent(c, "conceptHierarchy", new Class[] {String.class, String.class}, "SEARCH", "concept.hierarchy");
+        assertAuditEvent(c, "conceptTree", new Class[] {String.class, ConceptPathRequest.class, Integer.class}, "SEARCH", "concept.tree");
+        assertAuditEvent(c, "conceptHierarchy", new Class[] {String.class, ConceptPathRequest.class}, "SEARCH", "concept.hierarchy");
         assertAuditEvent(c, "allConceptTrees", new Class[] {Integer.class}, "SEARCH", "concept.tree");
     }
 
@@ -61,12 +63,13 @@ class ControllerAuditEventTest {
     @Test
     void infoController() throws Exception {
         Class<?> c = InfoController.class;
-        assertAuditEvent(c, "getInfo", new Class[] {Object.class}, "OTHER", "info");
+        assertAuditEvent(c, "getInfo", new Class[] {}, "OTHER", "info");
     }
 
     @Test
     void legacySearchController() throws Exception {
         Class<?> c = LegacySearchController.class;
-        assertAuditEvent(c, "legacySearch", new Class[] {String.class}, "SEARCH", "search.legacy");
+        // Aligned with the gateway's route table, which labels POST .../search as search.execute
+        assertAuditEvent(c, "legacySearch", new Class[] {SearchRequest.class, int.class, int.class}, "SEARCH", "search.execute");
     }
 }

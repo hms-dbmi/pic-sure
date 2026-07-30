@@ -1,7 +1,9 @@
 package edu.harvard.dbmi.avillach.dictionary.concept;
 
+import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.CategoricalConcept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
+import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPathRequest;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ContinuousConcept;
 import edu.harvard.dbmi.avillach.dictionary.facet.Facet;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
@@ -12,7 +14,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,10 +54,11 @@ class ConceptControllerTest {
         Mockito.when(conceptService.listConcepts(filter, Pageable.ofSize(10).withPage(1))).thenReturn(expected);
         Mockito.when(conceptService.countConcepts(filter)).thenReturn(100L);
 
-        Page<Concept> actual = subject.listConcepts(filter, 1, 10).getBody();
+        PaginatedResponse<Concept> actual = subject.listConcepts(filter, 1, 10).getBody();
 
-        Assertions.assertEquals(expected, actual.get().toList());
-        Assertions.assertEquals(100L, actual.getTotalElements());
+        Assertions.assertEquals(expected, actual.results());
+        Assertions.assertEquals(1, actual.page());
+        Assertions.assertEquals(100, actual.total());
     }
 
     @Test
@@ -65,7 +67,7 @@ class ConceptControllerTest {
             new CategoricalConcept("/foo//bar", "bar", "Bar", "my_dataset", "foo!", List.of("a", "b"), true, "", List.of(), Map.of());
         Mockito.when(conceptService.conceptDetail("my_dataset", "/foo//bar")).thenReturn(Optional.of(expected));
 
-        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", "/foo//bar");
+        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", new ConceptPathRequest("/foo//bar"));
 
         Assertions.assertEquals(expected, actual.getBody());
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
@@ -75,7 +77,7 @@ class ConceptControllerTest {
     void shouldNotGetConceptDetails() {
         Mockito.when(conceptService.conceptDetail("my_dataset", "/foo//asdsad")).thenReturn(Optional.empty());
 
-        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", "/foo//bar");
+        ResponseEntity<Concept> actual = subject.conceptDetail("my_dataset", new ConceptPathRequest("/foo//bar"));
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
     }
@@ -90,7 +92,7 @@ class ConceptControllerTest {
 
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1)).thenReturn(Optional.of(foo));
 
-        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo", 1);
+        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", new ConceptPathRequest("/foo"), 1);
 
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
         Assertions.assertEquals(foo, actual.getBody());
@@ -107,7 +109,7 @@ class ConceptControllerTest {
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1)).thenReturn(Optional.of(foo));
 
         // concept.tree.max_depth=1
-        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo//bar", 2);
+        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", new ConceptPathRequest("/foo//bar"), 2);
 
         Assertions.assertEquals(HttpStatus.BAD_REQUEST, actual.getStatusCode());
     }
@@ -122,7 +124,7 @@ class ConceptControllerTest {
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", -1)).thenReturn(Optional.of(foo));
 
         // concept.tree.max_depth=1
-        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/foo//bar", 2);
+        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", new ConceptPathRequest("/foo//bar"), 2);
 
         Assertions.assertEquals(HttpStatus.BAD_REQUEST, actual.getStatusCode());
     }
@@ -137,7 +139,7 @@ class ConceptControllerTest {
 
         Mockito.when(conceptService.conceptTree("my_dataset", "/foo", 1)).thenReturn(Optional.of(foo));
 
-        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", "/asdsadasd", 1);
+        ResponseEntity<Concept> actual = subject.conceptTree("my_dataset", new ConceptPathRequest("/asdsadasd"), 1);
 
         Assertions.assertEquals(HttpStatus.NOT_FOUND, actual.getStatusCode());
     }
@@ -152,9 +154,10 @@ class ConceptControllerTest {
         Mockito.when(conceptService.listDetailedConcepts(new Filter(List.of(), "", List.of()), Pageable.ofSize(10).withPage(0)))
             .thenReturn(concepts);
 
-        ResponseEntity<Page<Concept>> actual = subject.dumpConcepts(0, 10);
+        ResponseEntity<PaginatedResponse<Concept>> actual = subject.dumpConcepts(0, 10);
 
-        Assertions.assertEquals(concepts, actual.getBody().getContent());
+        Assertions.assertEquals(concepts, actual.getBody().results());
+        Assertions.assertEquals(0, actual.getBody().page());
         Assertions.assertEquals(HttpStatus.OK, actual.getStatusCode());
     }
 
