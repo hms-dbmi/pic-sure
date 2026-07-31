@@ -79,13 +79,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * A body the typed records cannot bind. Jackson's most-specific message names the offending field, which is the whole point of binding
-     * strictly -- without it the caller gets a 400 with nothing to act on.
+     * A body the typed records cannot bind is the CALLER's error, so it must be a 400 rather than falling into
+     * {@link #handleGenericException}'s 500 -- {@code @ExceptionHandler(Exception.class)} in this same advice wins over Spring's own
+     * {@code DefaultHandlerExceptionResolver}, so without this mapping a client typo would look like a server fault.
+     *
+     * <p>SECURITY: the message is deliberately generic, matching the query service's handler. Jackson's own text names the fully-qualified
+     * bound type, its reference chain, and the COMPLETE list of properties it does know -- a rejected {@code {"notAUserField":"x"}} on
+     * {@code PUT /user} otherwise answers with all twelve of {@code User}'s field names. Worse, it quotes the offending content, and two of
+     * the endpoints that can raise this are UNAUTHENTICATED: {@code POST /authentication/&#123;idpProvider&#125;}, whose body carries an
+     * OIDC {@code code} or an Auth0 {@code access_token}, and {@code POST /open/validate}. The detail stays in the log, where it is still
+     * available for diagnosis, and off the wire. {@code UnreadableBodyDisclosureTest} is the guard.
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleUnreadableBody(HttpMessageNotReadableException ex) {
-        logger.warn("Unreadable request body: {}", ex.getMessage());
-        return body(HttpStatus.BAD_REQUEST, "bad_request", ex.getMostSpecificCause().getMessage());
+        logger.warn("Rejected an unreadable request body: {}", ex.getMostSpecificCause().getMessage());
+        return body(HttpStatus.BAD_REQUEST, "bad_request", "Malformed or unrecognized request body");
     }
 
     /** Route absence stays an honest 404 instead of being flattened into the catch-all's 500. */

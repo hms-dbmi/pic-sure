@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.contracts.auth;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -9,7 +10,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * The node deployed FISMA access rules are evaluated against. PSAMA stores those rules as JsonPath strings in its database and reads them
  * with {@code JsonPath.parse(request).read(rule)}; they are data, not code, so this shape cannot be renamed or restructured without
  * silently changing production authorization decisions. {@code RuleCompatibilityTest} is the guard.
+ *
+ * <p>A TOLERANT READER, deliberately: this is the node BOTH sides of the authorization hop bind, and it is reached on the unauthenticated
+ * open-access path as well as on introspection. The map it replaced could not have an unknown property, and the legacy WAR put keys here
+ * that the contract does not model ({@code resourceUUID}); rejecting one of those turns an authorization question into a 400, which both
+ * callers fail closed on. Tolerance is scoped to THIS node only -- {@link IntrospectionRequest}, the top-level introspection body,
+ * deliberately keeps no {@code ignoreUnknown}, so an unknown field there is still rejected at the ingress. Both halves of that boundary are
+ * pinned by {@code TokenControllerInspectContractTest}.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(
     name = "TargetedRequest",
     description = "What the gateway asks PSAMA to authorize: the request path plus, when there is one, the body being authorized. "

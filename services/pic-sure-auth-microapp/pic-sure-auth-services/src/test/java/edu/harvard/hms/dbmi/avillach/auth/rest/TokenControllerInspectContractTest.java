@@ -155,6 +155,24 @@ class TokenControllerInspectContractTest {
         mockMvc.perform(post("/token/inspect").contentType("application/json").content(withExtra)).andExpect(status().isBadRequest());
     }
 
+    /**
+     * The counterpart to the test above, and the boundary between them is the point: {@code TargetedRequest} is a tolerant reader because
+     * the open-access path binds the same node and cannot afford to deny on shape (and because the legacy WAR sent {@code resourceUUID}
+     * right here), while {@code IntrospectionRequest} deliberately keeps no {@code ignoreUnknown} so the ingress itself stays strict.
+     */
+    @Test
+    void unknownFieldNestedInsideTheRequestNodeIsTolerated() throws Exception {
+        when(tokenService.inspectToken(any())).thenReturn(new TokenIntrospectionResponse(granted(null)));
+        String withNestedExtra =
+            "{\"token\":\"user-token\",\"request\":{\"Target Service\":\"/hpds/auth/v3/query\",\"resourceUUID\":\"8f8b0-1\"}}";
+
+        mockMvc.perform(post("/token/inspect").contentType("application/json").content(withNestedExtra)).andExpect(status().isOk());
+
+        ArgumentCaptor<IntrospectionRequest> captor = ArgumentCaptor.forClass(IntrospectionRequest.class);
+        verify(tokenService).inspectToken(captor.capture());
+        assertEquals("/hpds/auth/v3/query", captor.getValue().request().targetService(), "the modelled keys still bind");
+    }
+
     /** Audit coverage survives the retype: the resource label now comes from the path, since v3 bodies carry no resourceUUID. */
     @Test
     void auditMetadataIsDerivedFromTheTargetServicePath() throws Exception {
