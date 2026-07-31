@@ -10,7 +10,6 @@ import edu.harvard.dbmi.avillach.visualization.service.VisualizationService;
 import edu.harvard.hms.dbmi.avillach.commons.identity.GatewayUserResolver;
 import edu.harvard.hms.dbmi.avillach.hpds.data.query.v3.Query;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,8 +43,7 @@ public class DistributionController {
 
     @PostMapping("/distributions")
     public ResponseEntity<VisualizationResponse> distributions(
-        @Valid @RequestBody Query query,
-        @RequestHeader(value = GatewayUserResolver.HEADER_ACCESS_TYPE, required = false) String accessTypeHeader,
+        @RequestBody Query query, @RequestHeader(value = GatewayUserResolver.HEADER_ACCESS_TYPE, required = false) String accessTypeHeader,
         HttpServletRequest servletRequest
     ) {
         // Access type first: its absence means the request never traversed the gateway auth chain, which is a worse
@@ -69,9 +67,12 @@ public class DistributionController {
      * is nothing to compute a distribution over, and the endpoint would answer an unconditionally empty 200: a success shape for a request
      * that asked for nothing. {@code expectedResultType} is deliberately NOT part of the bar; the decomposer overwrites it per sub-query,
      * so requiring it would demand a field this service ignores.
+     *
+     * <p>No null guard: an absent or literal-{@code null} body never reaches here, because Spring rejects a required body that binds to
+     * null as an unreadable message and the handler answers 400. A guard here would be dead code implying that 400 came from this rule.
      */
     private static void requireAnswerableQuery(Query query) {
-        if (query == null || (query.select().isEmpty() && query.allFilters().isEmpty() && query.genomicFilters().isEmpty())) {
+        if (query.select().isEmpty() && query.allFilters().isEmpty() && query.genomicFilters().isEmpty()) {
             throw new BadVisualizationRequestException(
                 "Request body must be a v3 query carrying at least one 'select' path, phenotypic filter or genomic filter"
             );

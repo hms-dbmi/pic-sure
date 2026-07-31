@@ -185,21 +185,6 @@ public final class OpenApiExport {
         }
     }
 
-    /** Asserts a named schema's property is (a list of, or a reference to) another named schema. */
-    public static void assertPropertyIsSchema(JsonNode document, String schemaName, String property, String expected) {
-        JsonNode node = document.path("components").path("schemas").path(schemaName).path("properties").path(property);
-        if (node.isMissingNode()) {
-            throw new AssertionError(schemaName + " has no property " + property);
-        }
-        JsonNode subject = "array".equals(node.path("type").asText()) ? node.path("items") : node;
-        String actual = refName(subject);
-        if (!expected.equals(actual)) {
-            throw new AssertionError(
-                schemaName + "." + property + " is " + (actual.isEmpty() ? subject : actual) + ", expected " + expected
-            );
-        }
-    }
-
     /**
      * Asserts the document describes EXACTLY these paths.
      *

@@ -185,6 +185,19 @@ class VisualizationIntegrationTest {
     }
 
     @Test
+    void distributions_literalNullBody_returns400() throws Exception {
+        // Pins why the controller carries no null guard: a body of 'null' binds to a null argument, and Spring rejects
+        // a required body that does so as unreadable -- it never reaches the handler, so a guard there would be dead
+        // code implying otherwise.
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content("null")
+        ).andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
     void distributions_malformedJson_returns400() throws Exception {
         MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content("not valid json"))
             .andExpect(status().isBadRequest()).andReturn();
