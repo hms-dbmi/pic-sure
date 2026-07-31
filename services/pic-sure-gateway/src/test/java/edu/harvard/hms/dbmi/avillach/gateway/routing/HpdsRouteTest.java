@@ -30,12 +30,16 @@ import com.github.tomakehurst.wiremock.WireMockServer;
  * auth vs. open (and v3 vs. legacy) from the path, so the gateway must not rewrite it. Proves the higher-priority route (order 100) matches
  * (no catch-all fallback exists), and that the backend sees the exact inbound path. {@code /hpds} is not allow-listed, so under the
  * always-on auth/audit chain the request needs a valid bearer plus an active PSAMA introspection stub.
+ *
+ * <p>{@code /query/{id}/status} is one of the bodyless stored-query reads, so the chain also fetches the query dispatch from
+ * operations-service before introspecting (see {@code QueryAuthFetcher}); that stub is part of the fixture here, not the subject.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class HpdsRouteTest {
 
     static WireMockServer hpdsStub;
     static WireMockServer psamaStub;
+    static WireMockServer operationsStub;
 
     @DynamicPropertySource
     static void urls(DynamicPropertyRegistry registry) {
@@ -46,18 +50,29 @@ class HpdsRouteTest {
         psamaStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
         psamaStub.start();
         registry.add("TOKEN_INTROSPECTION_URL", () -> psamaStub.baseUrl() + "/auth/token/inspect");
+
+        operationsStub = new WireMockServer(options().bindAddress("127.0.0.1").dynamicPort().http2PlainDisabled(true));
+        operationsStub.start();
+        registry.add("OPERATIONS_SERVICE_URL", operationsStub::baseUrl);
     }
 
     @AfterAll
     static void stopStubs() {
         hpdsStub.stop();
         psamaStub.stop();
+        operationsStub.stop();
     }
 
     @BeforeEach
     void resetStubs() {
         hpdsStub.resetAll();
         hpdsStub.stubFor(get(urlEqualTo("/hpds/auth/v3/query/abc-123/status")).willReturn(aResponse().withStatus(200).withBody("hpds-ok")));
+
+        operationsStub.resetAll();
+        operationsStub.stubFor(
+            get(urlEqualTo("/operations/internal/queries/abc-123/dispatch"))
+                .willReturn(okJson("{\"queryJson\":\"{\\\"expectedResultType\\\":\\\"COUNT\\\"}\"}"))
+        );
 
         psamaStub.resetAll();
         psamaStub.stubFor(

@@ -100,6 +100,39 @@ class AuthorizationServiceConsentEvaluationTest {
         assertEquals("\\_consents\\", wire.get("authorizationFilters").get(0).get("conceptPath").asText());
     }
 
+    /**
+     * REGRESSION: the bodyless READS ({@code /query/{id}/status}, {@code /query/{id}/metadata}) authorize on the query the gateway
+     * DISPATCHED from the store, not on a request body -- there is none. Given that dispatched bare query, a consent rule must be able to
+     * GRANT on a status path exactly as it does on the submit path. (When the gateway sends no query node for these paths the rule can only
+     * fail closed, which 401s every consent-governed user's status polling -- see {@link #consentRuleDeniesAStatusReadThatCarriesNoQuery}.)
+     */
+    @Test
+    void consentRuleGrantsOnAStatusReadCarryingTheDispatchedStoredQuery() throws JsonProcessingException {
+        User user = userWithConsentRule();
+        givenConsents(user, Map.of("\\_consents\\", Set.of("phs000007.c1", "phs000007.c2")));
+
+        String statusPath = "/hpds/auth/v3/query/9d1a3c6e-1c2b-4a7e-9d6f-2f1b9f0a1c33/status";
+        EvaluateAccessRuleResult result = authorizationService
+            .isAuthorized(applicationFor(user), new TargetedRequest(statusPath, MAPPER.readTree(V3_QUERY)), user, false);
+
+        assertTrue(result.result(), "a consent rule must grant a status read whose dispatched query the user consents to");
+        assertTrue(result.query().isPresent(), "a granting consent rule hands back the rewritten query on reads too");
+        assertEquals("\\_consents\\", result.query().get().authorizationFilters().getFirst().conceptPath());
+    }
+
+    /** The failure this fix removes: a status read with NO query node has nothing for the consent rule to read, so it denies. */
+    @Test
+    void consentRuleDeniesAStatusReadThatCarriesNoQuery() {
+        User user = userWithConsentRule();
+        givenConsents(user, Map.of("\\_consents\\", Set.of("phs000007.c1")));
+
+        String statusPath = "/hpds/auth/v3/query/9d1a3c6e-1c2b-4a7e-9d6f-2f1b9f0a1c33/status";
+        EvaluateAccessRuleResult result =
+            authorizationService.isAuthorized(applicationFor(user), new TargetedRequest(statusPath, null), user, false);
+
+        assertFalse(result.result(), "no query node means the consent rule has nothing to evaluate and must fail closed");
+    }
+
     /** The same path, denying: the user has no consent for the study the query selects. */
     @Test
     void consentRuleDeniesWhenTheUserLacksTheStudy() throws JsonProcessingException {

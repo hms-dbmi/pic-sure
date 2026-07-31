@@ -34,8 +34,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * short-circuit) and {@code BufferingFilter} (body buffering). Allow-lists {@code GET /system/status} (audited as {@code SYSTEM_MONITOR}),
  * any path ending in {@code /openapi.json}, and any configured prefix — none of these call PSAMA. Every other request must carry a real
  * {@code Bearer} token (open access is handled entirely upstream by {@code OpenAccessFilter}); the introspection request sends the REAL
- * request path as the root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the result/signed-url
- * paths once the gateway owns query-read auth, the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with
+ * request path as the root-level {@code "Target Service"} (no canonical-mapping table) and the buffered body (or, for the bodyless
+ * stored-query reads — result/signed-url/status/metadata — the {@link QueryAuthFetcher} dispatch result) as {@code "query"}, with
  * {@code resourceCredentials} stripped and NEVER a {@code formattedQuery} field (PSAMA only ever uses it for logging, never authorization).
  * If the body is not valid JSON, {@code "query"} is omitted entirely rather than forwarding the raw, unstripped bytes (which could still
  * textually contain {@code resourceCredentials}). Both directions speak the shared {@code contracts.auth} records ({@link TargetedRequest},
@@ -261,8 +261,8 @@ public class PsamaIntrospectionFilter extends OncePerRequestFilter {
     private TargetedRequest buildTargetedRequest(HttpServletRequest req, String path) {
         // Send the REAL request path verbatim, root-level. No canonical-mapping table.
 
-        // result/signed-url: fetch the stored query over HTTP (DB-free) so PSAMA can authorize these
-        // bodyless reads using the original query shape.
+        // result/signed-url/status/metadata: fetch the stored query over HTTP (DB-free) so PSAMA can authorize
+        // these bodyless reads using the original query shape.
         Optional<String> storedQuery = queryAuthFetcher.queryJsonForPath(path); // may throw PicsureException (fail-closed)
         try {
             if (storedQuery.isPresent()) {

@@ -14,10 +14,15 @@ import edu.harvard.dbmi.avillach.contracts.internal.DispatchResponse;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
- * Fetches the stored query JSON for (/v3)?/query/{id}/(result|signed-url) paths from operations-service's gateway-only
- * {@code /operations/internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize these bodyless reads using the original query shape —
- * NO database access from the gateway itself. Sends the mandatory internal dispatch token (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY
- * error (incl. 403) denies the request.
+ * Fetches the stored query JSON for the BODYLESS stored-query reads — {@code .../query/{id}/(result|signed-url|status|metadata)} — from
+ * operations-service's gateway-only {@code /operations/internal/queries/{id}/dispatch} endpoint, so PSAMA can authorize them using the
+ * original query shape — NO database access from the gateway itself. Sends the mandatory internal dispatch token
+ * (X-PIC-SURE-INTERNAL-TOKEN). Fail-closed: ANY error (incl. 403) denies the request.
+ *
+ * <p><b>All four reads, not just the two downloads.</b> {@code status} and {@code metadata} carry no request body either, so without the
+ * dispatch their introspection payload has no {@code query} node at all — and PSAMA's USER_CONSENT_ACCESS branch can only fail a rule
+ * closed when there is no query to evaluate. That 401s every consent-governed user on status polling and metadata reads. The dispatch
+ * payload is already normalized to the bare query, so a rule sees {@code $.query.<field>} identically on a read and on a submit.
  *
  * <p>The response body is the shared {@link DispatchResponse} contract — the same record operations-service writes — rather than a private
  * copy of it.
@@ -26,7 +31,7 @@ public class QueryAuthFetcher {
 
     static final String INTERNAL_TOKEN_HEADER = "X-PIC-SURE-INTERNAL-TOKEN";
 
-    private static final Pattern RESULT_OR_SIGNED_URL = Pattern.compile(".*/query/([^/]+)/(?:result|signed-url)/?$");
+    private static final Pattern STORED_QUERY_READ = Pattern.compile(".*/query/([^/]+)/(?:result|signed-url|status|metadata)/?$");
 
     private final RestClient http;
     private final String queryServiceBaseUrl; // HPDS_QUERY_SERVICE_URL
@@ -42,7 +47,7 @@ public class QueryAuthFetcher {
         if (path == null) {
             return Optional.empty();
         }
-        Matcher m = RESULT_OR_SIGNED_URL.matcher(path);
+        Matcher m = STORED_QUERY_READ.matcher(path);
         if (!m.matches()) {
             return Optional.empty();
         }

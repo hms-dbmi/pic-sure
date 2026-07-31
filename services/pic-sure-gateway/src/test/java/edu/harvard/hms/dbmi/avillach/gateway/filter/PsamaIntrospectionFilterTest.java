@@ -669,6 +669,31 @@ class PsamaIntrospectionFilterTest {
         assertThat(MAPPER.writeValueAsString(sent.getValue())).doesNotContain("resourceCredentials").doesNotContain("secret");
     }
 
+    /**
+     * REGRESSION: {@code GET /query/{id}/status} is bodyless, so without the dispatched stored query the introspection payload carries NO
+     * query node -- and PSAMA's USER_CONSENT_ACCESS branch denies a null query, which 401s every consent-governed user on status polling.
+     * The status read must introspect WITH a query node, exactly like {@code /result}.
+     */
+    @Test
+    void sendsTheDispatchedStoredQueryAsTheQueryNodeForStatusReads() throws Exception {
+        PsamaClient client = mock(PsamaClient.class);
+        QueryAuthFetcher fetcher = mock(QueryAuthFetcher.class);
+        when(fetcher.queryJsonForPath("/hpds/auth/v3/query/abc/status"))
+            .thenReturn(Optional.of("{\"expectedResultType\":\"COUNT\",\"select\":[\"\\\\phs000007\\\\age\\\\\"]}"));
+        when(client.introspect(eq("user-token"), any())).thenReturn(active(List.of("ADMIN"), List.of()));
+        PsamaIntrospectionFilter f = filter(client, new AuditContext(), fetcher);
+
+        BufferedRequestWrapper req = wrap("Bearer user-token", new byte[0], "/hpds/auth/v3/query/abc/status", "GET");
+        HttpServletResponse resp = mock(HttpServletResponse.class);
+        lenient().when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+        f.doFilter(req, resp, mock(FilterChain.class));
+
+        ArgumentCaptor<TargetedRequest> sent = ArgumentCaptor.forClass(TargetedRequest.class);
+        verify(client).introspect(eq("user-token"), sent.capture());
+        assertThat(sent.getValue().query()).as("a bodyless status GET must still introspect with a query node").isNotNull();
+        assertThat(sent.getValue().query().get("expectedResultType").asText()).isEqualTo("COUNT");
+    }
+
     private static BufferedRequestWrapper wrap(String authHeader, byte[] body, String uri) {
         return wrap(authHeader, body, uri, "POST");
     }
