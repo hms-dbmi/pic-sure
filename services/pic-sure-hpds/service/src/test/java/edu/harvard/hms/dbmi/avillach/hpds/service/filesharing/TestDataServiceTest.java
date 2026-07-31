@@ -9,13 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class TestDataServiceTest {
-    FileSystemService fileSystemService;
+    FileSystemV3Service fileSystemService;
 
     TestDataService subject;
-    
+
     @Test
     public void shouldCreateTestFileForUpload() {
-        fileSystemService = Mockito.mock(FileSystemService.class);
+        fileSystemService = Mockito.mock(FileSystemV3Service.class);
         subject = new TestDataService(fileSystemService);
 
         String uuid = UUID.randomUUID().toString();

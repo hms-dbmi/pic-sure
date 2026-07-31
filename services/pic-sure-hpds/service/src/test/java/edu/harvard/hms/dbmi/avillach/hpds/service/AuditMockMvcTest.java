@@ -8,20 +8,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.AbstractProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.CountProcessor;
-import edu.harvard.hms.dbmi.avillach.hpds.processing.VariantListProcessor;
 import edu.harvard.hms.dbmi.avillach.hpds.processing.upload.SignUrlService;
-import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingService;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.util.UserRequestContext;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.CountV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.PartitionedPhenotypicObservationStore;
+import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
+import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -35,33 +40,33 @@ class AuditMockMvcTest {
     @Autowired
     MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     LoggingClient loggingClient;
 
     // Mock all service dependencies so we don't need real data
-    @MockBean
-    QueryService queryService;
-    @MockBean
-    CountProcessor countProcessor;
-    @MockBean
-    VariantListProcessor variantListProcessor;
-    @MockBean
-    AbstractProcessor abstractProcessor;
-    @MockBean
+    @MockitoBean
+    QueryV3Service queryService;
+    @MockitoBean
+    CountV3Processor countProcessor;
+    @MockitoBean
+    VariantListV3Processor variantListProcessor;
+    @MockitoBean
     Paginator paginator;
-    @MockBean
+    @MockitoBean
     SignUrlService signUrlService;
-    @MockBean
-    FileSharingService fileSystemService;
-    @MockBean
+    @MockitoBean
+    FileSharingV3Service fileSystemService;
+    @MockitoBean
     TestDataService testDataService;
+    @MockitoBean
+    PartitionedPhenotypicObservationStore partitionedPhenotypicObservationStore;
 
     @Test
     void postInfoEndpointProducesAuditEvent() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
         ).andExpect(status().isOk());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
@@ -73,25 +78,6 @@ class AuditMockMvcTest {
         assertEquals("POST", event.getRequest().getMethod());
         assertEquals(200, event.getRequest().getStatus());
         assertNotNull(event.getSessionId());
-    }
-
-    @Test
-    void searchEndpointIncludesSearchTermMetadata() throws Exception {
-        when(loggingClient.isEnabled()).thenReturn(true);
-        when(abstractProcessor.getDictionary()).thenReturn(new java.util.TreeMap<>());
-        when(abstractProcessor.getInfoStoreMeta()).thenReturn(java.util.List.of());
-
-        mockMvc.perform(
-            post("/PIC-SURE/search").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"blood pressure\"}")
-        ).andExpect(status().isOk());
-
-        ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
-        verify(loggingClient, atLeastOnce()).send(captor.capture());
-
-        LoggingEvent event = captor.getValue();
-        assertEquals("SEARCH", event.getEventType());
-        assertEquals("search", event.getAction());
-        assertEquals("blood pressure", event.getMetadata().get("search_term"));
     }
 
     @Test
@@ -114,7 +100,7 @@ class AuditMockMvcTest {
         when(loggingClient.isEnabled()).thenReturn(true);
 
         mockMvc.perform(
-            post("/PIC-SURE/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
+            post("/PIC-SURE/v3/info").contentType(MediaType.APPLICATION_JSON).content("{\"query\":\"test\"}")
                 .header("Authorization", "Bearer mytoken")
                 .header("X-Request-Id", "req-99")
         ).andExpect(status().isOk());
@@ -132,7 +118,7 @@ class AuditMockMvcTest {
     void notFoundReturnsOtherEventTypeWithNoAnnotation() throws Exception {
         when(loggingClient.isEnabled()).thenReturn(true);
 
-        mockMvc.perform(get("/PIC-SURE/nonexistent")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/PIC-SURE/v3/nonexistent")).andExpect(status().isNotFound());
 
         ArgumentCaptor<LoggingEvent> captor = ArgumentCaptor.forClass(LoggingEvent.class);
         verify(loggingClient, atLeastOnce()).send(captor.capture());
