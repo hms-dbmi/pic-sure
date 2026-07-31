@@ -29,10 +29,12 @@ import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
  * {@code QueryRequest} envelope ({@code {"@type":..., "resourceCredentials":{}, "query":{...}, "resourceUUID":null}}).
  *
  * <p><b>Dispatch normalizes both shapes to the bare query</b> -- see {@link #dispatchQueryJson(UUID)}. That is a deliberate security
- * decision, not a convenience: the dispatch payload becomes {@code TargetedRequest.query} in the gateway's PSAMA introspection for bodyless
- * reads ({@code /query/{id}/result}, {@code /query/{id}/signed-url}), and the deployed JsonPath authorization rules must not have to know
- * how old a row is. Normalizing here means an introspected READ sees {@code $.query.<field>} exactly like an introspected SUBMIT does,
- * whatever the row's age.
+ * decision, not a convenience: the dispatch payload becomes {@code TargetedRequest.query} in the gateway's PSAMA introspection for the
+ * bodyless reads ({@code /query/{id}/result}, {@code /signed-url}, {@code /status}, {@code /metadata}), and the deployed JsonPath
+ * authorization rules must not have to know how old a row is. Normalizing here means an introspected READ sees {@code $.query.<field>}
+ * exactly like an introspected SUBMIT does, whatever the row's age.
+ *
+ * <p><b>{@link #get(UUID)} strips credentials too</b>, without normalizing the shape -- see {@link #toDto(Query)}.
  *
  * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, and is now stored that way too
  * ({@code @Enumerated(EnumType.STRING)}). {@code metadata} travels as base64-encoded bytes, matching the entity's raw {@code byte[]}
@@ -136,11 +138,48 @@ public class QueryPersistenceService {
         return repo.findById(picsureId).orElseThrow(() -> notFound(picsureId));
     }
 
+    /**
+     * The {@code GET /internal/queries/{id}} payload. {@code InternalTokenFilter} is the gate on that endpoint; this is defense in depth
+     * behind it -- legacy envelope rows really do carry {@code resourceCredentials}, and a gate failure must not be able to hand a stored
+     * bearer token back out. Same secret removal the dispatch path performs.
+     *
+     * <p>Unlike dispatch, the stored SHAPE is preserved: the only consumer is query-service's
+     * {@code QueryService#buildQueryJson}/{@code tryTranslate}, which does its own envelope-tolerant unwrap and decides v1-vs-v3
+     * translation from what it receives. Normalizing here would silently change that decision; removing credentials cannot.
+     *
+     * <p>An unparseable stored body has no tree to strip, so it is dropped ({@code null}) rather than returned raw -- the raw bytes may
+     * still spell out a secret. That matches {@link #dispatchQueryJson(UUID)}'s posture, and query-service already renders an absent stored
+     * query as an absent {@code queryJson}.
+     */
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
-            entity.getUuid(), entity.getQuery(), entity.getResourceResultId(), entity.getStatus(), entity.getVersion(),
-            encodeMetadata(entity.getMetadata())
+            entity.getUuid(), withoutCredentials(entity.getQuery(), entity.getUuid()), entity.getResourceResultId(), entity.getStatus(),
+            entity.getVersion(), encodeMetadata(entity.getMetadata())
         );
+    }
+
+    private static String withoutCredentials(String json, UUID picsureId) {
+        if (json == null || json.isBlank()) {
+            return json;
+        }
+        try {
+            JsonNode root = MAPPER.readTree(json);
+            stripCredentials(root);
+            return MAPPER.writeValueAsString(root);
+        } catch (JsonProcessingException e) {
+            LOG.warn("Stored query for {} is not valid JSON; omitting it rather than returning it unstripped", picsureId, e);
+            return null;
+        }
+    }
+
+    /** Removes every {@code resourceCredentials} member anywhere in the tree, in place. */
+    private static void stripCredentials(JsonNode node) {
+        if (node instanceof ObjectNode object) {
+            object.remove("resourceCredentials");
+            object.forEach(QueryPersistenceService::stripCredentials);
+        } else if (node != null && node.isArray()) {
+            node.forEach(QueryPersistenceService::stripCredentials);
+        }
     }
 
     private static byte[] decodeMetadata(String metadata) {

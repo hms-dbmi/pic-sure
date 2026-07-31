@@ -199,6 +199,73 @@ class QueryPersistenceServiceTest {
         assertThat(service.dispatchQueryJson(picsureId)).isNull();
     }
 
+    // --- get: the same credential strip, defense in depth (GET /internal/queries/{id} is internal-token gated, not public) ---
+
+    /**
+     * DEFENSE IN DEPTH: {@code get} is what {@code GET /internal/queries/{id}} returns, and legacy envelope rows really do carry
+     * {@code resourceCredentials} at the root. The internal-token filter is the gate; stripping here means a gate failure still cannot leak
+     * a stored bearer token. Mirrors {@link #dispatchStripsResourceCredentialsFromALegacyEnvelopeRow}.
+     */
+    @Test
+    void getStripsResourceCredentialsFromALegacyEnvelopeRow() {
+        UUID picsureId = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).doesNotContain("resourceCredentials").doesNotContain("secret");
+    }
+
+    /** Same strip, nested: credentials inside the envelope's {@code query} member must not survive either. */
+    @Test
+    void getStripsResourceCredentialsNestedInsideTheEnvelopesQuery() {
+        String row = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"outer\"},"
+            + "\"query\":{\"expectedResultType\":\"COUNT\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"inner\"}}}";
+        UUID picsureId = service.save(new SaveQueryRequest(row, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).doesNotContain("resourceCredentials").doesNotContain("outer").doesNotContain("inner");
+    }
+
+    /**
+     * The strip must NOT normalize the shape: unlike dispatch, {@code get} keeps the stored envelope, because query-service's
+     * {@code buildQueryJson}/{@code tryTranslate} does its own envelope-tolerant unwrap and decides v1-vs-v3 translation from what it
+     * receives. Only the credentials go.
+     */
+    @Test
+    void getKeepsTheStoredEnvelopeShapeAndOnlyRemovesCredentials() {
+        UUID picsureId = service.save(new SaveQueryRequest(LEGACY_ENVELOPE_ROW, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        String query = service.get(picsureId).query();
+        assertThat(query).contains("\"@type\":\"GeneralQueryRequest\"").contains("\"query\":").contains("\"expectedResultType\":\"COUNT\"")
+            .contains("\"resourceUUID\":null");
+    }
+
+    /** A bare v3 row has nothing to strip and comes back as stored. */
+    @Test
+    void getOfABareRowReturnsTheStoredQueryUnchanged() {
+        UUID picsureId = service.save(new SaveQueryRequest(BARE_V3_QUERY, null, PicSureStatus.QUEUED, "3", null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).isEqualTo(BARE_V3_QUERY);
+    }
+
+    /**
+     * Unparseable stored JSON has no parsed tree to strip, so it is dropped rather than returned raw -- it may still spell out a secret.
+     */
+    @Test
+    void getOfAnUnparseableStoredQueryReturnsNullRatherThanTheRawBody() {
+        UUID picsureId =
+            service.save(new SaveQueryRequest("{\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"", null, null, null, null));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(service.get(picsureId).query()).isNull();
+    }
+
     @Test
     void invalidBase64MetadataOnSaveThrowsBadRequest() {
         SaveQueryRequest req = new SaveQueryRequest("{}", null, PicSureStatus.QUEUED, null, "not-valid-base64!!!");
