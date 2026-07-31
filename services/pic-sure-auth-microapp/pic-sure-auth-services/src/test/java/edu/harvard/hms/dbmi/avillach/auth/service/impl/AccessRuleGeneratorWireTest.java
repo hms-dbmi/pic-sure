@@ -1,7 +1,8 @@
 package edu.harvard.hms.dbmi.avillach.auth.service.impl;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -117,7 +118,7 @@ class AccessRuleGeneratorWireTest {
                 text.contains("$.query.query"), "generator still mints the retired envelope path for " + rule.getName() + ": " + text
             );
             assertTrue(text.startsWith("$.query."), "generated rule " + rule.getName() + " does not bind the request node: " + text);
-            assertNotNull(JsonPath.compile(text), "generated rule " + rule.getName() + " is not a compilable JsonPath: " + text);
+            assertDoesNotThrow(() -> JsonPath.compile(text), "generated rule " + rule.getName() + " is not a compilable JsonPath: " + text);
         }
     }
 
@@ -341,6 +342,90 @@ class AccessRuleGeneratorWireTest {
     }
 
     // ---------------------------------------------------------------------------------------------------------------
+    // The asymmetry guard: a client's SPARSE body must decide identically to the same query re-serialized from a typed Query.
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /*
+     * SECURITY: this wire carries the same query in TWO serializations. The gateway forwards the CLIENT's raw body verbatim, in which an
+     * unused member is simply ABSENT; an internal hop that re-serializes a typed Query emits that member as NULL. json-path 2.9.0 reads an
+     * absent key as "!= null" and a key present with a null value as not existing -- exactly backwards from each other. So any generated
+     * rule that discriminated on values / min / max would grant one of these two bodies and deny the other, for the same query, depending
+     * only on who last serialized it. That is why the generators discriminate on phenotypicFilterType alone.
+     *
+     * The fixtures below are hand-written JSON, NOT serialized records, and are asserted to contain no null literal at all -- if someone
+     * later "tidies" them into MAPPER.valueToTree(...) the guard would silently stop testing the thing it exists for.
+     */
+
+    @Test
+    void theSparseAndNullEmittingFixturesAreGenuinelyDifferentWireShapes() {
+        assertFalse(sparseNumericFilter(STUDY_CONCEPT_PATH + "bmi\\").contains("null"), "the sparse fixture must OMIT keys, not null them");
+        assertFalse(sparseCategoricalFilter(STUDY_CONCEPT_PATH + "sex\\").contains("null"));
+        assertFalse(sparseGenomicQuery("{\"key\":\"Gene_with_variant\",\"values\":[\"APOE\"]}").contains("null"));
+
+        String nullEmitting =
+            MAPPER.valueToTree(filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "bmi\\", null, 18.0, 30.0)).toString();
+        assertTrue(nullEmitting.contains("null"), "the typed-Query fixture is supposed to emit nulls: " + nullEmitting);
+    }
+
+    /** Concept-path scoping decides the same way whether the unused filter members are absent or null. */
+    @Test
+    void phenotypeScopingDecidesTheSameForASparseClientBodyAsForItsTypedTwin() {
+        AccessRule parent = subRuleHolder(accessRuleService.getPhenotypeSubRules(STUDY, STUDY_CONCEPT_PATH, PROJECT_ALIAS));
+
+        assertSameVerdict(
+            parent, true, sparseNumericFilter(STUDY_CONCEPT_PATH + "bmi\\"),
+            filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "bmi\\", null, 18.0, 30.0)
+        );
+        assertSameVerdict(
+            parent, false, sparseNumericFilter(OTHER_STUDY_CONCEPT_PATH),
+            filtering(PhenotypicFilterType.FILTER, OTHER_STUDY_CONCEPT_PATH, null, 1.0, 2.0)
+        );
+        assertSameVerdict(
+            parent, true, sparseCategoricalFilter(STUDY_CONCEPT_PATH + "sex\\"),
+            filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "sex\\", Set.of("male"), null, null)
+        );
+        assertSameVerdict(
+            parent, false, sparseCategoricalFilter(OTHER_STUDY_CONCEPT_PATH),
+            filtering(PhenotypicFilterType.FILTER, OTHER_STUDY_CONCEPT_PATH, Set.of("x"), null, null)
+        );
+    }
+
+    /** The genomic IS_EMPTY rules deny both genomic shapes, and both wire shapes, and still pass a query that carries none. */
+    @Test
+    void genomicRestrictionDecidesTheSameForASparseClientBodyAsForItsTypedTwin() {
+        AccessRule rule = bare(accessRuleService.createConsentAccessRule(STUDY, CONSENT_GROUP, "PARENT", PARENT_CONSENT_BUCKET));
+        rule.setSubAccessRule(new HashSet<>());
+        accessRuleService.configureAccessRule(rule, STUDY, CONSENT_GROUP, STUDY_CONCEPT_PATH, PROJECT_ALIAS);
+
+        for (String name : List.of("AR_TOPMED_RESTRICTED_CATEGORICAL", "AR_TOPMED_RESTRICTED_NUMERIC")) {
+            AccessRule restricted = byName(rule.getSubAccessRule(), name);
+
+            assertSameVerdict(
+                restricted, false, sparseGenomicQuery("{\"key\":\"Gene_with_variant\",\"values\":[\"APOE\"]}"),
+                withGenomicFilters(new GenomicFilter("Gene_with_variant", List.of("APOE"), null, null))
+            );
+            assertSameVerdict(
+                restricted, false, sparseGenomicQuery("{\"key\":\"Variant_frequency_as_text\",\"min\":0.1}"),
+                withGenomicFilters(new GenomicFilter("Variant_frequency_as_text", null, 0.1f, null))
+            );
+            // genomicFilters omitted entirely: PathNotFound, which IS_EMPTY passes.
+            assertTrue(grantsRaw(restricted, "{\"expectedResultType\":\"COUNT\"}"), name + " must pass a body with no genomic filters");
+        }
+    }
+
+    /** A hand-written client body and its typed twin must agree, and agree with what the rule is supposed to decide. */
+    private void assertSameVerdict(AccessRule rule, boolean expected, String sparseBody, Query typedTwin) {
+        boolean sparseVerdict = grantsRaw(rule, sparseBody);
+        boolean typedVerdict = grants(rule, typedTwin);
+
+        assertEquals(
+            typedVerdict, sparseVerdict,
+            "the same query decided differently as a sparse client body than re-serialized from a typed Query: " + sparseBody
+        );
+        assertEquals(expected, sparseVerdict, "unexpected verdict for " + sparseBody);
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------------------------------------------------
 
@@ -377,6 +462,33 @@ class AccessRuleGeneratorWireTest {
 
     private static Query withConsents(AuthorizationFilter... filters) {
         return inStudyQuery().setAuthorizationFilters(List.of(filters));
+    }
+
+    /**
+     * A client's own body for a numeric filter: {@code values} is OMITTED, not nulled. Hand-written on purpose -- see the asymmetry guard
+     * above.
+     */
+    private static String sparseNumericFilter(String conceptPath) {
+        return "{\"select\":[],\"authorizationFilters\":[{\"conceptPath\":\"" + escapeForJson(PARENT_CONSENT_BUCKET) + "\",\"values\":[\""
+            + STUDY + "." + CONSENT_GROUP + "\"]}]," + "\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\""
+            + escapeForJson(conceptPath) + "\",\"min\":18.0,\"max\":30.0},\"expectedResultType\":\"COUNT\"}";
+    }
+
+    /** A client's own body for a categorical filter: {@code min} and {@code max} are OMITTED, not nulled. */
+    private static String sparseCategoricalFilter(String conceptPath) {
+        return "{\"select\":[],\"authorizationFilters\":[{\"conceptPath\":\"" + escapeForJson(PARENT_CONSENT_BUCKET) + "\",\"values\":[\""
+            + STUDY + "." + CONSENT_GROUP + "\"]}]," + "\"phenotypicClause\":{\"phenotypicFilterType\":\"FILTER\",\"conceptPath\":\""
+            + escapeForJson(conceptPath) + "\",\"values\":[\"male\"]},\"expectedResultType\":\"COUNT\"}";
+    }
+
+    /** A client's own body carrying one genomic filter, with whichever of values/min/max it does not use simply absent. */
+    private static String sparseGenomicQuery(String genomicFilterJson) {
+        return "{\"select\":[],\"genomicFilters\":[" + genomicFilterJson + "],\"expectedResultType\":\"COUNT\"}";
+    }
+
+    /** Concept paths carry single backslashes on the wire; JSON needs each of them doubled. */
+    private static String escapeForJson(String conceptPath) {
+        return conceptPath.replace("\\", "\\\\");
     }
 
     /** No phenotypic filters and no select: exactly what a genomic-only privilege is meant to permit. */
@@ -419,6 +531,16 @@ class AccessRuleGeneratorWireTest {
      */
     private boolean grants(AccessRule rule, Query query) {
         TargetedRequest request = new TargetedRequest(QUERY_TARGET, MAPPER.valueToTree(query));
+        return accessRuleService.evaluateAccessRule(MAPPER.convertValue(request, RULE_NODE_TYPE), rule);
+    }
+
+    /**
+     * Same evaluator, same conversion, but from a body the CLIENT wrote rather than one a record serialized -- the gateway parses the raw
+     * bytes into a JsonNode and forwards them verbatim, so this is the real ingress shape.
+     */
+    private boolean grantsRaw(AccessRule rule, String queryJson) {
+        TargetedRequest request =
+            new TargetedRequest(QUERY_TARGET, assertDoesNotThrow(() -> MAPPER.readTree(queryJson), "fixture is not valid JSON"));
         return accessRuleService.evaluateAccessRule(MAPPER.convertValue(request, RULE_NODE_TYPE), rule);
     }
 
