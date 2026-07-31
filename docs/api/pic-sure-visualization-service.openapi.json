@@ -140,17 +140,6 @@
         },
         "type" : "object"
       },
-      "DistributionRequest" : {
-        "properties" : {
-          "query" : {
-            "$ref" : "#/components/schemas/Query"
-          }
-        },
-        "required" : [
-          "query"
-        ],
-        "type" : "object"
-      },
       "GenomicFilter" : {
         "properties" : {
           "key" : {
@@ -467,7 +456,7 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/DistributionRequest"
+                "$ref" : "#/components/schemas/Query"
               }
             }
           },

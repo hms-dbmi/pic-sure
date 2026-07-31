@@ -77,13 +77,14 @@ class HpdsCallIntegrationTest {
             .andExpect(content().json("{\"expectedResultType\":\"CATEGORICAL_CROSS_COUNT\"}")).andExpect(jsonPath("$.query").doesNotExist())
             .andRespond(withSuccess(objectMapper.writeValueAsString(hpdsResponse), MediaType.APPLICATION_JSON));
 
-        // Build a v3 query with a categorical filter
+        // The request body IS the v3 query -- the same bare shape this service forwards to query-service, and the same
+        // shape the gateway's consent mutation writes back over the body on the authorized path.
         Map<String, Object> query = Map.of(
             "phenotypicClause",
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White", "Black")),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -124,7 +125,7 @@ class HpdsCallIntegrationTest {
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -166,7 +167,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON)
@@ -194,7 +195,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -220,7 +221,7 @@ class HpdsCallIntegrationTest {
             Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\demographics\\race\\", "values", List.of("White")), "select",
             List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
@@ -251,7 +252,7 @@ class HpdsCallIntegrationTest {
             "phenotypicClause", Map.of("phenotypicFilterType", "FILTER", "conceptPath", "\\measurements\\bmi\\", "min", 18.0, "max", 40.0),
             "select", List.of(), "authorizationFilters", List.of(), "genomicFilters", List.of()
         );
-        String body = objectMapper.writeValueAsString(Map.of("query", query));
+        String body = objectMapper.writeValueAsString(query);
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON)

@@ -1,5 +1,6 @@
 package edu.harvard.dbmi.avillach.visualization;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,11 +40,15 @@ class OpenApiExportTest {
         OpenApiExport.assertSharedContractInvariants(document);
 
         // Representative shape: /distributions answers with the typed VisualizationResponse, and its request body is
-        // the one-field DistributionRequest carrying the BARE v3 Query -- not a v1 envelope with credentials and a
-        // resource id beside it.
+        // the BARE v3 Query itself -- no wrapper, and no v1 envelope with credentials and a resource id beside it.
+        // The wrapper is not merely unused: on the authorized path the gateway replaces the whole body with PSAMA's
+        // consent-mutated bare Query, so a documented wrapper would describe a request that cannot survive that hop.
         JsonNode distributions = OpenApiExport.operation(document, "/distributions", "post");
         OpenApiExport.assertRespondsWith(distributions, "application/json", "VisualizationResponse");
-        OpenApiExport.assertAcceptsSchema(distributions, "application/json", "DistributionRequest");
-        OpenApiExport.assertPropertyIsSchema(document, "DistributionRequest", "query", "Query");
+        OpenApiExport.assertAcceptsSchema(distributions, "application/json", "Query");
+        assertFalse(
+            document.path("components").path("schemas").has("DistributionRequest"),
+            "the retired DistributionRequest wrapper is back in the document"
+        );
     }
 }

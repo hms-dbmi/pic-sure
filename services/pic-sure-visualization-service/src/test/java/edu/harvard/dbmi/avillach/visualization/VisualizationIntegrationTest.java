@@ -16,6 +16,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,16 +43,24 @@ class VisualizationIntegrationTest {
         mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
+    /**
+     * A bare v3 query the decomposer cannot chart: it carries a genomic filter (so it is not the empty query) but no select paths and no
+     * phenotypic filters, so no sub-query is issued and no upstream call is made. That keeps these ingress tests about binding and access
+     * type rather than about HPDS -- {@code HpdsCallIntegrationTest} owns the call itself.
+     */
+    private String genomicOnlyQuery() throws Exception {
+        return objectMapper
+            .writeValueAsString(Map.of("genomicFilters", List.of(Map.of("key", "Gene_with_variant", "values", List.of("APOE")))));
+    }
+
     @Test
     void distributions_withAuthorizedAccessType_returnsOk() throws Exception {
-        // Access type comes from the gateway-owned X-Picsure-Access-Type header; no hpdsResourceUUID needed (path-routed frontend omits
-        // it).
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
+        // The body IS the bare v3 query -- no wrapper. Access type comes from the gateway-owned X-Picsure-Access-Type
+        // header; no hpdsResourceUUID needed (path-routed frontend omits it).
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("Authorization", "Bearer test-token")
                 .header("X-User-Id", "test-user").header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
-                .content(body)
+                .content(genomicOnlyQuery())
         ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
@@ -64,11 +73,9 @@ class VisualizationIntegrationTest {
     void distributions_withOpenAccessType_returnsOk() throws Exception {
         // Open-access requests carry the gateway's OPEN_ACCESS:<host> marker in X-User-Id. That marker is non-blank, so
         // the access type must come from the dedicated header -- reading identity presence would classify this as authorized.
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "OPEN_ACCESS:aio.local")
-                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(body)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_OPEN).content(genomicOnlyQuery())
         ).andExpect(status().isOk()).andReturn();
 
         VisualizationResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), VisualizationResponse.class);
@@ -81,9 +88,7 @@ class VisualizationIntegrationTest {
     void distributions_withoutAccessTypeHeader_returns400() throws Exception {
         // Fail closed: the header is absent only when the request bypassed the gateway auth chain, so there is no
         // trustworthy access type. Neither default is safe, so neither is taken.
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
+        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(genomicOnlyQuery()))
             .andExpect(status().isBadRequest()).andReturn();
 
         assertTrue(result.getResponse().getContentAsString().contains("X-Picsure-Access-Type"));
@@ -91,20 +96,36 @@ class VisualizationIntegrationTest {
 
     @Test
     void distributions_withUnrecognizedAccessType_returns400() throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of("query", Map.of()));
-
         mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header(GatewayUserResolver.HEADER_ACCESS_TYPE, "superuser")
-                .content(body)
+                .content(genomicOnlyQuery())
         ).andExpect(status().isBadRequest());
     }
 
     @Test
+    void distributions_retiredQueryWrapper_returns400() throws Exception {
+        // The wrapper is retired, and its own name is now the giveaway: the gateway's BodyMutationFilter replaces the
+        // whole body with PSAMA's consent-mutated BARE query, so a body that still nests one under 'query' could never
+        // survive the authorized path. Binding the bare Query makes that mismatch a 400 at the door instead of a
+        // request that works unauthenticated and breaks the moment consent filtering kicks in.
+        String body = objectMapper.writeValueAsString(Map.of("query", Map.of("select", List.of("\\demographics\\race\\"))));
+
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
+        ).andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
+    }
+
+    @Test
     void distributions_retiredHpdsResourceUUID_returns400() throws Exception {
-        // The resource-registry selector is retired, not tolerated: the request model no longer opts out of strict
-        // deserialization, so a client still sending it is told so instead of having the field silently dropped.
-        String body =
-            objectMapper.writeValueAsString(Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "query", Map.of()));
+        // The resource-registry selector is retired, not tolerated: it is not a field of the v3 Query the endpoint now
+        // binds, and nothing opts out of strict deserialization, so a client still sending it is told so instead of
+        // having the field silently dropped.
+        String body = objectMapper.writeValueAsString(
+            Map.of("hpdsResourceUUID", "550e8400-e29b-41d4-a716-446655440099", "select", List.of("\\demographics\\race\\"))
+        );
 
         MvcResult result = mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
@@ -118,7 +139,7 @@ class VisualizationIntegrationTest {
     void distributions_retiredResourceCredentials_returns400() throws Exception {
         // The v1 envelope's other half. /distributions never read it; with the envelope gone from every hop, sending it
         // is a client-version mismatch worth surfacing.
-        String body = objectMapper.writeValueAsString(Map.of("resourceCredentials", Map.of(), "query", Map.of()));
+        String body = objectMapper.writeValueAsString(Map.of("resourceCredentials", Map.of(), "select", List.of("\\demographics\\race\\")));
 
         mockMvc.perform(
             post("/distributions").contentType(MediaType.APPLICATION_JSON).header("X-User-Id", "test-user")
@@ -127,13 +148,40 @@ class VisualizationIntegrationTest {
     }
 
     @Test
-    void distributions_nullQuery_returns400() throws Exception {
-        String body = "{\"query\":null}";
+    void distributions_emptyQueryObject_returns400() throws Exception {
+        // '{}' binds an all-null Query, which is not a request this endpoint can answer: the decomposer reads only
+        // select and the phenotypic filters, so with neither there is nothing to chart and the response would be an
+        // unconditional empty 200 -- a success shape for a request that asked for nothing. Say so instead.
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content("{}")
+        ).andExpect(status().isBadRequest()).andReturn();
 
-        MvcResult result = mockMvc.perform(post("/distributions").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isBadRequest()).andReturn();
+        String responseBody = result.getResponse().getContentAsString();
+        assertTrue(responseBody.contains("select"), responseBody);
+        assertTrue(responseBody.contains("filter"), responseBody);
+    }
 
-        assertTrue(result.getResponse().getContentAsString().contains("query"));
+    @Test
+    void distributions_queryWithOnlyIgnoredFields_returns400() throws Exception {
+        // expectedResultType is NOT what makes a query answerable here: the decomposer overwrites it per sub-query
+        // (CATEGORICAL_CROSS_COUNT / CONTINUOUS_CROSS_COUNT), so a body carrying only that is as empty as '{}'.
+        String body = objectMapper.writeValueAsString(Map.of("expectedResultType", "COUNT", "select", List.of()));
+
+        mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED).content(body)
+        ).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void distributions_absentBody_returns400() throws Exception {
+        MvcResult result = mockMvc.perform(
+            post("/distributions").contentType(MediaType.APPLICATION_JSON)
+                .header(GatewayUserResolver.HEADER_ACCESS_TYPE, GatewayUserResolver.ACCESS_TYPE_AUTHORIZED)
+        ).andExpect(status().isBadRequest()).andReturn();
+
+        assertTrue(result.getResponse().getContentAsString().contains("Malformed request body"));
     }
 
     @Test
@@ -254,7 +302,11 @@ class VisualizationIntegrationTest {
 
         QueryFormat format = objectMapper.readValue(result.getResponse().getContentAsString(), QueryFormat.class);
         assertEquals("Request format for POST /distributions", format.description());
-        assertTrue(format.specification().containsKey("query"));
+        // The advertised format is the BARE v3 query's own fields. A 'query' key here would tell clients to send a
+        // wrapper the endpoint rejects -- and one the gateway's consent mutation strips off anyway.
+        assertFalse(format.specification().containsKey("query"), format.specification().toString());
+        assertTrue(format.specification().containsKey("select"));
+        assertTrue(format.specification().containsKey("phenotypicClause"));
         // hpdsResourceUUID is no longer part of the request: the backend is chosen by X-Picsure-Access-Type and the
         // path query-service is called on. Advertising it would tell clients to send a field nothing reads.
         assertFalse(result.getResponse().getContentAsString().contains("hpdsResourceUUID"));

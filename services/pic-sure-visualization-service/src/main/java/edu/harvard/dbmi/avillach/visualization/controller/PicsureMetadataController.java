@@ -28,10 +28,19 @@ public class PicsureMetadataController {
         return ResponseEntity.ok(distributionQueryFormat());
     }
 
+    /**
+     * Describes the BARE v3 query the endpoint binds -- its own fields, not a {@code query} wrapper around it. Advertising the wrapper
+     * would tell clients to send a body {@code POST /distributions} rejects, and one the gateway's consent mutation strips off in any case.
+     */
     private QueryFormat distributionQueryFormat() {
         return new QueryFormat(
             "PIC-SURE Visualization Distributions", "Request format for POST /distributions",
-            Map.of("query", "PIC-SURE HPDS v3 query used to generate distribution charts"), List.of()
+            Map.of(
+                "select", "Concept paths to chart when no phenotypic filter names one", "phenotypicClause",
+                "Phenotypic filter or subquery; its concept paths are what the distributions are computed over", "genomicFilters",
+                "Genomic filters narrowing the cohort", "expectedResultType",
+                "Ignored: each generated sub-query sets CATEGORICAL_CROSS_COUNT or CONTINUOUS_CROSS_COUNT itself"
+            ), List.of()
         );
     }
 }
