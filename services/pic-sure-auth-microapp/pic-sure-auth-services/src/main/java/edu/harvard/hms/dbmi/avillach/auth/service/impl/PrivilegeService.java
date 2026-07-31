@@ -328,7 +328,7 @@ public class PrivilegeService {
         topmedParentRule.setSubAccessRule(new HashSet<>());
         this.accessRuleService.populateTopmedAccessRule(topmedParentRule, true);
         topmedParentRule.getSubAccessRule().addAll(this.accessRuleService.getPhenotypeSubRules(studyIdentifier, parentConceptPath, projectAlias));
-        topmedParentRule.getSubAccessRule().add(this.accessRuleService.createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        topmedParentRule.getSubAccessRule().add(this.accessRuleService.createTopmedConsentAllowanceSubRule());
         return this.accessRuleService.save(topmedParentRule);
     }
 

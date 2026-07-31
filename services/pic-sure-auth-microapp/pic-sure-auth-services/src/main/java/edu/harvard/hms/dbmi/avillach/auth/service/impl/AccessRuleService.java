@@ -39,6 +39,66 @@ public class AccessRuleService {
 
     public static final String parentAccessionField = "\\\\_Parent Study Accession with Subject ID\\\\";
     private static final String topmedAccessionField = "\\\\_Topmed Study Accession with Subject ID\\\\";
+
+    /*
+     * SECURITY: the JsonPath fragments below are the only shapes a NEWLY minted access rule may bind. They address the bare v3 Query that
+     * the introspection wire now carries at {@code $.query} -- {"Target Service": "<path>", "query": <bare v3 Query>}. The envelope-era
+     * shapes they replace ({@code $.query.query.<field>}, i.e. a v1 Query nested inside a {query, resourceUUID} envelope) resolve nothing
+     * anywhere on this wire: submits have been bare since the v3 ingress landed and reads are normalized to bare at dispatch. A generator
+     * that keeps minting an envelope path does not fail loudly -- PathNotFoundException is a silent deny for ALL_CONTAINS/ALL_EQUALS/
+     * IS_NOT_EMPTY rules and a silent grant for IS_EMPTY/ALL_CONTAINS_OR_EMPTY ones -- which is why these are constants with a test
+     * (AccessRuleGeneratorWireTest) that resolves every one of them against a serialized TargetedRequest.
+     *
+     * DEPLOYED ROWS ARE NOT TOUCHED. getOrCreateAccessRule looks rules up by NAME and returns the existing row unchanged, so an environment
+     * that already has AR_ALLOW_COUNT keeps its stored (envelope-era) rule text; only rules minted into a database that does not yet have
+     * them get the shapes below. Rule NAMES are therefore deliberately left as they are: renaming one would mint a second, differently
+     * shaped rule alongside the deployed one and AND it into the same privilege.
+     */
+
+    /** The result type the query asks for. Envelope-era: {@code $.query.query.expectedResultType}. */
+    public static final String EXPECTED_RESULT_TYPE_PATH = "$.query.expectedResultType";
+
+    /** Every concept path the query asks to have returned. Envelope-era: {@code $.query.query.fields.[*]}. */
+    public static final String SELECT_CONCEPT_PATHS_PATH = "$.query.select.[*]";
+
+    /*
+     * ONLY phenotypicFilterType may discriminate a filter's kind. The v1 wire kept categorical and numeric filters in two different
+     * MEMBERS (categoryFilters / numericFilters), so the JsonPath addressed them apart for free. v3 keeps both in one PhenotypicFilter and
+     * the difference is which of values / min / max is populated -- and that CANNOT be tested here: json-path 2.9.0 reads an ABSENT key as
+     * "!= null" and a key present with a null value as "not existing", so a predicate like [?(@.min != null)] gives opposite answers for
+     * the two serializations this wire legitimately carries (a client's sparse body vs. a re-serialized typed Query, which emits nulls).
+     * phenotypicFilterType is always present, so it is the only safe discriminator.
+     */
+
+    /**
+     * The concept path of every value/range filter, at any nesting depth of the phenotypic clause tree. Envelope-era: the KEYS of
+     * {@code $.query.query.categoryFilters} AND of {@code $.query.query.numericFilters} -- v3's FILTER covers both, which is why the two
+     * rule labels (CATEGORICAL, NUMERIC) now bind the same path and merge into one rule at evaluation. The envelope-era rules set
+     * checkMapKeyOnly/checkMapNode to walk that map; this resolves to a plain list of strings, so those flags are false everywhere now.
+     */
+    public static final String FILTER_CONCEPT_PATHS_PATH =
+        "$.query.phenotypicClause..[?(@.phenotypicFilterType == 'FILTER')].conceptPath";
+
+    /** The concept path of every "must have a value" filter. Envelope-era: {@code $.query.query.requiredFields.[*]}. */
+    public static final String REQUIRED_CONCEPT_PATHS_PATH =
+        "$.query.phenotypicClause..[?(@.phenotypicFilterType == 'REQUIRED')].conceptPath";
+
+    /**
+     * The concept path of every "any record of" filter. Envelope-era: {@code $.query.query.anyRecordOf.[*]} AND
+     * {@code $.query.query.anyRecordOfMulti.[*]} -- v3 expresses the "multi" variant as an OR subquery of ANY_RECORD_OF filters, so this
+     * single path covers both and the separate ANY_RECORD_OF_MULTI rule is no longer minted.
+     */
+    public static final String ANY_RECORD_OF_CONCEPT_PATHS_PATH =
+        "$.query.phenotypicClause..[?(@.phenotypicFilterType == 'ANY_RECORD_OF')].conceptPath";
+
+    /**
+     * Every genomic filter. Envelope-era: {@code $.query.query.variantInfoFilters[*].categoryVariantInfoFilters.*} and its numeric twin --
+     * v3 has one flat GenomicFilter list whose categorical/numeric split is again only readable from which of values / min / max is set, so
+     * both AR_TOPMED_RESTRICTED_* rules bind this one path. They are IS_EMPTY rules whose shared intent is "no genomic filters at all", so
+     * collapsing them loses nothing.
+     */
+    public static final String GENOMIC_FILTERS_PATH = "$.query.genomicFilters[*]";
+
     private final String fence_harmonized_consent_group_concept_path;
     private final String fence_parent_consent_group_concept_path;
     private final String fence_topmed_consent_group_concept_path;
@@ -703,7 +763,7 @@ public class AccessRuleService {
      * @param projectAlias    The project alias.
      */
     protected void configureHarmonizedAccessRule(AccessRule ar, String studyIdentifier, String conceptPath, String projectAlias) {
-        ar.setGates(new HashSet<>(Collections.singleton(upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data"))));
+        ar.setGates(new HashSet<>(Collections.singleton(upsertConsentGate("HARMONIZED_CONSENT", consentValuesPath(fence_harmonized_consent_group_concept_path), true, "harmonized data"))));
 
         addUniqueSubRules(ar, getAllowedQueryTypeRules());
         addUniqueSubRules(ar, getHarmonizedSubRules());
@@ -715,9 +775,20 @@ public class AccessRuleService {
 
         addUniqueSubRules(ar, getAllowedQueryTypeRules());
         addUniqueSubRules(ar, getPhenotypeSubRules(studyIdentifier, conceptPath, projectAlias));
-        addUniqueSubRules(ar, Collections.singleton(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true)));
+        addUniqueSubRules(ar, Collections.singleton(createTopmedConsentAllowanceSubRule()));
 
         return ar;
+    }
+
+    /**
+     * The sub-rule that lets a query filter on the Topmed consent concept path itself. Shared with PrivilegeService's topmed+parent rule,
+     * which attaches the identical rule.
+     */
+    protected AccessRule createTopmedConsentAllowanceSubRule() {
+        return createPhenotypeSubRule(
+                fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", FILTER_CONCEPT_PATHS_PATH,
+                AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""
+        );
     }
 
     protected Set<AccessRule> getAllowedQueryTypeRules() {
@@ -748,7 +819,7 @@ public class AccessRuleService {
             AccessRule ar = getOrCreateAccessRule(
                     ar_name,
                     "MANAGED SUB AR to allow " + queryType + " Queries",
-                    "$.query.query.expectedResultType",
+                    EXPECTED_RESULT_TYPE_PATH,
                     AccessRule.TypeNaming.ALL_EQUALS,
                     queryType,
                     false,
@@ -767,8 +838,8 @@ public class AccessRuleService {
 
     private Collection<? extends AccessRule> getTopmedRestrictedSubRules() {
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        rules.add(upsertTopmedRestrictedSubRule("CATEGORICAL", "$.query.query.variantInfoFilters[*].categoryVariantInfoFilters.*"));
-        rules.add(upsertTopmedRestrictedSubRule("NUMERIC", "$.query.query.variantInfoFilters[*].numericVariantInfoFilters.*"));
+        rules.add(upsertTopmedRestrictedSubRule("CATEGORICAL", GENOMIC_FILTERS_PATH));
+        rules.add(upsertTopmedRestrictedSubRule("NUMERIC", GENOMIC_FILTERS_PATH));
 
         return rules;
     }
@@ -809,23 +880,24 @@ public class AccessRuleService {
 
     protected Collection<? extends AccessRule> getPhenotypeSubRules(String studyIdentifier, String conceptPath, String alias) {
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        //categorical filters will always contain at least one entry (for the consent groups); it will never be empty
-        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        // On the envelope wire the consent groups rode in categoryFilters, so that node was never empty and this rule could be a plain
+        // ALL_CONTAINS. On the bare v3 wire consents live in authorizationFilters instead: a query may legitimately carry no phenotypic
+        // filter at all, and ALL_CONTAINS denies an empty match. ALL_CONTAINS_OR_EMPTY keeps the check ("every categorical filter the
+        // query does carry is under an allowed concept path") without denying a query that carries none.
+        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
 
         for (String underscorePath : underscoreFields) {
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.numericFilters", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC", true));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS", false));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
 
         return rules;
     }
@@ -839,25 +911,24 @@ public class AccessRuleService {
     private Collection<? extends AccessRule> getHarmonizedSubRules() {
 
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        //categorical filters will always contain at least one entry (for the consent groups); it will never be empty
-        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
-        rules.add(createPhenotypeSubRule(fence_harmonized_consent_group_concept_path, "ALLOW_HARMONIZED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
-        rules.add(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        // ALL_CONTAINS_OR_EMPTY rather than ALL_CONTAINS for the same reason as getPhenotypeSubRules: on the bare v3 wire the consent
+        // groups no longer ride in the phenotypic filters, so an empty filter set is legitimate rather than impossible.
+        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
+        rules.add(createPhenotypeSubRule(fence_harmonized_consent_group_concept_path, "ALLOW_HARMONIZED_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
+        rules.add(createTopmedConsentAllowanceSubRule());
 
         for (String underscorePath : underscoreFields) {
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.numericFilters", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC", true));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS", false));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
 
         return rules;
     }
@@ -870,19 +941,22 @@ public class AccessRuleService {
      */
     protected Collection<? extends AccessRule> getPhenotypeRestrictedSubRules(String studyIdentifier, String consentCode, String alias) {
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        //categorical filters will always contain at least one entry (for the consent groups); it will never be empty
-        rules.add(createPhenotypeSubRule(fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "", true));
+        // ALL_CONTAINS_OR_EMPTY rather than ALL_CONTAINS: see getPhenotypeSubRules.
+        rules.add(createTopmedConsentAllowanceSubRule());
 
         for (String underscorePath : underscoreFields) {
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.fields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.categoryFilters", AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL", true));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOf.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF", false));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, "$.query.query.anyRecordOfMulti.[*]", AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF_MULTI", false));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, "$.query.query.numericFilters.[*]", AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_NUMERIC", false));
-        rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, "$.query.query.requiredFields.[*]", AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_REQUIRED_FIELDS", false));
+        // The envelope-era DISALLOW_NUMERIC rule (numericFilters IS_EMPTY) has no v3 counterpart that is not self-contradictory: v3 has one
+        // FILTER node for both categorical and numeric filters, so an IS_EMPTY rule on it would also deny the topmed-consent filter this
+        // very rule set explicitly allows above -- the privilege would deny everything. The concern it covered is already carried by the
+        // ALL_CONTAINS_OR_EMPTY rules above, which confine EVERY filter concept path (numeric included) to the underscore paths and the
+        // topmed consent path. Only the required-filter denial, which v3 can still address on its own, survives.
+        rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_REQUIRED_FIELDS"));
 
         return rules;
     }
@@ -898,9 +972,9 @@ public class AccessRuleService {
      */
     private Collection<? extends AccessRule> getGates(boolean parent, boolean harmonized, boolean topmed) {
         Set<AccessRule> gates = new HashSet<AccessRule>();
-        gates.add(upsertConsentGate("PARENT_CONSENT", "$.query.query.categoryFilters." + fence_parent_consent_group_concept_path + "[*]", parent, "parent study data"));
-        gates.add(upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", harmonized, "harmonized data"));
-        gates.add(upsertConsentGate("TOPMED_CONSENT", "$.query.query.categoryFilters." + fence_topmed_consent_group_concept_path + "[*]", topmed, "Topmed data"));
+        gates.add(upsertConsentGate("PARENT_CONSENT", consentValuesPath(fence_parent_consent_group_concept_path), parent, "parent study data"));
+        gates.add(upsertConsentGate("HARMONIZED_CONSENT", consentValuesPath(fence_harmonized_consent_group_concept_path), harmonized, "harmonized data"));
+        gates.add(upsertConsentGate("TOPMED_CONSENT", consentValuesPath(fence_topmed_consent_group_concept_path), topmed, "Topmed data"));
 
         return gates;
     }
@@ -914,7 +988,7 @@ public class AccessRuleService {
 
     protected AccessRule populateHarmonizedAccessRule(AccessRule rule, String parentConceptPath, String studyIdentifier, String projectAlias) {
         rule.setGates(new HashSet<>(Collections.singletonList(
-                upsertConsentGate("HARMONIZED_CONSENT", "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]", true, "harmonized data")
+                upsertConsentGate("HARMONIZED_CONSENT", consentValuesPath(fence_harmonized_consent_group_concept_path), true, "harmonized data")
         )));
 
         addUniqueSubRules(rule, getAllowedQueryTypeRules());
@@ -969,7 +1043,7 @@ public class AccessRuleService {
     protected AccessRule createConsentAccessRule(String studyIdentifier, String consent_group, String label, String consent_path) {
         String ar_name = (consent_group != null && !consent_group.isEmpty()) ? "AR_CONSENT_" + studyIdentifier + "_" + consent_group + "_" + label : "AR_CONSENT_" + studyIdentifier;
         String description = (consent_group != null && !consent_group.isEmpty()) ? "MANAGED AR for " + studyIdentifier + "." + consent_group + " clinical concepts" : "MANAGED AR for " + studyIdentifier + " clinical concepts";
-        String ruleText = "$.query.query.categoryFilters." + consent_path + "[*]";
+        String ruleText = consentValuesPath(consent_path);
         String arValue = (consent_group != null && !consent_group.isEmpty()) ? studyIdentifier + "." + consent_group : studyIdentifier;
 
         return getOrCreateAccessRule(
@@ -998,14 +1072,7 @@ public class AccessRuleService {
         String ar_name = (consent_group != null && !consent_group.isEmpty()) ? "AR_TOPMED_" + project_name + "_" + consent_group + "_" + label : "AR_TOPMED_" + project_name + "_" + label;
         String description = "MANAGED AR for " + project_name + "." + consent_group + " Topmed data";
 
-        String conceptPath = fence_topmed_consent_group_concept_path;
-        // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
-        if (conceptPath != null && conceptPath.contains("\\\\")) {
-            // This will convert all `\\\\` to `\\`.
-            conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
-        }
-
-        String ruleText = "$.query.query.categoryFilters." + conceptPath + "[*]";
+        String ruleText = consentValuesPath(fence_topmed_consent_group_concept_path);
         String arValue = (consent_group != null && !consent_group.isEmpty()) ? project_name + "." + consent_group : project_name;
 
         return getOrCreateAccessRule(
@@ -1033,7 +1100,7 @@ public class AccessRuleService {
         String ar_name = "AR_TOPMED_" + project_name + "_" + consent_group + "_" + "HARMONIZED";
         logger.trace("upsertHarmonizedAccessRule() Creating new access rule {}", ar_name);
         String description = "MANAGED AR for " + project_name + "." + consent_group + " Topmed data";
-        String ruleText = "$.query.query.categoryFilters." + fence_harmonized_consent_group_concept_path + "[*]";
+        String ruleText = consentValuesPath(fence_harmonized_consent_group_concept_path);
         String arValue = project_name + "." + consent_group;
 
         return getOrCreateAccessRule(
@@ -1063,8 +1130,6 @@ public class AccessRuleService {
     private AccessRule upsertConsentGate(String gateName, String rule, boolean is_present, String description) {
         gateName = "GATE_" + gateName + "_" + (is_present ? "PRESENT" : "MISSING");
 
-        escapePath(rule);
-
         return getOrCreateAccessRule(
                 gateName,
                 "MANAGED GATE for " + description + " consent " + (is_present ? "present" : "missing"),
@@ -1078,27 +1143,45 @@ public class AccessRuleService {
         );
     }
 
-    protected AccessRule createPhenotypeSubRule(String conceptPath, String alias, String rule, int ruleType, String label, boolean useMapKey) {
+    /**
+     * Every phenotype sub-rule now binds a v3 path that resolves to a plain list of concept-path strings, so none of them needs the
+     * checkMapKeyOnly/checkMapNode pair that walking the envelope-era {@code categoryFilters} MAP required.
+     */
+    protected AccessRule createPhenotypeSubRule(String conceptPath, String alias, String rule, int ruleType, String label) {
         String ar_name = "AR_PHENO_" + alias + "_" + label;
         logger.trace("createPhenotypeSubRule() Creating new access rule {}", ar_name);
-
-        // Check if the conceptPath has `\\\\` present. This technically represents `\\`.
-        if (conceptPath != null && conceptPath.contains("\\\\")) {
-            // This will convert all `\\\\` to `\\`.
-            conceptPath = conceptPath.replaceAll("\\\\\\\\", "\\\\");
-        }
 
         return getOrCreateAccessRule(
                 ar_name,
                 "MANAGED SUB AR for " + alias + " " + label + " clinical concepts",
                 rule,
                 ruleType,
-                ruleType == AccessRule.TypeNaming.IS_NOT_EMPTY ? null : conceptPath,
-                useMapKey,
-                useMapKey,
+                ruleType == AccessRule.TypeNaming.IS_NOT_EMPTY ? null : normalizeConceptPath(conceptPath),
+                false,
+                false,
                 false,
                 false
         );
+    }
+
+    /**
+     * The concept paths on the bare v3 wire carry SINGLE backslashes ({@code \_consents\}). Configuration and constants in this service are
+     * written both ways, so normalize a doubled path down to the wire form before it is used as a rule VALUE.
+     */
+    private static String normalizeConceptPath(String conceptPath) {
+        return conceptPath == null ? null : conceptPath.replace("\\\\", "\\");
+    }
+
+    /**
+     * The JsonPath that reads the consent values a query carries in ONE consent bucket of the bare v3 wire. Envelope-era this was
+     * {@code $.query.query.categoryFilters.<consent concept path>[*]} -- the consent groups were a client-supplied categorical filter, and
+     * the concept path was spliced in as a JsonPath KEY. On the v3 wire consents are an {@code authorizationFilters} entry, so the concept
+     * path is a VALUE to match instead, and it has to be escaped for a JsonPath filter literal: a lone backslash in
+     * {@code == '\_consents\'} escapes the closing quote and the whole expression fails to compile.
+     */
+    static String consentValuesPath(String consentConceptPath) {
+        String wirePath = normalizeConceptPath(consentConceptPath == null ? "" : consentConceptPath);
+        return "$.query.authorizationFilters[?(@.conceptPath == '" + wirePath.replace("\\", "\\\\") + "')].values[*]";
     }
 
     protected AccessRule getOrCreateAccessRule(String name, String description, String rule, int type, String value, boolean checkMapKeyOnly, boolean checkMapNode, boolean evaluateOnlyByGates, boolean gateAnyRelation) {
@@ -1122,13 +1205,6 @@ public class AccessRuleService {
 
             return ar;
         });
-    }
-
-    private String escapePath(String path) {
-        if (path != null && !path.contains("\\\\")) {
-            return path.replaceAll("\\\\", "\\\\\\\\");
-        }
-        return path;
     }
 
     public List<AccessRule> getAccessRulesByPrivilegeIds(List<UUID> privilegeIds) {
