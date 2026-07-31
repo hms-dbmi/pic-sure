@@ -9,9 +9,9 @@ USE `picsure`;
 -- DML is NOT permitted against `query` while it runs -- every query submission, status update and
 -- named-dataset save that touches this table blocks until it finishes (and a long-running lock wait
 -- surfaces to users as request timeouts, not as an error you will see in this script's output).
--- The `UPDATE` that follows is deliberately UNBATCHED: it is a single transaction over every row, so
--- it holds row locks on the whole table and produces one undo-log/binlog entry proportional to the
--- table size.
+-- The `UPDATE`s that follow are deliberately UNBATCHED: each one is a single statement over every row
+-- it matches, so together they hold row locks proportional to the table and produce undo-log/binlog
+-- entries proportional to the table size.
 --
 -- BEFORE YOU SCHEDULE: check the row count and the table size --
 --     SELECT COUNT(*) FROM `query`;
@@ -29,12 +29,13 @@ USE `picsure`;
 --   * NEW code deployed but migration NOT applied -> STRING reads hit an int column -> same.
 -- So this migration and the operations-service release that flips the annotation must land together,
 -- and a ROLLBACK of that release must be paired with a reverse migration (widen back to int and
--- reverse the CASE) -- rolling the code back on its own re-breaks reads just as surely.
+-- reverse the name -> ordinal mapping) -- rolling the code back on its own re-breaks reads just as surely.
 --
--- RE-RUN SAFETY. Idempotent. The ALTER is a no-op once the column is already VARCHAR(32), and the
--- UPDATE's ELSE branch leaves any value that is already a name untouched, so a partially applied or
--- repeated run cannot corrupt data. (`QueryStatusMigrationTest` in the operations-service suite
--- replays this file -- twice, among other cases -- against H2 in MySQL mode to keep that true.)
+-- RE-RUN SAFETY. Idempotent. The ALTER is a no-op once the column is already VARCHAR(32), and each
+-- UPDATE matches only the decimal-string ordinal it maps, leaving names and NULLs untouched, so a
+-- partially applied or repeated run cannot corrupt data. (`QueryStatusMigrationTest` in the
+-- operations-service suite replays this file -- twice, among other cases -- against H2 in MySQL mode
+-- to keep that true.)
 -- ============================================================================
 --
 -- `query`.`status` holds edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus. It was written by JPA's DEFAULT
@@ -48,14 +49,16 @@ USE `picsure`;
 --   0 = QUEUED, 1 = PENDING, 2 = ERROR, 3 = AVAILABLE.
 --
 -- Order matters: widening the int column FIRST makes MySQL rewrite each value as its decimal string ('0','1','2','3'),
--- which the UPDATE then maps onto the names. NULL statuses stay NULL (no CASE branch matches, and ELSE returns NULL);
--- any value that is already a name is left untouched by the ELSE, so re-running this is harmless.
+-- which the UPDATEs then map onto the names. NULL statuses stay NULL and already-named values match no WHERE
+-- clause, so re-running this is harmless.
+--
+-- Four plain UPDATEs instead of one CASE expression ON PURPOSE: the deployed runner is Flyway
+-- Community 6.3.2, whose parser block-tracks BEGIN/END and reads a statement ENDING in the END
+-- keyword (UPDATE ... SET x = CASE ... END;) as an unterminated block -- the whole migration dies
+-- with "Incomplete statement". Do not "simplify" this back into a CASE.
 ALTER TABLE `query` MODIFY COLUMN `status` VARCHAR(32);
 
-UPDATE `query` SET `status` = CASE `status`
-    WHEN '0' THEN 'QUEUED'
-    WHEN '1' THEN 'PENDING'
-    WHEN '2' THEN 'ERROR'
-    WHEN '3' THEN 'AVAILABLE'
-    ELSE `status`
-END;
+UPDATE `query` SET `status` = 'QUEUED'    WHERE `status` = '0';
+UPDATE `query` SET `status` = 'PENDING'   WHERE `status` = '1';
+UPDATE `query` SET `status` = 'ERROR'     WHERE `status` = '2';
+UPDATE `query` SET `status` = 'AVAILABLE' WHERE `status` = '3';

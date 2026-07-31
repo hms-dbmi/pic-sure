@@ -90,6 +90,22 @@ class QueryStatusMigrationTest {
         }
     }
 
+    /**
+     * The deployed runner is Flyway Community 6.3.2, whose statement parser block-tracks {@code BEGIN}/{@code END}: a statement whose LAST
+     * token is {@code END} (e.g. {@code UPDATE ... SET x = CASE ... END;}) is read as an unterminated block and the whole migration fails
+     * with "Incomplete statement". H2 parses such a statement fine, so the replay tests above cannot catch it -- this pins the file shape
+     * itself. (Observed against the all-in-one's {@code /opt/flyway/flyway} on 2026-07-31.)
+     */
+    @Test
+    void noStatementEndsWithTheEndKeywordTheDeployedFlywayParserChokesOn() throws IOException {
+        for (String statement : statements(Files.readString(MIGRATION, StandardCharsets.UTF_8))) {
+            String[] tokens = statement.trim().split("\\s+");
+            String lastToken = tokens[tokens.length - 1];
+            assertThat(lastToken.equalsIgnoreCase("END"))
+                .as("Flyway 6.3.2 cannot parse a statement ending in END; rewrite it (statement: %s)", statement).isFalse();
+        }
+    }
+
     // --- harness ---
 
     private static Connection h2() throws SQLException {
