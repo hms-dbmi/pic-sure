@@ -62,22 +62,37 @@ public class AccessRuleService {
     public static final String SELECT_CONCEPT_PATHS_PATH = "$.query.select.[*]";
 
     /*
-     * ONLY phenotypicFilterType may discriminate a filter's kind. The v1 wire kept categorical and numeric filters in two different
-     * MEMBERS (categoryFilters / numericFilters), so the JsonPath addressed them apart for free. v3 keeps both in one PhenotypicFilter and
-     * the difference is which of values / min / max is populated -- and that CANNOT be tested here: json-path 2.9.0 reads an ABSENT key as
-     * "!= null" and a key present with a null value as "not existing", so a predicate like [?(@.min != null)] gives opposite answers for
-     * the two serializations this wire legitimately carries (a client's sparse body vs. a re-serialized typed Query, which emits nulls).
-     * phenotypicFilterType is always present, so it is the only safe discriminator.
+     * Discriminating a filter's kind: the v1 wire kept categorical and numeric filters in two different MEMBERS
+     * (categoryFilters / numericFilters), so the JsonPath addressed them apart for free. v3 keeps both in one PhenotypicFilter and the
+     * difference is which of values / min / max is populated -- and predicating on that is a trap in json-path 2.9.0, which reads the two
+     * serializations this wire legitimately carries (a client's sparse body, where unused members are ABSENT, vs. a re-serialized typed
+     * Query, which emits them as NULL) backwards from each other: on an absent key, [?(@.min != null)] is TRUE while the existence check
+     * [?(@.min)] is false; on a null-valued key, [?(@.min != null)] is false while [?(@.min)] is TRUE. The ONE form that answers
+     * identically for both serializations is the conjunction (@.min && @.min != null) -- "exists and is not null" -- which is what
+     * NUMERIC_FILTER_CONCEPT_PATHS_PATH uses (verified case-by-case by AccessRuleGeneratorWireTest's sparse-vs-typed twins). Every other
+     * rule discriminates on phenotypicFilterType, which is always present.
      */
 
     /**
      * The concept path of every value/range filter, at any nesting depth of the phenotypic clause tree. Envelope-era: the KEYS of
-     * {@code $.query.query.categoryFilters} AND of {@code $.query.query.numericFilters} -- v3's FILTER covers both, which is why the two
-     * rule labels (CATEGORICAL, NUMERIC) now bind the same path and merge into one rule at evaluation. The envelope-era rules set
-     * checkMapKeyOnly/checkMapNode to walk that map; this resolves to a plain list of strings, so those flags are false everywhere now.
+     * {@code $.query.query.categoryFilters}. The CATEGORICAL-labeled and consent-allowance rules bind this path with their envelope-era
+     * ALL_CONTAINS type kept verbatim (George's 2026-07-31 ruling); numeric filter paths also resolving here is harmless, because the
+     * NUMERIC rules confine those same paths to a subset of this path's merged values. The envelope-era rules set
+     * checkMapKeyOnly/checkMapNode to walk the categoryFilters map; this resolves to a plain list of strings, so those flags are false
+     * everywhere now.
      */
     public static final String FILTER_CONCEPT_PATHS_PATH =
         "$.query.phenotypicClause..[?(@.phenotypicFilterType == 'FILTER')].conceptPath";
+
+    /**
+     * The concept path of every NUMERIC value/range filter -- a FILTER node carrying a real {@code min} or {@code max}. Envelope-era: the
+     * KEYS of {@code $.query.query.numericFilters}; the NUMERIC-labeled scoping rules and the {@code DISALLOW_NUMERIC} rule bind this
+     * path with their envelope-era types (ALL_CONTAINS_OR_EMPTY / IS_EMPTY) kept verbatim. The predicate MUST stay in the
+     * exists-and-not-null form -- see the serialization-asymmetry note above; either half alone flips the answer between a client's
+     * sparse body and a re-serialized typed Query.
+     */
+    public static final String NUMERIC_FILTER_CONCEPT_PATHS_PATH =
+        "$.query.phenotypicClause..[?(@.phenotypicFilterType == 'FILTER' && ((@.min && @.min != null) || (@.max && @.max != null)))].conceptPath";
 
     /** The concept path of every "must have a value" filter. Envelope-era: {@code $.query.query.requiredFields.[*]}. */
     public static final String REQUIRED_CONCEPT_PATHS_PATH =
@@ -785,9 +800,13 @@ public class AccessRuleService {
      * which attaches the identical rule.
      */
     protected AccessRule createTopmedConsentAllowanceSubRule() {
+        // ALL_CONTAINS, exactly as the envelope-era rule was typed (George's 2026-07-31 ruling: the deployed, well-tested rule semantics
+        // are kept verbatim; only the JsonPath moves to the bare-Query wire). Consequence carried over from that ruling: a body with no
+        // phenotypic FILTER at all resolves nothing for this rule to contain and is denied -- on the envelope wire that body did not
+        // exist, because the consent groups always rode in categoryFilters.
         return createPhenotypeSubRule(
                 fence_topmed_consent_group_concept_path, "ALLOW_TOPMED_CONSENT", FILTER_CONCEPT_PATHS_PATH,
-                AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""
+                AccessRule.TypeNaming.ALL_CONTAINS, ""
         );
     }
 
@@ -880,21 +899,22 @@ public class AccessRuleService {
 
     protected Collection<? extends AccessRule> getPhenotypeSubRules(String studyIdentifier, String conceptPath, String alias) {
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        // On the envelope wire the consent groups rode in categoryFilters, so that node was never empty and this rule could be a plain
-        // ALL_CONTAINS. On the bare v3 wire consents live in authorizationFilters instead: a query may legitimately carry no phenotypic
-        // filter at all, and ALL_CONTAINS denies an empty match. ALL_CONTAINS_OR_EMPTY keeps the check ("every categorical filter the
-        // query does carry is under an allowed concept path") without denying a query that carries none.
-        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
+        // Envelope-era rule TYPES kept verbatim (George's 2026-07-31 ruling): the CATEGORICAL/consent-allowance rules stay plain
+        // ALL_CONTAINS, the NUMERIC rules stay ALL_CONTAINS_OR_EMPTY on the numeric-only selector, exactly as they were typed against
+        // categoryFilters/numericFilters. Deliberate consequence on the bare wire: consents now ride in authorizationFilters, so a body
+        // with no phenotypic FILTER at all resolves nothing for ALL_CONTAINS and is denied (fail-closed); on the envelope wire that body
+        // did not exist. These rules are skipped entirely on the v3 query paths, where consent evaluation governs.
+        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, ""));
 
         for (String underscorePath : underscoreFields) {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
-        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL"));
+        rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, NUMERIC_FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS"));
         rules.add(createPhenotypeSubRule(conceptPath, alias + "_" + studyIdentifier, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
@@ -911,21 +931,20 @@ public class AccessRuleService {
     private Collection<? extends AccessRule> getHarmonizedSubRules() {
 
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        // ALL_CONTAINS_OR_EMPTY rather than ALL_CONTAINS for the same reason as getPhenotypeSubRules: on the bare v3 wire the consent
-        // groups no longer ride in the phenotypic filters, so an empty filter set is legitimate rather than impossible.
-        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
-        rules.add(createPhenotypeSubRule(fence_harmonized_consent_group_concept_path, "ALLOW_HARMONIZED_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, ""));
+        // Envelope-era rule TYPES kept verbatim: see getPhenotypeSubRules.
+        rules.add(createPhenotypeSubRule(fence_parent_consent_group_concept_path, "ALLOW_PARENT_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, ""));
+        rules.add(createPhenotypeSubRule(fence_harmonized_consent_group_concept_path, "ALLOW_HARMONIZED_CONSENT", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, ""));
         rules.add(createTopmedConsentAllowanceSubRule());
 
         for (String underscorePath : underscoreFields) {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
-        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL"));
+        rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", NUMERIC_FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "NUMERIC"));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQUIRED_FIELDS"));
         rules.add(createPhenotypeSubRule(fence_harmonized_concept_path, "HARMONIZED", ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
@@ -941,21 +960,20 @@ public class AccessRuleService {
      */
     protected Collection<? extends AccessRule> getPhenotypeRestrictedSubRules(String studyIdentifier, String consentCode, String alias) {
         Set<AccessRule> rules = new HashSet<AccessRule>();
-        // ALL_CONTAINS_OR_EMPTY rather than ALL_CONTAINS: see getPhenotypeSubRules.
+        // Envelope-era rule TYPES kept verbatim: see getPhenotypeSubRules.
         rules.add(createTopmedConsentAllowanceSubRule());
 
         for (String underscorePath : underscoreFields) {
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, SELECT_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "FIELDS"));
-            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "CATEGORICAL"));
+            rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS, "CATEGORICAL"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "REQ_FIELDS"));
             rules.add(createPhenotypeSubRule(underscorePath, "ALLOW " + underscorePath, ANY_RECORD_OF_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.ALL_CONTAINS_OR_EMPTY, "ANY_RECORD_OF"));
         }
 
-        // The envelope-era DISALLOW_NUMERIC rule (numericFilters IS_EMPTY) has no v3 counterpart that is not self-contradictory: v3 has one
-        // FILTER node for both categorical and numeric filters, so an IS_EMPTY rule on it would also deny the topmed-consent filter this
-        // very rule set explicitly allows above -- the privilege would deny everything. The concern it covered is already carried by the
-        // ALL_CONTAINS_OR_EMPTY rules above, which confine EVERY filter concept path (numeric included) to the underscore paths and the
-        // topmed consent path. Only the required-filter denial, which v3 can still address on its own, survives.
+        // Both envelope-era DISALLOW rules survive verbatim (George's 2026-07-31 ruling). DISALLOW_NUMERIC binds the numeric-only filter
+        // selector -- a FILTER node carrying a real min or max -- so it does NOT deny the categorical topmed-consent filter this rule set
+        // explicitly allows above, exactly as the envelope-era numericFilters path did not.
+        rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, NUMERIC_FILTER_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_NUMERIC"));
         rules.add(createPhenotypeSubRule(null, alias + "_" + studyIdentifier + "_" + consentCode, REQUIRED_CONCEPT_PATHS_PATH, AccessRule.TypeNaming.IS_EMPTY, "DISALLOW_REQUIRED_FIELDS"));
 
         return rules;

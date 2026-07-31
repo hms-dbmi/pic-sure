@@ -277,14 +277,37 @@ class AccessRuleGeneratorWireTest {
 
     /**
      * The underscore concept paths (accession fields, consent listings) stay allowed for every study -- they are merged into the same rules
-     * as the study concept path, so the OR of merged values has to keep letting them through.
+     * as the study concept path, so the OR of merged values has to keep letting them through. The select rides alongside an in-study filter
+     * because the CATEGORICAL scoping rule is a plain ALL_CONTAINS (George's 2026-07-31 ruling: envelope-era types are kept verbatim), and
+     * ALL_CONTAINS denies a body with no phenotypic FILTER at all -- that behavior is pinned separately below.
      */
     @Test
     void phenotypeSubRulesStillAllowTheUnderscoreConceptPaths() {
         AccessRule parent = subRuleHolder(accessRuleService.getPhenotypeSubRules(STUDY, STUDY_CONCEPT_PATH, PROJECT_ALIAS));
 
-        assertTrue(grants(parent, selecting("\\_Parent Study Accession with Subject ID\\")));
+        Query underscoreSelect = filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "sex\\", Set.of("male"), null, null);
+        underscoreSelect = new Query(
+            List.of("\\_Parent Study Accession with Subject ID\\"), underscoreSelect.authorizationFilters(),
+            underscoreSelect.phenotypicClause(), List.of(), ResultType.COUNT, null, null
+        );
+        assertTrue(grants(parent, underscoreSelect));
         assertTrue(grants(parent, filtering(PhenotypicFilterType.FILTER, PARENT_CONSENT_BUCKET, Set.of("phs000001.c1"), null, null)));
+    }
+
+    /**
+     * George's 2026-07-31 ruling: the phenotype scoping rules keep their envelope-era ALL_CONTAINS type verbatim. On the envelope wire that
+     * type never saw an empty node -- the consent groups always rode in categoryFilters -- but the bare v3 wire carries consents in
+     * authorizationFilters, so a body with no phenotypic FILTER resolves the filter path to nothing and ALL_CONTAINS denies it
+     * (PathNotFound and empty are both a deny for that type). This is a deliberate fail-closed consequence of keeping the deployed,
+     * well-tested rule semantics unchanged; on the v3 query paths these JsonPath rules are skipped entirely and consent evaluation governs,
+     * so it surfaces only where generic rules still run.
+     */
+    @Test
+    void phenotypeScopingDeniesABodyWithNoPhenotypicFilterAtAll() {
+        AccessRule parent = subRuleHolder(accessRuleService.getPhenotypeSubRules(STUDY, STUDY_CONCEPT_PATH, PROJECT_ALIAS));
+
+        assertFalse(grants(parent, selecting(STUDY_CONCEPT_PATH + "age\\")), "a select-only body carries no FILTER for ALL_CONTAINS");
+        assertFalse(grants(parent, genomicOnlyQuery()), "a genomic-only body carries no FILTER for ALL_CONTAINS");
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -295,7 +318,14 @@ class AccessRuleGeneratorWireTest {
     void harmonizedSubRulesAllowTheHarmonizedConceptPathAndDenyOtherStudies() {
         AccessRule parent = subRuleHolder(harmonizedSubRules());
 
-        assertTrue(grants(parent, selecting(HARMONIZED_CONCEPT_PATH + "age\\")));
+        // The select rides alongside a harmonized filter: the ALL_CONTAINS scoping rules deny a filterless body (see
+        // phenotypeScopingDeniesABodyWithNoPhenotypicFilterAtAll).
+        Query harmonizedSelect = filtering(PhenotypicFilterType.FILTER, HARMONIZED_CONCEPT_PATH + "sex\\", Set.of("male"), null, null);
+        harmonizedSelect = new Query(
+            List.of(HARMONIZED_CONCEPT_PATH + "age\\"), harmonizedSelect.authorizationFilters(), harmonizedSelect.phenotypicClause(),
+            List.of(), ResultType.COUNT, null, null
+        );
+        assertTrue(grants(parent, harmonizedSelect));
         assertTrue(grants(parent, filtering(PhenotypicFilterType.FILTER, HARMONIZED_CONCEPT_PATH + "sex\\", Set.of("male"), null, null)));
         assertFalse(grants(parent, selecting(OTHER_STUDY_CONCEPT_PATH)));
     }
@@ -308,7 +338,16 @@ class AccessRuleGeneratorWireTest {
     void phenotypeRestrictedSubRulesConfineAQueryToGenomicsAndTheUnderscorePaths() {
         AccessRule parent = subRuleHolder(accessRuleService.getPhenotypeRestrictedSubRules(STUDY, CONSENT_GROUP, PROJECT_ALIAS));
 
-        assertTrue(grants(parent, genomicOnlyQuery()), "a purely genomic query is what this privilege exists to allow");
+        // George's 2026-07-31 ruling keeps the envelope-era ALL_CONTAINS on the topmed consent allowance, and ALL_CONTAINS denies a body
+        // with no phenotypic FILTER at all -- so a purely genomic body only passes this rule set when it also filters on the topmed
+        // consent path (which is how the envelope wire always arrived: the consent groups rode in categoryFilters).
+        assertFalse(grants(parent, genomicOnlyQuery()), "a genomic body with no phenotypic FILTER fails the ALL_CONTAINS allowance");
+        Query genomicWithConsentFilter = new Query(
+            List.of(), genomicOnlyQuery().authorizationFilters(),
+            new PhenotypicFilter(PhenotypicFilterType.FILTER, TOPMED_CONSENT_BUCKET, Set.of(STUDY + "." + CONSENT_GROUP), null, null, null),
+            genomicOnlyQuery().genomicFilters(), ResultType.COUNT, null, null
+        );
+        assertTrue(grants(parent, genomicWithConsentFilter), "a genomic query filtering on the topmed consent path is the allowed shape");
         assertTrue(
             grants(parent, filtering(PhenotypicFilterType.FILTER, TOPMED_CONSENT_BUCKET, Set.of(STUDY + "." + CONSENT_GROUP), null, null)),
             "filtering on the topmed consent path itself stays allowed"
@@ -324,6 +363,50 @@ class AccessRuleGeneratorWireTest {
         assertFalse(grants(parent, selecting(OTHER_STUDY_CONCEPT_PATH)), "selecting another study's data must be denied");
     }
 
+    /**
+     * The envelope-era DISALLOW_NUMERIC rule (IS_EMPTY over {@code $.query.query.numericFilters.[*]}) is restored on the bare wire
+     * (George's 2026-07-31 ruling): IS_EMPTY over the numeric-only filter selector. A numeric filter is a FILTER node carrying min or max;
+     * the selector must pick exactly those, in BOTH wire serializations -- see the asymmetry guard below for why the predicate takes the
+     * exists-and-not-null form.
+     */
+    @Test
+    void disallowNumericDeniesNumericFiltersAndPassesEverythingElse() {
+        AccessRule disallowNumeric = byName(
+            accessRuleService.getPhenotypeRestrictedSubRules(STUDY, CONSENT_GROUP, PROJECT_ALIAS),
+            "AR_PHENO_" + PROJECT_ALIAS + "_" + STUDY + "_" + CONSENT_GROUP + "_DISALLOW_NUMERIC"
+        );
+
+        assertFalse(grants(disallowNumeric, filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "bmi\\", null, 18.0, 30.0)));
+        assertFalse(
+            grants(disallowNumeric, filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "bmi\\", null, null, 30.0)),
+            "a max-only numeric filter is still a numeric filter"
+        );
+        assertTrue(
+            grants(disallowNumeric, filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "sex\\", Set.of("male"), null, null)),
+            "a categorical filter is not a numeric filter"
+        );
+        assertTrue(grants(disallowNumeric, genomicOnlyQuery()), "a body with no phenotypic filter carries nothing to disallow");
+        assertTrue(grants(disallowNumeric, selecting(STUDY_CONCEPT_PATH + "age\\")));
+    }
+
+    /** DISALLOW_NUMERIC decides identically for a client's sparse body and its null-emitting typed twin. */
+    @Test
+    void disallowNumericDecidesTheSameForASparseClientBodyAsForItsTypedTwin() {
+        AccessRule disallowNumeric = byName(
+            accessRuleService.getPhenotypeRestrictedSubRules(STUDY, CONSENT_GROUP, PROJECT_ALIAS),
+            "AR_PHENO_" + PROJECT_ALIAS + "_" + STUDY + "_" + CONSENT_GROUP + "_DISALLOW_NUMERIC"
+        );
+
+        assertSameVerdict(
+            disallowNumeric, false, sparseNumericFilter(STUDY_CONCEPT_PATH + "bmi\\"),
+            filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "bmi\\", null, 18.0, 30.0)
+        );
+        assertSameVerdict(
+            disallowNumeric, true, sparseCategoricalFilter(STUDY_CONCEPT_PATH + "sex\\"),
+            filtering(PhenotypicFilterType.FILTER, STUDY_CONCEPT_PATH + "sex\\", Set.of("male"), null, null)
+        );
+    }
+
     // ---------------------------------------------------------------------------------------------------------------
     // The sub-rule PrivilegeService attaches to its topmed+parent rule (was an inline $.query.query.categoryFilters string there)
     // ---------------------------------------------------------------------------------------------------------------
@@ -334,7 +417,10 @@ class AccessRuleGeneratorWireTest {
 
         assertTrue(allowance.getRule().startsWith("$.query.phenotypicClause"), allowance.getRule());
         assertTrue(grants(allowance, filtering(PhenotypicFilterType.FILTER, TOPMED_CONSENT_BUCKET, Set.of("phs000001.c1"), null, null)));
-        assertTrue(grants(allowance, genomicOnlyQuery()), "a query with no phenotypic filter at all is not this rule's business");
+        // Envelope-era ALL_CONTAINS kept verbatim (George's 2026-07-31 ruling): a body with no phenotypic FILTER resolves nothing for
+        // the rule to contain, and ALL_CONTAINS denies that -- the envelope wire never produced it because consents rode in
+        // categoryFilters.
+        assertFalse(grants(allowance, genomicOnlyQuery()), "no phenotypic FILTER at all fails a plain ALL_CONTAINS");
         assertFalse(
             grants(allowance, filtering(PhenotypicFilterType.FILTER, OTHER_STUDY_CONCEPT_PATH, Set.of("x"), null, null)),
             "on its own -- before it is merged with the study's own allowances -- this rule allows only the topmed consent path"
@@ -347,10 +433,13 @@ class AccessRuleGeneratorWireTest {
 
     /*
      * SECURITY: this wire carries the same query in TWO serializations. The gateway forwards the CLIENT's raw body verbatim, in which an
-     * unused member is simply ABSENT; an internal hop that re-serializes a typed Query emits that member as NULL. json-path 2.9.0 reads an
-     * absent key as "!= null" and a key present with a null value as not existing -- exactly backwards from each other. So any generated
-     * rule that discriminated on values / min / max would grant one of these two bodies and deny the other, for the same query, depending
-     * only on who last serialized it. That is why the generators discriminate on phenotypicFilterType alone.
+     * unused member is simply ABSENT; an internal hop that re-serializes a typed Query emits that member as NULL. json-path 2.9.0 reads
+     * these backwards from each other in the two naive predicate forms: on an ABSENT key, "@.min != null" evaluates TRUE while the bare
+     * existence check "@.min" evaluates false; on a key present with a NULL value, "@.min != null" evaluates false while "@.min" evaluates
+     * TRUE. So a rule using either form alone decides differently for the same query depending only on who last serialized it. The ONE form
+     * that agrees across both serializations is their conjunction -- (@.min && @.min != null), "exists and is not null" -- which is what
+     * the numeric filter selector (DISALLOW_NUMERIC, the NUMERIC scoping rules) uses; every other generated rule discriminates on
+     * phenotypicFilterType, which is always present.
      *
      * The fixtures below are hand-written JSON, NOT serialized records, and are asserted to contain no null literal at all -- if someone
      * later "tidies" them into MAPPER.valueToTree(...) the guard would silently stop testing the thing it exists for.
