@@ -46,9 +46,13 @@ public class Query {
     private Date readyTime;
 
     // Resource is responsible for mapping internal status to picsurestatus.
-    // No @Enumerated annotation in the legacy entity -> default JPA enum mapping is ORDINAL;
-    // made explicit here to preserve that mapping unambiguously.
-    @Enumerated(EnumType.ORDINAL)
+    // Persisted as the enum NAME, not its ordinal. The legacy entity carried no @Enumerated annotation at all, so JPA
+    // defaulted to ORDINAL and the column was an int whose meaning was the DECLARATION ORDER of PicSureStatus --
+    // reordering or inserting a constant silently rewrote every stored row. V9__ALTER_QUERY_STATUS_TO_STRING.sql widens
+    // the column to VARCHAR(32) and rewrites the four legacy ordinals (0..3) to their names, so this mapping and the
+    // schema move together; the length here matches that migration.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
     private PicSureStatus status;
 
     private String resourceResultId;

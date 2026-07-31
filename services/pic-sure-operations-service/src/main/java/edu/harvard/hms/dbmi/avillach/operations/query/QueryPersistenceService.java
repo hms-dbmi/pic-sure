@@ -14,17 +14,29 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
+import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
+import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.query.v3.PicSureStatus;
 import edu.harvard.hms.dbmi.avillach.commons.error.PicsureException;
 
 /**
  * The sole read/write path onto the {@code query} table for the internal query API ({@link InternalQueryController}).
- * Persists/loads/updates {@link Query} rows and produces the gateway-only dispatch payload -- the stored query JSON with
- * {@code resourceCredentials} stripped, per the fixed {@code QueryAuthFetcher} contract ({@code {queryJson: "<string>"}}).
+ * Persists/loads/updates {@link Query} rows and produces the gateway-only dispatch payload.
  *
- * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, so callers never need the enum type; an
- * unrecognized name is a caller error (400), not a 500. {@code metadata} travels as base64-encoded bytes, matching the entity's raw
- * {@code byte[]} column; malformed base64 is likewise a caller error (400), not a 500.
+ * <p>The stored blob is OPAQUE to this service on the write path: whatever the caller sends is what gets gzipped into the column. Since
+ * Task 15 the query-service writes the BARE canonical v3 {@code Query} JSON there; rows written before that carry the legacy
+ * {@code QueryRequest} envelope ({@code {"@type":..., "resourceCredentials":{}, "query":{...}, "resourceUUID":null}}).
+ *
+ * <p><b>Dispatch normalizes both shapes to the bare query</b> -- see {@link #dispatchQueryJson(UUID)}. That is a deliberate security
+ * decision, not a convenience: the dispatch payload becomes {@code TargetedRequest.query} in the gateway's PSAMA introspection for bodyless
+ * reads ({@code /query/{id}/result}, {@code /query/{id}/signed-url}), and the deployed JsonPath authorization rules must not have to know
+ * how old a row is. Normalizing here means an introspected READ sees {@code $.query.<field>} exactly like an introspected SUBMIT does,
+ * whatever the row's age.
+ *
+ * <p>{@code status} travels on the wire as the {@link PicSureStatus} enum NAME, never its ordinal, and is now stored that way too
+ * ({@code @Enumerated(EnumType.STRING)}). {@code metadata} travels as base64-encoded bytes, matching the entity's raw {@code byte[]}
+ * column; malformed base64 is a caller error (400), not a 500.
  */
 @Service
 public class QueryPersistenceService {
@@ -43,7 +55,7 @@ public class QueryPersistenceService {
         Query entity = new Query();
         entity.setQuery(req.query());
         entity.setResourceResultId(req.resourceResultId());
-        entity.setStatus(parseStatus(req.status()));
+        entity.setStatus(req.status());
         entity.setVersion(req.version());
         entity.setMetadata(decodeMetadata(req.metadata()));
         return repo.save(entity).getUuid();
@@ -58,7 +70,7 @@ public class QueryPersistenceService {
     public void update(UUID picsureId, UpdateQueryRequest req) {
         Query entity = load(picsureId);
         if (req.status() != null) {
-            entity.setStatus(parseStatus(req.status()));
+            entity.setStatus(req.status());
         }
         if (req.resourceResultId() != null) {
             entity.setResourceResultId(req.resourceResultId());
@@ -70,9 +82,16 @@ public class QueryPersistenceService {
     }
 
     /**
-     * Gateway-only auth-fetch payload: the stored query JSON, re-serialized as a STRING with {@code resourceCredentials} removed. 404 when
-     * the row is absent (the gateway's {@code QueryAuthFetcher} fails closed on that). A blank/absent stored query body yields {@code null}
-     * (never a 500) -- malformed JSON is logged and also yields {@code null} rather than leaking the raw unparsed body.
+     * Gateway-only auth-fetch payload: the stored query, normalized to the BARE query JSON and re-serialized as a STRING.
+     *
+     * <ul> <li>A row written since Task 15 already holds the bare v3 {@code Query} -- returned as-is.</li> <li>An older row holds the
+     * {@code QueryRequest} envelope -- its {@code query} member is unwrapped so the caller sees the same node shape as a new row (see the
+     * class javadoc for why that uniformity is load-bearing for authorization).</li> <li>{@code resourceCredentials} is removed either way,
+     * at the envelope root AND on the unwrapped node -- old rows really do carry secrets there, and a dispatch payload must never return
+     * them.</li> </ul>
+     *
+     * <p>404 when the row is absent (the gateway's {@code QueryAuthFetcher} fails closed on that). A blank/absent stored query yields
+     * {@code null} (never a 500) -- malformed JSON is logged and also yields {@code null} rather than leaking the raw unparsed body.
      */
     @Transactional(readOnly = true)
     public String dispatchQueryJson(UUID picsureId) {
@@ -82,15 +101,35 @@ public class QueryPersistenceService {
             return null;
         }
         try {
-            JsonNode node = MAPPER.readTree(json);
-            if (node instanceof ObjectNode obj) {
-                obj.remove("resourceCredentials"); // SECURITY: never return stored credentials
-            }
-            return MAPPER.writeValueAsString(node);
+            return MAPPER.writeValueAsString(bareQuery(MAPPER.readTree(json)));
         } catch (JsonProcessingException e) {
             LOG.warn("Stored query for {} is not valid JSON", picsureId, e);
             return null;
         }
+    }
+
+    /**
+     * Envelope-tolerant unwrap: a root whose {@code query} member is an OBJECT is the legacy envelope; anything else is already the bare
+     * query.
+     *
+     * <p>The {@code isObject()} test (rather than a mere null check) matters twice: a legacy row storing {@code "query":null} would
+     * otherwise unwrap to a {@code NullNode} and dispatch would hand the gateway the literal string {@code "null"}, and a row storing a
+     * non-object {@code query} (e.g. {@code "query":"q"}) is not a query to unwrap at all -- both cases keep the root, with credentials
+     * stripped.
+     */
+    private static JsonNode bareQuery(JsonNode root) {
+        JsonNode query = root;
+        if (root instanceof ObjectNode envelope) {
+            envelope.remove("resourceCredentials"); // SECURITY: never return stored credentials
+            JsonNode nested = envelope.get("query");
+            if (nested != null && nested.isObject()) {
+                query = nested;
+            }
+        }
+        if (query instanceof ObjectNode bare) {
+            bare.remove("resourceCredentials"); // SECURITY: defensive -- credentials nested inside the envelope's query
+        }
+        return query;
     }
 
     private Query load(UUID picsureId) {
@@ -99,20 +138,9 @@ public class QueryPersistenceService {
 
     private static StoredQuery toDto(Query entity) {
         return new StoredQuery(
-            entity.getUuid(), entity.getQuery(), entity.getResourceResultId(),
-            entity.getStatus() == null ? null : entity.getStatus().name(), entity.getVersion(), encodeMetadata(entity.getMetadata())
+            entity.getUuid(), entity.getQuery(), entity.getResourceResultId(), entity.getStatus(), entity.getVersion(),
+            encodeMetadata(entity.getMetadata())
         );
-    }
-
-    private static PicSureStatus parseStatus(String status) {
-        if (status == null) {
-            return null;
-        }
-        try {
-            return PicSureStatus.valueOf(status);
-        } catch (IllegalArgumentException e) {
-            throw new PicsureException(HttpStatus.BAD_REQUEST, "invalid_status", "Unknown status: " + status);
-        }
     }
 
     private static byte[] decodeMetadata(String metadata) {

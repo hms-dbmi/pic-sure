@@ -19,6 +19,8 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import edu.harvard.dbmi.avillach.contracts.internal.SaveQueryRequest;
 import edu.harvard.dbmi.avillach.contracts.internal.StoredQuery;
 import edu.harvard.dbmi.avillach.contracts.internal.UpdateQueryRequest;
@@ -44,9 +46,12 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  * the same bare {@code Query} and returns the same contract records; and the store DTOs are the shared
  * {@code edu.harvard.dbmi.avillach.contracts.internal} records, whose {@code status} is the typed {@link PicSureStatus} rather than a bare
  * string. Nothing on this service's own surface carries a {@code QueryRequest} envelope any more -- the aggregate (open) path shares the
- * same bare create hop -- and the wrapper survives only inside the PERSISTED blob, until Task 15 migrates it.
+ * same bare create hop -- and since Task 15 the PERSISTED blob is bare too. The wrapper survives only in rows written earlier, so the
+ * stored-query readers below are exercised against BOTH shapes.
  */
 class QueryServiceTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     OperationsClient operationsClient = mock(OperationsClient.class);
     ResourceWebClient hpds = mock(ResourceWebClient.class);
@@ -110,7 +115,7 @@ class QueryServiceTest {
     }
 
     @Test
-    void v3CreatePersistsTheBareQueryUnderTheStoredEnvelopesQueryField() {
+    void v3CreatePersistsTheBareQuery() {
         when(hpds.query(any(HpdsTarget.class), any(Query.class))).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
@@ -120,13 +125,13 @@ class QueryServiceTest {
     }
 
     /**
-     * Pins the PERSISTED wrapper byte-for-byte. It used to come from serializing api-model's {@code GeneralQueryRequest}, whose
-     * {@code @JsonTypeInfo} produced the leading {@code "@type"} plus an empty {@code resourceCredentials} and a null {@code resourceUUID};
-     * that module is retired but the stored rows and their readers (operations-service's {@code /dispatch} credential strip, {@code
-     * /metadata}'s v1 translation) are not, so the exact field set and ORDER must survive the retirement unchanged.
+     * The PERSISTED blob is the bare v3 {@code Query} -- no {@code @type}, no {@code resourceCredentials}, no {@code resourceUUID}, and no
+     * {@code query} member wrapping it. This is a security property, not tidiness: the stored blob is what operations-service's
+     * {@code /dispatch} hands the gateway for bodyless reads, and a wrapper there made PSAMA's JsonPath rules see {@code $.query.query.*} on
+     * a read where a submit shows {@code $.query.*}. Writing it bare makes the two consistent.
      */
     @Test
-    void v3CreatePersistsTheLegacyWrapperShapeByteForByte() {
+    void v3CreatePersistsTheBareV3QueryWithNoEnvelopeAtAll() throws Exception {
         when(hpds.query(any(HpdsTarget.class), any(Query.class))).thenReturn(hpdsStatus("rr-3"));
         when(operationsClient.save(any())).thenReturn(UUID.randomUUID());
 
@@ -134,8 +139,10 @@ class QueryServiceTest {
 
         ArgumentCaptor<SaveQueryRequest> saved = ArgumentCaptor.forClass(SaveQueryRequest.class);
         verify(operationsClient).save(saved.capture());
-        assertThat(saved.getValue().query()).startsWith("{\"@type\":\"GeneralQueryRequest\",\"resourceCredentials\":{},\"query\":{")
-            .endsWith(",\"resourceUUID\":null}");
+        String persisted = saved.getValue().query();
+        assertThat(persisted).doesNotContain("@type").doesNotContain("resourceCredentials").doesNotContain("resourceUUID");
+        assertThat(MAPPER.readTree(persisted).has("query")).isFalse();
+        assertThat(persisted).isEqualTo(MAPPER.writeValueAsString(query()));
     }
 
     @Test
@@ -312,9 +319,9 @@ class QueryServiceTest {
     }
 
     /**
-     * A row written before the federated removal stores a serialized FederatedQueryRequest. metadata must still read it: it parses the
-     * stored blob into a plain {@code Map} via {@code MAPPER.readValue(..., Object.class)}, so {@code "@type"} is just another map key and
-     * any value — known, unknown, or garbage — parses fine.
+     * A row written before the federated removal stores a serialized FederatedQueryRequest -- an envelope with extra members. metadata must
+     * still read it, and (like every other stored row) it comes back UNWRAPPED: {@code queryJson} is the query, not the envelope that
+     * happened to be around it, so the federated bookkeeping fields never reach a client.
      */
     @Test
     @SuppressWarnings("unchecked")
@@ -329,8 +336,25 @@ class QueryServiceTest {
 
         Map<String, Object> queryJson = (Map<String, Object>) result.resultMetadata().get("queryJson");
         assertThat(queryJson).isNotNull();
-        assertThat(queryJson).containsKey("query");
+        assertThat(queryJson).containsEntry("expectedResultType", "COUNT").doesNotContainKey("query").doesNotContainKey("@type");
         assertThat(result.picsureId()).isEqualTo(id);
+    }
+
+    /** A row written since Task 15: already bare, and {@code queryJson} is exactly it. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataReadsABareV3StoredRowAsIs() {
+        UUID id = UUID.randomUUID();
+        String bare = "{\"expectedResultType\":\"COUNT\",\"phenotypicClause\":{\"phenotypicFilterType\":\"REQUIRED\","
+            + "\"conceptPath\":\"\\\\x\\\\\"},\"genomicFilters\":[]}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, bare, "rr-1", PicSureStatus.AVAILABLE, "3", null));
+
+        QueryStatusResponse out = service.metadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
+        assertThat(queryJson).containsEntry("expectedResultType", "COUNT");
+        Map<String, Object> clause = (Map<String, Object>) queryJson.get("phenotypicClause");
+        assertThat(clause.get("conceptPath")).isEqualTo("\\x\\");
     }
 
     @Test
@@ -345,10 +369,9 @@ class QueryServiceTest {
 
         Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
         assertThat(queryJson).isNotNull();
-        assertThat(queryJson).containsKey("resourceUUID"); // wrapper preserved
-        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
-        assertThat(inner).containsKey("phenotypicClause"); // v3 field present
-        assertThat(inner).doesNotContainKey("categoryFilters"); // v1 field gone
+        assertThat(queryJson).doesNotContainKey("resourceUUID"); // envelope unwrapped, not rebuilt around the translation
+        assertThat(queryJson).containsKey("phenotypicClause"); // v3 field present
+        assertThat(queryJson).doesNotContainKey("categoryFilters"); // v1 field gone
     }
 
     @Test
@@ -365,10 +388,10 @@ class QueryServiceTest {
         QueryStatusResponse out = service.metadata(id);
 
         Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
-        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
-        assertThat(inner).containsKey("variantInfoFilters"); // untranslated v1 body preserved
-        assertThat(inner).containsKey("categoryFilters"); // raw v1 body returned in full, not partially translated
-        assertThat(inner).doesNotContainKey("phenotypicClause"); // no translation output leaked in
+        // Still unwrapped -- the fallback is "untranslated", not "un-normalized".
+        assertThat(queryJson).containsKey("variantInfoFilters"); // untranslated v1 body preserved
+        assertThat(queryJson).containsKey("categoryFilters"); // raw v1 body returned in full, not partially translated
+        assertThat(queryJson).doesNotContainKey("phenotypicClause"); // no translation output leaked in
     }
 
     @Test
@@ -382,11 +405,78 @@ class QueryServiceTest {
         QueryStatusResponse out = service.metadata(id);
 
         Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
-        Map<String, Object> inner = (Map<String, Object>) queryJson.get("query");
         // non-null structural assertion: a wrongly-applied v1 translation would produce a different/empty clause,
         // so asserting the exact conceptPath survives discriminates "left alone" from "translated".
-        assertThat(inner.get("phenotypicClause")).isNotNull();
-        Map<String, Object> clause = (Map<String, Object>) inner.get("phenotypicClause");
+        assertThat(queryJson.get("phenotypicClause")).isNotNull();
+        Map<String, Object> clause = (Map<String, Object>) queryJson.get("phenotypicClause");
         assertThat(clause.get("conceptPath")).isEqualTo("\\x\\");
+    }
+
+    /**
+     * SECURITY: {@code /metadata} answers the END USER, so it must strip stored credentials exactly as the gateway-only dispatch payload
+     * does -- at the envelope root AND on the unwrapped query. Mirrors operations-service's
+     * {@code dispatchStripsResourceCredentialsNestedInsideTheEnvelopesQuery}.
+     */
+    @Test
+    void metadataStripsResourceCredentialsFromAnEnvelopeRowAtBothLevels() {
+        UUID id = UUID.randomUUID();
+        String row = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"outer\"},"
+            + "\"query\":{\"expectedResultType\":\"COUNT\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"inner\"}}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, row, "rr-1", PicSureStatus.AVAILABLE, "3", null));
+
+        QueryStatusResponse out = service.metadata(id);
+
+        assertThat(out.resultMetadata().get("queryJson").toString()).doesNotContain("resourceCredentials").doesNotContain("outer")
+            .doesNotContain("inner");
+        assertThat(out.resultMetadata().get("queryJson")).isEqualTo(Map.of("expectedResultType", "COUNT"));
+    }
+
+    /** The same strip on the v1 path, where the body is additionally translated -- the fallback must not smuggle credentials back out. */
+    @Test
+    void metadataStripsResourceCredentialsFromAV1EnvelopeRow() {
+        UUID id = UUID.randomUUID();
+        String row = "{\"resourceCredentials\":{\"BEARER_TOKEN\":\"outer\"},\"query\":{\"expectedResultType\":\"COUNT\","
+            + "\"resourceCredentials\":{\"BEARER_TOKEN\":\"inner\"},\"categoryFilters\":{\"\\\\sex\\\\\":[\"M\"]}}}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, row, "rr-1", PicSureStatus.AVAILABLE, null, null));
+
+        QueryStatusResponse out = service.metadata(id);
+
+        assertThat(out.resultMetadata().get("queryJson").toString()).doesNotContain("resourceCredentials").doesNotContain("outer")
+            .doesNotContain("inner");
+    }
+
+    /**
+     * An envelope whose {@code query} member is not an object has nothing translatable in it: translating the ENVELOPE instead would
+     * silently discard the row's content, so the raw (credential-stripped) body is returned untouched.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void metadataFallsBackToTheRawBodyWhenTheEnvelopesQueryIsNotAnObject() {
+        UUID id = UUID.randomUUID();
+        String row = "{\"resourceUUID\":\"r\",\"resourceCredentials\":{\"BEARER_TOKEN\":\"secret\"},\"query\":\"q\"}";
+        when(operationsClient.get(id)).thenReturn(new StoredQuery(id, row, "rr-1", PicSureStatus.AVAILABLE, null, null));
+
+        QueryStatusResponse out = service.metadata(id);
+
+        Map<String, Object> queryJson = (Map<String, Object>) out.resultMetadata().get("queryJson");
+        assertThat(queryJson).containsEntry("query", "q").containsEntry("resourceUUID", "r").doesNotContainKey("resourceCredentials");
+    }
+
+    /** An old envelope row and a new bare row carrying the same query must yield the SAME {@code queryJson}. */
+    @Test
+    void metadataYieldsTheSameQueryJsonForAnEnvelopeRowAndABareRow() {
+        UUID envelopeId = UUID.randomUUID();
+        UUID bareId = UUID.randomUUID();
+        String bare = "{\"expectedResultType\":\"COUNT\",\"genomicFilters\":[]}";
+        when(operationsClient.get(envelopeId)).thenReturn(
+            new StoredQuery(
+                envelopeId, "{\"@type\":\"GeneralQueryRequest\",\"resourceCredentials\":{},\"query\":" + bare + ",\"resourceUUID\":null}",
+                "rr-1", PicSureStatus.AVAILABLE, "3", null
+            )
+        );
+        when(operationsClient.get(bareId)).thenReturn(new StoredQuery(bareId, bare, "rr-1", PicSureStatus.AVAILABLE, "3", null));
+
+        assertThat(service.metadata(envelopeId).resultMetadata().get("queryJson"))
+            .isEqualTo(service.metadata(bareId).resultMetadata().get("queryJson"));
     }
 }

@@ -42,10 +42,10 @@ import edu.harvard.hms.dbmi.avillach.query.operations.OperationsClient;
  *
  * <p><b>Typed on both sides:</b> the public entry points take the bare v3 {@link Query} (or nothing but the query id, for reads) and return
  * {@link QueryStatusResponse}/{@link SignedUrlResponse}, and the HPDS hop underneath speaks the same records. The aggregate (open) path
- * shares {@link #queryV3(String, Query)} rather than carrying an envelope of its own. The {@code QueryRequest} wrapper survives ONLY inside
- * {@link #storedBody(Query)}, i.e. in the persisted blob, until Task 15 migrates it. The store DTOs are the shared
- * {@code edu.harvard.dbmi.avillach.contracts.internal} records, so a status crossing this service is the {@link PicSureStatus} enum end to
- * end rather than a string that only happened to parse.
+ * shares {@link #queryV3(String, Query)} rather than carrying an envelope of its own. The {@code QueryRequest} wrapper is gone from the
+ * PERSISTED blob too ({@link #storedBody(Query)} now writes the bare v3 {@link Query}); it survives only in rows written before that, which
+ * every reader here tolerates but none produces. The store DTOs are the shared {@code edu.harvard.dbmi.avillach.contracts.internal}
+ * records, so a status crossing this service is the {@link PicSureStatus} enum end to end rather than a string that only happened to parse.
  *
  * <p><b>Decision 9 (the signed-url bug fix):</b> {@link #status}, {@link #result}, and {@link #signedUrl} all dispatch to HPDS using the
  * backend implied by the ingress {@code {backend}} path segment (auth/open) AND the v3-ness of the STORED query's {@code version} field
@@ -146,30 +146,25 @@ public class QueryService {
     }
 
     /**
-     * The blob handed to the query store. Still the {@code {"query": ...}} WRAPPER rather than the bare query, even though the HPDS hop is
-     * now bare: operations-service's {@code /dispatch} endpoint strips {@code resourceCredentials} out of exactly this wrapper for the
-     * gateway's {@code QueryAuthFetcher}, and {@link #metadata} reads stored v1 rows back through it. Rewriting the persisted shape is a
-     * data migration, not a wire change.
+     * The blob handed to the query store: the BARE canonical v3 {@link Query}, serialized straight from the typed record. No envelope, no
+     * {@code "@type"}, no {@code resourceUUID}, and no {@code resourceCredentials} -- there are no credentials left anywhere in the
+     * platform to put there.
      *
-     * <p><b>Byte-for-byte the legacy wrapper.</b> This used to serialize an {@code api-model} {@code GeneralQueryRequest}, whose
-     * {@code @JsonTypeInfo} emitted a leading {@code "@type":"GeneralQueryRequest"} alongside an empty {@code resourceCredentials} and a
-     * null {@code resourceUUID}. That module is gone, but the stored rows and the readers above are not, so the wrapper is now built
-     * explicitly -- same fields, same order, same bytes -- rather than resurrecting the class to produce them. {@code QueryServiceTest}
-     * pins the exact string.
-     *
-     * TODO(well-defined-contracts): Task 15 migrates the stored blob to the bare v3 Query.
+     * <p>This used to persist the legacy {@code QueryRequest} wrapper ({@code {"@type":"GeneralQueryRequest","resourceCredentials":{},
+     * "query":{...},"resourceUUID":null}}) byte-for-byte, long after the wire had stopped carrying it. That mattered for authorization, not
+     * just tidiness: the stored blob is what operations-service's {@code /dispatch} returns to the gateway's {@code QueryAuthFetcher},
+     * which becomes {@code TargetedRequest.query} for the bodyless reads ({@code result}/{@code signed-url}) -- so a wrapped row made
+     * PSAMA's JsonPath rules see {@code $.query.query.<field>} on a read where a submit shows {@code $.query.<field>}. Writing the query
+     * bare makes the two consistent. Rows written earlier are NOT rewritten; every reader is envelope-tolerant instead (see
+     * {@link #buildQueryJson(StoredQuery)} here, and {@code QueryPersistenceService.dispatchQueryJson} in operations-service, which unwraps
+     * old rows so the gateway's view is uniform regardless of row age).
      */
     private String storedBody(Query query) {
         if (query == null) {
             return null;
         }
-        ObjectNode wrapper = MAPPER.createObjectNode();
-        wrapper.put("@type", "GeneralQueryRequest");
-        wrapper.putObject("resourceCredentials");
-        wrapper.set("query", MAPPER.valueToTree(query));
-        wrapper.putNull("resourceUUID");
         try {
-            return MAPPER.writeValueAsString(wrapper);
+            return MAPPER.writeValueAsString(query);
         } catch (JsonProcessingException e) {
             throw new PicsureException(HttpStatus.BAD_REQUEST, "bad_request", "Incorrectly formatted request");
         }
@@ -257,10 +252,16 @@ public class QueryService {
     }
 
     /**
-     * The stored-query body for the {@code /metadata} response. For a v3 row (or a null body) this is the raw parsed JSON, byte-for-byte as
-     * before. For a v1 row it is the same {@code QueryRequest} wrapper with its nested {@code query} translated to the v3 shape, so clients
-     * see one shape regardless of when the query was stored. Any translation failure falls back to the untranslated body (never an error);
-     * a genuinely unparseable body still propagates {@link JsonProcessingException} to preserve the prior "queryJson absent" behavior.
+     * The stored-query body for the {@code /metadata} response: always the BARE query, never the store's envelope, whatever the row's age
+     * or version.
+     *
+     * <p>Envelope-tolerant by the same rule every stored-query reader uses -- see {@link #bareQuery(JsonNode)}. On top of that, a v1 row
+     * has its (unwrapped) body translated to the v3 shape, so a client sees one shape regardless of when the query was stored. Any
+     * translation failure falls back to the untranslated body (never an error); a genuinely unparseable body still propagates
+     * {@link JsonProcessingException} to preserve the prior "queryJson absent" behavior.
+     *
+     * <p>SECURITY: this response goes to the END USER, so it gets exactly the credential strip the gateway-only dispatch payload gets --
+     * {@code resourceCredentials} really is present in rows written before the credential removal, and neither path may hand it back.
      */
     Object buildQueryJson(StoredQuery stored) throws JsonProcessingException {
         String json = stored.query();
@@ -274,30 +275,58 @@ public class QueryService {
                 return MAPPER.convertValue(translated, Object.class);
             }
         }
-        return MAPPER.readValue(json, Object.class);
+        return MAPPER.convertValue(bareQuery(MAPPER.readTree(json)), Object.class);
     }
 
     /**
-     * Attempts to translate a stored v1 {@code QueryRequest} wrapper: parse it, deserialize its {@code query} node as a v1 {@code Query},
-     * translate to v3, and re-embed. Returns {@code null} (caller falls back to the raw body) when the body is not a wrapper object, has no
-     * object-valued {@code query} node, or cannot be translated
+     * The single envelope-tolerance-plus-credential-strip rule, shared by every stored-query reader here and mirroring
+     * {@code QueryPersistenceService.bareQuery} in operations-service: a stored root object whose {@code query} member is an OBJECT is the
+     * legacy {@code QueryRequest} wrapper and that member is the real body; anything else is already the bare query. Unambiguous because
+     * the bare v3 {@link Query} record has no {@code query} field of its own.
+     *
+     * <p>The {@code isObject()} test (rather than a mere null check) matters twice: a legacy row storing {@code "query":null} would
+     * otherwise unwrap to a {@code NullNode} and be rendered as the literal {@code null}, and a row storing a non-object {@code query}
+     * (e.g. {@code "query":"q"}) is not a query to unwrap at all -- both cases keep the root, with its credentials stripped.
+     *
+     * <p>{@code resourceCredentials} is removed at the envelope root AND on the unwrapped node: old rows carry secrets at the root, and the
+     * unwrap must never become a way to carry a nested one back out.
+     */
+    private static JsonNode bareQuery(JsonNode root) {
+        JsonNode query = root;
+        if (root instanceof ObjectNode envelope) {
+            envelope.remove("resourceCredentials"); // SECURITY: never return stored credentials
+            JsonNode nested = envelope.get("query");
+            if (nested != null && nested.isObject()) {
+                query = nested;
+            }
+        }
+        if (query instanceof ObjectNode bare) {
+            bare.remove("resourceCredentials"); // SECURITY: defensive -- credentials nested inside the envelope's query
+        }
+        return query;
+    }
+
+    /**
+     * Attempts to translate a stored v1 query to v3: unwrap the legacy wrapper if there is one, deserialize the result as a v1 {@code
+     * Query}, and translate. Returns the BARE translated v3 node -- the wrapper is never rebuilt around it, so {@code queryJson} is the
+     * query itself for old and new rows alike. Returns {@code null} (caller falls back to the raw body) when the body is not an object, is
+     * an envelope with no object-valued {@code query} member (there is nothing translatable in it, and translating the envelope itself
+     * would silently discard the row's content), or cannot be translated
      * ({@link edu.harvard.hms.dbmi.avillach.hpds.data.query.translation.UntranslatableQueryException} or any Jackson error). Never throws.
      */
     JsonNode tryTranslate(String json) {
         try {
             JsonNode root = MAPPER.readTree(json);
-            if (!(root instanceof ObjectNode wrapper)) {
+            if (root != null && root.has("query") && !root.get("query").isObject()) {
                 return null;
             }
-            JsonNode queryNode = wrapper.get("query");
-            if (queryNode == null || !queryNode.isObject()) {
+            JsonNode queryNode = bareQuery(root);
+            if (!(queryNode instanceof ObjectNode)) {
                 return null;
             }
             edu.harvard.hms.dbmi.avillach.hpds.data.query.Query v1 =
                 V1_QUERY_MAPPER.treeToValue(queryNode, edu.harvard.hms.dbmi.avillach.hpds.data.query.Query.class);
-            Query v3 = QueryTranslator.translate(v1);
-            wrapper.set("query", MAPPER.valueToTree(v3));
-            return wrapper;
+            return MAPPER.valueToTree(QueryTranslator.translate(v1));
         } catch (Exception e) {
             logger.warn("Unable to translate stored v1 query to v3; returning it untranslated", e);
             return null;
