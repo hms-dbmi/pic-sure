@@ -65,20 +65,26 @@
             <artifactId>jakarta.mail-api</artifactId>
             <version>2.1.3</version>
         </dependency>
+        <!-- Both of these used to arrive only as transitives of swagger-jaxrs2-jakarta, so dropping that dead scanner
+             broke the build: twelve classes import org.apache.commons.lang3.StringUtils and two import
+             jakarta.validation.constraints.NotNull. Declared now, versions from the Spring Boot BOM. The validation
+             API jar alone is deliberate: swagger-jaxrs2 supplied no implementation either, so no Validator bean
+             appears in the context and no existing annotation starts being enforced. -->
         <dependency>
-            <groupId>io.swagger.core.v3</groupId>
-            <artifactId>swagger-jaxrs2-jakarta</artifactId>
-            <version>2.2.21</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.swagger.core.v3</groupId>
-            <artifactId>swagger-jaxrs2-servlet-initializer-jakarta</artifactId>
-            <version>2.2.21</version>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
         </dependency>
+        <!-- Annotations only. The swagger-jaxrs2-jakarta scanner and its servlet initializer used to be declared here
+             as leftovers from the JAX-RS WAR; nothing imports io.swagger.v3.jaxrs2 and the scanner never runs under
+             Spring MVC, so they produced no document. springdoc (test scope, below) is what reads these annotations
+             now. Version comes from the platform BOM so PSAMA converges with springdoc's swagger-core-jakarta. -->
         <dependency>
             <groupId>io.swagger.core.v3</groupId>
             <artifactId>swagger-annotations-jakarta</artifactId>
-            <version>2.2.21</version>
         </dependency>
         <dependency>
             <groupId>jakarta.xml.bind</groupId>
@@ -152,6 +158,14 @@
             <groupId>org.apache.httpcomponents.core5</groupId>
             <artifactId>httpcore5</artifactId>
         </dependency>
+        <!-- OpenApiExportTest boots the WHOLE PSAMA context to describe its HTTP surface, and several services run
+             DB-touching @PostConstruct/@EventListener startup work, so an unreachable datasource is not enough:
+             the context needs a real, empty schema. H2 in MySQL mode supplies one in memory. Test scope only. -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -179,6 +193,21 @@
         <dependency>
             <groupId>edu.harvard.dbmi.avillach</groupId>
             <artifactId>pic-sure-logging-client</artifactId>
+        </dependency>
+        <!-- OpenAPI document generation for OpenApiExportTest, which writes docs/api/{art}.openapi.json.
+             TEST SCOPE ON PURPOSE: the committed document is the artifact of record, so this service gains no live
+             /v3/api-docs endpoint and therefore no new unauthenticated surface. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenApiExport: the shared document canonicalizer + cross-service contract invariants. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-spring-commons</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

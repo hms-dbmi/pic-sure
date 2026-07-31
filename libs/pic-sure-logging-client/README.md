@@ -52,6 +52,9 @@ client.send(LoggingEvent.builder("QUERY").action("execute").build());
 
 ```java
 import edu.harvard.dbmi.avillach.logging.*;
+// RequestInfo itself is a wire record and lives in pic-sure-contracts; the builder that fills it in is
+// emitter-side ergonomics and lives here (see "RequestInfo fields" below).
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 
 // 1. Configure (once at startup)
 LoggingClientConfig config = LoggingClientConfig.builder("http://pic-sure-logging:80", apiKey)
@@ -78,7 +81,7 @@ client.send(LoggingEvent.builder("LOGIN").action("success").build());
 ```java
 client.send(LoggingEvent.builder("QUERY")
     .action("execute")
-    .request(RequestInfo.builder()
+    .request(new RequestInfoBuilder()
         .method("POST")
         .url("/query/sync")
         .srcIp(httpRequest.getRemoteAddr())
@@ -97,7 +100,7 @@ The logging service can extract user claims from a JWT. Pass the Authorization h
 client.send(
     LoggingEvent.builder("QUERY")
         .action("execute")
-        .request(RequestInfo.builder()
+        .request(new RequestInfoBuilder()
             .method("POST")
             .url("/query/sync")
             .srcIp(httpRequest.getRemoteAddr())
@@ -115,7 +118,7 @@ client.send(
 ```java
 client.send(LoggingEvent.builder("QUERY")
     .action("execute")
-    .request(RequestInfo.builder()
+    .request(new RequestInfoBuilder()
         .method("POST")
         .url("/query/sync")
         .status(500)
@@ -152,6 +155,12 @@ client.send(...);   // does nothing
 | `error` | Map<String, Object> | No | Error details (max 20 keys) |
 
 ### RequestInfo fields
+
+`RequestInfo` is a record in `pic-sure-contracts` (`edu.harvard.dbmi.avillach.contracts.audit.RequestInfo`) — the same type the
+logging *service* deserializes, so there is one definition of this wire shape, not two. It has no static `builder()`: naming
+thirteen positional components at the call site is emitter-side ergonomics, so the builder lives in this library instead, as
+`edu.harvard.dbmi.avillach.logging.RequestInfoBuilder`. Construct one with `new RequestInfoBuilder()`, as in the examples above.
+Unset fields stay null and, per the record's `NON_NULL` inclusion, stay off the wire.
 
 | Field | Type | Description |
 |---|---|---|
@@ -237,7 +246,7 @@ public class PicsureQueryService {
         loggingClient.send(
             LoggingEvent.builder("QUERY")
                 .action("execute")
-                .request(RequestInfo.builder()
+                .request(new RequestInfoBuilder()
                     .method("POST")
                     .url(httpRequest.getRequestURI())
                     .srcIp(httpRequest.getRemoteAddr())
@@ -295,7 +304,7 @@ public class AuthService {
 
         loggingClient.send(LoggingEvent.builder("LOGIN")
             .action(success ? "success" : "failure")
-            .request(RequestInfo.builder()
+            .request(new RequestInfoBuilder()
                 .method("POST")
                 .url("/login")
                 .srcIp(httpRequest.getRemoteAddr())

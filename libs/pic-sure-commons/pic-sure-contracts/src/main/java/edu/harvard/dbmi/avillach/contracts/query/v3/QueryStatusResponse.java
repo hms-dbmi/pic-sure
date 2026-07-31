@@ -18,7 +18,12 @@ public record QueryStatusResponse(
     @Schema(
         description = "Epoch milliseconds at which the results expire; 0 when the backing resource reports no expiration"
     ) long expiration,
-    @Schema(description = "Open-ended resource metadata; known keys: queryJson, queryResultMetadata") Map<String, Object> resultMetadata
+    @Schema(
+        description = "Open-ended resource metadata; the producing endpoint decides the keys. HPDS emits picsureQueryId from "
+            + "POST /PIC-SURE/v3/query and GET /PIC-SURE/v3/query/{id}/status; the query-service emits queryJson and "
+            + "queryResultMetadata from GET /query/{id}/metadata and passes HPDS's map through unchanged everywhere else. "
+            + "Consumers must treat every key as optional."
+    ) Map<String, Object> resultMetadata
 ){
 
     public QueryStatusResponse {

@@ -6,6 +6,9 @@ import edu.harvard.dbmi.avillach.dictionary.concept.model.Concept;
 import edu.harvard.dbmi.avillach.dictionary.concept.model.ConceptPathRequest;
 import edu.harvard.dbmi.avillach.dictionary.filter.Filter;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,10 +39,20 @@ public class ConceptController {
     }
 
 
+    /**
+     * <b>Paging here is 0-based</b> (Spring's {@link PageRequest}), unlike HPDS's {@code /search/values/}, which is 1-based. The shared
+     * {@code PaginatedResponse.page} echoes whichever base the serving endpoint uses; it does not define one.
+     */
+    @Operation(summary = "Search concepts", description = "Paging is 0-based on this endpoint: page_number=0 is the first page.")
     @AuditEvent(type = "SEARCH", action = "concept.search")
     @PostMapping(path = "/concepts")
     public ResponseEntity<PaginatedResponse<Concept>> listConcepts(
-        @RequestBody Filter filter, @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
+        @RequestBody Filter filter,
+        @Parameter(
+            description = "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces "
+                + "do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "0", defaultValue = "0")
+        ) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);
@@ -65,10 +78,16 @@ public class ConceptController {
         return ResponseEntity.ok(new PaginatedResponse<>(concepts, pagination.getPageNumber(), (int) count));
     }
 
+    /** 0-based paging, exactly as {@link #listConcepts}. */
+    @Operation(summary = "Dump concepts with detail", description = "Paging is 0-based on this endpoint: page_number=0 is the first page.")
     @AuditEvent(type = "DATA_ACCESS", action = "concept.dump")
     @GetMapping(path = "/concepts/dump")
     public ResponseEntity<PaginatedResponse<Concept>> dumpConcepts(
-        @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
+        @Parameter(
+            description = "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces "
+                + "do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "0", defaultValue = "0")
+        ) @RequestParam(name = "page_number", defaultValue = "0", required = false) int page,
         @RequestParam(name = "page_size", defaultValue = "10", required = false) int size
     ) {
         PageRequest pagination = PageRequest.of(page, size);

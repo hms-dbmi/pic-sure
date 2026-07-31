@@ -28,6 +28,12 @@ import edu.harvard.hms.dbmi.avillach.hpds.processing.v3.VariantListV3Processor;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.FileSharingV3Service;
 import edu.harvard.hms.dbmi.avillach.hpds.service.filesharing.TestDataService;
 import edu.harvard.hms.dbmi.avillach.hpds.service.util.Paginator;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -358,8 +364,36 @@ public class PicSureV3Service {
      * Runs a query and returns its result inline. Like {@link #query}, the body is the BARE v3 {@link Query}.
      *
      * <p>The response body type genuinely varies with {@code expectedResultType} -- a cross-count map, an info-column list, a CSV or VCF
-     * text payload -- so {@code Object} is the honest declaration here, not an untyped leftover.
+     * text payload -- so {@code Object} is the honest declaration here, not an untyped leftover. The {@code @ApiResponse} annotations below
+     * document that variance rather than pretending a single schema: this is the ONLY v3 endpoint whose response shape is not a named
+     * contract record.
      */
+    @Operation(
+        summary = "Run a query and return its result inline",
+        description = "The response body shape is selected by the request's expectedResultType, so this endpoint has no single response "
+            + "schema. JSON object/array bodies: CROSS_COUNT, CATEGORICAL_CROSS_COUNT, CONTINUOUS_CROSS_COUNT and "
+            + "OBSERVATION_CROSS_COUNT return a map of concept path to counts; VARIANT_COUNT_FOR_QUERY returns a count map; "
+            + "INFO_COLUMN_LISTING returns an array of InfoColumnMeta. text/plain bodies: COUNT returns a bare integer as text; "
+            + "VARIANT_LIST_FOR_QUERY, VCF_EXCERPT and AGGREGATE_VCF_EXCERPT return tab-separated text; DATAFRAME, "
+            + "SECRET_ADMIN_DATAFRAME, DATAFRAME_TIMESERIES and PATIENTS block until the async result completes and then return the "
+            + "CSV payload. Successful responses also carry the queryMetadata response header."
+    )
+    @ApiResponses(
+        {@ApiResponse(
+            responseCode = "200", description = "The result, in the media type the expectedResultType implies (see the description).",
+            content = {
+                @Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = @Schema(description = "Cross-count map, variant-count map, or InfoColumnMeta array, per expectedResultType")
+                ),
+                @Content(
+                    mediaType = MediaType.TEXT_PLAIN_VALUE,
+                    schema = @Schema(
+                        type = "string", description = "Count, variant list, VCF excerpt or CSV dataframe, per expectedResultType"
+                    )
+                )}
+        ), @ApiResponse(responseCode = "400", description = "The async result backing a DATAFRAME-family query did not succeed; the body is the " + "backing status as a diagnostic string.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)), @ApiResponse(responseCode = "403", description = "The resource is locked (no encryption key loaded).", content = @Content(mediaType = MediaType.TEXT_PLAIN_VALUE)), @ApiResponse(responseCode = "500", description = "The expectedResultType is not one this endpoint serves, or the result could not be read.", content = @Content)}
+    )
     @AuditEvent(type = "QUERY", action = "query.sync")
     @PostMapping(value = "/query/sync", produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
     public ResponseEntity<Object> querySync(@RequestBody Query query) {
@@ -375,11 +409,27 @@ public class PicSureV3Service {
         }
     }
 
+    /**
+     * Paged genomic concept values. <b>Paging here is 1-based</b>, unlike the dictionary's {@code /concepts} endpoints, which are 0-based:
+     * this endpoint is served by the legacy {@link Paginator} and rejects {@code page < 1}. {@code PaginatedResponse.page} echoes whichever
+     * base the serving endpoint uses, so a client must not assume one across services.
+     */
+    @Operation(
+        summary = "Search genomic concept values",
+        description = "Paging is 1-based on this endpoint: page 1 is the first page and page < 1 is rejected."
+    )
     @AuditEvent(type = "SEARCH", action = "search.values")
     @GetMapping("/search/values/")
     public PaginatedResponse<String> searchGenomicConceptValues(
-        @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query, @RequestParam("page") int page,
-        @RequestParam("size") int size
+        @RequestParam("genomicConceptPath") String genomicConceptPath, @RequestParam("query") String query,
+        @Parameter(
+            description = "ONE-BASED page index. The first page is 1; a value below 1 is a 400. The dictionary's /concepts "
+                + "endpoints page from 0 -- these two surfaces do not share a base.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "1", example = "1")
+        ) @RequestParam("page") int page,
+        @Parameter(
+            description = "Page size; must be at least 1.", schema = @Schema(type = "integer", format = "int32", minimum = "1")
+        ) @RequestParam("size") int size
     ) {
         AuditAttributes.putMetadata(httpRequest, "genomic_concept_path", genomicConceptPath);
         if (page < 1) {

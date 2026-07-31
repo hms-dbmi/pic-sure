@@ -30,6 +30,12 @@
         <httpclient5.version>5.5.2</httpclient5.version>
         <!-- Structured logging encoder (not governed by the Spring BOMs) -->
         <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+        <!-- OpenAPI: springdoc generates the documents committed under docs/api; swagger-api is the annotation +
+             model line springdoc itself resolves (springdoc-openapi 2.8.13 -> swagger-core-jakarta 2.2.36). Pinning
+             both here keeps every module on ONE swagger annotations artifact and ONE version, which the reactor's
+             dependencyConvergence rule requires. -->
+        <springdoc.version>2.8.13</springdoc.version>
+        <swagger-api.version>2.2.36</swagger-api.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -71,6 +77,14 @@
                 <artifactId>pic-sure-spring-commons</artifactId>
                 <version>${pic-sure-spring-commons.version}</version>
             </dependency>
+            <!-- OpenApiExport, shared by every service's OpenApiExportTest. -->
+            <dependency>
+                <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+                <artifactId>pic-sure-spring-commons</artifactId>
+                <version>${pic-sure-spring-commons.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
+            </dependency>
             <dependency>
                 <groupId>edu.harvard.hms.dbmi.avillach</groupId>
                 <artifactId>pic-sure-operations-service</artifactId>
@@ -98,6 +112,28 @@
                 <groupId>net.logstash.logback</groupId>
                 <artifactId>logstash-logback-encoder</artifactId>
                 <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+            <!-- OpenAPI document generation. Declared test-scoped by the services: the committed
+                 docs/api/*.openapi.json documents are build artifacts of record, so no service gains a live
+                 /v3/api-docs endpoint (and no new unauthenticated surface) from this. -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+            <!-- The ONE swagger annotations artifact for the platform. The jakarta classifier is the line springdoc
+                 and swagger-core-jakarta use; the non-jakarta io.swagger.core.v3:swagger-annotations ships the same
+                 io.swagger.v3.oas.annotations.* classes, so declaring both would put duplicate classes on every
+                 service classpath. -->
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations-jakarta</artifactId>
+                <version>${swagger-api.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-core-jakarta</artifactId>
+                <version>${swagger-api.version}</version>
             </dependency>
             <!-- Convergence pin: the auth0 SDK pulls okio 3.5.0 directly but 3.6.0 via its
                  own OkHttp transitive (dependencyConvergence enforcement, spec §17.4). -->

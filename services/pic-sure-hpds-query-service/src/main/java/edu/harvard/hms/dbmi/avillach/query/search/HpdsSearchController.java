@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.harvard.dbmi.avillach.contracts.query.v3.PaginatedResponse;
 import edu.harvard.dbmi.avillach.contracts.query.v3.SearchRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Ports the legacy WAR's {@code PicsureRS}/{@code PicsureRSv3} search endpoints, v3-only: {@code /hpds/{backend}/v3/search} and
@@ -38,11 +41,24 @@ public class HpdsSearchController {
         return service.search(backend, req);
     }
 
+    /**
+     * Straight passthrough of HPDS's {@code /search/values/}, including its <b>1-based</b> paging: this service neither rebases the request
+     * nor rewrites the {@code page} HPDS echoes back. The dictionary's {@code /concepts} endpoints page from 0; the shared
+     * {@code PaginatedResponse} record deliberately does not fix a base.
+     */
+    @Operation(
+        summary = "Search genomic concept values",
+        description = "Passthrough to HPDS. Paging is 1-based here: page 1 is the first page, and HPDS rejects page < 1."
+    )
     @GetMapping("/hpds/{backend}/v3/search/values")
     public PaginatedResponse<String> values(
         @PathVariable("backend") String backend, @RequestParam(name = "genomicConceptPath", required = false) String conceptPath,
-        @RequestParam(name = "query", required = false) String query, @RequestParam(name = "page", required = false) Integer page,
-        @RequestParam(name = "size", required = false) Integer size
+        @RequestParam(name = "query", required = false) String query,
+        @Parameter(
+            description = "ONE-BASED page index, passed through to HPDS unchanged. The first page is 1 and HPDS rejects anything "
+                + "below 1. Omit to let HPDS apply its own default.",
+            schema = @Schema(type = "integer", format = "int32", minimum = "1", example = "1")
+        ) @RequestParam(name = "page", required = false) Integer page, @RequestParam(name = "size", required = false) Integer size
     ) {
         return service.searchConceptValues(backend, conceptPath, query, page, size);
     }

@@ -157,8 +157,10 @@ public final class LoggingEvent {
      * apply config defaults.
      *
      * <p>Deliberately does NOT re-run the builder's validation, which the previous implementation did by round-tripping through
-     * {@link #builder(String)}. Two reasons. First it cannot fire: the only way to obtain a LoggingEvent is {@code builder(…).build()} or
-     * {@link #fromAuditEvent}, and this method changes nothing the builder checks -- not the event type, not the metadata or error maps.
+     * {@link #builder(String)}. Two reasons. First, it cannot fire for any event this library built: {@code builder(…).build()} already
+     * enforced the caps, and this method changes nothing the builder checks -- not the event type, not the metadata or error maps. The one
+     * way to hold a LoggingEvent that never passed those checks is {@link #fromAuditEvent}, which reads an already-existing record off the
+     * wire and skips validation on purpose; re-validating here would re-introduce exactly the rejection that method exists to avoid.
      * Second, if it somehow did fire it would fire in the wrong place: {@link LoggingClient#send} calls this outside its try/catch, so a
      * throw here would propagate out of a call that is documented never to throw and would fail the user's request over an audit record.
      * Validation belongs at construction, where the caller can still do something about it.

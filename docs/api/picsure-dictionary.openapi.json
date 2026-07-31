@@ -1,0 +1,373 @@
+{
+  "components" : {
+    "schemas" : {
+      "CategoricalConcept" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/Concept"
+          },
+          {
+            "properties" : {
+              "allowFiltering" : {
+                "type" : "boolean"
+              },
+              "conceptPath" : {
+                "type" : "string"
+              },
+              "dataset" : {
+                "type" : "string"
+              },
+              "description" : {
+                "type" : "string"
+              },
+              "display" : {
+                "type" : "string"
+              },
+              "meta" : {
+                "additionalProperties" : {
+                  "type" : "string"
+                },
+                "type" : "object"
+              },
+              "name" : {
+                "type" : "string"
+              },
+              "study" : {
+                "$ref" : "#/components/schemas/Dataset"
+              },
+              "studyAcronym" : {
+                "type" : "string"
+              },
+              "table" : { },
+              "type" : {
+                "enum" : [
+                  "Categorical",
+                  "Continuous"
+                ],
+                "type" : "string"
+              },
+              "values" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              }
+            },
+            "type" : "object"
+          }
+        ]
+      },
+      "Concept" : {
+        "discriminator" : {
+          "propertyName" : "type"
+        },
+        "properties" : {
+          "type" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "type"
+        ]
+      },
+      "ContinuousConcept" : {
+        "allOf" : [
+          {
+            "$ref" : "#/components/schemas/Concept"
+          },
+          {
+            "properties" : {
+              "allowFiltering" : {
+                "type" : "boolean"
+              },
+              "children" : {
+                "items" : {
+                  "oneOf" : [
+                    {
+                      "$ref" : "#/components/schemas/CategoricalConcept"
+                    },
+                    {
+                      "$ref" : "#/components/schemas/ContinuousConcept"
+                    }
+                  ]
+                },
+                "type" : "array"
+              },
+              "conceptPath" : {
+                "type" : "string"
+              },
+              "dataset" : {
+                "type" : "string"
+              },
+              "description" : {
+                "type" : "string"
+              },
+              "display" : {
+                "type" : "string"
+              },
+              "max" : {
+                "format" : "double",
+                "type" : "number"
+              },
+              "meta" : {
+                "additionalProperties" : {
+                  "type" : "string"
+                },
+                "type" : "object"
+              },
+              "min" : {
+                "format" : "double",
+                "type" : "number"
+              },
+              "name" : {
+                "type" : "string"
+              },
+              "study" : {
+                "$ref" : "#/components/schemas/Dataset"
+              },
+              "studyAcronym" : {
+                "type" : "string"
+              },
+              "table" : {
+                "oneOf" : [
+                  {
+                    "$ref" : "#/components/schemas/CategoricalConcept"
+                  },
+                  {
+                    "$ref" : "#/components/schemas/ContinuousConcept"
+                  }
+                ]
+              },
+              "type" : {
+                "enum" : [
+                  "Categorical",
+                  "Continuous"
+                ],
+                "type" : "string"
+              }
+            },
+            "type" : "object"
+          }
+        ]
+      },
+      "Dataset" : {
+        "properties" : {
+          "abbreviation" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "meta" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "ref" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Facet" : {
+        "properties" : {
+          "category" : {
+            "type" : "string"
+          },
+          "count" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "display" : {
+            "type" : "string"
+          },
+          "fullName" : {
+            "type" : "string"
+          },
+          "meta" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "Filter" : {
+        "properties" : {
+          "consents" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "facets" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Facet"
+            },
+            "type" : "array"
+          },
+          "search" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "PaginatedResponseConcept" : {
+        "description" : "A single page of results, plus the paging metadata needed to request the rest",
+        "properties" : {
+          "page" : {
+            "description" : "Index of this page. The base is defined by the serving endpoint, not by this record: HPDS's GET /PIC-SURE/v3/search/values/ (and the query-service passthrough in front of it) is 1-based and rejects page < 1, while the dictionary's /concepts endpoints are 0-based. See the page parameter on the endpoint you are calling.",
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "results" : {
+            "description" : "The results on this page",
+            "items" : {
+              "oneOf" : [
+                {
+                  "$ref" : "#/components/schemas/CategoricalConcept"
+                },
+                {
+                  "$ref" : "#/components/schemas/ContinuousConcept"
+                }
+              ]
+            },
+            "type" : "array"
+          },
+          "total" : {
+            "description" : "Total number of results across all pages",
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      }
+    }
+  },
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/concepts" : {
+      "post" : {
+        "description" : "Paging is 0-based on this endpoint: page_number=0 is the first page.",
+        "operationId" : "listConcepts",
+        "parameters" : [
+          {
+            "description" : "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces do not share a base.",
+            "in" : "query",
+            "name" : "page_number",
+            "required" : false,
+            "schema" : {
+              "default" : 0,
+              "format" : "int32",
+              "minimum" : 0,
+              "type" : "integer"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "page_size",
+            "required" : false,
+            "schema" : {
+              "default" : 10,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Filter"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaginatedResponseConcept"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Search concepts",
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    },
+    "/concepts/dump" : {
+      "get" : {
+        "description" : "Paging is 0-based on this endpoint: page_number=0 is the first page.",
+        "operationId" : "dumpConcepts",
+        "parameters" : [
+          {
+            "description" : "ZERO-BASED page index; the first page is 0. HPDS's /search/values/ pages from 1 -- these two surfaces do not share a base.",
+            "in" : "query",
+            "name" : "page_number",
+            "required" : false,
+            "schema" : {
+              "default" : 0,
+              "format" : "int32",
+              "minimum" : 0,
+              "type" : "integer"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "page_size",
+            "required" : false,
+            "schema" : {
+              "default" : 10,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaginatedResponseConcept"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Dump concepts with detail",
+        "tags" : [
+          "concept-controller"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ]
+}
