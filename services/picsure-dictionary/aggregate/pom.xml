@@ -71,6 +71,12 @@
 			<groupId>edu.harvard.dbmi.avillach</groupId>
 			<artifactId>pic-sure-logging-client</artifactId>
 		</dependency>
+		<!-- contracts.audit.RequestInfo is imported directly by this module's AuditLoggingFilter; declared
+		     rather than inherited transitively from pic-sure-logging-client. -->
+		<dependency>
+			<groupId>edu.harvard.hms.dbmi.avillach</groupId>
+			<artifactId>pic-sure-contracts</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>
