@@ -72,8 +72,8 @@ class AuditMockMvcTest {
         LoggingEvent event = captor.getValue();
         assertEquals("OTHER", event.getEventType());
         assertEquals("info", event.getAction());
-        assertEquals("POST", event.getRequest().getMethod());
-        assertEquals(200, event.getRequest().getStatus());
+        assertEquals("POST", event.getRequest().method());
+        assertEquals(200, event.getRequest().status());
         assertNotNull(event.getSessionId());
     }
 

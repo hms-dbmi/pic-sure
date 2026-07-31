@@ -81,10 +81,10 @@ class AuditIntegrationTest {
 
         // Verify request info
         assertNotNull(event.getRequest());
-        assertEquals("POST", event.getRequest().getMethod());
-        assertEquals("/PIC-SURE/v3/query", event.getRequest().getUrl());
-        assertEquals("10.0.0.1", event.getRequest().getSrcIp());
-        assertEquals(200, event.getRequest().getStatus());
+        assertEquals("POST", event.getRequest().method());
+        assertEquals("/PIC-SURE/v3/query", event.getRequest().url());
+        assertEquals("10.0.0.1", event.getRequest().srcIp());
+        assertEquals(200, event.getRequest().status());
 
         // Verify session ID (top-level on event, not in metadata)
         assertEquals("session-99", event.getSessionId());

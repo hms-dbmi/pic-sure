@@ -2,7 +2,7 @@ package edu.harvard.dbmi.avillach.visualization.service;
 
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
-import edu.harvard.dbmi.avillach.logging.RequestInfo;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;

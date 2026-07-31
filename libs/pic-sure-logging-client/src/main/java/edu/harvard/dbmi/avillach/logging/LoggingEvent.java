@@ -1,92 +1,79 @@
 package edu.harvard.dbmi.avillach.logging;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Mirrors the server-side AuditEvent model. Use {@link #builder(String)} to construct instances.
+ * The emitter-side handle on one audit record. This is a builder with validation, not a model: what it carries -- and what
+ * {@link LoggingClient} puts on the socket -- is the shared {@code contracts.audit.AuditEvent} record that the logging service reads back,
+ * so the two ends of the audit hop cannot drift apart.
+ *
+ * <p>Named {@code LoggingEvent} rather than {@code AuditEvent} because this package already declares an {@code @AuditEvent} annotation that
+ * the services' audit interceptors put on controller methods.
+ *
+ * <p>Use {@link #builder(String)} to construct instances. The caps it enforces on {@code metadata} and {@code error} are the same ones the
+ * logging service enforces at intake, so an over-sized event fails at the call site instead of being silently dropped over the wire.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public final class LoggingEvent {
 
     private static final int MAX_METADATA_KEYS = 50;
     private static final int MAX_ERROR_KEYS = 20;
 
-    @JsonProperty("event_type")
-    private final String eventType;
+    private final edu.harvard.dbmi.avillach.contracts.audit.AuditEvent event;
 
-    @JsonProperty("action")
-    private final String action;
-
-    @JsonProperty("client_type")
-    private final String clientType;
-
-    @JsonProperty("session_id")
-    private final String sessionId;
-
-    @JsonProperty("request")
-    private final RequestInfo request;
-
-    @JsonProperty("metadata")
-    private final Map<String, Object> metadata;
-
-    @JsonProperty("error")
-    private final Map<String, Object> error;
-
-    private LoggingEvent(Builder builder) {
-        this.eventType = builder.eventType;
-        this.action = builder.action;
-        this.clientType = builder.clientType;
-        this.sessionId = builder.sessionId;
-        this.request = builder.request;
-        this.metadata = builder.metadata != null ? Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata)) : null;
-        this.error = builder.error != null ? Collections.unmodifiableMap(new LinkedHashMap<>(builder.error)) : null;
+    private LoggingEvent(edu.harvard.dbmi.avillach.contracts.audit.AuditEvent event) {
+        this.event = event;
     }
 
-    // Jackson deserialization constructor
-    @SuppressWarnings("unused")
-    private LoggingEvent() {
-        this.eventType = null;
-        this.action = null;
-        this.clientType = null;
-        this.sessionId = null;
-        this.request = null;
-        this.metadata = null;
-        this.error = null;
+    /**
+     * The wire form: Jackson serializes this event as the shared contract record, with the record's own snake_case names and NON_NULL
+     * inclusion.
+     */
+    @JsonValue
+    public edu.harvard.dbmi.avillach.contracts.audit.AuditEvent toAuditEvent() {
+        return event;
+    }
+
+    /**
+     * Reads an event back off the wire. Deliberately skips the builder's validation: a record that already exists is being described, not
+     * created, and rejecting it here would only lose it.
+     */
+    @JsonCreator
+    static LoggingEvent fromAuditEvent(edu.harvard.dbmi.avillach.contracts.audit.AuditEvent event) {
+        return new LoggingEvent(event);
     }
 
     public String getEventType() {
-        return eventType;
+        return event.eventType();
     }
 
     public String getAction() {
-        return action;
+        return event.action();
     }
 
     public String getClientType() {
-        return clientType;
+        return event.clientType();
     }
 
     public String getSessionId() {
-        return sessionId;
+        return event.sessionId();
     }
 
     public RequestInfo getRequest() {
-        return request;
+        return event.request();
     }
 
     public Map<String, Object> getMetadata() {
-        return metadata;
+        return event.metadata();
     }
 
     public Map<String, Object> getError() {
-        return error;
+        return event.error();
     }
 
     /**
@@ -152,7 +139,16 @@ public final class LoggingEvent {
             if (error != null && error.size() > MAX_ERROR_KEYS) {
                 throw new IllegalArgumentException("error must not exceed " + MAX_ERROR_KEYS + " keys, got " + error.size());
             }
-            return new LoggingEvent(this);
+            // "caller" stays null: the logging service derives the identity from the Authorization header the client forwards.
+            return new LoggingEvent(
+                new edu.harvard.dbmi.avillach.contracts.audit.AuditEvent(
+                    eventType, action, clientType, null, sessionId, request, defensiveCopy(metadata), defensiveCopy(error)
+                )
+            );
+        }
+
+        private static Map<String, Object> defensiveCopy(Map<String, Object> source) {
+            return source == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(source));
         }
     }
 
@@ -161,13 +157,17 @@ public final class LoggingEvent {
      * apply config defaults.
      */
     LoggingEvent withClientType(String clientType) {
-        return LoggingEvent.builder(this.eventType).action(this.action).clientType(clientType).sessionId(this.sessionId)
-            .request(this.request).metadata(this.metadata).error(this.error).build();
+        return new LoggingEvent(
+            new edu.harvard.dbmi.avillach.contracts.audit.AuditEvent(
+                event.eventType(), event.action(), clientType, event.caller(), event.sessionId(), event.request(), event.metadata(),
+                event.error()
+            )
+        );
     }
 
     @Override
     public String toString() {
-        return "LoggingEvent{eventType='" + eventType + "', action='" + action + "', clientType='" + clientType + "', sessionId='"
-            + sessionId + "'}";
+        return "LoggingEvent{eventType='" + getEventType() + "', action='" + getAction() + "', clientType='" + getClientType()
+            + "', sessionId='" + getSessionId() + "'}";
     }
 }

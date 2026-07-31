@@ -2,6 +2,9 @@ package edu.harvard.dbmi.avillach.logging;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+// Shadows this package's @AuditEvent annotation, which this test does not use.
+import edu.harvard.dbmi.avillach.contracts.audit.AuditEvent;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -140,10 +143,10 @@ class LoggingEventTest {
         assertEquals("execute", event.getAction());
         assertEquals("api", event.getClientType());
         assertNotNull(event.getRequest());
-        assertEquals("POST", event.getRequest().getMethod());
-        assertEquals("/query", event.getRequest().getUrl());
-        assertEquals("127.0.0.1", event.getRequest().getSrcIp());
-        assertEquals(200, event.getRequest().getStatus());
+        assertEquals("POST", event.getRequest().method());
+        assertEquals("/query", event.getRequest().url());
+        assertEquals("127.0.0.1", event.getRequest().srcIp());
+        assertEquals(200, event.getRequest().status());
     }
 
     @Test
@@ -161,10 +164,10 @@ class LoggingEventTest {
         assertEquals(original.getEventType(), deserialized.getEventType());
         assertEquals(original.getAction(), deserialized.getAction());
         assertEquals(original.getClientType(), deserialized.getClientType());
-        assertEquals(original.getRequest().getMethod(), deserialized.getRequest().getMethod());
-        assertEquals(original.getRequest().getUrl(), deserialized.getRequest().getUrl());
-        assertEquals(original.getRequest().getStatus(), deserialized.getRequest().getStatus());
-        assertEquals(original.getRequest().getDuration(), deserialized.getRequest().getDuration());
+        assertEquals(original.getRequest().method(), deserialized.getRequest().method());
+        assertEquals(original.getRequest().url(), deserialized.getRequest().url());
+        assertEquals(original.getRequest().status(), deserialized.getRequest().status());
+        assertEquals(original.getRequest().duration(), deserialized.getRequest().duration());
         assertEquals("value", deserialized.getMetadata().get("key"));
     }
 
@@ -203,26 +206,35 @@ class LoggingEventTest {
         assertEquals("api", copy.getClientType());
     }
 
+    /**
+     * The point of the consolidation: this class is a builder with validation, not a second copy of the wire model. What goes on the socket
+     * is the shared {@link AuditEvent} record the logging service reads back, byte for byte -- so a field can never be added to one side
+     * without the other seeing it.
+     */
     @Test
-    void requestInfoAllFields() {
+    void serializesAsTheSharedAuditEventContract() throws Exception {
         RequestInfo request = RequestInfo.builder().requestId("req-123").method("POST").url("/query/sync").queryString("limit=100")
-            .srcIp("10.0.0.1").destIp("10.0.0.2").destPort(8080).httpUserAgent("PIC-SURE/2.0").httpContentType("application/json")
+            .srcIp("10.0.0.1").destIp("10.0.0.2").destPort(8080).httpUserAgent("PIC-SURE/3.0").httpContentType("application/json")
             .status(200).bytes(4096L).duration(250L).referrer("https://picsure.example.com").build();
+        Map<String, Object> metadata = Map.of("resourceId", "abc-123");
+        Map<String, Object> error = Map.of("message", "Not found");
 
-        JsonNode json = mapper.valueToTree(request);
+        LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").clientType("api").sessionId("sess-1").request(request)
+            .metadata(metadata).error(error).build();
 
-        assertEquals("req-123", json.get("request_id").asText());
-        assertEquals("POST", json.get("method").asText());
-        assertEquals("/query/sync", json.get("url").asText());
-        assertEquals("limit=100", json.get("query_string").asText());
-        assertEquals("10.0.0.1", json.get("src_ip").asText());
-        assertEquals("10.0.0.2", json.get("dest_ip").asText());
-        assertEquals(8080, json.get("dest_port").asInt());
-        assertEquals("PIC-SURE/2.0", json.get("http_user_agent").asText());
-        assertEquals("application/json", json.get("http_content_type").asText());
-        assertEquals(200, json.get("status").asInt());
-        assertEquals(4096, json.get("bytes").asLong());
-        assertEquals(250, json.get("duration").asLong());
-        assertEquals("https://picsure.example.com", json.get("referrer").asText());
+        AuditEvent expected = new AuditEvent("QUERY", "execute", "api", null, "sess-1", request, metadata, error);
+        assertEquals(mapper.writeValueAsString(expected), mapper.writeValueAsString(event));
+        assertEquals(expected, event.toAuditEvent());
+    }
+
+    /**
+     * The emitters never populate "caller" -- the logging service derives the identity from the Authorization header it is handed. Sharing
+     * the record must not start writing an empty caller key onto every audit POST.
+     */
+    @Test
+    void omitsTheServerDerivedCaller() {
+        LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").build();
+
+        assertFalse(mapper.valueToTree(event).has("caller"));
     }
 }

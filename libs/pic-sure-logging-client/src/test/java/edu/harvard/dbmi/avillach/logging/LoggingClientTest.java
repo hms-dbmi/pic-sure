@@ -1,6 +1,7 @@
 package edu.harvard.dbmi.avillach.logging;
 
 import com.sun.net.httpserver.HttpServer;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

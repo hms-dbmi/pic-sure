@@ -38,6 +38,14 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- The audit wire model, shared with pic-sure-logging-client: this service used to keep
+             its own hand-maintained copy of AuditEvent/RequestInfo next to the client library's.
+             A plain annotated-record jar, so nothing about it assumes Spring. -->
+        <dependency>
+            <groupId>edu.harvard.hms.dbmi.avillach</groupId>
+            <artifactId>pic-sure-contracts</artifactId>
+        </dependency>
+
         <!-- HTTP Server -->
         <dependency>
             <groupId>io.javalin</groupId>

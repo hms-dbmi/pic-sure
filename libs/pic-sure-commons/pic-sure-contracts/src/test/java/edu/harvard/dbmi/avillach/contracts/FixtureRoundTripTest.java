@@ -242,6 +242,43 @@ class FixtureRoundTripTest {
         assertEquals(2048L, request.bytes());
     }
 
+    /**
+     * The audit emitters are fire-and-forget filters that fill in a handful of the thirteen request fields and leave the rest null. Those
+     * nulls have never been on the wire -- the client library's own copy of these models declared NON_NULL -- and putting them there now
+     * would inflate every audit POST and hand the collector a wall of null-valued keys to index. Inclusion is part of the contract.
+     */
+    @Test
+    void shouldOmitNullFieldsWhenSerializingAnAuditEvent() throws IOException {
+        RequestInfo sparse = RequestInfo.builder().method("POST").url("/picsure/query/sync").status(200).build();
+        AuditEvent event = new AuditEvent("api_request", "query.sync", null, null, null, sparse, null, null);
+
+        String json = MAPPER.writeValueAsString(event);
+
+        assertEquals(
+            "{\"event_type\":\"api_request\",\"action\":\"query.sync\","
+                + "\"request\":{\"method\":\"POST\",\"url\":\"/picsure/query/sync\",\"status\":200}}",
+            json
+        );
+    }
+
+    /**
+     * Thirteen positional components, five of them adjacent Strings: every emitter in the reactor builds a RequestInfo by name, and a
+     * transposed pair would be invisible to the compiler. The builder is what the audit filters call.
+     */
+    @Test
+    void shouldBuildEveryRequestInfoFieldByName() {
+        RequestInfo request = RequestInfo.builder().requestId("req-123").method("POST").url("/query/sync").queryString("limit=100")
+            .srcIp("10.0.0.1").destIp("10.0.0.2").destPort(8080).httpUserAgent("PIC-SURE/3.0").httpContentType("application/json")
+            .status(200).bytes(4096L).duration(250L).referrer("https://picsure.example.edu").build();
+
+        assertEquals(
+            new RequestInfo(
+                "req-123", "POST", "/query/sync", "limit=100", "10.0.0.1", "10.0.0.2", 8080, "PIC-SURE/3.0", "application/json", 200, 4096L,
+                250L, "https://picsure.example.edu"
+            ), request
+        );
+    }
+
     @Test
     void shouldRoundTripAuditAccepted() throws IOException {
         AuditAccepted accepted = assertRoundTrip("audit-accepted.json", AuditAccepted.class);

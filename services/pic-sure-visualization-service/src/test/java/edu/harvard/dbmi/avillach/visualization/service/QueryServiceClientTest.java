@@ -159,10 +159,10 @@ class QueryServiceClientTest {
         assertEquals("QUERY", event.getEventType());
         assertEquals("visualization.query-service.query", event.getAction());
         // The destination recorded must be the hop actually made, not the HPDS hop this service no longer performs.
-        assertEquals("/hpds/auth/v3/query/sync", event.getRequest().getUrl());
-        assertEquals("localhost", event.getRequest().getDestIp());
-        assertEquals(9999, event.getRequest().getDestPort());
-        assertEquals(200, event.getRequest().getStatus());
+        assertEquals("/hpds/auth/v3/query/sync", event.getRequest().url());
+        assertEquals("localhost", event.getRequest().destIp());
+        assertEquals(9999, event.getRequest().destPort());
+        assertEquals(200, event.getRequest().status());
         assertEquals("authorized", event.getMetadata().get("access_type"));
         assertEquals("categorical", event.getMetadata().get("distribution_kind"));
         assertNull(event.getMetadata().get("resource_uuid"));

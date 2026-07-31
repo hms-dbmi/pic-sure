@@ -1,8 +1,8 @@
 package edu.harvard.dbmi.avillach.logging.service;
 
 import edu.harvard.dbmi.avillach.logging.config.AppConfig;
-import edu.harvard.dbmi.avillach.logging.model.AuditEvent;
-import edu.harvard.dbmi.avillach.logging.model.RequestInfo;
+import edu.harvard.dbmi.avillach.contracts.audit.AuditEvent;
+import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

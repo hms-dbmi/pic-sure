@@ -106,7 +106,7 @@ class AuditLoggingFilterTest {
         assertThat(event.getEventType()).isEqualTo("QUERY");
         assertThat(event.getAction()).isEqualTo("query.sync");
         assertThat(event.getSessionId()).isEqualTo("session-123");
-        assertThat(event.getRequest().getReferrer()).isEqualTo("https://picsure.example.org/explore");
+        assertThat(event.getRequest().referrer()).isEqualTo("https://picsure.example.org/explore");
     }
 
     @Test
