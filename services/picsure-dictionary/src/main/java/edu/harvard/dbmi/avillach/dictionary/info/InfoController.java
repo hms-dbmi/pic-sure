@@ -4,14 +4,14 @@ import edu.harvard.dbmi.avillach.contracts.info.QueryFormat;
 import edu.harvard.dbmi.avillach.contracts.info.ResourceInfo;
 import edu.harvard.dbmi.avillach.logging.AuditEvent;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Controller
+@RestController
 public class InfoController {
 
     /**

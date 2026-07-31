@@ -53,6 +53,11 @@ class OpenApiExportTest {
         // say, in the document, that the body varies with expectedResultType.
         JsonNode sync = OpenApiExport.operation(document, "/PIC-SURE/v3/query/sync", "post");
         OpenApiExport.assertDescriptionMentions(sync, "expectedResultType");
+        // ...and the JSON branch must declare that it carries an OBJECT. springdoc falls back to type: string for a
+        // handler returning Object whose @Schema sets only a description, which would document a CROSS_COUNT map as a
+        // JSON string -- a lie a client generator would act on, and worse than leaving it untyped.
+        OpenApiExport.assertResponseType(sync, "application/json", "object");
+        OpenApiExport.assertResponseType(sync, "text/plain", "string");
 
         // The 1-based paging divergence is documented at the endpoint, since PaginatedResponse itself cannot fix a base.
         OpenApiExport

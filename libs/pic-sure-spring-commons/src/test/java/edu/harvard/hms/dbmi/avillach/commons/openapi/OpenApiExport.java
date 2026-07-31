@@ -200,6 +200,29 @@ public final class OpenApiExport {
         }
     }
 
+    /**
+     * Asserts the document describes EXACTLY these paths.
+     *
+     * <p>The check that catches silent under-coverage. springdoc documents only {@code @RestController} beans (or individual methods
+     * carrying {@code @Operation}), so a controller annotated {@code @Controller} vanishes from the document while still serving traffic --
+     * a failure mode that leaves the committed document looking perfectly valid. Pinning the whole path set turns that into a build failure
+     * instead of a quiet omission, and equally makes a newly added endpoint a deliberate edit here.
+     */
+    public static void assertPathsAreExactly(JsonNode document, List<String> expected) {
+        List<String> actual = fieldNames(document.path("paths"));
+        List<String> wanted = new java.util.ArrayList<>(expected);
+        java.util.Collections.sort(wanted);
+        if (!wanted.equals(actual)) {
+            List<String> missing = new java.util.ArrayList<>(wanted);
+            missing.removeAll(actual);
+            List<String> unexpected = new java.util.ArrayList<>(actual);
+            unexpected.removeAll(wanted);
+            throw new AssertionError(
+                "documented paths do not match the expected set; missing from the document: " + missing + "; undeclared here: " + unexpected
+            );
+        }
+    }
+
     /** Asserts a named schema declares exactly these property names -- the check for a shape that must not gain or lose fields. */
     public static void assertSchemaProperties(JsonNode document, String schemaName, List<String> expected) {
         JsonNode schema = document.path("components").path("schemas").path(schemaName);
@@ -228,6 +251,27 @@ public final class OpenApiExport {
             }
         }
         throw new AssertionError("operation declares no parameter named " + parameterName + "; operation was " + operation);
+    }
+
+    /**
+     * Asserts the 200 response on {@code mediaType} declares exactly the given OpenAPI {@code type}.
+     *
+     * <p>For a handler returning {@code Object}, a {@code @Schema} that sets only a description makes springdoc fall back to
+     * {@code type: string}. That is worse than an untyped response: it documents a JSON object as a JSON string, and a client generator
+     * believes it. This pins the declared type so that fallback cannot come back unnoticed.
+     */
+    public static void assertResponseType(JsonNode operation, String mediaType, String expectedType) {
+        JsonNode schema = operation.path("responses").path("200").path("content").path(mediaType).path("schema");
+        if (schema.isMissingNode()) {
+            throw new AssertionError("no 200/" + mediaType + " response schema; operation was " + operation);
+        }
+        String actual = schema.path("type").asText("");
+        if (!expectedType.equals(actual)) {
+            throw new AssertionError(
+                "200/" + mediaType + " declares type '" + actual + "', expected '" + expectedType + "'"
+                    + ("string".equals(actual) ? " (springdoc's untyped fallback -- the schema needs an explicit type)" : "")
+            );
+        }
     }
 
     /** Asserts the operation's own summary/description mentions {@code fragment} -- how an untyped response documents its variance. */

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.harvard.hms.dbmi.avillach.commons.openapi.OpenApiExport;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -35,6 +36,19 @@ class OpenApiExportTest {
         JsonNode document = OpenApiExport.write(ARTIFACT, raw);
 
         OpenApiExport.assertSharedContractInvariants(document);
+
+        // The dictionary's WHOLE surface, pinned. springdoc documents only @RestController beans, so a controller
+        // left on plain @Controller serves traffic while silently vanishing from the document -- which is exactly
+        // what happened here before: six @Controller beans reduced this document to the two paths that happened to
+        // carry an @Operation. Adding an endpoint is now a deliberate edit to this list.
+        OpenApiExport.assertPathsAreExactly(
+            document,
+            List.of(
+                "/concepts", "/concepts/detail", "/concepts/detail/{dataset}", "/concepts/dump", "/concepts/hierarchy/{dataset}",
+                "/concepts/tree", "/concepts/tree/{dataset}", "/dashboard", "/dashboard-drawer", "/dashboard-drawer/{id}", "/facets",
+                "/facets/{facetCategory}/{facet}", "/info", "/search"
+            )
+        );
 
         // Representative shape: /concepts answers with the SHARED PaginatedResponse, not Spring's PageImpl.
         JsonNode listConcepts = OpenApiExport.operation(document, "/concepts", "post");

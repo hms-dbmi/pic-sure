@@ -21,7 +21,7 @@ public record QueryStatusResponse(
     @Schema(
         description = "Open-ended resource metadata; the producing endpoint decides the keys. HPDS emits picsureQueryId from "
             + "POST /PIC-SURE/v3/query and GET /PIC-SURE/v3/query/{id}/status; the query-service emits queryJson and "
-            + "queryResultMetadata from GET /query/{id}/metadata and passes HPDS's map through unchanged everywhere else. "
+            + "queryResultMetadata from GET /hpds/{backend}/v3/query/{id}/metadata and passes HPDS's map through unchanged elsewhere. "
             + "Consumers must treat every key as optional."
     ) Map<String, Object> resultMetadata
 ){

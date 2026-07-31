@@ -49,9 +49,8 @@ class OpenApiExportTest {
 
         OpenApiExport.assertSharedContractInvariants(document);
 
-        // Representative shape: /token/inspect is the gateway's hop into PSAMA. The request is the shared
-        // IntrospectionRequest, and the response carries the shared IntrospectionResponse under `introspection` --
-        // this is the wire the gateway and PSAMA must agree on, so both halves are pinned.
+        // Representative shape: /token/inspect is the gateway's hop into PSAMA. This is the wire the gateway and
+        // PSAMA must agree on, so both halves are pinned.
         JsonNode inspect = OpenApiExport.operation(document, "/token/inspect", "post");
         OpenApiExport.assertAcceptsSchema(inspect, "application/json", "IntrospectionRequest");
         OpenApiExport.assertRespondsWith(inspect, "application/json", "TokenIntrospectionResponse");
