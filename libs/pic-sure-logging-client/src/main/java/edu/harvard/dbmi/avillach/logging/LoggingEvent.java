@@ -155,6 +155,13 @@ public final class LoggingEvent {
     /**
      * Returns a copy of this event with the given clientType applied. All other fields are preserved. Used by {@link LoggingClient} to
      * apply config defaults.
+     *
+     * <p>Deliberately does NOT re-run the builder's validation, which the previous implementation did by round-tripping through
+     * {@link #builder(String)}. Two reasons. First it cannot fire: the only way to obtain a LoggingEvent is {@code builder(…).build()} or
+     * {@link #fromAuditEvent}, and this method changes nothing the builder checks -- not the event type, not the metadata or error maps.
+     * Second, if it somehow did fire it would fire in the wrong place: {@link LoggingClient#send} calls this outside its try/catch, so a
+     * throw here would propagate out of a call that is documented never to throw and would fail the user's request over an audit record.
+     * Validation belongs at construction, where the caller can still do something about it.
      */
     LoggingEvent withClientType(String clientType) {
         return new LoggingEvent(

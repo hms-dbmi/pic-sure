@@ -3,6 +3,7 @@ package edu.harvard.dbmi.avillach.visualization.service;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.RequestInfoBuilder;
 import edu.harvard.dbmi.avillach.visualization.model.AccessType;
 import edu.harvard.dbmi.avillach.visualization.model.DistributionType;
 import edu.harvard.dbmi.avillach.visualization.model.ObfuscatedCount;
@@ -192,7 +193,7 @@ public class QueryServiceClient {
             }
             LoggingEvent.Builder builder = LoggingEvent.builder("QUERY").action("visualization.query-service.query")
                 .request(
-                    RequestInfo.builder().requestId(requestId).method("POST").url(path).destIp(destinationHost(url))
+                    new RequestInfoBuilder().requestId(requestId).method("POST").url(path).destIp(destinationHost(url))
                         .destPort(destinationPort(url)).status(resolvedStatus).duration(duration).build()
                 ).metadata(queryMetadata(query, resultType, accessType, distributionKind, responseBody));
             if (error != null) {

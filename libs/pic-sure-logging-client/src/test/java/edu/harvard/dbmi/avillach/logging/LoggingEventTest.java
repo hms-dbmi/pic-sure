@@ -41,7 +41,7 @@ class LoggingEventTest {
 
     @Test
     void serializesRequestInfo() {
-        RequestInfo request = RequestInfo.builder().method("POST").url("/query/sync").srcIp("10.0.0.1").status(200).duration(150L)
+        RequestInfo request = new RequestInfoBuilder().method("POST").url("/query/sync").srcIp("10.0.0.1").status(200).duration(150L)
             .httpContentType("application/json").build();
 
         LoggingEvent event = LoggingEvent.builder("QUERY").action("execute").request(request).build();
@@ -151,7 +151,7 @@ class LoggingEventTest {
 
     @Test
     void roundTripSerialization() throws Exception {
-        RequestInfo request = RequestInfo.builder().method("GET").url("/info").status(200).duration(42L).build();
+        RequestInfo request = new RequestInfoBuilder().method("GET").url("/info").status(200).duration(42L).build();
 
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("key", "value");
@@ -207,13 +207,34 @@ class LoggingEventTest {
     }
 
     /**
+     * Applying the config's default clientType must never throw: LoggingClient does it outside the try/catch in send(), so a throw here
+     * would escape a call documented never to throw and fail a user's request over an audit record. Validation belongs at construction, so
+     * an event that never went through the builder -- one read back off the wire, over the caps -- still copies cleanly.
+     */
+    @Test
+    void withClientTypeDoesNotRevalidateAnEventItDidNotBuild() throws Exception {
+        Map<String, Object> overCap = new HashMap<>();
+        for (int i = 0; i < 60; i++) {
+            overCap.put("key" + i, "value");
+        }
+        LoggingEvent offTheWire = mapper.readValue(
+            mapper.writeValueAsString(new AuditEvent("QUERY", "execute", null, null, null, null, overCap, null)), LoggingEvent.class
+        );
+
+        LoggingEvent copy = assertDoesNotThrow(() -> offTheWire.withClientType("api"));
+
+        assertEquals("api", copy.getClientType());
+        assertEquals(60, copy.getMetadata().size());
+    }
+
+    /**
      * The point of the consolidation: this class is a builder with validation, not a second copy of the wire model. What goes on the socket
      * is the shared {@link AuditEvent} record the logging service reads back, byte for byte -- so a field can never be added to one side
      * without the other seeing it.
      */
     @Test
     void serializesAsTheSharedAuditEventContract() throws Exception {
-        RequestInfo request = RequestInfo.builder().requestId("req-123").method("POST").url("/query/sync").queryString("limit=100")
+        RequestInfo request = new RequestInfoBuilder().requestId("req-123").method("POST").url("/query/sync").queryString("limit=100")
             .srcIp("10.0.0.1").destIp("10.0.0.2").destPort(8080).httpUserAgent("PIC-SURE/3.0").httpContentType("application/json")
             .status(200).bytes(4096L).duration(250L).referrer("https://picsure.example.com").build();
         Map<String, Object> metadata = Map.of("resourceId", "abc-123");

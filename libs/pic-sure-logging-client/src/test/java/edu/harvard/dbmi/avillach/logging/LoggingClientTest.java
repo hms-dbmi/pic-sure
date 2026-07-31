@@ -163,7 +163,7 @@ class LoggingClientTest {
         LoggingClient client = createClient();
 
         RequestInfo request =
-            RequestInfo.builder().method("POST").url("/query/sync").srcIp("192.168.1.1").status(200).duration(150L).build();
+            new RequestInfoBuilder().method("POST").url("/query/sync").srcIp("192.168.1.1").status(200).duration(150L).build();
 
         client.send(LoggingEvent.builder("QUERY").action("execute").request(request).metadata(Map.of("resourceId", "uuid-123")).build());
 

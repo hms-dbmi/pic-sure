@@ -11,6 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import edu.harvard.dbmi.avillach.logging.LoggingClient;
 import edu.harvard.dbmi.avillach.logging.LoggingEvent;
 import edu.harvard.dbmi.avillach.contracts.audit.RequestInfo;
+import edu.harvard.dbmi.avillach.logging.RequestInfoBuilder;
 import edu.harvard.dbmi.avillach.logging.SessionIdResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -64,9 +65,9 @@ public class AuditLoggingFilter extends OncePerRequestFilter {
                 String contentType = response.getContentType();
                 Long bytes = parseContentLength(response.getHeader("Content-Length"));
 
-                RequestInfo requestInfo = RequestInfo.builder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp).destPort(destPort)
-                    .httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration).httpContentType(contentType)
-                    .bytes(bytes).build();
+                RequestInfo requestInfo = new RequestInfoBuilder().method(method).url(fullPath).srcIp(srcIp).destIp(destIp)
+                    .destPort(destPort).httpUserAgent(request.getHeader("User-Agent")).status(responseStatus).duration(duration)
+                    .httpContentType(contentType).bytes(bytes).build();
 
                 Map<String, Object> metadata = new HashMap<>();
                 String sessionId = SessionIdResolver.resolve(request.getHeader("X-Session-Id"), srcIp, request.getHeader("User-Agent"));
