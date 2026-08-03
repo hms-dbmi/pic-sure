@@ -30,6 +30,7 @@ import org.springframework.test.context.ContextConfiguration;
 
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -483,6 +484,83 @@ public class UserServiceTest {
         assertNotNull(user1);
 
         assertEquals(newRoles, user1.getRoles());
+    }
+
+    /**
+     * The exact set of role names ensureBaselineRoles is required to ask the database for. Asserting on this set is what catches a baseline
+     * role being dropped from the lookup: a role that is never requested is never found, never attached, and nothing else in the method
+     * would fail.
+     */
+    private static final Set<String> EXPECTED_BASELINE_ROLE_NAMES = Set
+        .of(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, RoleService.MANAGED_ROLE_NAMED_DATASET);
+
+    /**
+     * Every user reaches authorized data through the baseline roles alone now that dbGaP-derived roles are gone. MANUAL_ROLE_AUTH_ACCESS in
+     * particular carries USER_CONSENT_ACCESS, so if it stops being attached here the user is silently left with no consent-based access.
+     */
+    @Test
+    public void ensureBaselineRoles_allBaselineRolesExist_allAreAttachedAndPersisted() {
+        User user = createTestUser();
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(roleService.findByNames(anySet())).thenReturn(
+            Map.of(
+                RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_ROLE_NAMED_DATASET, createRoleNamed(RoleService.MANAGED_ROLE_NAMED_DATASET)
+            )
+        );
+
+        User result = userService.ensureBaselineRoles(user);
+
+        assertNotNull(result);
+        // Every baseline role must actually be requested. Without this, dropping a name from the lookup set leaves the stub returning all
+        // three regardless, and the attachment assertions below stay green while the role is silently lost in production.
+        verify(roleService).findByNames(EXPECTED_BASELINE_ROLE_NAMES);
+        ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(savedUser.capture());
+        assertEquals(
+            Set.of(
+                "TEST_ROLE", RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME,
+                RoleService.MANAGED_ROLE_NAMED_DATASET
+            ), roleNamesOf(savedUser.getValue()),
+            "all three baseline roles must be attached and persisted, alongside the user's pre-existing roles"
+        );
+    }
+
+    @Test
+    public void ensureBaselineRoles_oneBaselineRoleMissing_stillAttachesTheRolesThatWereFound() {
+        User user = createTestUser();
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // MANUAL_ROLE_NAMED_DATASET is absent from the database; the warn path must not cost the user the other two.
+        when(roleService.findByNames(anySet())).thenReturn(
+            Map.of(
+                RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME),
+                RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME, createRoleNamed(RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME)
+            )
+        );
+
+        User result = userService.ensureBaselineRoles(user);
+
+        assertNotNull(result);
+        verify(roleService).findByNames(EXPECTED_BASELINE_ROLE_NAMES);
+        ArgumentCaptor<User> savedUser = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(savedUser.capture());
+        assertEquals(
+            Set.of("TEST_ROLE", RoleService.MANAGED_AUTH_ACCESS_ROLE_NAME, RoleService.MANAGED_OPEN_ACCESS_ROLE_NAME),
+            roleNamesOf(savedUser.getValue()),
+            "the baseline roles that do exist must still be attached, and the user's pre-existing roles kept"
+        );
+    }
+
+    private Set<String> roleNamesOf(User user) {
+        return user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
+    }
+
+    private Role createRoleNamed(String name) {
+        Role role = new Role();
+        role.setName(name);
+        role.setUuid(UUID.randomUUID());
+        return role;
     }
 
     @Test
